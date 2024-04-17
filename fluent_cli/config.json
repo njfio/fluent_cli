@@ -1,7 +1,8 @@
 [
   {
     "name": "GPT4FunctionAgentWithMemoryAndBrowsing",
-    "hostname": "localhost",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
     "port": 3000,
     "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
     "request_path": "/api/v1/prediction/",
@@ -14,10 +15,11 @@
         "openAIEmbeddings_0": "sk-my-openai-2nd-key"
       }
     },
-    "timeout_ms": 5000000
+    "timeout_ms": 50000
   },
   {
     "name": "MakeLeonardoImagePost",
+    "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
     "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
@@ -30,6 +32,7 @@
   },
   {
     "name": "GroqMixtral8x7bAgentAnotherWebService",
+    "protocol": "http",
     "hostname": "container-qygwpcc.containers.anotherwebservice.com",
     "port": 3000,
     "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
@@ -38,6 +41,6 @@
     "bearer_token": "NUd1MEQ+w5VZDpoeBcFOihPe8VT5EY/vsbnZ8HfPit4=",
     "overrideConfig": {
     },
-    "timeout_ms": 5000000
+    "timeout_ms": 50000
   }
 ]

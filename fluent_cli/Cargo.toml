@@ -14,3 +14,4 @@ tokio-console = "0.1" # For debugging async tasks
 config = "0.12"
 log = "0.4"
 env_logger = "0.9"
+atty = "0.2.14"
