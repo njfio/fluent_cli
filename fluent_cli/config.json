@@ -1,0 +1,18 @@
+[
+  {
+    "name": "GPT4FunctionAgentWithMemoryAndBrowsing",
+    "hostname": "localhost",
+    "port": 3000,
+    "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "NJF123",
+    "bearer_token": "ktOFC3P+5We42FtUxinkRJB0Fc+OPXfy5xCISGYEzmw=",
+    "overrideConfig": {
+      "sessionId": "NJF123Override",
+      "openAIApiKey": {
+        "chatOpenAI_0": "sk-my-openai-1st-key",
+        "openAIEmbeddings_0": "sk-my-openai-2nd-key"
+      }
+    }
+  }
+]
