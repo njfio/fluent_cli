@@ -13,6 +13,31 @@
         "chatOpenAI_0": "sk-my-openai-1st-key",
         "openAIEmbeddings_0": "sk-my-openai-2nd-key"
       }
-    }
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "MakeLeonardoImagePost",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
+    "request_path": "/",
+    "sessionId": "NJF123",
+    "bearer_token": "ktOFC3P+5We42FtUxinkRJB0Fc+OPXfy5xCISGYEzmw=",
+    "overrideConfig": {
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "GroqMixtral8x7bAgentAnotherWebService",
+    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
+    "port": 3000,
+    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "NJF123",
+    "bearer_token": "NUd1MEQ+w5VZDpoeBcFOihPe8VT5EY/vsbnZ8HfPit4=",
+    "overrideConfig": {
+    },
+    "timeout_ms": 5000000
   }
 ]
