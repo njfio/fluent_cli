@@ -38,19 +38,17 @@ pub fn get_flow_names() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     Ok(flows.iter().map(|flow| flow.name.clone()).collect())
 }
 
-pub fn generate_bash_autocomplete_script() -> Result<String, Box<dyn std::error::Error>> {
-    let names = get_flow_names()?;
-    let mut script = String::from(r#"
-_fluent_cli_autocomplete() {
-    local cur=${COMP_WORDS[COMP_CWORD]}
-    local opts=""
-    "#);
-    script.push_str(&format!("opts=\"{}\"", names.join(" ")));
-    script.push_str(r#"
-    COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
-    return 0
-}
-complete -F _fluent_cli_autocomplete fluent_cli
-"#);
-    Ok(script)
+
+pub fn generate_bash_autocomplete_script() -> String {
+
+    return format!(r#"
+# Assuming FLUENT_CLI_CONFIG_PATH points to a JSON file containing configuration
+autocomplete_flows() {{
+    local current_word="${{COMP_WORDS[COMP_CWORD]}}"
+    local flow_names=$(jq -r '.[].name' "$FLUENT_CLI_CONFIG_PATH")
+    COMPREPLY=($(compgen -W "${{flow_names}}" -- "$current_word"))
+}}
+complete -F autocomplete_flows fluent_cli
+"#)
+
 }
