@@ -6,7 +6,7 @@
     "port": 3000,
     "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "NJF123",
+    "sessionId": "",
     "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
@@ -22,9 +22,16 @@
     "port": 443,
     "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
     "request_path": "/",
-    "sessionId": "NJF123",
+    "sessionId": "",
     "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
     "overrideConfig": {
+      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "alchemy": true,
+      "photoReal": true,
+      "photoRealVersion":"v2",
+      "presetStyle": "CINEMATIC",
+      "seed": ""
     },
     "timeout_ms": 5000000
   },
@@ -35,7 +42,7 @@
     "port": 3000,
     "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "NJF123",
+    "sessionId": "",
     "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
