@@ -6,8 +6,52 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use crate::config::{FlowConfig, replace_with_env_var};
 
+
+use serde::{Deserialize, Serialize};
+use serde_json::Result;
+use crate::client;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct FluentCliOutput {
+    pub(crate) text: String,
+    pub(crate) question: String,
+    #[serde(rename = "chatId")]
+    pub(crate) chat_id: String,
+    #[serde(rename = "chatMessageId")]
+    chat_message_id: String,
+    #[serde(rename = "sessionId")]
+    pub(crate) session_id: String,
+    #[serde(rename = "memoryType")]
+    memory_type: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Question {
+    question: String,
+}
+
+
+pub fn handle_response(response_body: &str) -> Result<()> {
+    let parsed_output: FluentCliOutput = serde_json::from_str(response_body)?;
+
+    // Print parsed data or further process it as needed
+    println!("Text:\n{}\n", parsed_output.text);
+    println!("Question: {}", parsed_output.question);
+    println!("Chat ID: {}", parsed_output.chat_id);
+    println!("Session ID: {}", parsed_output.session_id);
+    println!("Memory Type: {}", parsed_output.memory_type);
+
+    Ok(())
+}
+
+pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
+    let output: FluentCliOutput = serde_json::from_str(json_data)?;
+    Ok(output)
+}
+
+
 // Change the signature to accept a simple string for `question`
-pub async fn send_request(flow: &FlowConfig, question: &str) -> Result<String, Error> {
+pub async fn send_request(flow: &FlowConfig, question: &str) -> reqwest::Result<String> {
     let client = Client::new();
 
     // Dynamically fetch the bearer token from environment variables if it starts with "AMBER_"

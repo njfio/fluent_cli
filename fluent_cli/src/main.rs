@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .version("0.1.0")
         .author("Your Name <your.email@example.com>")
         .about("Interacts with FlowiseAI workflows")
-        .arg(Arg::new("flowname").help("The flow name to invoke").takes_value(true).required_unless_present("generate-autocomplete"))
+        .arg(Arg::new("flowname").help("The flow nam()e to invoke").takes_value(true).required_unless_present("generate-autocomplete"))
         .arg(Arg::new("request").help("The request string to send").takes_value(true).required_unless_present("generate-autocomplete"))
         .arg(Arg::new("context").help("Optional context to include with the request").takes_value(true).required(false))
         .arg(Arg::new("generate-bash-autocomplete").long("generate-autocomplete").help("Generates a bash autocomplete script").takes_value(false))
@@ -51,10 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     match client::send_request(flow, &serde_json::to_string(&payload)?).await {
-        Ok(response_body) => println!("{}", response_body),
+        Ok(response_body) => {
+            if let Err(e) = client::handle_response(&response_body) {
+                eprintln!("Error processing response: {}", e);
+            }
+        },
         Err(e) => eprintln!("Failed to send request: {}", e),
     }
-
     Ok(())
 }
 
