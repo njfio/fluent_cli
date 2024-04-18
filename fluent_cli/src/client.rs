@@ -4,48 +4,45 @@ use reqwest::{Client, Error};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
-use crate::config::FlowConfig;
+use crate::config::{FlowConfig, replace_with_env_var};
 
 // Change the signature to accept a simple string for `question`
-
 pub async fn send_request(flow: &FlowConfig, question: &str) -> Result<String, Error> {
-    let client_builder = Client::builder();
+    let client = Client::new();
 
-    // Set timeout if specified in config
-    let client = if let Some(timeout_ms) = flow.timeout_ms {
-        client_builder.timeout(Duration::from_millis(timeout_ms)).build()?
+    // Dynamically fetch the bearer token from environment variables if it starts with "AMBER_"
+    let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
+        env::var(&flow.bearer_token[6..]).unwrap_or_else(|_| flow.bearer_token.clone())
     } else {
-        client_builder.build()?
+        flow.bearer_token.clone()
     };
+    debug!("Bearer token: {}", bearer_token);
+    // Ensure override_config is up-to-date with environment variables
+    let mut override_config = flow.override_config.clone();
+    debug!("Override config before update: {:?}", override_config);
+    replace_with_env_var(&mut override_config);
+    debug!("Override config after update: {:?}", override_config);
 
-    // Construct the request URL
-    let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
-    debug!("Request URL: {}", url);
-
-    // Fetch the bearer token from environment variables
-    let bearer_token = env::var("bearer_token").unwrap_or_else(|_| {
-        error!("Bearer token not found in environment variables.");
-        flow.bearer_token.clone() // Fallback to the value from config if not found
-    });
-
-    // Prepare the request body
+    // Construct the body of the request
     let body = json!({
         "question": question,
-        "overrideConfig": &flow.override_config
+        "overrideConfig": override_config
     });
 
-    debug!("Sending request to: {}", url);
-    debug!("Request body: {:?}", body);
-    debug!("Bearer token used: {}", bearer_token);
+    let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
 
     // Send the request and await the response
     let response = client.post(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", bearer_token))
+        .header("Authorization", format!("Bearer {}", bearer_token))
         .json(&body)
         .send()
         .await?;
 
+    debug!("Request URL: {}", url);
+    debug!("Request bearer token: {}", bearer_token);
+    debug!("Request body: {:?}", body);
     debug!("Response: {:?}", response);
+
     response.text().await
 }
 

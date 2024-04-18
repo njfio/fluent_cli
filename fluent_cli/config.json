@@ -9,7 +9,7 @@
     "sessionId": "NJF123",
     "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
     "overrideConfig": {
-      "sessionId": "FLUENT_SESSION_ID_01",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": {
         "chatOpenAI_0": "sk-my-openai-1st-key",
         "openAIEmbeddings_0": "sk-my-openai-2nd-key"
@@ -32,14 +32,15 @@
   },
   {
     "name": "GroqMixtral8x7bAgentAnotherWebService",
-    "protocol": "http",
+    "protocol": "https",
     "hostname": "container-qygwpcc.containers.anotherwebservice.com",
     "port": 3000,
     "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
     "request_path": "/api/v1/prediction/",
     "sessionId": "NJF123",
-    "bearer_token": "NUd1MEQ+w5VZDpoeBcFOihPe8VT5EY/vsbnZ8HfPit4=",
+    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
     "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01"
     },
     "timeout_ms": 50000
   }
