@@ -7,9 +7,9 @@
     "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
     "request_path": "/api/v1/prediction/",
     "sessionId": "NJF123",
-    "bearer_token": "ktOFC3P+5We42FtUxinkRJB0Fc+OPXfy5xCISGYEzmw=",
+    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
     "overrideConfig": {
-      "sessionId": "NJF123Override",
+      "sessionId": "FLUENT_SESSION_ID_01",
       "openAIApiKey": {
         "chatOpenAI_0": "sk-my-openai-1st-key",
         "openAIEmbeddings_0": "sk-my-openai-2nd-key"
@@ -25,7 +25,7 @@
     "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
     "request_path": "/",
     "sessionId": "NJF123",
-    "bearer_token": "ktOFC3P+5We42FtUxinkRJB0Fc+OPXfy5xCISGYEzmw=",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
     "overrideConfig": {
     },
     "timeout_ms": 5000000

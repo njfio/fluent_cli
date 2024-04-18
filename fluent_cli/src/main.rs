@@ -8,13 +8,16 @@ use log::{info, warn, error, debug};
 use env_logger;
 use tokio::io::{self, AsyncReadExt};
 
-use crate::config::generate_bash_autocomplete_script;
+use crate::config::{EnvVarGuard, generate_bash_autocomplete_script};
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
+    let configs = config::load_config()?;
+    let mut env_guard = EnvVarGuard::new();
+
     let matches = Command::new("Fluent CLI")
         .version("0.1.0")
         .author("Your Name <your.email@example.com>")
@@ -31,14 +34,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("Optional context to include with the request")
             .takes_value(true)
             .required(false))
-        .arg(Arg::new("generate-autocomplete")
+        .arg(Arg::new("generate-bash-autocomplete")
             .long("generate-autocomplete")
             .help("Generates a bash autocomplete script")
             .takes_value(false))
         .after_help("Send the contents of stdin as a request or provide an additional context")
         .get_matches();
 
-    if matches.contains_id("generate-autocomplete") {
+    if matches.contains_id("generate-bash-autocomplete") {
         let script = generate_bash_autocomplete_script();
         println!("{}", script);
         return Ok(());
@@ -73,8 +76,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Assume function `send_request` sends the data
     let flows = config::load_config()?;
     debug!("Flows: {:?}", flows);
-
     let flow = flows.iter().find(|f| f.name == flowname).expect("Flow not found");
+    if let Some(flow) = configs.iter().find(|f| f.name == flow.name) {
+
+        if flow.bearer_token.starts_with("AMBER_") {
+            debug!("Bearer token starts with AMBER_");
+            env_guard.set_env_var_from_amber("bearer_token", &flow.bearer_token)?;
+        }
+    }
     debug!("Flow: {:?}", flow);
 
     match client::send_request(&flow, &payload_string).await {
