@@ -33,13 +33,19 @@ struct Question {
 
 pub fn handle_response(response_body: &str) -> Result<()> {
     let parsed_output: FluentCliOutput = serde_json::from_str(response_body)?;
+    let question_parsed: Result<Question> = serde_json::from_str(&parsed_output.question);
+    let question_text = match question_parsed {
+        Ok(q) => q.question,
+        Err(_) => parsed_output.question.clone(), // If parsing fails, use the original string
+    };
 
     // Print parsed data or further process it as needed
-    println!("Text:\n{}\n", parsed_output.text);
-    println!("Question: {}", parsed_output.question);
-    println!("Chat ID: {}", parsed_output.chat_id);
-    println!("Session ID: {}", parsed_output.session_id);
-    println!("Memory Type: {}", parsed_output.memory_type);
+    println!("\n\n");
+    println!("\tText:\n\t{}\n", parsed_output.text);
+    println!("\tQuestion:\n\t{}", question_text);
+    println!("\tChat ID: {}", parsed_output.chat_id);
+    println!("\tSession ID: {}", parsed_output.session_id);
+    println!("\tMemory Type: {}", parsed_output.memory_type);
 
     Ok(())
 }
@@ -61,11 +67,14 @@ pub async fn send_request(flow: &FlowConfig, question: &str) -> reqwest::Result<
         flow.bearer_token.clone()
     };
     debug!("Bearer token: {}", bearer_token);
+
     // Ensure override_config is up-to-date with environment variables
     let mut override_config = flow.override_config.clone();
     debug!("Override config before update: {:?}", override_config);
     replace_with_env_var(&mut override_config);
     debug!("Override config after update: {:?}", override_config);
+
+
 
     // Construct the body of the request
     let body = json!({

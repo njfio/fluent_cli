@@ -11,7 +11,9 @@
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01"
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessage": "You are a helpful assistant"
     },
     "timeout_ms": 50000
   },
@@ -47,7 +49,8 @@
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
-      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01"
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "SystemMessagePrompt": "You are a helpful assistant"
     },
     "timeout_ms": 50000
   }
