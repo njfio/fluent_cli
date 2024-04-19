@@ -22,11 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .version("0.1.0")
         .author("Your Name <your.email@example.com>")
         .about("Interacts with FlowiseAI workflows")
-        .arg(Arg::new("flowname").help("The flow name to invoke").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File"]))
-        .arg(Arg::new("request").help("The request string to send").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File"]))
+        .arg(Arg::new("flowname").help("The flow name to invoke").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File", "Additional-Context-File"]))
+        .arg(Arg::new("request").help("The request string to send").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File", "Additional-Context-File"]))
         .arg(Arg::new("context").help("Optional context to include with the request").takes_value(true))
         .arg(Arg::new("System-Prompt-Override-Inline").long("System-Prompt-Override-Inline").help("Overrides the system message with an inline string").takes_value(true))
         .arg(Arg::new("System-Prompt-Override-File").long("System-Prompt-Override-File").help("Overrides the system message from a specified file").takes_value(true))
+        .arg(Arg::new("Additional-Context-File").long("Additional-Context-File").help("Specifies a file from which additional request context is loaded").takes_value(true))
         .arg(Arg::new("generate-bash-autocomplete").long("generate-autocomplete").help("Generates a bash autocomplete script").takes_value(false))
         .get_matches();
 
@@ -70,8 +71,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Determine the final context from various sources
+    let file_context = matches.value_of("Additional-Context-File");
+    let mut file_contents = String::new();
+    if let Some(file_path) = file_context {
+        let mut file = File::open(file_path).await?;
+        file.read_to_string(&mut file_contents).await?;
+    }
+
+    // Combine file contents with other forms of context if necessary
+    let final_context = match (context, file_contents.is_empty()) {
+        (Some(cli_context), false) => Some(format!("{} {}", cli_context, file_contents)),
+        (None, false) => Some(file_contents),
+        (Some(cli_context), true) => Some(cli_context.to_string()),
+        (None, true) => None,
+    };
+
+
     // Build the request payload
-    let payload = client::build_request_payload(request, final_context);
+    let payload = client::build_request_payload(request, final_context.as_deref());
 
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
