@@ -65,11 +65,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Update the configuration with the override if it exists
-    if let Some(override_message) = system_message_override {
+    // Update the configuration based on what's present in the overrideConfig
+    if let Some(override_value) = system_message_override {
         if let Some(obj) = flow.override_config.as_object_mut() {
-            obj.insert("systemMessage".to_string(), serde_json::Value::String(override_message)); // Correct use of Value::String
+            if obj.contains_key("systemMessage") {
+                obj.insert("systemMessage".to_string(), serde_json::Value::String(override_value.to_string()));
+            }
+            if obj.contains_key("systemMessagePrompt") {
+                obj.insert("systemMessagePrompt".to_string(), serde_json::Value::String(override_value.to_string()));
+            }
         }
     }
+
 
     // Determine the final context from various sources
     let file_context = matches.value_of("Additional-Context-File");

@@ -31,7 +31,7 @@
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessage": "You are a helpful assistant"
+      "systemMessagePrompt": "You are a helpful assistant"
     },
     "timeout_ms": 50000
   },
