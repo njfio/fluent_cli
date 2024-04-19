@@ -22,7 +22,7 @@ struct FluentCliOutput {
     #[serde(rename = "sessionId")]
     pub(crate) session_id: String,
     #[serde(rename = "memoryType")]
-    memory_type: String,
+    memory_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -45,7 +45,7 @@ pub fn handle_response(response_body: &str) -> Result<()> {
     println!("\tQuestion:\n\t{}", question_text);
     println!("\tChat ID: {}", parsed_output.chat_id);
     println!("\tSession ID: {}", parsed_output.session_id);
-    println!("\tMemory Type: {}", parsed_output.memory_type);
+    println!("\tMemory Type: {:?}", parsed_output.memory_type);
 
     Ok(())
 }
