@@ -13,7 +13,30 @@
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessage": "You are a helpful assistant"
+      "systemMessage": "You are a helpful assistant",
+      "openAIToolAgent_0": {
+        "systemMessage": "You are a helpful assistant"
+      }
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "GPT4ImageUpload",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
+    "port": 3000,
+    "chat_id": "c6a6de48-5d8e-4101-9a81-508c5b3a5f76",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ImageUploadChain",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessagePrompt": "You only speak spanish",
+      "temperature": 0.7
     },
     "timeout_ms": 50000
   },
@@ -68,7 +91,84 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "SystemMessagePrompt": "You are a helpful assistant"
+      "SystemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.2,
+      "modelName": "mixtral-8x7b-32768"
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "GroqLLama370b8192AgentAnotherWebService",
+    "protocol": "https",
+    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
+    "port": 3000,
+    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "SystemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.5,
+      "modelName":"llama3-70b-8192",
+      "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "MistralLargeToolAgentAnowtherWebService",
+    "protocol": "https",
+    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
+    "port": 3000,
+    "chat_id": "173d8f08-ba2a-49a1-91d9-8769979081a5",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "mistralAIAPIKey": "AMBER_FLUENT_MISTRAL_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "apiKey": "AMBER_FLUENT_ZEP_MEMORY_KEY_01",
+      "SystemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.2,
+      "memoryKey": "chat_history",
+      "memoryType": "perpetual",
+      "aiPrefix": "ai",
+      "humanPrefix": "human",
+      "inputKey": "input",
+      "outputKey": "output"
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "SonnetXMLAgentAnowtherWebService",
+    "protocol": "https",
+    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
+    "port": 3000,
+    "chat_id": "8ea46fa9-4aef-4184-a399-c588c576d148",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "stripNewLines": true,
+      "modelName": {
+        "chatAnthropic_0": "claude-3-sonnet-20240229",
+        "chatOpenAI_0": "gpt-3.5-turbo-16k",
+        "openAIEmbeddings_0": "text-embedding-3-small"
+      },
+      "openAIApiKey": {
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPEN_API_KEY_01",
+        "chatOpenAI_0": "AMBER_FLUENT_OPEN_API_KEY_01"
+      },
+
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
+      "temperature": 0.2
+
     },
     "timeout_ms": 50000
   }

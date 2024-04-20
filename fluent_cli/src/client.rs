@@ -107,12 +107,11 @@ pub(crate) fn build_request_payload(question: &str, context: Option<&str>) -> Va
     } else {
         question.to_string()  // Use question as is if no context
     };
-
+    debug!("build_request_payload - Full question: {}", full_question);
     // Now create the payload with the potentially modified question
     let payload = json!({
         "question": full_question,  // Use the potentially modified question
     });
-
-    debug!("Request payload: {:?}", payload);
+    debug!("build_request_payload - Request payload: {:?}", payload);
     payload
 }

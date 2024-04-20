@@ -48,7 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if context.is_none() && !atty::is(atty::Stream::Stdin) {
         tokio::io::stdin().read_to_string(&mut additional_context).await?;
     }
+    debug!("Additional context: {:?}", additional_context);
     let final_context = context.or(if !additional_context.is_empty() { Some(&additional_context) } else { None });
+    debug!("Context: {:?}", final_context);
 
     // Load override value from CLI if specified for system prompt override, file will always win
     let system_prompt_inline = matches.value_of("System-Prompt-Override-Inline");
@@ -87,16 +89,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Combine file contents with other forms of context if necessary
-    let final_context = match (context, file_contents.is_empty()) {
+    let actual_final_context = match (final_context, file_contents.is_empty()) {
         (Some(cli_context), false) => Some(format!("{} {}", cli_context, file_contents)),
         (None, false) => Some(file_contents),
         (Some(cli_context), true) => Some(cli_context.to_string()),
         (None, true) => None,
     };
-
+    debug!("Actual Final context: {:?}", actual_final_context);
 
     // Build the request payload
-    let payload = client::build_request_payload(request, final_context.as_deref());
+    let payload = client::build_request_payload(request, actual_final_context.as_deref());
 
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
