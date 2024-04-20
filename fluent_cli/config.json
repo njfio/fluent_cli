@@ -13,7 +13,10 @@
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessage": "You are a helpful assistant"
+      "systemMessage": "you only speak spanish",
+      "openAIToolAgent_0": {
+        "systemMessage": "you only speak spanish"
+      }
     },
     "timeout_ms": 50000
   },
@@ -32,7 +35,8 @@
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessagePrompt": "You are a helpful assistant"
+      "systemMessagePrompt": "You only speak spanish",
+      "temperature": 0.7
     },
     "timeout_ms": 50000
   },
@@ -69,7 +73,8 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "SystemMessagePrompt": "You are a helpful assistant"
+      "SystemMessagePrompt": "You are a helpful assistant",
+      "temperature": 1.9
     },
     "timeout_ms": 50000
   }
