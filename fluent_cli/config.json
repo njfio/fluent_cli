@@ -76,6 +76,7 @@
       "SystemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.2,
       "modelName": "mixtral-8x7b-32768"
+    },
     "timeout_ms": 50000
   },
   {
