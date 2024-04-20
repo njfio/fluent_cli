@@ -18,6 +18,25 @@
     "timeout_ms": 50000
   },
   {
+    "name": "GPT4ImageUpload",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
+    "port": 3000,
+    "chat_id": "c6a6de48-5d8e-4101-9a81-508c5b3a5f76",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ImageUploadChain",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessagePrompt": "You are a helpful assistant"
+    },
+    "timeout_ms": 50000
+  },
+  {
     "name": "MakeLeonardoImagePost",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
