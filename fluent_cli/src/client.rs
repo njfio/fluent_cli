@@ -72,37 +72,16 @@ pub fn handle_response(response_body: &str) -> Result<()> {
 }
 
 
-fn extract_code_blocks(markdown_content: &str) -> String {
-    let parser = Parser::new(markdown_content);
-    let mut in_code_block = false;
-    let mut code_blocks = String::new();
-    let mut current_block = String::new();
 
-    for event in parser {
-        match event {
-            Event::Start(Tag::CodeBlock(_)) => {
-                in_code_block = true;
-                current_block.clear();  // Ensure the current block is empty when starting a new block
-            },
-            Event::Text(text) if in_code_block => {
-                if !current_block.is_empty() {
-                    current_block.push('\n');  // Add a newline to separate lines within the same block
-                }
-                current_block.push_str(&text);  // Append text to the current block
-            },
-            Event::End(Tag::CodeBlock(_)) => {
-                in_code_block = false;
-                if !code_blocks.is_empty() {
-                    code_blocks.push('\n');  // Add a newline to separate different blocks
-                }
-                code_blocks.push_str(&current_block);  // Add the complete block to the result string
-            },
-            _ => {}
-        }
-    }
-
-    code_blocks
+fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
+    let re = Regex::new(r"```[\w]*\n([\s\S]*?)\n```").unwrap();
+    re.captures_iter(markdown_content)
+        .map(|cap| {
+            cap[1].trim().to_string()  // Trim to remove leading/trailing whitespace
+        })
+        .collect()
 }
+
 
 pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
     let output: FluentCliOutput = serde_json::from_str(json_data)?;
@@ -179,6 +158,7 @@ use base64::encode;
 use std::collections::HashMap;
 use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
+use regex::Regex;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
