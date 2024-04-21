@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-CLI_PATH="/Users/n/RustroverProjects/fluent_cli/fluent_cli/target/release/fluent_cli"
+CLI_PATH="/Users/n/RustroverProjects/fluent_cli/fluent_cli/target/release/fluent"
 TEST_DATA_PATH="/Users/n/RustroverProjects/fluent_cli/fluent_cli/functional_tests"
 CSV_FILE="/Users/n/Downloads/functional_test_results.csv"
 LOG_FILE="/Users/n/Downloads/functional_test_log.txt"

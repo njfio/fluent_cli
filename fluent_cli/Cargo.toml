@@ -1,6 +1,6 @@
 [package]
-name = "fluent_cli"
-version = "0.1.0"
+name = "fluent"
+version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,3 +24,4 @@ termimad = "0.14"
 serde_yaml = "0.9.34+deprecated"
 chrono = "0.4.38"
 anyhow = "1.0.68"
+colored = "2.1.0"
