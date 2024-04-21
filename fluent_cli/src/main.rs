@@ -9,6 +9,7 @@ use log::{info, warn, error, debug};
 use env_logger;
 use tokio::fs::File;
 use tokio::io::{self, AsyncReadExt};
+use crate::client::handle_response;
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script};
 
@@ -28,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::new("System-Prompt-Override-Inline").long("System-Prompt-Override-Inline").help("Overrides the system message with an inline string").takes_value(true))
         .arg(Arg::new("System-Prompt-Override-File").long("System-Prompt-Override-File").help("Overrides the system message from a specified file").takes_value(true))
         .arg(Arg::new("Additional-Context-File").long("Additional-Context-File").help("Specifies a file from which additional request context is loaded").takes_value(true))
+        .arg(Arg::with_name("upload-image-path").long("upload-image-path").value_name("FILE").help("Sets the input file to use").takes_value(true))
         .arg(Arg::new("generate-bash-autocomplete").long("generate-autocomplete").help("Generates a bash autocomplete script").takes_value(false))
         .get_matches();
 
@@ -55,7 +57,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load override value from CLI if specified for system prompt override, file will always win
     let system_prompt_inline = matches.value_of("System-Prompt-Override-Inline");
     let system_prompt_file = matches.value_of("System-Prompt-Override-File");
-
     // Load override value from file if specified
     let system_message_override = if let Some(file_path) = system_prompt_file {
         let mut file = File::open(file_path).await?; // Corrected async file opening
@@ -65,7 +66,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         system_prompt_inline.map(|s| s.to_string())
     };
-
     // Update the configuration with the override if it exists
     // Update the configuration based on what's present in the overrideConfig
     if let Some(override_value) = system_message_override {
@@ -78,6 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    let file_path = matches.value_of("upload-image-path");
+
 
 
     // Determine the final context from various sources
@@ -88,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         file.read_to_string(&mut file_contents).await?;
     }
 
+
     // Combine file contents with other forms of context if necessary
     let actual_final_context = match (final_context, file_contents.is_empty()) {
         (Some(cli_context), false) => Some(format!("{} {}", cli_context, file_contents)),
@@ -95,25 +98,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Some(cli_context), true) => Some(cli_context.to_string()),
         (None, true) => None,
     };
-    debug!("Actual Final context: {:?}", actual_final_context);
+    let actual_final_context_clone  = actual_final_context.clone();
 
-    // Build the request payload
-    let payload = client::build_request_payload(request, actual_final_context.as_deref());
+    debug!("Actual Final context: {:?}", actual_final_context);
+    let new_question = if let Some(ctx) = actual_final_context {
+        format!("{} {}", request, ctx)  // Concatenate request and context
+    } else {
+        request.to_string()  // Use request as is if no context
+    };
+
 
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
     let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
     debug!("EnvGuard result: {:?}", env_guard_result);
 
+    let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone ).await?;
+    let response = crate::client::send_request(&flow, &payload).await?;
 
-    match client::send_request(flow, &serde_json::to_string(&payload)?).await {
-        Ok(response_body) => {
-            if let Err(e) = client::handle_response(&response_body) {
-                eprintln!("Error processing response: {}", e);
-            }
-        },
-        Err(e) => eprintln!("Failed to send request: {}", e),
-    }
+    handle_response(response.as_str())?;
     Ok(())
 }
 

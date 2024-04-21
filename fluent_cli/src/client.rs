@@ -9,6 +9,9 @@ use crate::config::{FlowConfig, replace_with_env_var};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
+use tokio::fs::File;
+use tokio::io;
+use tokio::io::AsyncReadExt;
 use crate::client;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,6 +31,22 @@ struct FluentCliOutput {
 #[derive(Serialize, Deserialize, Debug)]
 struct Question {
     question: String,
+}
+
+
+#[derive(Serialize, Deserialize)]
+struct RequestPayload {
+    question: String,
+    overrideConfig: std::collections::HashMap<String, String>,
+    uploads: Option<Vec<Upload>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Upload {
+    data: String,
+    r#type: String,
+    name: String,
+    mime: String,
 }
 
 
@@ -57,7 +76,8 @@ pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
 
 
 // Change the signature to accept a simple string for `question`
-pub async fn send_request(flow: &FlowConfig, question: &str) -> reqwest::Result<String> {
+
+pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Result<String> {
     let client = Client::new();
 
     // Dynamically fetch the bearer token from environment variables if it starts with "AMBER_"
@@ -75,25 +95,19 @@ pub async fn send_request(flow: &FlowConfig, question: &str) -> reqwest::Result<
     debug!("Override config after update: {:?}", override_config);
 
 
-
-    // Construct the body of the request
-    let body = json!({
-        "question": question,
-        "overrideConfig": override_config
-    });
-
     let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
-
+    debug!("URL: {}", url);
+    debug!("Body: {}", payload);
+    debug!("Headers: {:?}", bearer_token);
     // Send the request and await the response
     let response = client.post(&url)
         .header("Authorization", format!("Bearer {}", bearer_token))
-        .json(&body)
+        .json(payload)
         .send()
         .await?;
 
     debug!("Request URL: {}", url);
     debug!("Request bearer token: {}", bearer_token);
-    debug!("Request body: {:?}", body);
     debug!("Response: {:?}", response);
 
     response.text().await
@@ -107,11 +121,72 @@ pub(crate) fn build_request_payload(question: &str, context: Option<&str>) -> Va
     } else {
         question.to_string()  // Use question as is if no context
     };
-    debug!("build_request_payload - Full question: {}", full_question);
-    // Now create the payload with the potentially modified question
-    let payload = json!({
+
+    // Start building the payload with the question
+    let mut payload = json!({
         "question": full_question,  // Use the potentially modified question
     });
-    debug!("build_request_payload - Request payload: {:?}", payload);
+
+    // Add the context to the payload if it exists
+    if let Some(ctx) = context {
+        payload.as_object_mut().unwrap().insert("context".to_string(), serde_json::Value::String(ctx.to_string()));
+    }
+
     payload
+
 }
+
+
+
+use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
+use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
+use base64::encode;
+use std::collections::HashMap;
+use std::path::Path;
+
+
+pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
+    let mut override_config = flow.override_config.clone();
+    // Ensure override_config is up-to-date with environment variables
+    replace_with_env_var(&mut override_config);
+    debug!("Override config after update: {:?}", override_config);
+
+    debug!("File path: {:?}", file_path);
+    debug!("Actual final context: {:?}", actual_final_context);
+
+    let full_question = if let Some(ctx) = actual_final_context {
+        format!("{} {}", question, ctx)  // Concatenate question and context
+    } else {
+        question.to_string()  // Use question as is if no context
+    };
+    // Assuming replace_with_env_var function exists and mutates override_config appropriately
+
+    let mut body = json!({
+        "question": full_question,
+        "overrideConfig": override_config,
+    });
+
+
+    if let Some(path) = file_path {
+
+        // Properly handle the file open result
+        let mut file = TokioFile::open(path).await?;  // Correctly use .await and propagate errors with ?
+
+        let mut buffer = Vec::new();
+        // Use read_to_end on the file object directly
+        TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;  // Correct usage with error propagation
+
+        let encoded_image = encode(&buffer);  // Encode the buffer content to Base64
+        let uploads = json!([{
+            "data": format!("data:image/png;base64,{}", encoded_image),
+            "type": "file",
+            "name": path.rsplit('/').next().unwrap_or("unknown"),
+            "mime": "image/png"
+        }]);
+
+        body.as_object_mut().unwrap().insert("uploads".to_string(), uploads);
+    }
+
+    Ok(body)
+}
+

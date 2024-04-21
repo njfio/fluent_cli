@@ -35,29 +35,12 @@
       "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessagePrompt": "You only speak spanish",
+      "systemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.7
     },
     "timeout_ms": 50000
   },
-  {
-    "name": "GPT4ImageUpload",
-    "protocol": "http",
-    "hostname": "127.0.0.1",
-    "port": 3000,
-    "chat_id": "c6a6de48-5d8e-4101-9a81-508c5b3a5f76",
-    "request_path": "/api/v1/prediction/",
-    "sessionId": "",
-    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
-    "overrideConfig": {
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "allowImageUploads": true,
-      "systemMessagePrompt": "You are a helpful assistant"
-    },
-    "timeout_ms": 50000
-  },
+
   {
     "name": "MakeLeonardoImagePost",
     "protocol": "https",
@@ -91,7 +74,9 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "SystemMessagePrompt": "You are a helpful assistant",
+      "systemMessage": {
+        "openAIFunctionAgent_0": "You are a helpful assistant"
+      },
       "temperature": 0.2,
       "modelName": "mixtral-8x7b-32768"
     },
@@ -110,7 +95,9 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "SystemMessagePrompt": "You are a helpful assistant",
+      "systemMessage": {
+        "openAIFunctionAgent_0": "You are a helpful assistant"
+      },
       "temperature": 0.5,
       "modelName":"llama3-70b-8192",
       "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
@@ -131,7 +118,9 @@
       "mistralAIAPIKey": "AMBER_FLUENT_MISTRAL_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
       "apiKey": "AMBER_FLUENT_ZEP_MEMORY_KEY_01",
-      "SystemMessagePrompt": "You are a helpful assistant",
+      "systemMessage": {
+        "mistralAIToolAgent_0": "You are a helpful assistant"
+      },
       "temperature": 0.2,
       "memoryKey": "chat_history",
       "memoryType": "perpetual",
