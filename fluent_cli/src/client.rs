@@ -59,17 +59,26 @@ pub fn handle_response(response_body: &str) -> Result<()> {
     };
 
     let code_blocks = extract_code_blocks(&parsed_output.text);
+
     // Print parsed data or further process it as needed
     println!("\n\n");
-    println!("\tText:\n\t{}\n", parsed_output.text);
-    println!("\tQuestion:\n\t{}", question_text);
+    println!("\tResponse Text:\n{}\n", parsed_output.text);
+    println!("\tQuestion:\n{}", question_text);
     println!("\tChat ID: {}", parsed_output.chat_id);
     println!("\tSession ID: {}", parsed_output.session_id);
     println!("\tMemory Type: {:?}", parsed_output.memory_type);
     println!("\tCode blocks: {:?}", code_blocks);
+    println!("\tPretty printed text:\n");
+    pretty_print_markdown(&parsed_output.text);
 
     Ok(())
 }
+
+fn pretty_print_markdown(markdown_content: &str) {
+    let skin = MadSkin::default(); // Default skin with basic Markdown styling
+    skin.print_text(markdown_content);
+}
+
 
 
 
@@ -159,6 +168,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
+use termimad::MadSkin;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
