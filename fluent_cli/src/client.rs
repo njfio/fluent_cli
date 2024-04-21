@@ -58,6 +58,7 @@ pub fn handle_response(response_body: &str) -> Result<()> {
         Err(_) => parsed_output.question.clone(), // If parsing fails, use the original string
     };
 
+    let code_blocks = extract_code_blocks(&parsed_output.text);
     // Print parsed data or further process it as needed
     println!("\n\n");
     println!("\tText:\n\t{}\n", parsed_output.text);
@@ -65,8 +66,42 @@ pub fn handle_response(response_body: &str) -> Result<()> {
     println!("\tChat ID: {}", parsed_output.chat_id);
     println!("\tSession ID: {}", parsed_output.session_id);
     println!("\tMemory Type: {:?}", parsed_output.memory_type);
+    println!("\tCode blocks: {:?}", code_blocks);
 
     Ok(())
+}
+
+
+fn extract_code_blocks(markdown_content: &str) -> String {
+    let parser = Parser::new(markdown_content);
+    let mut in_code_block = false;
+    let mut code_blocks = String::new();
+    let mut current_block = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => {
+                in_code_block = true;
+                current_block.clear();  // Ensure the current block is empty when starting a new block
+            },
+            Event::Text(text) if in_code_block => {
+                if !current_block.is_empty() {
+                    current_block.push('\n');  // Add a newline to separate lines within the same block
+                }
+                current_block.push_str(&text);  // Append text to the current block
+            },
+            Event::End(Tag::CodeBlock(_)) => {
+                in_code_block = false;
+                if !code_blocks.is_empty() {
+                    code_blocks.push('\n');  // Add a newline to separate different blocks
+                }
+                code_blocks.push_str(&current_block);  // Add the complete block to the result string
+            },
+            _ => {}
+        }
+    }
+
+    code_blocks
 }
 
 pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
@@ -143,6 +178,7 @@ use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
 use std::collections::HashMap;
 use std::path::Path;
+use pulldown_cmark::{Event, Parser, Tag};
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
