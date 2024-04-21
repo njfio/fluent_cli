@@ -1,6 +1,6 @@
 use log::{debug, error};
 use std::env;
-use reqwest::{Client, Error};
+use reqwest::{Client};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -13,6 +13,8 @@ use tokio::fs::File;
 use tokio::io;
 use tokio::io::AsyncReadExt;
 use crate::client;
+use serde_yaml::to_string as to_yaml;  // Add serde_yaml to your Cargo.toml if not already included
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct FluentCliOutput {
@@ -49,31 +51,149 @@ struct Upload {
     mime: String,
 }
 
+#[derive(Debug)]
+struct ResponseOutput {
+    response_text: String,
+    question: String,
+    chat_id: String,
+    session_id: String,
+    memory_type: Option<String>,
+    code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
+    pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
+}
 
-pub fn handle_response(response_body: &str) -> Result<()> {
-    let parsed_output: FluentCliOutput = serde_json::from_str(response_body)?;
-    let question_parsed: Result<Question> = serde_json::from_str(&parsed_output.question);
-    let question_text = match question_parsed {
-        Ok(q) => q.question,
-        Err(_) => parsed_output.question.clone(), // If parsing fails, use the original string
+use serde_json::Error as SerdeError;
+
+pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
+    // Parse the response body, handle error properly here instead of unwrapping
+    debug!("Response body: {}", response_body);
+    let result = serde_json::from_str::<FluentCliOutput>(response_body);
+
+
+    let response_text = match result {
+        Ok(parsed_output) => {
+            // If parsing is successful, use the parsed data
+            debug!("{:?}", parsed_output);
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+            if matches.is_present("markdown-output") {
+                let pretty_text = pretty_format_markdown(&parsed_output.text); // Ensure text is obtained correctly
+                eprintln!("{:?}", pretty_text);
+            } else if matches.is_present("parse-code-output") {
+                let code_blocks = extract_code_blocks(&parsed_output.text);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            } else if matches.is_present("full-output") {
+                println!("{}", response_body);  // Output the text used, whether parsed or raw
+            } else {
+                println!("{}", parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
+            }
+        },
+        Err(e) => {
+            // If there's an error parsing the JSON, print the error and the raw response body
+            eprintln!("Raw Webhook Output");
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+            println!("{}", response_body);
+            response_body.to_string();
+        }
     };
-
-    // Print parsed data or further process it as needed
-    println!("\n\n");
-    println!("\tText:\n\t{}\n", parsed_output.text);
-    println!("\tQuestion:\n\t{}", question_text);
-    println!("\tChat ID: {}", parsed_output.chat_id);
-    println!("\tSession ID: {}", parsed_output.session_id);
-    println!("\tMemory Type: {:?}", parsed_output.memory_type);
 
     Ok(())
 }
+
+
+
+
+
+
+
+fn extract_urls(text: &str) -> Vec<String> {
+    let url_regex = Regex::new(r"https?://[^\s]+").unwrap();
+    url_regex.find_iter(text)
+        .map(|mat| mat.as_str().to_string())
+        .collect()
+}
+
+fn pretty_format_markdown(markdown_content: &str) {
+    let skin = MadSkin::default(); // Assuming `termimad` is used
+    let formatted = skin.print_text(markdown_content); // Render to a string
+    formatted
+}
+
+
+
+
+fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
+    let re = Regex::new(r"```[\w]*\n([\s\S]*?)\n```").unwrap();
+    re.captures_iter(markdown_content)
+        .map(|cap| {
+            cap[1].trim().to_string()  // Trim to remove leading/trailing whitespace
+        })
+        .collect()
+}
+
 
 pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
     let output: FluentCliOutput = serde_json::from_str(json_data)?;
     Ok(output)
 }
 
+
+use reqwest;
+
+use tokio::io::AsyncWriteExt;
+
+use chrono::Local;
+
+
+use anyhow::{Context};
+
+// Correct definition of the function returning a Result with a boxed dynamic error
+
+
+
+async fn download_media(urls: Vec<String>, directory: &str) {
+    let client = reqwest::Client::new();
+
+    for url in urls {
+        match client.get(&url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.bytes().await {
+                        Ok(content) => {
+                            let path = Path::new(&url);
+                            let filename = if let Some(name) = path.file_name() {
+                                format!("{}-{}.{}", name.to_string_lossy(), Local::now().format("%Y%m%d%H%M%S"), path.extension().unwrap_or_default().to_string_lossy())
+                            } else {
+                                format!("download-{}.dat", Local::now().format("%Y%m%d%H%M%S"))
+                            };
+                            let filepath = Path::new(directory).join(filename);
+
+                            match File::create(filepath).await {
+                                Ok(mut file) => {
+                                    if let Err(e) = file.write_all(&content).await {
+                                        eprintln!("Failed to write to file: {}", e);
+                                    }
+                                },
+                                Err(e) => eprintln!("Failed to create file: {}", e),
+                            }
+                        },
+                        Err(e) => eprintln!("Failed to read bytes from response: {}", e),
+                    }
+                } else {
+                    eprintln!("Failed to download {}: {}", url, response.status());
+                }
+            },
+            Err(e) => eprintln!("Failed to send request: {}", e),
+        }
+    }
+}
 
 // Change the signature to accept a simple string for `question`
 
@@ -142,7 +262,13 @@ use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::Path;
+use pulldown_cmark::{Event, Parser, Tag};
+use regex::Regex;
+use serde::de::Error;
+use termimad::{FmtText, MadSkin};
+use termimad::minimad::once_cell::sync::Lazy;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {

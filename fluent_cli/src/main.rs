@@ -12,6 +12,8 @@ use tokio::io::{self, AsyncReadExt};
 use crate::client::handle_response;
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script};
+use anyhow::Result;
+
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 #[tokio::main]
@@ -71,6 +73,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .short('g')  // Assigns a short flag
             .help("Generates a bash autocomplete script")
             .takes_value(false))
+        .arg(Arg::new("parse-code-output")
+            .long("parse-code-output")
+            .short('p')  // Assigns a short flag
+            .help("Extracts and displays only the code blocks from the response")
+            .takes_value(false))
+        .arg(Arg::new("full-output")
+            .long("full-output")
+            .short('z')  // Assigns a short flag
+            .help("Outputs all response data in JSON format")
+            .takes_value(false))
+        .arg(Arg::new("markdown-output")
+            .long("markdown-output")
+            .short('m')  // Assigns a short flag
+            .help("Outputs the response to the terminal in stylized markdown. Do not use for pipelines")
+            .takes_value(false))
+        .arg(Arg::new("download-media")
+            .long("download-media")
+            .short('d')  // Assigns a short flag
+            .help("Downloads all media files listed in the output to a specified directory")
+            .takes_value(true)
+            .value_name("DIRECTORY"))
         .get_matches();
 
 
@@ -155,8 +178,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
-
-    handle_response(response.as_str())?;
+    debug!("Handling Response");
+    handle_response(response.as_str(), &matches).await?;
     Ok(())
 }
 
