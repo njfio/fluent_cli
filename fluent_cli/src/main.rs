@@ -15,15 +15,32 @@ use crate::config::{EnvVarGuard, generate_bash_autocomplete_script};
 use anyhow::Result;
 
 
+use colored::*; // Import the colored crate
+use colored::control::*;
+
+fn print_status(flowname: &str, new_question: &str) {
+    eprintln!(
+        "{}{}Fluent: {}\nProcessing: {}\n{}{}",
+        ">>>>".bright_yellow().bold(),
+        "\n".normal(),
+        flowname.bright_blue().bold(),
+        new_question.bright_green(),
+        ">>>>".bright_yellow().bold(),
+        "\n".normal()
+    );
+}
+
 // use env_logger; // Uncomment this when you are using it to initialize logs
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
+    colored::control::set_override(true);
+
     let mut configs = config::load_config()?;
 
     let matches = Command::new("Fluent CLI")
         .version("0.1.0")
-        .author("Your Name <your.email@example.com>")
+        .author("Nicholas Ferguson <nick@njf.io>")
         .about("Interacts with FlowiseAI workflows")
         .arg(Arg::new("flowname")
             .help("The flow name to invoke")
@@ -104,7 +121,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let flowname = matches.value_of("flowname").unwrap();
     let flow = configs.iter_mut().find(|f| f.name == flowname).expect("Flow not found");
-
     let request = matches.value_of("request").unwrap();
 
     // Load context from stdin if not provided
@@ -175,7 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut env_guard = EnvVarGuard::new();
     let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
     debug!("EnvGuard result: {:?}", env_guard_result);
-
+    print_status(flowname, actual_final_context_clone.as_ref().unwrap_or(&new_question).as_str());
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");

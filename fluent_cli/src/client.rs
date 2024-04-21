@@ -79,8 +79,8 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 download_media(urls, directory).await;
             }
             if matches.is_present("markdown-output") {
-                let pretty_text = pretty_format_markdown(&parsed_output.text); // Ensure text is obtained correctly
-                eprintln!("{:?}", pretty_text);
+                pretty_format_markdown(&parsed_output.text); // Ensure text is obtained correctly
+
             } else if matches.is_present("parse-code-output") {
                 let code_blocks = extract_code_blocks(&parsed_output.text);
                 for block in code_blocks {
@@ -108,11 +108,6 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
 }
 
 
-
-
-
-
-
 fn extract_urls(text: &str) -> Vec<String> {
     let url_regex = Regex::new(r"https?://[^\s]+").unwrap();
     url_regex.find_iter(text)
@@ -122,12 +117,8 @@ fn extract_urls(text: &str) -> Vec<String> {
 
 fn pretty_format_markdown(markdown_content: &str) {
     let skin = MadSkin::default(); // Assuming `termimad` is used
-    let formatted = skin.print_text(markdown_content); // Render to a string
-    formatted
+    skin.print_text(markdown_content); // Render to a string
 }
-
-
-
 
 fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
     let re = Regex::new(r"```[\w]*\n([\s\S]*?)\n```").unwrap();
@@ -138,20 +129,14 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
         .collect()
 }
 
-
 pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
     let output: FluentCliOutput = serde_json::from_str(json_data)?;
     Ok(output)
 }
 
-
 use reqwest;
-
 use tokio::io::AsyncWriteExt;
-
 use chrono::Local;
-
-
 use anyhow::{Context};
 
 // Correct definition of the function returning a Result with a boxed dynamic error
