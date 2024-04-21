@@ -23,14 +23,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .version("0.1.0")
         .author("Your Name <your.email@example.com>")
         .about("Interacts with FlowiseAI workflows")
-        .arg(Arg::new("flowname").help("The flow name to invoke").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File", "Additional-Context-File"]))
-        .arg(Arg::new("request").help("The request string to send").takes_value(true).required_unless_present_any(["generate-autocomplete", "System-Prompt-Override-Inline", "System-Prompt-Override-File", "Additional-Context-File"]))
-        .arg(Arg::new("context").help("Optional context to include with the request").takes_value(true))
-        .arg(Arg::new("System-Prompt-Override-Inline").long("System-Prompt-Override-Inline").help("Overrides the system message with an inline string").takes_value(true))
-        .arg(Arg::new("System-Prompt-Override-File").long("System-Prompt-Override-File").help("Overrides the system message from a specified file").takes_value(true))
-        .arg(Arg::new("Additional-Context-File").long("Additional-Context-File").help("Specifies a file from which additional request context is loaded").takes_value(true))
-        .arg(Arg::with_name("upload-image-path").long("upload-image-path").value_name("FILE").help("Sets the input file to use").takes_value(true))
-        .arg(Arg::new("generate-bash-autocomplete").long("generate-autocomplete").help("Generates a bash autocomplete script").takes_value(false))
+        .arg(Arg::new("flowname")
+            .help("The flow name to invoke")
+            .takes_value(true)
+            .required_unless_present_any([
+                "generate-autocomplete",
+                "system-prompt-override-inline",
+                "system-prompt-override-file",
+                "additional-context-file"
+            ]))
+        .arg(Arg::new("request")
+            .help("The request string to send")
+            .takes_value(true)
+            .required_unless_present_any([
+                "generate-autocomplete",
+                "system-prompt-override-inline",
+                "system-prompt-override-file",
+                "additional-context-file"
+            ]))
+        .arg(Arg::new("context")
+            .short('c')  // Assigns a short flag
+            .help("Optional context to include with the request")
+            .takes_value(true))
+        .arg(Arg::new("system-prompt-override-inline")
+            .long("system-prompt-override-inline")
+            .short('i')  // Assigns a short flag
+            .help("Overrides the system message with an inline string")
+            .takes_value(true))
+        .arg(Arg::new("system-prompt-override-file")
+            .long("system-prompt-override-file")
+            .short('f')  // Assigns a short flag
+            .help("Overrides the system message from a specified file")
+            .takes_value(true))
+        .arg(Arg::new("additional-context-file")
+            .long("additional-context-file")
+            .short('a')  // Assigns a short flag
+            .help("Specifies a file from which additional request context is loaded")
+            .takes_value(true))
+        .arg(Arg::new("upload-image-path")
+            .long("upload-image-path")
+            .short('u')  // Assigns a short flag
+            .value_name("FILE")
+            .help("Sets the input file to use")
+            .takes_value(true))
+        .arg(Arg::new("generate-bash-autocomplete")
+            .long("generate-autocomplete")
+            .short('g')  // Assigns a short flag
+            .help("Generates a bash autocomplete script")
+            .takes_value(false))
         .get_matches();
 
 
@@ -55,8 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Context: {:?}", final_context);
 
     // Load override value from CLI if specified for system prompt override, file will always win
-    let system_prompt_inline = matches.value_of("System-Prompt-Override-Inline");
-    let system_prompt_file = matches.value_of("System-Prompt-Override-File");
+    let system_prompt_inline = matches.value_of("system-prompt-override-inline");
+    let system_prompt_file = matches.value_of("system-prompt-override-file");
     // Load override value from file if specified
     let system_message_override = if let Some(file_path) = system_prompt_file {
         let mut file = File::open(file_path).await?; // Corrected async file opening
@@ -83,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     // Determine the final context from various sources
-    let file_context = matches.value_of("Additional-Context-File");
+    let file_context = matches.value_of("additional-context-file");
     let mut file_contents = String::new();
     if let Some(file_path) = file_context {
         let mut file = File::open(file_path).await?;
