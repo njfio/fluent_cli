@@ -13,6 +13,8 @@ use tokio::fs::File;
 use tokio::io;
 use tokio::io::AsyncReadExt;
 use crate::client;
+use serde_yaml::to_string as to_yaml;  // Add serde_yaml to your Cargo.toml if not already included
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct FluentCliOutput {
@@ -49,34 +51,46 @@ struct Upload {
     mime: String,
 }
 
+#[derive(Debug)]
+struct ResponseOutput {
+    response_text: String,
+    question: String,
+    chat_id: String,
+    session_id: String,
+    memory_type: Option<String>,
+    code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
+    pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
+}
 
-pub fn handle_response(response_body: &str) -> Result<()> {
+
+pub fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     let parsed_output: FluentCliOutput = serde_json::from_str(response_body)?;
-    let question_parsed: Result<Question> = serde_json::from_str(&parsed_output.question);
-    let question_text = match question_parsed {
-        Ok(q) => q.question,
-        Err(_) => parsed_output.question.clone(), // If parsing fails, use the original string
-    };
 
-    let code_blocks = extract_code_blocks(&parsed_output.text);
-
-    // Print parsed data or further process it as needed
-    println!("\n\n");
-    println!("\tResponse Text:\n{}\n", parsed_output.text);
-    println!("\tQuestion:\n{}", question_text);
-    println!("\tChat ID: {}", parsed_output.chat_id);
-    println!("\tSession ID: {}", parsed_output.session_id);
-    println!("\tMemory Type: {:?}", parsed_output.memory_type);
-    println!("\tCode blocks: {:?}", code_blocks);
-    println!("\tPretty printed text:\n");
-    pretty_print_markdown(&parsed_output.text);
+    if matches.is_present("full-output") {
+        // Serialize the complete output to YAML and print to stdout
+        let json_output = serde_json::to_string(&parsed_output)?;
+        println!("{}", json_output);
+    } else if matches.is_present("parse-code-output") {
+        // Extract and print code blocks to stdout
+        let code_blocks = extract_code_blocks(&parsed_output.text);
+        for block in code_blocks {
+            println!("{}", block);
+        }
+    } else if matches.is_present("markdown-output") {
+        let pretty_text = pretty_format_markdown(&parsed_output.text);
+        eprintln!("{:?}", pretty_text); // Print to stderr
+    } else {
+        // Pretty-print markdown to stderr and output raw text to stdout
+        println!("{}", parsed_output.text); // Print to stdout
+    }
 
     Ok(())
 }
 
-fn pretty_print_markdown(markdown_content: &str) {
-    let skin = MadSkin::default(); // Default skin with basic Markdown styling
-    skin.print_text(markdown_content);
+fn pretty_format_markdown(markdown_content: &str) {
+    let skin = MadSkin::default(); // Assuming `termimad` is used
+    let formatted = skin.print_text(markdown_content); // Render to a string
+    formatted
 }
 
 
@@ -168,7 +182,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
-use termimad::MadSkin;
+use termimad::{FmtText, MadSkin};
+use termimad::minimad::once_cell::sync::Lazy;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
