@@ -16,3 +16,4 @@ Cargo.lock
 .idea/fluent_cli.iml
 .idea/markdown.xml
 .idea/modules.xml
+.idea/workspace.xml
