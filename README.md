@@ -1,9 +1,4 @@
 
-
-Here's a concise and engaging description for the Fluent CLI tool, suitable for inclusion in the GitHub repository README or the repository description. This description highlights the core functionality, key features, and intended user base:
-
----
-
 ## Fluent CLI: Streamline Your Workflows with Precision and Ease
 
 **Fluent CLI** is an advanced command-line interface designed to interact seamlessly with multiple workflow systems like FlowiseAI, Make, and Zapier. Tailored for developers and IT professionals, Fluent CLI facilitates robust automation, simplifies complex interactions, and enhances productivity through a powerful and configurable command suite.
