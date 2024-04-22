@@ -14,6 +14,7 @@
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
       "systemMessage": "You are a helpful assistant",
+      "temperature": 0.1,
       "openAIToolAgent_0": {
         "systemMessage": "You are a helpful assistant"
       }
