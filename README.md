@@ -19,6 +19,8 @@
 
 - **Versionable Secure Vault**: Fluent CLI is integrated with [amber](https://github.com/fpco/amber), as a secure vault for configuration information.
 
+- **Cross Platform Support**:  Works on Linux, Windows, and Macos.  An autocomplete script is provided for Bash and Powershell that will provide completion help for the configured flows.
+
 
 ### Designed For:
 
