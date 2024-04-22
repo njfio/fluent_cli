@@ -124,7 +124,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact
 
-Your Name - nick@njf.io
+Nicholas Ferguson - nick@njf.io
 
 Project Link: [https://github.com/njfio/fluent-cli](https://github.com/njfio/fluent-cli)
 
