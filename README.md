@@ -4,15 +4,21 @@
 **Fluent CLI** is an advanced command-line interface designed to interact seamlessly with multiple workflow systems like FlowiseAI, Make, and Zapier. Tailored for developers, IT professionals, and power-users, Fluent CLI facilitates robust automation, simplifies complex interactions, and enhances productivity through a powerful and configurable command suite.
 
 ### Key Features:
+
 - **Multi-Service Integration**: Connect effortlessly with services like FlowiseAI, Make, and Zapier to automate and manage workflows across different platforms.
+
 - **Dynamic Configuration**: Utilize JSON-based configurations to dynamically adjust command parameters, making your workflows flexible and adaptable to changing needs.
+
 - **Enhanced File Handling**: Support for uploading images and files directly through the CLI, integrated smoothly with asynchronous operations to boost performance.
+
 - **Secure Environment Interaction**: Automatic handling of environment variables and secure token management ensures that your operations are safe and your data is protected.
+
 - **Versatile Output Options**: Whether you need beautifully formatted markdown, concise code blocks, or well-structured JSON, Fluent CLI delivers your data in the format you prefer, right in your terminal.- **Interactive Inputs**: Fluent CLI handles stdin inputs gracefully, allowing for interactive user sessions and seamless piping from other commands.
 - **Autocomplete Workflow Names**: Fluent CLI includes autocomplete for all the configured workflow names which makes calling any of the workflows just a few keystrokes away.
 - **Versionable Secure Vault**: Fluent CLI is integrated with [amber](https://github.com/fpco/amber), as a secure vault for configuration information.
 
 ### Designed For:
+
 - **Developers and System Administrators** who require a reliable tool to manage and automate workflows across various platforms.
 - **DevOps Teams** looking for a versatile tool to integrate into continuous integration and deployment pipelines.
 - **Tech Enthusiasts** and professionals who benefit from streamlined command-line tools to enhance their operational efficiency.
