@@ -41,6 +41,10 @@ To set up Fluent CLI on your local system, follow these steps:
 1. Clone the repository:
    ```bash
    git clone https://github.com/your-username/fluent-cli.git
+
+   or install directly
+
+   cargo install --git https://github.com/njfio/fluent_cli.git
    ```
 2. Navigate into the project directory:
    ```bash
