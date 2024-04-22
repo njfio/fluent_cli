@@ -19,6 +19,8 @@
 
 - **Versionable Secure Vault**: Fluent CLI is integrated with [amber](https://github.com/fpco/amber), as a secure vault for configuration information.
 
+- **Cross Platform Support**:  Works on Linux, Windows, and Macos.
+
 
 ### Designed For:
 
@@ -42,13 +44,19 @@ To set up Fluent CLI on your local system, follow these steps:
    ```bash
    git clone https://github.com/your-username/fluent-cli.git
    ```
-2. Navigate into the project directory:
+   
+3. Navigate into the project directory:
    ```bash
    cd fluent-cli
    ```
-3. Build the project using Cargo (Rust's package manager):
+4. Build the project using Cargo (Rust's package manager):
    ```bash
    cargo build --release
+   ```
+
+   ## Or Install Directly
+   ```bash
+   cargo install --git https://github.com/njfio/fluent_cli.git
    ```
 
 ## Configuration
