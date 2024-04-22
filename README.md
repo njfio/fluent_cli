@@ -14,14 +14,20 @@
 - **Secure Environment Interaction**: Automatic handling of environment variables and secure token management ensures that your operations are safe and your data is protected.
 
 - **Versatile Output Options**: Whether you need beautifully formatted markdown, concise code blocks, or well-structured JSON, Fluent CLI delivers your data in the format you prefer, right in your terminal.- **Interactive Inputs**: Fluent CLI handles stdin inputs gracefully, allowing for interactive user sessions and seamless piping from other commands.
+
 - **Autocomplete Workflow Names**: Fluent CLI includes autocomplete for all the configured workflow names which makes calling any of the workflows just a few keystrokes away.
+
 - **Versionable Secure Vault**: Fluent CLI is integrated with [amber](https://github.com/fpco/amber), as a secure vault for configuration information.
+
 
 ### Designed For:
 
 - **Developers and System Administrators** who require a reliable tool to manage and automate workflows across various platforms.
+
 - **DevOps Teams** looking for a versatile tool to integrate into continuous integration and deployment pipelines.
+
 - **Tech Enthusiasts** and professionals who benefit from streamlined command-line tools to enhance their operational efficiency.
+
 
 Fluent CLI is more than just a tool—it's your next step towards efficient and scalable workflow management. Jumpstart your automation with Fluent CLI today!
 
