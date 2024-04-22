@@ -42,10 +42,6 @@ To set up Fluent CLI on your local system, follow these steps:
    ```bash
    git clone https://github.com/your-username/fluent-cli.git
    ```
-   #### Or install directly
-   ```bash
-   cargo install --git https://github.com/njfio/fluent_cli.git
-   ```
    
 3. Navigate into the project directory:
    ```bash
@@ -54,6 +50,11 @@ To set up Fluent CLI on your local system, follow these steps:
 4. Build the project using Cargo (Rust's package manager):
    ```bash
    cargo build --release
+   ```
+
+   ## Or Install Directly
+   ```bash
+   cargo install --git https://github.com/njfio/fluent_cli.git
    ```
 
 ## Configuration
