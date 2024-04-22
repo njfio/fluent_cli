@@ -69,13 +69,6 @@ fluent [options] <command> [arguments]
 ```
 
 ### Commands
-
-- `--generate-autocomplete`: Generates a bash script for command-line autocompletion.
-- `--system-prompt-override-inline`: Overrides the system prompt with an inline string.
-- `--upload-image-path`: Specifies the path to an image file to be uploaded within the request.
-
-For detailed usage of each command, refer to the help output:
-
 ```bash
 Interacts with FlowiseAI workflows
 
