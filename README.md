@@ -44,7 +44,7 @@ export FLUENT_CLI_CONFIG_PATH="/path/to/your/config.json"
 To interact with FlowiseAI workflows, use the following syntax:
 
 ```bash
-fluent-cli [options] <command> [arguments]
+fluent [options] <command> [arguments]
 ```
 
 ### Commands
@@ -56,7 +56,51 @@ fluent-cli [options] <command> [arguments]
 For detailed usage of each command, refer to the help output:
 
 ```bash
-fluent-cli --help
+Interacts with FlowiseAI workflows
+
+USAGE:
+    fluent [OPTIONS] [ARGS]
+
+ARGS:
+    <flowname>    The flow name to invoke
+    <request>     The request string to send
+
+OPTIONS:
+    -a, --additional-context-file <additional-context-file>
+            Specifies a file from which additional request context is loaded
+
+    -c <context>
+            Optional context to include with the request
+
+    -d, --download-media <DIRECTORY>
+            Downloads all media files listed in the output to a specified directory
+
+    -f, --system-prompt-override-file <system-prompt-override-file>
+            Overrides the system message from a specified file
+
+    -g, --generate-autocomplete
+            Generates a bash autocomplete script
+
+    -h, --help
+            Print help information
+
+    -i, --system-prompt-override-inline <system-prompt-override-inline>
+            Overrides the system message with an inline string
+
+    -m, --markdown-output
+            Outputs the response to the terminal in stylized markdown. Do not use for pipelines
+
+    -p, --parse-code-output
+            Extracts and displays only the code blocks from the response
+
+    -u, --upload-image-path <FILE>
+            Sets the input file to use
+
+    -V, --version
+            Print version information
+
+    -z, --full-output
+            Outputs all response data in JSON format
 ```
 
 ## Contributing
@@ -69,16 +113,19 @@ Contributions are what make the open-source community such an amazing place to l
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+This is roughly the code flow.
+
+![CleanShot 2024-04-21 at 22 59 12](https://github.com/njfio/fluent_cli/assets/7220/e9d0023b-5f63-4a22-ae26-e948d3ec262f)
+
+
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact
 
-Your Name - your.email@example.com
+Your Name - nick@njf.io
 
-Project Link: [https://github.com/your-username/fluent-cli](https://github.com/your-username/fluent-cli)
+Project Link: [https://github.com/njfio/fluent-cli](https://github.com/njfio/fluent-cli)
 
----
 
-This README template should give users and contributors a clear understanding of what Fluent CLI is, how it can be used, and how to get involved with its development. Adjust the contact details, repository URLs, and specific command examples to match the actual details of your project.
