@@ -20,12 +20,12 @@ use colored::control::*;
 
 fn print_status(flowname: &str, new_question: &str) {
     eprintln!(
-        "{}{}Fluent: {}\nProcessing: {}\n{}{}",
-        ">>>>".bright_yellow().bold(),
+        "{}{}Fluent:\t\t{}\nProcessing:\t{}\n{}{}",
+        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
         "\n".normal(),
         flowname.bright_blue().bold(),
         new_question.bright_green(),
-        ">>>>".bright_yellow().bold(),
+        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
         "\n".normal()
     );
 }
@@ -38,10 +38,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut configs = config::load_config()?;
 
-    let matches = Command::new("Fluent CLI")
-        .version("0.1.0")
+    let matches = Command::new("Fluent")
+        .version("0.3.0")
         .author("Nicholas Ferguson <nick@njf.io>")
-        .about("Interacts with FlowiseAI workflows")
+        .about("Interacts with FlowiseAI and some HTTP workflows")
         .arg(Arg::new("flowname")
             .help("The flow name to invoke")
             .takes_value(true)

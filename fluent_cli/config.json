@@ -21,6 +21,27 @@
     "timeout_ms": 50000
   },
   {
+    "name": "GPT4FunctionAgentWithMemoryAndBrowsing",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
+    "port": 3000,
+    "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessage": "You are a helpful assistant",
+      "openAIToolAgent_0": {
+        "systemMessage": "You are a helpful assistant"
+      }
+    },
+    "timeout_ms": 50000
+  },
+  {
     "name": "GPT4ImageUpload",
     "protocol": "http",
     "hostname": "127.0.0.1",
