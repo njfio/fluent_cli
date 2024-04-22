@@ -1,7 +1,7 @@
 
 ## Fluent CLI: Streamline Your Workflows with Precision and Ease
 
-**Fluent CLI** is an advanced command-line interface designed to interact seamlessly with multiple workflow systems like FlowiseAI, Make, and Zapier. Tailored for developers and IT professionals, Fluent CLI facilitates robust automation, simplifies complex interactions, and enhances productivity through a powerful and configurable command suite.
+**Fluent CLI** is an advanced command-line interface designed to interact seamlessly with multiple workflow systems like FlowiseAI, Make, and Zapier. Tailored for developers, IT professionals, and power-users, Fluent CLI facilitates robust automation, simplifies complex interactions, and enhances productivity through a powerful and configurable command suite.
 
 ### Key Features:
 - **Multi-Service Integration**: Connect effortlessly with services like FlowiseAI, Make, and Zapier to automate and manage workflows across different platforms.
