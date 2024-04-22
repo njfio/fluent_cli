@@ -69,6 +69,7 @@ fluent [options] <command> [arguments]
 ```
 
 ### Commands
+
 ```bash
 Interacts with FlowiseAI workflows
 
