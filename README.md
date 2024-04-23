@@ -49,6 +49,7 @@ To set up Fluent CLI on your local system, follow these steps:
    ```bash
    cd fluent-cli
    ```
+   
 4. Build the project using Cargo (Rust's package manager):
    ```bash
    cargo build --release
@@ -86,8 +87,11 @@ export AMBER_SECRET=9d75ea642ed27900624b30de2e0f5ed979104d098918db92e50a9aa6f2a5
 Below is a starter table of keys for the included configs with fluent_cli.  It also includes links to get all API keys from the various services. 
 
 It's incredibly easy to use.  Just get your api key from whatever service and run the command in the amber command column replacing the <content> with your key.  
+
 The `AMBER_ANOTHERWEBSERVICE_NJF` example includes the bearer token for the service.   
+
 Validate the keys you've entered by typing `amber print`
+
 
 
 | Variable Name                         | Description                                        | API Key URL                                          | Amber Command                                               |
@@ -113,7 +117,9 @@ Validate the keys you've entered by typing `amber print`
 | `AMBER_MAKE_LEONARDO_IMAGE_POST`      |                                                    |                                                      | `amber encrypt AMBER_MAKE_LEONARDO_IMAGE_POST <content>`    |
 
 
-FluentCLI relies on a JSON configuration file to manage the workflow specifics. Ensure that the `FLUENT_CLI_CONFIG_PATH` environment variable is set to point to your configuration file.  Use the included configuration file, `config.json` to start.  
+FluentCLI relies on a JSON configuration file to manage the workflow specifics. Ensure that the `FLUENT_CLI_CONFIG_PATH` environment variable is set to point to your configuration file.  
+
+Use the included configuration file, `config.json` to start.  
 
 Below is an example chatflow configuration in `config.json`.  
 ```json
@@ -148,16 +154,23 @@ Below is an example chatflow configuration in `config.json`.
     "timeout_ms": 50000
   }
 ```
-Notice how there are entries like, `AMBER_FLUENT_OPENAI_API_KEY_01` that match the entries we created in the amber vault.   At runtime, fluent will look up any variable that begins with `AMBER_` and export it's decrypted secret as an environmental variable that is cleaned up at the end of execution when fluent returns the value.  This works for any data stored in the amber vault.  Just make certain that the value in the config.json is the same value as the key you want in the amber vault.
 
-The chatflow in the Flowise install is basically blank as far as configuration.  Everything is picked up at runtimne during the submission.  So your queries will go to Anthropic with your keys.  They are logged through the flowise install, so be aware of what you send.  Otherwise, anything you send from fluent will be with your keys and your data to the service.  
+Notice how there are entries like, `AMBER_FLUENT_OPENAI_API_KEY_01` that match the entries we created in the amber vault.   
+
+At runtime, fluent will look up any variable that begins with `AMBER_` and export it's decrypted secret as an environmental variable that is cleaned up at the end of execution when fluent returns the value.  
+
+This works for any data stored in the amber vault.  Just make certain that the value in the config.json is the same value as the key you want in the amber vault.
+
+The chatflow example in the Flowise install is basically blank as far as configuration.  Everything is picked up at runtimne during the submission.  
+
+So your queries will go to Anthropic with your keys.  Queries are logged through the flowise install, so be aware of what you send this this public server.  Otherwise, anything you send from fluent will be with your keys and your data to the service.  
 
 ![CleanShot 2024-04-22 at 21 28 03](https://github.com/njfio/fluent_cli/assets/7220/bb94fe7f-6a3a-4d77-a644-4e12e4ba3879)
+
 
 The configuration options support all the overrides presented by Flowise and are also useful in calling generic webhooks.
 
 The minimum configuration for a flow in config.json is below.  
-
 ```json
 {
     "name": "SonnetXMLAgentAnowtherWebService",
@@ -173,8 +186,8 @@ The minimum configuration for a flow in config.json is below.
 }   
 ```
 
-It is also possible to use fluent to invoke generic webhooks through services like Make and Zapier.
 
+It is also possible to use fluent to invoke generic webhooks through services like Make and Zapier.
 ```json
   {
     "name": "MakeLeonardoImagePost",
@@ -199,6 +212,7 @@ It is also possible to use fluent to invoke generic webhooks through services li
   }
 ```
 
+
 This works because the payload and request builders work off this information, the make webhook sees the various fields and is configured to return the images in markdown format.  
 
 There are plenty of working chatflows publically available that will function correctly once your api keys are in amber, I will add more and include the chatflow exports or make blueprints as well.
@@ -209,11 +223,13 @@ Before running fluent for the first time, ensure you have keys configured in you
 
 Also make sure that the follwoing USER environmental variables are set.
 
+
 Example of setting an environment variable:
 ```bash
 export FLUENT_CLI_CONFIG_PATH="/path/to/your/config.json"
 export AMBER_YAML='/path/to/amber.yaml'
 ```
+
 
 Also, you need to source the autocomplete files for your shell environment. These files are located in the source code.  There is a generate function for bash but it will just generate the file as it's store in the code repository.
 
