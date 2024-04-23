@@ -249,81 +249,81 @@ source /Users/n/.fluent_cli/fluent_cli_autocomplete.sh   // Make sure it's execu
 
 To interact with FlowiseAI workflows, use the following syntax:
 
-```bash
-fluent [options] <command> [arguments]
-```
+   ```bash
+   fluent [options] <command> [arguments]
+   ```
 
 ## Examples:
 
 At it's simplest.
 
-```bash
-fluent SonnetXMLAgentAnowtherWebService "Tell me about the beautiful sky"
-```
+   ```bash
+   fluent SonnetXMLAgentAnowtherWebService "Tell me about the beautiful sky"
+   ```
 
 
 
 Taking stdin as context.
 
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: "
-```
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: "
+   ```
 
 
 
 Taking stdin as context and adding an inline system prompt.
 
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -i 'you can only speak in spanish'
-```
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -i 'you can only speak in spanish'
+   ```
 
 
 
-Taking stdin as context and adding an system prompt through a file.
+Taking stdin as context and adding a system prompt through a file.
 
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt
-```
-
-
-
-Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context.
-
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls
-```
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt
+   ```
 
 
 
-Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent.
+Taking stdin as context and adding a system prompt through a file and adding an additional input file to the context.
 
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls \
-fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide new insight"
-```
-
-
-
-Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent and asking the second flow to provide a command.  The -p output modifier looks for the content inside markdown code block syntax ``` content ``` and returns it only, and that response is directed to an output file.
-
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls \
-fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide new insight and provide a python script to better understand the details" -p > ~/my/output/file/path
-```
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls
+   ```
 
 
 
-Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and uploading a file to a workflow.
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent GPT4ImageUpload "Tell me about this context and describe the image" -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls -u ~/Downloads/myupload.png
-```
+Taking stdin as context and adding a system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent.
+
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls \
+   fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide new insight"
+   ```
+
+
+
+Taking stdin as context and adding a system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent and asking the second flow to provide a command.  The -p output modifier looks for the content inside markdown code block syntax ``` content ``` and returns it only, and that response is directed to an output file.
+
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls \
+   fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide new insight and provide a python script to better understand the details" -p > ~/my/output/file/path
+   ```
+
+
+
+Taking stdin as context and adding a system prompt through a file and adding an additional input file to the context and uploading a file to a workflow.
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent GPT4ImageUpload "Tell me about this context and describe the image" -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls -u ~/Downloads/myupload.png
+   ```
 
 
 
 Taking stdin as context and sending it to a Make workflow to get an image generated from Leonardo.ai and downloads the result to ~/Downloads.
-```bash
-cat ~/ExampleFolder/ExampleFile | fluent MakeLeonardoImagePost "Imagine a beautiful magical dragon kite" -d ~/Downloads
-```
+   ```bash
+   cat ~/ExampleFolder/ExampleFile | fluent MakeLeonardoImagePost "Imagine a beautiful magical dragon kite" -d ~/Downloads
+   ```
 
 
 ### Commands
