@@ -61,11 +61,62 @@ To set up Fluent CLI on your local system, follow these steps:
 
 ## Configuration
 
-Fluent CLI relies on a JSON configuration file to manage the workflow specifics. Ensure that the `FLUENT_CLI_CONFIG_PATH` environment variable is set to point to your configuration file.
+If you have never used amber before, we need to start with it.  If you use amber just add the keys to your existing vault. 
+
+Running `amber init` will create an `amber.yaml` file in the current directory and output your onetime private key.  
+
+Do not lose this file or you will be unable to unlock the amber secrets file and run fluent.
+
+> ## Securely store that secret key, such as in a password manager. Additionally, if desired, put that secret key in your CI system's secrets.
+
+```bash
+amber init                                                                                      
+Your secret key is: 9d75ea642ed27900624b30de2e0f5ed979104d098918db92e50a9aa6f2a57952
+Please save this key immediately! If you lose it, you will lose access to your secrets.
+Recommendation: keep it in a password manager
+If you're using this for CI, please update your CI configuration with a secret environment variable
+export AMBER_SECRET=9d75ea642ed27900624b30de2e0f5ed979104d098918db92e50a9aa6f2a57952
+```
+
+## Adding keys to amber
+
+Below is a starter table of keys for the included configs.  It also includes links to get all API keys from the various services. 
+
+It's incredibly easy to use.  Just get your api key from whatever service and run the command in the amber command column replacing the <content> with your key.  
+The `AMBER_ANOTHERWEBSERVICE_NJF` example includes the bearer token for the service.
+
+
+| Variable Name                         | Description                                        | API Key URL                                          | Amber Command                                               |
+|---------------------------------------|----------------------------------------------------|------------------------------------------------------|-------------------------------------------------------------|
+| `AMBER_FLUENT_SESSION_ID_01`          | Universal ID across your workflows                 |                                                      | `amber encrypt AMBER_FLUENT_SESSION_ID_01 <content>`        |
+| `AMBER_ANOTHERWEBSERVICE_NJF`         | Bearer token for Flowise                           |                                                      | `amber encrypt AMBER_ANOTHERWEBSERVICE_NJF NUd1MEQ+w5VZDpoeBcFOihPe8VT5EY/vsbnZ8HfPit4=`       |
+| `AMBER_LOCAL_FLUENT_DEFAULT_KEY`      | Bearer token for a local Flowise install           |                                                      | `amber encrypt AMBER_LOCAL_FLUENT_DEFAULT_KEY <content>`    |
+| **LLM API KEYS**                      |                                                    |                                                      |                                                             |
+| `AMBER_FLUENT_ANTHROPIC_KEY_01`       |                                                    | [Anthropic](https://console.anthropic.com/settings/keys) | `amber encrypt AMBER_FLUENT_ANTHROPIC_KEY_01 <content>`     |
+| `AMBER_FLUENT_GROQ_API_KEY_01`        |                                                    | [GroqLPU](https://console.groq.com/keys)             | `amber encrypt AMBER_FLUENT_GROQ_API_KEY_01 <content>`      |
+| `AMBER_FLUENT_MISTRAL_KEY_01`         |                                                    | [Mistral](https://console.mistral.ai/api-keys/)      | `amber encrypt AMBER_FLUENT_MISTRAL_KEY_01 <content>`       |
+| `AMBER_FLUENT_OPENAI_API_KEY_01`      |                                                    | [OpenAI](https://platform.openai.com/api-keys)       | `amber encrypt AMBER_FLUENT_OPENAI_API_KEY_01 <content>`    |
+| `AMBER_FLUENT_PERPLEXITY_API_KEY_01`  |                                                    | [Perplexity](https://www.perplexity.ai/settings/api) | `amber encrypt AMBER_FLUENT_PERPLEXITY_API_KEY_01 <content>`|
+| `AMBER_FLUENT_GEMINI_API_KEY_01`      |                                                    | [Gemini](https://ai.google.dev/)                     | `amber encrypt AMBER_FLUENT_GEMINI_API_KEY_01 <content>`    |
+| `AMBER_FLUENT_COHERE_API_KEY_01`      |                                                    | [Cohere](https://dashboard.cohere.com/api-keys)      | `amber encrypt AMBER_FLUENT_COHERE_API_KEY_01 <content>`    |
+| `AMBER_FLUENT_HUGGINGFACE_API_KEY_01` |                                                    | [HuggingFace](https://huggingface.co/settings/tokens)| `amber encrypt AMBER_FLUENT_HUGGINGFACE_API_KEY_01 <content>`|
+| `AMBER_FLUENT_REPLICATE_API_KEY_01`   |                                                    | [Replicate](https://replicate.com/account/api-tokens)| `amber encrypt AMBER_FLUENT_REPLICATE_API_KEY_01 <content>` |
+| `AMBER_FLUENT_PINECONE_API_KEY_01`    |                                                    | [Pinecone](https://app.pinecone.io/...)              | `amber encrypt AMBER_FLUENT_PINECONE_API_KEY_01 <content>`  |
+| `AMBER_FLUENT_SEARCHAPI_KEY_ID_01`    |                                                    | [SearchAPI](https://www.searchapi.io/)               | `amber encrypt AMBER_FLUENT_SEARCHAPI_KEY_ID_01 <content>`  |
+| `AMBER_FLUENT_SERPAPI_KEY_01`         |                                                    | [SerpAPI](https://serpapi.com/manage-api-key)        | `amber encrypt AMBER_FLUENT_SERPAPI_KEY_01 <content>`       |
+| `AMBER_FLUENT_ZEP_MEMORY_KEY_01`      |                                                    | [ZepMemory](https://app.getzep.com/projects/)        | `amber encrypt AMBER_FLUENT_ZEP_MEMORY_KEY_01 <content>`    |
+| `AMBER_LEONARDO_AI_KINO_XL_MODEL_ID`  |                                                    |                                                      | `amber encrypt AMBER_LEONARDO_AI_KINO_XL_MODEL_ID <content>`|
+| `AMBER_MAKE_LEONARDO_IMAGE_POST`      |                                                    |                                                      | `amber encrypt AMBER_MAKE_LEONARDO_IMAGE_POST <content>`    |
+
+
+Fluent CLI relies on a JSON configuration file to manage the workflow specifics. Ensure that the `FLUENT_CLI_CONFIG_PATH` environment variable is set to point to your configuration file.  Use the included configuration file, `config.json` to start.  
+
+There are plenty of working chatflows publically available that will function correctly once your api keys are in amber.   
 
 Example of setting an environment variable:
 ```bash
 export FLUENT_CLI_CONFIG_PATH="/path/to/your/config.json"
+export AMBER_YAML='/path/to/amber.yaml'
 ```
 
 ## Usage
