@@ -262,11 +262,13 @@ fluent SonnetXMLAgentAnowtherWebService "Tell me about the beautiful sky"
 ```
 
 
+
 Taking stdin as context.
 
 ```bash
 cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: "
 ```
+
 
 
 Taking stdin as context and adding an inline system prompt.
@@ -276,6 +278,7 @@ cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell 
 ```
 
 
+
 Taking stdin as context and adding an system prompt through a file.
 
 ```bash
@@ -283,11 +286,13 @@ cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell 
 ```
 
 
+
 Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context.
 
 ```bash
 cat ~/ExampleFolder/ExampleFile | fluent SonnetXMLAgentAnowtherWebService "Tell me about this context: " -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls
 ```
+
 
 
 Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent.
@@ -298,6 +303,7 @@ fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide 
 ```
 
 
+
 Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and piping the output of that command into another fluent and asking the second flow to provide a command.  The -p output modifier looks for the content inside markdown code block syntax ``` content ``` and returns it only, and that response is directed to an output file.
 
 ```bash
@@ -306,15 +312,15 @@ fluent GroqMixtral8x7bAgentAnotherWebService 'Summarize the details and provide 
 ```
 
 
-Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and uploading a file to a workflow.
 
+Taking stdin as context and adding an system prompt through a file and adding an additional input file to the context and uploading a file to a workflow.
 ```bash
 cat ~/ExampleFolder/ExampleFile | fluent GPT4ImageUpload "Tell me about this context and describe the image" -f src/system_prompts/german_prompt.txt -a ~/Downloads/AIsGreatestHits.xls -u ~/Downloads/myupload.png
 ```
 
 
-Taking stdin as context and sending it to a Make workflow to get an image generated from Leonardo.ai and downloads the result to ~/Downloads.
 
+Taking stdin as context and sending it to a Make workflow to get an image generated from Leonardo.ai and downloads the result to ~/Downloads.
 ```bash
 cat ~/ExampleFolder/ExampleFile | fluent MakeLeonardoImagePost "Imagine a beautiful magical dragon kite" -d ~/Downloads
 ```
