@@ -1,5 +1,25 @@
 [
   {
+    "name": "GPT4ImageUploadRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "f2c53912-c4a7-46c1-a384-5b0e8e3bf615",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ImageUploadChain",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.7
+    },
+    "timeout_ms": 500000
+  },
+  {
     "name": "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
@@ -7,7 +27,7 @@
     "chat_id": "154f3d8c-ec10-4828-b62b-153834f48dac",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
-    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
@@ -21,8 +41,9 @@
     },
     "timeout_ms": 50000
   },
+
   {
-    "name": "PerplexityChainRepoCloud",
+    "name": "PerplexitySonarMediumOnlineChainRepoCloud",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -44,90 +65,28 @@
     "timeout_ms": 50000
   },
   {
-    "name": "GPT4ImageUploadRepoCloud",
+    "name": "PerplexitySonarSmallOnlineChainRepoCloud",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
-    "chat_id": "f2c53912-c4a7-46c1-a384-5b0e8e3bf615",
+    "chat_id": "d2dc60d5-beaf-43d5-a7fa-3e1498bb9c4f",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
-      "chainName": "GPT4ImageUploadChain",
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "allowImageUploads": true,
-      "systemMessagePrompt": "You are a helpful assistant",
-      "temperature": 0.7
+      "modelName": "sonar-small-online",
+      "openAIApiKey": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+      "allowImageUploads": false,
+      "temperature": 0.9,
+      "frequencyPenalty": 0.9,
+      "openAIToolAgent_0": {
+        "systemMessage": "You are a helpful assistant"
+      }
     },
-    "timeout_ms": 500000
+    "timeout_ms": 50000
   },
 
-  {
-    "name": "MakeLeonardoImagePost",
-    "protocol": "https",
-    "hostname": "hook.us1.make.com",
-    "port": 443,
-    "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
-    "request_path": "/",
-    "sessionId": "",
-    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
-    "overrideConfig": {
-      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
-      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
-      "alchemy": true,
-      "photoReal": true,
-      "photoRealVersion":"v2",
-      "presetStyle": "CINEMATIC",
-      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
-      "seed": ""
-    },
-    "timeout_ms": 5000000
-  },
-  {
-    "name": "GroqMixtral8x7bAgentRepoCloud",
-    "protocol": "https",
-    "hostname": "9d81nz4o.rpcld.co",
-    "port": 3000,
-    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
-    "request_path": "/api/v1/prediction/",
-    "sessionId": "",
-    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
-    "overrideConfig": {
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
-      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "openAIFunctionAgent_0": "You are a helpful assistant"
-      },
-      "temperature": 0.2,
-      "modelName": "mixtral-8x7b-32768"
-    },
-    "timeout_ms": 50000
-  },
-  {
-    "name": "GroqLLama370b8192AgentRepoCloud",
-    "protocol": "https",
-    "hostname": "9d81nz4o.rpcld.co",
-    "port": 443,
-    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
-    "request_path": "/api/v1/prediction/",
-    "sessionId": "",
-    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
-    "overrideConfig": {
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
-      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "openAIFunctionAgent_0": "You are a helpful assistant"
-      },
-      "temperature": 0.5,
-      "modelName":"llama3-70b-8192",
-      "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
-    },
-    "timeout_ms": 50000
-  },
   {
     "name": "MistralLargeToolAgentRepoCloud",
     "protocol": "https",
@@ -148,6 +107,73 @@
     },
     "timeout_ms": 50000
   },
+
+  {
+    "name": "GroqMixtral8x7bAgentRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 3000,
+    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "systemMessage": {
+        "openAIFunctionAgent_0": "You are a helpful assistant"
+      },
+      "temperature": 0.2,
+      "modelName": "mixtral-8x7b-32768"
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "GroqLLama370b8192AgentRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "systemMessage": {
+        "openAIFunctionAgent_0": "You are a helpful assistant"
+      },
+      "temperature": 0.5,
+      "modelName":"llama3-70b-8192",
+      "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "GroqGemma7bAgentRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "systemMessage": {
+        "openAIFunctionAgent_0": "You are a helpful assistant"
+      },
+      "temperature": 0.5,
+      "modelName":"gemma-7b-it",
+      "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
+    },
+    "timeout_ms": 50000
+  },
+
   {
     "name": "SonnetXMLAgentRepoCloud",
     "protocol": "https",
@@ -234,5 +260,27 @@
 
     },
     "timeout_ms": 50000
+  },
+
+  {
+    "name": "MakeLeonardoImagePost",
+    "protocol": "https",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
+    "request_path": "/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "alchemy": true,
+      "photoReal": true,
+      "photoRealVersion":"v2",
+      "presetStyle": "CINEMATIC",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+      "seed": ""
+    },
+    "timeout_ms": 5000000
   }
 ]
