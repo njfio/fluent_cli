@@ -54,9 +54,9 @@ struct Upload {
 #[derive(Debug)]
 struct ResponseOutput {
     response_text: String,
-    question: String,
-    chat_id: String,
-    session_id: String,
+    question: Option<String>,
+    chat_id: Option<String>,
+    session_id: Option<String>,
     memory_type: Option<String>,
     code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
     pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
@@ -68,8 +68,8 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     // Parse the response body, handle error properly here instead of unwrapping
     debug!("Response body: {}", response_body);
     let result = serde_json::from_str::<FluentCliOutput>(response_body);
-
-
+    debug!("Result: {:?}", result);
+    // If there's an error parsing the JSON, print the error and the raw response body
     let response_text = match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
@@ -94,7 +94,10 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
-            eprintln!("Raw Webhook Output");
+            eprintln!("Error: {:?}", e);
+            if let Some(cause) = e.source() {
+                eprintln!("Caused by: {:?}", cause);
+            }
             if let Some(directory) = matches.value_of("download-media") {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 download_media(urls, directory).await;
@@ -247,11 +250,11 @@ use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
 use std::collections::HashMap;
+use std::error::Error;
 use std::io::ErrorKind;
 use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
-use serde::de::Error;
 use termimad::{FmtText, MadSkin};
 use termimad::minimad::once_cell::sync::Lazy;
 

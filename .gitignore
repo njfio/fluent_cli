@@ -17,3 +17,4 @@ Cargo.lock
 .idea/markdown.xml
 .idea/modules.xml
 .idea/workspace.xml
+fluent_cli/.DS_Store

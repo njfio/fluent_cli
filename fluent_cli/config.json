@@ -1,16 +1,16 @@
 [
   {
-    "name": "GPT4FunctionAgentWithMemoryAndBrowsing",
-    "protocol": "http",
-    "hostname": "127.0.0.1",
-    "port": 3000,
-    "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
+    "name": "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "154f3d8c-ec10-4828-b62b-153834f48dac",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
-    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
       "systemMessage": "You are a helpful assistant",
@@ -22,20 +22,21 @@
     "timeout_ms": 50000
   },
   {
-    "name": "GPT4FunctionAgentWithMemoryAndBrowsing",
-    "protocol": "http",
-    "hostname": "127.0.0.1",
-    "port": 3000,
-    "chat_id": "03c77686-8e9e-4817-bd0f-c72e54c18726",
+    "name": "PerplexityChainRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "d2dc60d5-beaf-43d5-a7fa-3e1498bb9c4f",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "",
-    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "allowImageUploads": true,
-      "systemMessage": "You are a helpful assistant",
+      "modelName": "sonar-medium-online",
+      "openAIApiKey": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+      "allowImageUploads": false,
+      "temperature": 0.9,
+      "frequencyPenalty": 0.9,
       "openAIToolAgent_0": {
         "systemMessage": "You are a helpful assistant"
       }
@@ -43,24 +44,24 @@
     "timeout_ms": 50000
   },
   {
-    "name": "GPT4ImageUpload",
-    "protocol": "http",
-    "hostname": "127.0.0.1",
-    "port": 3000,
-    "chat_id": "c6a6de48-5d8e-4101-9a81-508c5b3a5f76",
+    "name": "GPT4ImageUploadRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "f2c53912-c4a7-46c1-a384-5b0e8e3bf615",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
-    "bearer_token": "AMBER_LOCAL_FLUENT_DEFAULT_KEY",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "chainName": "GPT4ImageUploadChain",
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPEN_API_KEY_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
       "systemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.7
     },
-    "timeout_ms": 50000
+    "timeout_ms": 500000
   },
 
   {
@@ -79,14 +80,15 @@
       "photoReal": true,
       "photoRealVersion":"v2",
       "presetStyle": "CINEMATIC",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
       "seed": ""
     },
     "timeout_ms": 5000000
   },
   {
-    "name": "GroqMixtral8x7bAgentAnotherWebService",
+    "name": "GroqMixtral8x7bAgentRepoCloud",
     "protocol": "https",
-    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
+    "hostname": "9d81nz4o.rpcld.co",
     "port": 3000,
     "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
     "request_path": "/api/v1/prediction/",
@@ -105,11 +107,11 @@
     "timeout_ms": 50000
   },
   {
-    "name": "GroqLLama370b8192AgentAnotherWebService",
+    "name": "GroqLLama370b8192AgentRepoCloud",
     "protocol": "https",
-    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
-    "port": 3000,
-    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
     "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
@@ -127,55 +129,105 @@
     "timeout_ms": 50000
   },
   {
-    "name": "MistralLargeToolAgentAnowtherWebService",
+    "name": "MistralLargeToolAgentRepoCloud",
     "protocol": "https",
-    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
-    "port": 3000,
-    "chat_id": "173d8f08-ba2a-49a1-91d9-8769979081a5",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "c541d269-56e2-4b3c-b1db-5767cf1d04c8",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "",
-    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "sessionId": "1",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "mistralAIAPIKey": "AMBER_FLUENT_MISTRAL_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "apiKey": "AMBER_FLUENT_ZEP_MEMORY_KEY_01",
       "systemMessage": {
         "mistralAIToolAgent_0": "You are a helpful assistant"
       },
-      "temperature": 0.2,
-      "memoryKey": "chat_history",
-      "memoryType": "perpetual",
-      "aiPrefix": "ai",
-      "humanPrefix": "human",
-      "inputKey": "input",
-      "outputKey": "output"
+      "temperature": 0.2
     },
     "timeout_ms": 50000
   },
   {
-    "name": "SonnetXMLAgentAnowtherWebService",
+    "name": "SonnetXMLAgentRepoCloud",
     "protocol": "https",
-    "hostname": "container-qygwpcc.containers.anotherwebservice.com",
-    "port": 3000,
-    "chat_id": "8ea46fa9-4aef-4184-a399-c588c576d148",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "9634304b-6b2a-44cf-ad61-e1afadaf7bf1",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
-    "bearer_token": "AMBER_ANOTHERWEBSERVICE_NJF",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
       "stripNewLines": true,
       "modelName": {
-        "chatAnthropic_0": "claude-3-sonnet-20240229",
-        "chatOpenAI_0": "gpt-3.5-turbo-16k",
+        "chatAnthropic_1": "claude-3-sonnet-20240229",
+        "chatOpenAI_1": "gpt-3.5-turbo-16k",
         "openAIEmbeddings_0": "text-embedding-3-small"
       },
       "openAIApiKey": {
-        "openAIEmbeddings_0": "AMBER_FLUENT_OPEN_API_KEY_01",
-        "chatOpenAI_0": "AMBER_FLUENT_OPEN_API_KEY_01"
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "chatOpenAI_1": "AMBER_FLUENT_OPENAI_API_KEY_01"
       },
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
+      "temperature": 0.2
 
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "HaikuXMLAgentRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "9634304b-6b2a-44cf-ad61-e1afadaf7bf1",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "stripNewLines": true,
+      "modelName": {
+        "chatAnthropic_1": "claude-3-haiku-20240307",
+        "chatOpenAI_1": "gpt-3.5-turbo-16k",
+        "openAIEmbeddings_0": "text-embedding-3-small"
+      },
+      "openAIApiKey": {
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "chatOpenAI_1": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
+      "temperature": 0.2
+
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "OpusXMLAgentRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "9634304b-6b2a-44cf-ad61-e1afadaf7bf1",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "stripNewLines": true,
+      "modelName": {
+        "chatAnthropic_1": "claude-3-opus-20240229",
+        "chatOpenAI_1": "gpt-3.5-turbo-16k",
+        "openAIEmbeddings_0": "text-embedding-3-small"
+      },
+      "openAIApiKey": {
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "chatOpenAI_1": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
       "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
       "temperature": 0.2
