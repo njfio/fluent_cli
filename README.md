@@ -90,7 +90,7 @@ Below is a starter table of keys for the included configs with fluent_cli.  It a
 
 It's incredibly easy to use.  Just get your api key from whatever service and run the command in the amber command column replacing the <content> with your key.  
 
-The `AMBER_ANOTHERWEBSERVICE_NJF` example includes the bearer token for the service.   
+The `AMBER_ANOTHERWEBSERVICE_NJF` and `AMBER_REPO_CLOUD_FLUENT_DEMO_KEY` examples includes the bearer token for the service.  These are necessary for fluent to work with these initial setups.   
 
 Validate the keys you've entered by typing `amber print`
 
@@ -101,6 +101,7 @@ Validate the keys you've entered by typing `amber print`
 | `AMBER_FLUENT_SESSION_ID_01`          | Universal ID across your workflows                 |                                                      | `amber encrypt AMBER_FLUENT_SESSION_ID_01 <content>`        |
 | `AMBER_ANOTHERWEBSERVICE_NJF`         | Bearer token for Flowise                           |                                                      | `amber encrypt AMBER_ANOTHERWEBSERVICE_NJF NUd1MEQ+w5VZDpoeBcFOihPe8VT5EY/vsbnZ8HfPit4=`       |
 | `AMBER_LOCAL_FLUENT_DEFAULT_KEY`      | Bearer token for a local Flowise install           |                                                      | `amber encrypt AMBER_LOCAL_FLUENT_DEFAULT_KEY <content>`    |
+| `AMBER_REPO_CLOUD_FLUENT_DEMO_KEY`    | Bearer token for demo Flowise install              |                                                      | `amber encrypt AMBER_REPO_CLOUD_FLUENT_DEMO_KEY Yz5G1TLGM7wSa0AgNFn/OWblT1TzuIEP6tXyz2t6tvw=`   |
 | **LLM API KEYS**                      |                                                    |                                                      |                                                             |
 | `AMBER_FLUENT_ANTHROPIC_KEY_01`       |                                                    | [Anthropic](https://console.anthropic.com/settings/keys) | `amber encrypt AMBER_FLUENT_ANTHROPIC_KEY_01 <content>`     |
 | `AMBER_FLUENT_GROQ_API_KEY_01`        |                                                    | [GroqLPU](https://console.groq.com/keys)             | `amber encrypt AMBER_FLUENT_GROQ_API_KEY_01 <content>`      |
