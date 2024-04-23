@@ -253,7 +253,7 @@ To interact with FlowiseAI workflows, use the following syntax:
 fluent [options] <command> [arguments]
 ```
 
-##s Examples:
+## Examples:
 
 At it's simplest.
 
