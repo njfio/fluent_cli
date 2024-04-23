@@ -113,7 +113,7 @@ Validate the keys you've entered by typing `amber print`
 | `AMBER_FLUENT_SEARCHAPI_KEY_ID_01`    |                                                    | [SearchAPI](https://www.searchapi.io/)               | `amber encrypt AMBER_FLUENT_SEARCHAPI_KEY_ID_01 <content>`  |
 | `AMBER_FLUENT_SERPAPI_KEY_01`         |                                                    | [SerpAPI](https://serpapi.com/manage-api-key)        | `amber encrypt AMBER_FLUENT_SERPAPI_KEY_01 <content>`       |
 | `AMBER_FLUENT_ZEP_MEMORY_KEY_01`      |                                                    | [ZepMemory](https://app.getzep.com/projects/)        | `amber encrypt AMBER_FLUENT_ZEP_MEMORY_KEY_01 <content>`    |
-| `AMBER_LEONARDO_AI_KINO_XL_MODEL_ID`  |                                                    |                                                      | `amber encrypt AMBER_LEONARDO_AI_KINO_XL_MODEL_ID <content>`|
+| `AMBER_LEONARDO_AI_KINO_XL_MODEL_ID`  |                                                    |                                                      | `amber encrypt AMBER_LEONARDO_AI_KINO_XL_MODEL_ID aa77f04e-3eec-4034-9c07-d0f619684628`|
 | `AMBER_MAKE_LEONARDO_IMAGE_POST`      |                                                    |                                                      | `amber encrypt AMBER_MAKE_LEONARDO_IMAGE_POST <content>`    |
 
 
