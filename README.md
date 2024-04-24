@@ -250,13 +250,23 @@ source /Users/n/.fluent_cli/fluent_cli_autocomplete.sh   // Make sure it's execu
 
 ## Usage
 
-To interact with FlowiseAI workflows, use the following syntax:
-
+How FluentClI builds the payload.  The command line full input possibility looks like this:
    ```bash
-   fluent [options] <command> [arguments]
+     <stdin context> | fluent <flowname> "the request" --additional-file ~/path/to/your/text/file -u ~/path/to/your/image/file
    ```
+   What the payload looks like when sent to the workflow becomes the following depending on what was provided as arguments with the `fluent` command.  If all inputs are provides the payload is built like the entry below.    
+   If an uploaded file is provided, it's added to the payloads data.  
 
-## Examples:
+   ```
+      "the request <stdin context> <additional file context>"
+   ```
+   This allows you to flexibility use fluent by providing the right context in your requests to your workflows directly in the request.  
+   It allows for amazing pipeline potential between workflows, language models and services.  
+   The options feel limitless. 
+
+      
+
+## More Examples:
 
 At it's simplest.
 
