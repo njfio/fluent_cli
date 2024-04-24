@@ -93,12 +93,12 @@ while IFS= read -r prompt; do
             cat "$character_map_file" "$story_arc_file"
             tail -n 15 "$final_post_file"
             echo "Prompt: $prompt"
-        } | fluent "$FLOW_POST_SECTION" "Generating section based on context prompt.  No Yapping. Do not offer unnatural introductions or lead ins.  Do not summarize.  Just write the section.  You have access to the previous 15 lines in the context.  Transition eloquently.  Never lead-in or start 'Here is my attempt...' or similar. Eloquent transitions only." >> "$final_post_file"
+        } | fluent "$FLOW_POST_SECTION" "Generating section based on context prompt.  No Yapping. Do not offer unnatural introductions or lead ins.  Do not summarize.  Just write the section.  You have access to the previous 15 lines in the context.  Transition eloquently.  Never lead-in or start 'Here is my attempt...' or similar. Eloquent transitions only. Use Markdown" >> "$final_post_file"
 
         {
            cat  $character_map_file
            tail -n 15 "$final_post_file"
-        } | fluent GroqLLama370b8192AgentAnotherWebService "Create a prompt that will be used to create an image for this context. The image should be in abstract art style.  Keep consistent with the provided character map and you align the theme with the provided last 15 lines in the context" | fluent MakeLeonardoImagePost "Follow the context prompt" -d /Users/n/Downloads/videorecording/  >> "$final_post_file"
+        } | fluent GroqLLama370b8192AgentRepoCloud "Create a prompt that will be used to create an image for this context. The image should be in abstract art style.  Keep consistent with the provided character map and you align the theme with the provided last 15 lines in the context" | fluent MakeLeonardoImagePost "Follow the context prompt" -d /Users/n/Downloads/  >> "$final_post_file"
     else
         echo "Skipped empty or whitespace-only prompt."
     fi
@@ -106,5 +106,5 @@ done < "$prompts_file"
 
 echo "Blog post generation completed. Check '$final_post_file' for the full content."
 pandoc "$final_post_file" --from markdown --to html5 --standalone --toc --highlight-style=espresso --output "$final_post_file.html"
-#cat "$final_post_file.html" | fluent MakeShopifyBlogPostFluentCLIAIGenerated "$flow_name - $initial_request" -h
-cat "$final_post_file" | fluent MistralLargeToolAgentAnowtherWebService "grade this blog post"
+cat "$final_post_file.html" | fluent MakeShopifyAndGhostPostExample "Blog"
+cat "$final_post_file" | fluent OpusXMLAgentRepoCloud "grade this blog post"

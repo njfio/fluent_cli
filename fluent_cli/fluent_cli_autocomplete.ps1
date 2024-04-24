@@ -32,3 +32,46 @@ Register-ArgumentCompleter -CommandName 'fluent' -ScriptBlock {
         [System.Management.Automation.CompletionResult]::new($completion, $completion, 'ParameterValue', $completion)
     }
 }
+
+function Invoke-FluentCLI {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
+        [string[]]$InputArgs,
+
+        [Parameter(ValueFromPipeline = $true)]
+        [string]$PipelineInput
+    )
+
+    Begin {
+        # Initialize a list to collect input
+        $completeInput = @()
+    }
+
+    Process {
+        if ($PipelineInput) {
+            # Add pipeline input to the list
+            $completeInput += $PipelineInput
+        }
+    }
+
+    End {
+        # Add command line arguments to the list if any
+        $completeInput += $InputArgs
+
+        # Combine all inputs into a single string
+        $inputString = $completeInput -join ' '
+
+        # Escape potentially problematic characters using -replace for regex patterns
+        $escapedInput = $inputString -replace '`', '``'  # Escape backticks
+        $escapedInput = $escapedInput -replace '"', '`"'  # Escape double quotes with PowerShell escaping
+
+        # Construct the command with the escaped input
+        $command = "fluent GroqLLama370b8192AgentRepoCloud `"$escapedInput`""
+
+        # Execute the command using Invoke-Expression
+        Invoke-Expression $command
+    }
+}
+
+New-Alias -Name flps -Value Invoke-FluentCLI

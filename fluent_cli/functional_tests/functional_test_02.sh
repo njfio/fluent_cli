@@ -11,10 +11,10 @@ CONTEXT_FILE="$TEST_DATA_PATH/functional_test_context.txt"
 
 # Validation CLI and Flowname
 VALIDATION_CLI="fluent"
-VALIDATION_FLOWNAME="HaikuToolAgentRepoCloud"
+VALIDATION_FLOWNAME="GroqLLama370b8192AgentRepoCloud"
 
 # Flow names array
-declare -a FLOWNAMES=("GroqMixtral8x7bAgentAnotherWebService" "SonnetXMLAgentAnowtherWebService" "GroqLLama370b8192AgentAnotherWebService" "MistralLargeToolAgentAnowtherWebService" "GPT4FunctionAgentWithMemoryAndBrowsing")
+declare -a FLOWNAMES=("PerplexitySonarMediumOnlineChainRepoCloud" "PerplexitySonarSmallOnlineChainRepoCloud" "OpusXMLAgentRepoCloud" "GPT4ImageUploadRepoCloud" "GroqGemma7bAgentRepoCloud" "GroqLLama370b8192AgentRepoCloud" "HaikuXMLAgentRepoCloud" "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud")
 
 # Start new log file
 echo "Starting new test session at $(date)" > "$LOG_FILE"

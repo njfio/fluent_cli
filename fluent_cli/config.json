@@ -94,16 +94,14 @@
     "port": 443,
     "chat_id": "c541d269-56e2-4b3c-b1db-5767cf1d04c8",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "1",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "mistralAIAPIKey": "AMBER_FLUENT_MISTRAL_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "mistralAIToolAgent_0": "You are a helpful assistant"
-      },
-      "temperature": 0.2
+      "maxIterations": 10,
+      "systemMessage": "You are a helpful assistant"
     },
     "timeout_ms": 50000
   },
@@ -112,8 +110,8 @@
     "name": "GroqMixtral8x7bAgentRepoCloud",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
-    "port": 3000,
-    "chat_id": "e2110934-8c0a-4e0b-92f2-bd40666f8b7d",
+    "port": 443,
+    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
@@ -121,10 +119,9 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "openAIFunctionAgent_0": "You are a helpful assistant"
-      },
-      "temperature": 0.2,
+      "chainName": "groqChain",
+      "systemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.8,
       "modelName": "mixtral-8x7b-32768"
     },
     "timeout_ms": 50000
@@ -142,10 +139,9 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "openAIFunctionAgent_0": "You are a helpful assistant"
-      },
-      "temperature": 0.5,
+      "chainName": "groqChain",
+      "systemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.8,
       "modelName":"llama3-70b-8192",
       "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
     },
@@ -164,9 +160,8 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
-      "systemMessage": {
-        "openAIFunctionAgent_0": "You are a helpful assistant"
-      },
+      "chainName": "groqChain",
+      "systemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.5,
       "modelName":"gemma-7b-it",
       "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
@@ -227,7 +222,7 @@
       },
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
       "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
-      "temperature": 0.2
+      "temperature": 0.8
 
     },
     "timeout_ms": 50000
@@ -256,8 +251,7 @@
       },
       "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
       "SystemMessage": "You are a helpful assistant. Help the user answer any questions.\n\nYou have access to the following tools:\n\n{tools}\n\nIn order to use a tool, you can use <tool></tool> and <tool_input></tool_input> tags. You will then get back a response in the form <observation></observation>\nFor example, if you have a tool called 'search' that could run a google search, in order to search for the weather in SF you would respond:\n\n<tool>search</tool><tool_input>weather in SF</tool_input>\n<observation>64 degrees</observation>\n\nWhen you are done, respond with a final answer between <final_answer></final_answer>. For example:\n\n<final_answer>The weather in SF is 64 degrees</final_answer>\n\nBegin!\n\nPrevious Conversation:\n{chat_history}\n\nQuestion: {input}\n{agent_scratchpad}",
-      "temperature": 0.2
-
+      "temperature": 0.8
     },
     "timeout_ms": 50000
   },
@@ -279,6 +273,27 @@
       "photoRealVersion":"v2",
       "presetStyle": "CINEMATIC",
       "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+      "seed": ""
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "MakeShopifyAndGhostPostExample",
+    "protocol": "https",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "idagdtlvmn7hhedt91cqx38mla3p5kco",
+    "request_path": "/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "alchemy": true,
+      "photoReal": true,
+      "photoRealVersion":"v2",
+      "presetStyle": "CINEMATIC",
+      "makeAuthentication": "AMBER_MAKE_SHOPIFY_GHOST_POST_KEY",
       "seed": ""
     },
     "timeout_ms": 5000000
