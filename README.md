@@ -11,6 +11,8 @@
 
 - **Enhanced File Handling**: Support for uploading images and files directly through the CLI, integrated smoothly with asynchronous operations to boost performance.
 
+- **Upsert Files and Document Loaders**: Supports triggering upserts, with config file and inline override.  
+
 - **Secure Environment Interaction**: Automatic handling of environment variables and secure token management ensures that your operations are safe and your data is protected.
 
 - **Versatile Output Options**: Whether you need beautifully formatted markdown, concise code blocks, or the full response in well-structured JSON, Fluent CLI delivers your data in the format you prefer, right in your terminal or redirected with all the power of your terminal.
