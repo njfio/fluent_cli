@@ -20,6 +20,27 @@
     "timeout_ms": 500000
   },
   {
+    "name": "GPT4ToolAgentWithTextFileUpsertRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "85e4e8b3-28c9-4405-b4d9-9ec270cbabfe",
+    "request_path": "/api/v1/prediction/",
+    "upsert_path": "/api/v1/vector/upsert/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ImageUploadChain",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "allowImageUploads": true,
+      "systemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.7
+    },
+    "timeout_ms": 500000
+  },
+  {
     "name": "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
@@ -234,6 +255,7 @@
     "port": 443,
     "chat_id": "9634304b-6b2a-44cf-ad61-e1afadaf7bf1",
     "request_path": "/api/v1/prediction/",
+    "upsert_path": "/api/v1/upsert/",
     "sessionId": "",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
