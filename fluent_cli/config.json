@@ -34,7 +34,8 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01"
+      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01"
     },
     "timeout_ms": 500000
   },

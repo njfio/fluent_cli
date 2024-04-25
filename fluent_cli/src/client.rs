@@ -152,7 +152,8 @@ async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
 
     for url in urls {
-        let clean_url = url.trim_end_matches(')'); // Remove any trailing parentheses
+        // Trim any trailing unwanted characters such as parentheses
+        let clean_url = url.trim_end_matches(')');
         debug!("Cleaned URL: {}", clean_url);
 
         match client.get(clean_url).send().await {
