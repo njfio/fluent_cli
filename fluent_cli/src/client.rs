@@ -53,7 +53,7 @@ struct Upload {
 
 #[derive(Debug)]
 struct ResponseOutput {
-    response_text: String,
+    response_text: Option<String>,
     question: Option<String>,
     chat_id: Option<String>,
     session_id: Option<String>,
@@ -100,8 +100,10 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             }
             if let Some(directory) = matches.value_of("download-media") {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                debug!("Extracted URLs: {:?}", urls);
                 download_media(urls, directory).await;
             }
+            debug!("Download Response body: {}", response_body);
             println!("{}", response_body);
             response_body.to_string();
         }
@@ -150,12 +152,15 @@ async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
 
     for url in urls {
-        match client.get(&url).send().await {
+        let clean_url = url.trim_end_matches(')'); // Remove any trailing parentheses
+        debug!("Cleaned URL: {}", clean_url);
+
+        match client.get(clean_url).send().await {
             Ok(response) => {
                 if response.status().is_success() {
                     match response.bytes().await {
                         Ok(content) => {
-                            let path = Path::new(&url);
+                            let path = Path::new(clean_url);
                             let filename = if let Some(name) = path.file_name() {
                                 format!("{}-{}.{}", name.to_string_lossy(), Local::now().format("%Y%m%d%H%M%S"), path.extension().unwrap_or_default().to_string_lossy())
                             } else {
@@ -163,7 +168,7 @@ async fn download_media(urls: Vec<String>, directory: &str) {
                             };
                             let filepath = Path::new(directory).join(filename);
 
-                            match File::create(filepath).await {
+                            match File::create(&filepath).await {
                                 Ok(mut file) => {
                                     if let Err(e) = file.write_all(&content).await {
                                         eprintln!("Failed to write to file: {}", e);
@@ -175,13 +180,14 @@ async fn download_media(urls: Vec<String>, directory: &str) {
                         Err(e) => eprintln!("Failed to read bytes from response: {}", e),
                     }
                 } else {
-                    eprintln!("Failed to download {}: {}", url, response.status());
+                    eprintln!("Failed to download {}: {}", clean_url, response.status());
                 }
             },
             Err(e) => eprintln!("Failed to send request: {}", e),
         }
     }
 }
+
 
 // Change the signature to accept a simple string for `question`
 
