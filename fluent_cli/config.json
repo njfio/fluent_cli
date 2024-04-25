@@ -34,9 +34,47 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "allowImageUploads": true,
-      "systemMessagePrompt": "You are a helpful assistant",
-      "temperature": 0.7
+      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
+      "repoLink": "https://github.com/njfio/fluent_cli/",
+      "stopNodeId": "github_0",
+      "branch":  "main",
+      "recursive": true,
+      "maxRetries" : 3
+    },
+    "timeout_ms": 500000
+  },
+  {
+    "name": "GPT4ToolAgentWithUpsertRepoCloud",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "931b1268-561d-494d-8f37-b5f5caac4466",
+    "request_path": "/api/v1/prediction/",
+    "upsert_path": "/api/v1/vector/upsert/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ToolAgentWithUpsertRepoCloud",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
+      "repoLink": "https://github.com/njfio/fluent_cli/",
+      "branch":  "main",
+      "recursive": true,
+      "maxRetries" : 3,
+      "language":{
+        "codeTextSplitter_0": "rust"
+      },
+      "pineconeIndex": "fluentcli",
+      "modelName": {
+        "chatOpenAI_0": "gpt-4-turbo-preview",
+        "openAIEmbeddings_1": "text-embedding-3-small"
+      },
+      "name": "fluentcli_retriever",
+      "description": "fluentcli source code retriever",
+      "returnSourceDocuments": true
     },
     "timeout_ms": 500000
   },

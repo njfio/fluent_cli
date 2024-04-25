@@ -283,12 +283,43 @@ fn to_json_error<E: std::fmt::Display>(error: E) -> SerdeError {
 }
 
 
-fn to_serde_json_error<E: std::fmt::Display>(err: E) -> SerdeError {
-    let erroneous_json = format!("{{\"error\": \"{}\"}}", err);
-    serde_json::from_str::<serde_json::Value>(&erroneous_json).unwrap_err()
+fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
+    serde_json::Error::custom(err.to_string())
 }
 
 
+pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_json::Value) -> Result<()> {
+    let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
+        env::var(&flow.bearer_token[6..]).unwrap_or_else(|_| flow.bearer_token.clone())
+    } else {
+        flow.bearer_token.clone()
+    };
+
+    debug!("Bearer token: {}", bearer_token);
+
+    let client = reqwest::Client::new();
+    debug!("Sending to URL: {}", api_url);
+    debug!("Payload: {:?}", payload);
+    eprintln!("Upserting with JSON: {:?}", payload);
+    let response = client.post(api_url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", bearer_token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(to_serde_json_error)?;
+
+    if response.status().is_success() {
+        let response_json: serde_json::Value = response.json().await.map_err(to_serde_json_error)?;
+        debug!("Success response: {:#?}", response_json);
+        println!("Success: {:#?}", response_json);
+    } else {
+        let error_message = format!("Failed to upsert data: Status code: {}", response.status());
+        return Err(serde_json::Error::custom(error_message));
+    }
+
+    Ok(())
+}
 
 pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     let client = Client::new();
@@ -350,6 +381,7 @@ use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
+use serde::de::Error;
 
 use termimad::{FmtText, MadSkin};
 use termimad::minimad::once_cell::sync::Lazy;
