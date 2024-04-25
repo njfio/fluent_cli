@@ -120,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::new("upsert-with-upload")
             .long("upsert-with-upload")
             .value_name("FILE")
-            .help("Uploads files to the specified endpoint")
+            .help("Uploads a file to the specified endpoint")
             .multiple_values(true)
             .required(false))
 
@@ -211,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
 
 // Within the main function after parsing command-line arguments
-    if let Some(files) = matches.values_of("upsert_with_upload") {
+    if let Some(files) = matches.values_of("upsert-with-upload") {
         let file_paths: Vec<&str> = files.collect();
         debug!("Uploading files: {:?}", file_paths);
         let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");

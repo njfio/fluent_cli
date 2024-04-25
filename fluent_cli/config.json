@@ -9,7 +9,7 @@
     "sessionId": "",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
-      "chainName": "GPT4ImageUploadChain",
+      "chainName": "GPT4ImageUploadRepoCloud",
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
@@ -34,12 +34,7 @@
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
-      "repoLink": "https://github.com/njfio/fluent_cli/",
-      "stopNodeId": "github_0",
-      "branch":  "main",
-      "recursive": true,
-      "maxRetries" : 3
+      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01"
     },
     "timeout_ms": 500000
   },
