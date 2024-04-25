@@ -11,7 +11,7 @@ use tokio::fs::File;
 use tokio::io::{self, AsyncReadExt};
 use crate::client::handle_response;
 
-use crate::config::{EnvVarGuard, generate_bash_autocomplete_script};
+use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
 use anyhow::Result;
 
 
@@ -37,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     colored::control::set_override(true);
 
     let mut configs = config::load_config()?;
+    let mut configs_clone = configs.clone();
 
     let matches = Command::new("Fluent")
         .version("0.3.0")
@@ -111,6 +112,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("Downloads all media files listed in the output to a specified directory")
             .takes_value(true)
             .value_name("DIRECTORY"))
+        .arg(Arg::new("upsert-no-upload")
+            .long("upsert-no-upload")
+            .help("Sends a JSON payload to the specified endpoint without uploading files")
+            .takes_value(true)
+            .required(false))
+        .arg(Arg::new("upsert-with-upload")
+            .long("upsert-with-upload")
+            .value_name("FILE")
+            .help("Uploads a file to the specified endpoint")
+            .multiple_values(true)
+            .required(false))
+
+
         .get_matches();
 
 
@@ -121,6 +135,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let flowname = matches.value_of("flowname").unwrap();
     let flow = configs.iter_mut().find(|f| f.name == flowname).expect("Flow not found");
+    let flow_clone = flow.clone();
+    let flow_clone2 = flow.clone();
+    let flow_clone3 = flow.clone();
     let request = matches.value_of("request").unwrap();
 
     // Load context from stdin if not provided
@@ -132,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Additional context: {:?}", additional_context);
     let final_context = context.or(if !additional_context.is_empty() { Some(&additional_context) } else { None });
     debug!("Context: {:?}", final_context);
+
 
     // Load override value from CLI if specified for system prompt override, file will always win
     let system_prompt_inline = matches.value_of("system-prompt-override-inline");
@@ -145,6 +163,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         system_prompt_inline.map(|s| s.to_string())
     };
+
+
     // Update the configuration with the override if it exists
     // Update the configuration based on what's present in the overrideConfig
     if let Some(override_value) = system_message_override {
@@ -158,7 +178,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let file_path = matches.value_of("upload-image-path");
-
 
 
     // Determine the final context from various sources
@@ -190,6 +209,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
     let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
+
+// Within the main function after parsing command-line arguments
+    if let Some(files) = matches.values_of("upsert-with-upload") {
+        let file_paths: Vec<&str> = files.collect();
+        debug!("Uploading files: {:?}", file_paths);
+        let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
+        debug!("Flow: {:?}", flow);
+
+        // Construct the URL using the upsert path
+        let api_url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow_clone.upsert_path.unwrap_or_default(), flow.chat_id);
+        debug!("API URL: {}", api_url);
+        // Call the upload function in the client module
+        if let Err(e) = client::upload_files(&api_url, file_paths).await {
+            eprintln!("Error uploading files: {}", e);
+        }
+    }
+
+    if let Some(json_str) = matches.value_of("upsert-no-upload") {
+        let inline_json: serde_json::Value = serde_json::from_str(json_str).unwrap_or_else(|err| {
+            eprintln!("Error parsing inline JSON: {}", err);
+            serde_json::json!({})
+        });
+
+        let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
+
+        let mut override_config = flow.override_config.clone();
+        debug!("Override config before update: {:?}", override_config);
+        replace_with_env_var(&mut override_config);
+        debug!("Override config after update: {:?}", override_config);
+
+        debug!("Override config: {:?}", override_config);
+        // Merge inline JSON with the existing override config
+        if let serde_json::Value::Object(ref mut base) = override_config {
+            if let serde_json::Value::Object(additional) = inline_json {
+                for (key, value) in additional {
+                    base.insert(key, value);
+                }
+            }
+        }
+        debug!("Merged override config: {:?}", override_config);
+
+        let api_url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow_clone2.upsert_path.unwrap_or_default(), flow.chat_id);
+        debug!("API URL: {}", api_url);
+
+        // Use the merged override config as the payload
+        if let Err(e) = client::upsert_with_json(&api_url, &flow_clone3, serde_json::json!({"overrideConfig": override_config})).await {
+            eprintln!("Error during JSON upsert: {}", e);
+        }
+    }
+
+
+
     debug!("EnvGuard result: {:?}", env_guard_result);
     print_status(flowname, actual_final_context_clone.as_ref().unwrap_or(&new_question).as_str());
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone ).await?;

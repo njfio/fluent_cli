@@ -15,6 +15,7 @@ pub struct FlowConfig {
     pub port: u16,
     pub chat_id: String,
     pub request_path: String,
+    pub upsert_path: Option<String>,
     #[serde(rename = "sessionId")]
     pub session_id: String,
     pub bearer_token: String,

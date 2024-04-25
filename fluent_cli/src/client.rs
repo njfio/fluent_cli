@@ -1,6 +1,6 @@
 use log::{debug, error};
 use std::env;
-use reqwest::{Client};
+use reqwest::{Client, multipart};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -246,17 +246,146 @@ pub(crate) fn build_request_payload(question: &str, context: Option<&str>) -> Va
 
 
 
+use thiserror::Error;
+use reqwest::Error as ReqwestError;
+use serde_json::Error as SerdeJsonError;
+use std::io::Error as IoError;
+
+#[derive(Error, Debug)]
+pub enum MyError {
+    #[error("Network error: {0}")]
+    Network(#[from] ReqwestError),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] SerdeJsonError),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] IoError),
+
+    #[error("Other error: {0}")]
+    Other(String),
+}
+
+
+
+// Function returns Result<(), serde_json::Error
+
+
+
+use std::error::Error as StdError;  // Import the StdError trait for `source` method
+
+
+
+fn to_json_error<E: std::fmt::Display>(error: E) -> SerdeError {
+    // Simulate a JSON parsing error
+    let faulty_json = format!("{{: \"{}\"", error); // Intentionally malformed JSON
+    serde_json::from_str::<Value>(&faulty_json).unwrap_err()
+}
+
+
+fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
+    serde_json::Error::custom(err.to_string())
+}
+
+
+pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_json::Value) -> Result<()> {
+    let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
+        env::var(&flow.bearer_token[6..]).unwrap_or_else(|_| flow.bearer_token.clone())
+    } else {
+        flow.bearer_token.clone()
+    };
+
+    debug!("Bearer token: {}", bearer_token);
+
+    let client = reqwest::Client::new();
+    debug!("Sending to URL: {}", api_url);
+    debug!("Payload: {:?}", payload);
+    eprintln!("Upserting with JSON: {:?}", payload);
+    let response = client.post(api_url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", bearer_token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(to_serde_json_error)?;
+
+    if response.status().is_success() {
+        let response_json: serde_json::Value = response.json().await.map_err(to_serde_json_error)?;
+        debug!("Success response: {:#?}", response_json);
+        println!("Success: {:#?}", response_json);
+    } else {
+        let error_message = format!("Failed to upsert data: Status code: {}", response.status());
+        return Err(serde_json::Error::custom(error_message));
+    }
+
+    Ok(())
+}
+
+pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
+    let client = Client::new();
+    let mut form = Form::new();
+    let mut file_paths_clone = file_paths.clone();
+
+    for file_path in file_paths {
+        let path = Path::new(file_path);
+        debug!("File path: {}", path.display());
+        let mime_type = mime_guess::from_path(path).first_or_octet_stream().essence_str().to_string(); // Convert to String here
+        debug!("MIME type: {}", mime_type);
+        let mut file = match File::open(path).await {
+            Ok(f) => f,
+            Err(e) => return Err(to_serde_json_error(e)),
+        };
+        debug!("File opened: {}", file_path);
+        let mut buffer = Vec::new();
+        if let Err(e) = file.read_to_end(&mut buffer).await {
+            return Err(to_serde_json_error(e));
+        }
+
+        let part = Part::bytes(buffer)
+            .file_name(path.file_name().unwrap().to_str().unwrap().to_owned())
+            .mime_str(&mime_type).map_err(to_serde_json_error)?; // Use a reference to the owned String
+
+        form = form.part("files", part);
+    }
+    debug!("Form: {:?}", form);
+    debug!("API URL: {}", api_url);
+    debug!("File paths: {:?}", file_paths_clone);
+    let response = client.post(api_url)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(to_serde_json_error)?;
+
+    debug!("Response: {:?}", response);
+    if !response.status().is_success() {
+        return Err(to_serde_json_error(format!("Failed to upload files: Status code: {}", response.status())));
+    }
+
+    let response_json: serde_json::Value = response.json().await.map_err(to_serde_json_error)?;
+    println!("{:#?}", response_json);
+
+    Ok(())
+}
+
+
+
+
+
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
 use std::collections::HashMap;
-use std::error::Error;
+
 use std::io::ErrorKind;
 use std::path::Path;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
+use reqwest::multipart::{Form, Part};
+use serde::de::Error;
+
 use termimad::{FmtText, MadSkin};
 use termimad::minimad::once_cell::sync::Lazy;
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
