@@ -119,6 +119,7 @@ Validate the keys you've entered by typing `amber print`
 | `AMBER_LEONARDO_AI_KINO_XL_MODEL_ID`  |                                                    |                                                      | `amber encrypt AMBER_LEONARDO_AI_KINO_XL_MODEL_ID aa77f04e-3eec-4034-9c07-d0f619684628`|
 | `AMBER_MAKE_LEONARDO_IMAGE_POST`      |                                                    |                                                      | `amber encrypt AMBER_MAKE_LEONARDO_IMAGE_POST <content>`    |
 | `AMBER_FLUENT_LANGSMITH_KEY_01`       |                                                   |  [LangSmith](https://smith.langchain.com/)                         | `amber encrypt AMBER_FLUENT_LANGSMITH_KEY_01 <content>` |
+| `AMBER_FLUENT_GITHUB_PAT_KEY_01`      |                                                    | [GitHub PAT](https://github.com/settings/tokens)     | `amber encrypt AMBER_FLUENT_GITHUB_PAT_KEY_01 <content>`   |
 
 
 FluentCLI relies on a JSON configuration file to manage the workflow specifics. Ensure that the `FLUENT_CLI_CONFIG_PATH` environment variable is set to point to your configuration file.  
