@@ -14,7 +14,7 @@ VALIDATION_CLI="fluent"
 VALIDATION_FLOWNAME="GroqLLama370b8192AgentRepoCloud"
 
 # Flow names array
-declare -a FLOWNAMES=("PerplexitySonarMediumOnlineChainRepoCloud" "PerplexitySonarSmallOnlineChainRepoCloud" "OpusXMLAgentRepoCloud" "GPT4ImageUploadRepoCloud" "GroqGemma7bAgentRepoCloud" "GroqLLama370b8192AgentRepoCloud" "HaikuXMLAgentRepoCloud" "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud")
+declare -a FLOWNAMES=("HaikuChain" "SonnetXMLAgentRepoCloud" "OpusXMLAgentRepoCloud" "GPT4ImageUploadRepoCloud" "GroqGemma7bAgentRepoCloud" "GroqLLama370b8192AgentRepoCloud" "GroqMixtral8x7bAgentRepoCloud" "PerplexitySonarSmallOnlineChainRepoCloud")
 
 # Start new log file
 echo "Starting new test session at $(date)" > "$LOG_FILE"

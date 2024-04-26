@@ -94,9 +94,9 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
-            eprintln!("Error: {:?}", e);
+            eprintln!("{:?}", e);
             if let Some(cause) = e.source() {
-                eprintln!("Caused by: {:?}", cause);
+                eprintln!("{:?}", cause);
             }
             if let Some(directory) = matches.value_of("download-media") {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
