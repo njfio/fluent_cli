@@ -18,12 +18,13 @@ use anyhow::Result;
 use colored::*; // Import the colored crate
 use colored::control::*;
 
-fn print_status(flowname: &str, new_question: &str) {
+fn print_status(flowname: &str, request: &str, new_question: &str) {
     eprintln!(
-        "{}{}Fluent:\t\t{}\nProcessing:\t{}\n{}{}",
+        "{}{}Fluent:\t\t{}\nRequest:\t{}\nContext:\n{}\n{}{}",
         "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
         "\n".normal(),
         flowname.bright_blue().bold(),
+        request.bright_blue().italic(),
         new_question.bright_green(),
         "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
         "\n".normal()
@@ -199,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Combine file contents with other forms of context if necessary
     let actual_final_context = match (final_context, file_contents.is_empty()) {
-        (Some(cli_context), false) => Some(format!("{} {}", cli_context, file_contents)),
+        (Some(cli_context), false) => Some(format!("\n{}\n{}\n", cli_context, file_contents)),
         (None, false) => Some(file_contents),
         (Some(cli_context), true) => Some(cli_context.to_string()),
         (None, true) => None,
@@ -209,7 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug!("Actual Final context: {:?}", actual_final_context);
     let new_question = if let Some(ctx) = actual_final_context {
-        format!("{}\n{}", request, ctx)  // Concatenate request and context
+        format!("\n{}\n{}\n", request, ctx)  // Concatenate request and context
     } else {
         request.to_string()  // Use request as is if no context
     };
@@ -268,7 +269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    print_status(flowname, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
+    print_status(flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");

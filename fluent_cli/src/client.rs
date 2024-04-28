@@ -486,7 +486,7 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
 
     let full_question = actual_final_context.as_ref().map_or_else(
         || question.to_string(),
-        |ctx| format!("{}\n{}", question, ctx)
+        |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
     let mut body = json!({
