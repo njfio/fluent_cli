@@ -347,9 +347,8 @@ Taking stdin as context and sending it to a Make workflow to get an image genera
 
 ```bash
 Interacts with FlowiseAI workflows
-
 USAGE:
-    fluent [OPTIONS] [ARGS]
+    fluent [OPTIONS] [--] [ARGS]
 
 ARGS:
     <flowname>    The flow name to invoke
@@ -386,8 +385,17 @@ OPTIONS:
     -u, --upload-image-path <FILE>
             Sets the input file to use
 
+        --upsert-no-upload <upsert-no-upload>
+            Sends a JSON payload to the specified endpoint without uploading files
+
+        --upsert-with-upload <FILE>...
+            Uploads a file to the specified endpoint
+
     -V, --version
             Print version information
+
+        --webhook
+            Sends the command payload to the webhook URL specified in config.json
 
     -z, --full-output
             Outputs all response data in JSON format
