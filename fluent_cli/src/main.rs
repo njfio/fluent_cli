@@ -123,11 +123,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .help("Uploads a file to the specified endpoint")
             .multiple_values(true)
             .required(false))
+        .arg(Arg::with_name("webhook")
+            .long("webhook")
+            .help("Sends the command payload to the webhook URL specified in config.json")
+            .takes_value(false))
 
 
         .get_matches();
 
-
+    let cli_args = matches.clone();
     if matches.contains_id("generate-bash-autocomplete") {
         println!("{}", generate_bash_autocomplete_script());
         return Ok(());
@@ -177,7 +181,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+
+
     let file_path = matches.value_of("upload-image-path");
+    let file_path_clone = matches.value_of("upload-image-path").clone();
 
 
     // Determine the final context from various sources
@@ -187,6 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut file = File::open(file_path).await?;
         file.read_to_string(&mut file_contents).await?;
     }
+    let file_contents_clone = file_contents.clone();
 
 
     // Combine file contents with other forms of context if necessary
@@ -197,20 +205,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (None, true) => None,
     };
     let actual_final_context_clone  = actual_final_context.clone();
+    let actual_final_context_clone2  = actual_final_context.clone();
 
     debug!("Actual Final context: {:?}", actual_final_context);
     let new_question = if let Some(ctx) = actual_final_context {
-        format!("{} {}", request, ctx)  // Concatenate request and context
+        format!("{}\n{}", request, ctx)  // Concatenate request and context
     } else {
         request.to_string()  // Use request as is if no context
     };
 
-
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
     let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
+    debug!("EnvGuard result: {:?}", env_guard_result);
 
-// Within the main function after parsing command-line arguments
+    // Within the main function after parsing command-line arguments
     if let Some(files) = matches.values_of("upsert-with-upload") {
         let file_paths: Vec<&str> = files.collect();
         debug!("Uploading files: {:?}", file_paths);
@@ -259,11 +268,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-
-
-    debug!("EnvGuard result: {:?}", env_guard_result);
-    print_status(flowname, actual_final_context_clone.as_ref().unwrap_or(&new_question).as_str());
-    let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone ).await?;
+    print_status(flowname, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
+    let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");
     handle_response(response.as_str(), &matches).await?;

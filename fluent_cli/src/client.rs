@@ -94,7 +94,6 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
-            eprintln!("{:?}", e);
             if let Some(cause) = e.source() {
                 eprintln!("{:?}", cause);
             }
@@ -226,6 +225,89 @@ pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Resul
     debug!("Response: {:?}", response);
 
     response.text().await
+}
+
+
+pub async fn process_webhook_payload(flow: &FlowConfig, request: &str, file_contents: String, context: Option<&str>, file_path: Option<&str>) -> Result<()> {
+    debug!("Processing WebhookFlow: {:?}", flow);
+
+        let client = reqwest::Client::new();
+        let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
+            env::var(&flow.bearer_token[6..]).unwrap_or_else(|_| flow.bearer_token.clone())
+        } else {
+            flow.bearer_token.clone()
+        };
+        debug!("Bearer token: {}", bearer_token);
+
+        let mut override_config = flow.override_config.clone();
+        debug!("Override config before update: {:?}", override_config);
+        replace_with_env_var(&mut override_config);
+        debug!("Override config after update: {:?}", override_config);
+
+        let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
+
+        let mut request_builder = client.post(&url);
+
+
+        let mut form = Form::new();
+        let mut file_paths_clone = file_path.clone();
+
+        for file_path_item in file_paths_clone.iter() {
+            let path = Path::new(file_path_item);
+            debug!("File path: {}", path.display());
+            let mime_type = mime_guess::from_path(path).first_or_octet_stream().essence_str().to_string(); // Convert to String here
+            debug!("MIME type: {}", mime_type);
+            let mut file = match File::open(path).await {
+                Ok(f) => f,
+                Err(e) => return Err(to_serde_json_error(e)),
+            };
+            debug!("File opened: {}", file_path_item);
+            let mut buffer = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buffer).await {
+                return Err(to_serde_json_error(e));
+            }
+
+            let part = Part::bytes(buffer)
+                .file_name(path.file_name().unwrap().to_str().unwrap().to_owned())
+                .mime_str(&mime_type).map_err(to_serde_json_error)?; // Use a reference to the owned String
+
+            form = form.part("files", part);
+        }
+
+
+        // Constructing the payload
+        let payload = json!({
+
+            "request": request,
+            "file_content": file_contents,
+            "context": context,
+            "override_config": override_config
+        });
+
+        debug!("Webhook Payload: {:?}", payload);
+        let response = request_builder
+            .header("Authorization", format!("Bearer {}", bearer_token))
+            .json(&payload)
+            .send()
+            .await;
+
+        debug!("Webhook Response: {:?}", response);
+        match response {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    debug!("Webhook payload successfully sent.");
+                } else {
+                    error!("Failed to send webhook payload: {}", resp.status());
+                    return Err(serde_json::Error::custom("Failed to send webhook payload: {}"));
+                }
+            },
+            Err(e) => {
+                error!("Failed to send request: {}", e);
+                return Err(serde_json::Error::custom("Failed to send webhook payload: {}"));
+            }
+        }
+
+    Ok(())
 }
 
 
@@ -385,6 +467,7 @@ use std::collections::HashMap;
 
 use std::io::ErrorKind;
 use std::path::Path;
+use clap::ArgMatches;
 use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
@@ -395,48 +478,48 @@ use termimad::minimad::once_cell::sync::Lazy;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 
-pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>) -> IoResult<Value> {
+pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,
+) -> IoResult<Value> {
     let mut override_config = flow.override_config.clone();
-    // Ensure override_config is up-to-date with environment variables
-    replace_with_env_var(&mut override_config);
+    replace_with_env_var(&mut override_config); // Update config with env variables
     debug!("Override config after update: {:?}", override_config);
 
-    debug!("File path: {:?}", file_path);
-    debug!("Actual final context: {:?}", actual_final_context);
-
-    let full_question = if let Some(ctx) = actual_final_context {
-        format!("{} {}", question, ctx)  // Concatenate question and context
-    } else {
-        question.to_string()  // Use question as is if no context
-    };
-    // Assuming replace_with_env_var function exists and mutates override_config appropriately
+    let full_question = actual_final_context.as_ref().map_or_else(
+        || question.to_string(),
+        |ctx| format!("{}\n{}", question, ctx)
+    );
 
     let mut body = json!({
         "question": full_question,
         "overrideConfig": override_config,
     });
 
-
-    if let Some(path) = file_path {
-
-        // Properly handle the file open result
-        let mut file = TokioFile::open(path).await?;  // Correctly use .await and propagate errors with ?
-
+    if cli_args.is_present("upload-image-path") && file_path.is_some() {
+        let path = file_path.unwrap();
+        let mut file = TokioFile::open(path).await?;
         let mut buffer = Vec::new();
-        // Use read_to_end on the file object directly
-        TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;  // Correct usage with error propagation
-
-        let encoded_image = encode(&buffer);  // Encode the buffer content to Base64
+        TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;
+        let encoded_image = encode(&buffer);
         let uploads = json!([{
             "data": format!("data:image/png;base64,{}", encoded_image),
             "type": "file",
-            "name": path.rsplit('/').next().unwrap_or("unknown"),
+            "name": Path::new(path).file_name().unwrap_or_default().to_string_lossy(),
             "mime": "image/png"
         }]);
-
         body.as_object_mut().unwrap().insert("uploads".to_string(), uploads);
+    }
+
+    if cli_args.is_present("webhook") {
+            let webhook_details = json!({
+                "question": question.to_string(),
+                "context": actual_final_context.unwrap_or_default(),
+                "file_contents": file_contents
+            });
+        // Assuming additional customization for webhook is done here
+        body.as_object_mut().unwrap().insert("webhook_details".to_string(), json!({
+            "webhook": webhook_details
+        }));
     }
 
     Ok(body)
 }
-

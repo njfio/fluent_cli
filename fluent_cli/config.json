@@ -19,22 +19,21 @@
       "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
       "repoLink": "https://github.com/FlowiseAI/Flowise/",
       "branch":  "main",
-      "chunkOverlap": 200,
+      "chunkOverlap": 300,
+      "chunkSize": 1000,
       "recursive": true,
       "maxRetries" : 3,
       "language":{
-        "codeTextSplitter_0": "rust"
+        "codeTextSplitter_0": "js"
       },
-      "pineconeIndex": "fluentcli",
       "modelName": {
         "chatOpenAI_0": "gpt-4-turbo-preview",
-        "openAIEmbeddings_1": "text-embedding-3-small"
+        "openAIEmbeddings_0": "text-embedding-3-small"
       },
       "returnSourceDocuments": true
     },
     "timeout_ms": 500000
   },
-
   {
     "name": "FluentCLIConversationalRetrivalQAChainRepoCloud",
     "protocol": "https",
@@ -45,17 +44,16 @@
     "upsert_path": "/api/v1/vector/upsert/",
     "sessionId": "",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
-
     "overrideConfig": {
       "chainName": "FluentCLIConversationalRetrivalQAChainRepoCloud",
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
-      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
       "repoLink": "https://github.com/njfio/fluent_cli/",
       "branch":  "main",
       "chunkOverlap": 200,
+      "chunkSize": 1000,
       "recursive": true,
       "maxRetries" : 3,
       "language":{
@@ -64,7 +62,7 @@
       "pineconeIndex": "fluentcli",
       "modelName": {
         "chatOpenAI_0": "gpt-4-turbo-preview",
-        "openAIEmbeddings_1": "text-embedding-3-small"
+        "openAIEmbeddings_0": "text-embedding-ada-002"
       },
       "returnSourceDocuments": true
     },
@@ -78,15 +76,12 @@
     "port": 443,
     "chat_id": "f2c53912-c4a7-46c1-a384-5b0e8e3bf615",
     "request_path": "/api/v1/prediction/",
-    "sessionId": "",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "chainName": "GPT4ImageUploadRepoCloud",
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "allowImageUploads": true,
-      "systemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.7
     },
     "timeout_ms": 500000
@@ -99,15 +94,21 @@
     "chat_id": "85e4e8b3-28c9-4405-b4d9-9ec270cbabfe",
     "request_path": "/api/v1/prediction/",
     "upsert_path": "/api/v1/vector/upsert/",
-    "sessionId": "",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
-      "chainName": "GPT4ImageUploadChain",
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "chainName": "GPT4ToolAgentWithTextFileUpsertRepoCloud",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
+      "chunkOverlap": 200,
+      "chunkSize": 1000,
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
-      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
-      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01"
+      "modelName": {
+        "chatOpenAI_0": "gpt-4-turbo-preview",
+        "openAIEmbeddings_0": "text-embedding-ada-002"
+      },
+      "name": "local_retriever",
+      "description": "local retriever",
+      "pineconeIndex": "textfiles"
     },
     "timeout_ms": 500000
   },
@@ -119,17 +120,21 @@
     "chat_id": "931b1268-561d-494d-8f37-b5f5caac4466",
     "request_path": "/api/v1/prediction/",
     "upsert_path": "/api/v1/vector/upsert/",
-    "sessionId": "",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
-      "chainName": "GPT4ToolAgentWithUpsertRepoCloud",
-      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
-      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
-      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
       "repoLink": "https://github.com/njfio/fluent_cli/",
       "branch":  "main",
+      "chunkOverlap": 200,
+      "chunkSize": 1000,
+      "chainName": "GPT4ToolAgentWithUpsertRepoCloud",
+      "openAIApiKey": {
+        "openAIEmbeddings_1": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "chatOpenAI_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
       "recursive": true,
       "maxRetries" : 3,
       "language":{
@@ -138,7 +143,7 @@
       "pineconeIndex": "fluentcli",
       "modelName": {
         "chatOpenAI_0": "gpt-4-turbo-preview",
-        "openAIEmbeddings_1": "text-embedding-3-small"
+        "openAIEmbeddings_1": "text-embedding-ada-002"
       },
       "name": "fluentcli_retriever",
       "description": "fluentcli source code retriever",
@@ -514,6 +519,27 @@
 
   {
     "name": "MakeLeonardoImagePost",
+    "protocol": "https",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
+    "request_path": "/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "alchemy": true,
+      "photoReal": true,
+      "photoRealVersion":"v2",
+      "presetStyle": "CINEMATIC",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+      "seed": ""
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "MakeLeonardoImagePostTest",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,

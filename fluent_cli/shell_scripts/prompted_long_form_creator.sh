@@ -67,7 +67,7 @@ verify_step "$outline_file" "outline"
 
 # Generate prompts
 prompts_file="$PROMPTS_PATH"
-cat "$character_map_file" "$story_arc_file" "$outline_file" | fluent "$FLOW_PROMPTS" "Generate at least 20-40 prompts that will tell this story eloquently with creativity, originality, and incredible suspension of disbelief.  Output just the prompts sequentially without numbering them" > "$prompts_file"
+cat "$character_map_file" "$story_arc_file" "$outline_file" | fluent "$FLOW_PROMPTS" "Generate at least 10-20 prompts that will tell this story eloquently with creativity, originality, and incredible suspension of disbelief.  Output just the prompts sequentially without numbering them" > "$prompts_file"
 if [ ! -s "$prompts_file" ]; then
     echo "No prompts were generated or there was an error. Exiting."
     exit 1
@@ -94,7 +94,7 @@ while IFS= read -r prompt; do
         {
            cat  $character_map_file
            tail -n 10 "$final_post_file"
-        } | fluent SonnetChain " Create a prompt that will be used to create an image for this context. The image should be in abstract art style.  Keep consistent with the provided character map and you align the theme with the provided last 10 lines in the context " | fluent MakeLeonardoImagePost " " -d /Users/n/Downloads/  >> "$final_post_file"
+        } | fluent SonnetChain " Create a prompt that will be used to create an image for this context. The image should be in abstract art style.  Keep consistent with the provided character map and you align the theme with the provided last 10 lines in the context " | fluent MakeLeonardoImagePost " " -d /Users/n/Downloads/ --webhook >> "$final_post_file"
     else
         echo "Skipped empty or whitespace-only prompt."
     fi

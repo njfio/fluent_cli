@@ -23,6 +23,8 @@ pub struct FlowConfig {
     pub override_config: Value,
     pub timeout_ms: Option<u64>,
     pub protocol: String,
+    pub webhook_url: Option<String>,
+    pub webhook_headers: Option<Value>,
 }
 
 
