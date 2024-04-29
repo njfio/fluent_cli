@@ -2,6 +2,7 @@
 
   {
     "name": "FlowiseConversationalRetrivalQAChainRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -36,6 +37,7 @@
   },
   {
     "name": "FluentCLIConversationalRetrivalQAChainRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -68,9 +70,34 @@
     },
     "timeout_ms": 500000
   },
+  {
+    "name": "LangFlowExample",
+    "engine": "langflow",
+    "protocol": "https",
+    "hostname": "njfio-langflow-preview.hf.space",
+    "port": 443,
+    "request_path": "/api/v1/run/",
+    "chat_id": "0bb3d0a9-87b0-4023-850b-62c4003e5558",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "input_value_key": "input_value",
+    "sessionId": "",
+    "output_type": "chat",
+    "input_type": "chat",
+    "overrideConfig": {
+
+    },
+    "tweaks": {
+      "Prompt-dqVZJ": {},
+      "OpenAIModel-CIM9V": {},
+      "ChatOutput-wTcXM": {},
+      "ChatInput-zRWPE": {}
+    },
+    "timeout_ms": 50000
+  },
 
   {
     "name": "GPTChainRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -97,6 +124,7 @@
   },
   {
     "name": "GPT4ImageUploadRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -114,6 +142,7 @@
   },
   {
     "name": "GPT4ToolAgentWithTextFileUpsertRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -140,6 +169,7 @@
   },
   {
     "name": "GPT4ToolAgentWithUpsertRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -179,6 +209,7 @@
   },
   {
     "name": "GPT4FunctionAgentWithMemoryAndBrowsingRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -202,6 +233,7 @@
 
   {
     "name": "PerplexitySonarMediumOnlineChainRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -224,6 +256,7 @@
   },
   {
     "name": "PerplexitySonarSmallOnlineChainRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -247,6 +280,7 @@
 
   {
     "name": "MistralLargeToolAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -266,6 +300,7 @@
 
   {
     "name": "GroqMixtral8x7bAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -286,6 +321,7 @@
   },
   {
     "name": "GroqLLama370b8192AgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -307,6 +343,7 @@
   },
   {
     "name": "GroqGemma7bAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -329,6 +366,7 @@
 
   {
     "name": "SonnetXMLAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -358,6 +396,7 @@
   },
   {
     "name": "SonnetToolAgentWithSearchAndWebRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -383,6 +422,7 @@
   },
   {
     "name": "SonnetChain",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -410,6 +450,7 @@
 
   {
     "name": "HaikuXMLAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -439,6 +480,7 @@
   },
   {
     "name": "HaikuChain",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -466,6 +508,7 @@
 
   {
     "name": "OpusXMLAgentRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -495,6 +538,7 @@
   },
   {
     "name": "OpusToolAgentWithSearchAndWebRepoCloud",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -523,6 +567,7 @@
   },
   {
     "name": "OpusChain",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
@@ -550,6 +595,7 @@
 
   {
     "name": "MakeLeonardoImagePost",
+    "engine": "webhook",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
@@ -571,6 +617,7 @@
   },
   {
     "name": "MakeLeonardoImagePostTest",
+    "engine": "webhook",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
@@ -592,6 +639,7 @@
   },
   {
     "name": "MakeShopifyAndGhostPostExample",
+    "engine": "webhook",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,

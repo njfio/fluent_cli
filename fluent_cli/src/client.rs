@@ -28,6 +28,7 @@ struct FluentCliOutput {
     pub(crate) session_id: String,
     #[serde(rename = "memoryType")]
     memory_type: Option<String>,
+
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,6 +62,107 @@ struct ResponseOutput {
     code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
     pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
 }
+
+
+// New structure to handle LangFlow output
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowOutput {
+    pub(crate) session_id: String,
+    pub(crate) outputs: Vec<LangFlowOutputDetail>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowOutputDetail {
+    pub(crate) inputs: LangFlowInput,
+    pub(crate) outputs: Vec<LangFlowResultDetail>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowInput {
+    pub(crate) input_value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowResultDetail {
+    pub(crate) results: LangFlowResult,
+    pub(crate) artifacts: Option<LangFlowArtifacts>,
+    pub(crate) messages: Vec<LangFlowMessage>,
+    #[serde(rename = "component_display_name")]
+    pub(crate) component_display_name: String,
+    #[serde(rename = "component_id")]
+    pub(crate) component_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowResult {
+    pub(crate) result: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowArtifacts {
+    pub(crate) message: String,
+    pub(crate) sender: String,
+    #[serde(rename = "sender_name")]
+    pub(crate) sender_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowMessage {
+    pub(crate) message: String,
+    pub(crate) sender: String,
+    #[serde(rename = "sender_name")]
+    pub(crate) sender_name: String,
+    #[serde(rename = "component_id")]
+    pub(crate) component_id: String,
+}
+
+// Example function to demonstrate using these structures
+pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
+    debug!("LangFlow response body: {}", response_body);
+    let result = serde_json::from_str::<LangFlowOutput>(response_body);
+    debug!("Parsed LangFlow result: {:?}", result);
+
+    match result {
+        Ok(lang_flow_output) => {
+            // Concatenate all results and messages
+            let response_text = lang_flow_output.outputs.iter()
+                .flat_map(|output| output.outputs.iter().map(|detail| detail.results.result.clone()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(&response_text); // Adjust the URL extraction as needed
+                download_media(urls, directory).await;
+            }
+
+            if matches.is_present("markdown-output") {
+                pretty_format_markdown(&response_text);
+            } else if matches.is_present("parse-code-output") {
+                let code_blocks = extract_code_blocks(&response_text);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            } else if matches.is_present("full-output") {
+                println!("{}", response_body);  // Output the full raw response
+            } else {
+                println!("{}", response_text);  // Default output
+            }
+        },
+        Err(e) => {
+            eprintln!("Error parsing LangFlow response: {:?}", e);
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(response_body); // Fallback to raw response
+                download_media(urls, directory).await;
+            }
+            println!("{}", response_body); // Print raw response if there is a parsing error
+        }
+    }
+
+    Ok(())
+}
+
+
+
 
 use serde_json::Error as SerdeError;
 
