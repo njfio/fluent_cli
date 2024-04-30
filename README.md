@@ -1,5 +1,6 @@
 
 ## Fluent CLI: Streamline Your Workflows with Precision and Ease
+[FluentCLI Gitbook](https://github.com/njfio/fluent_cli_gitbook)
 
 **Fluent CLI** is an advanced LLM/AI command-line interface designed to interact seamlessly with multiple workflow systems like FlowiseAI, Make, and Zapier. Tailored for developers, IT professionals, and power-users, Fluent CLI facilitates robust automation, simplifies complex interactions, and enhances productivity through a powerful and configurable command suite.
 
