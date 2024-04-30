@@ -20,8 +20,8 @@
       "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
       "repoLink": "https://github.com/FlowiseAI/Flowise/",
       "branch":  "main",
-      "chunkOverlap": 300,
-      "chunkSize": 1000,
+      "chunkOverlap": 500,
+      "chunkSize": 3000,
       "recursive": true,
       "maxRetries" : 3,
       "language":{
@@ -29,7 +29,7 @@
       },
       "modelName": {
         "chatOpenAI_0": "gpt-4-turbo-preview",
-        "openAIEmbeddings_0": "text-embedding-3-small"
+        "openAIEmbeddings_0": "text-embedding-3-large"
       },
       "returnSourceDocuments": true
     },
@@ -595,7 +595,7 @@
 
   {
     "name": "MakeLeonardoImagePost",
-    "engine": "webhook",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
@@ -617,7 +617,7 @@
   },
   {
     "name": "MakeLeonardoImagePostTest",
-    "engine": "webhook",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
@@ -639,7 +639,7 @@
   },
   {
     "name": "MakeShopifyAndGhostPostExample",
-    "engine": "webhook",
+    "engine": "flowise",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
