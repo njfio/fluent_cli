@@ -1,6 +1,22 @@
 [
 
   {
+    "name": "StarCoder2HuggingFaceRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "9b252777-f26f-4841-9dc2-fb9db02990e1",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "huggingFaceApiKey": "AMBER_FLUENT_HUGGINGFACE_API_KEY_01"
+    },
+    "timeout_ms": 50000
+  },
+
+  {
     "name": "FlowiseConversationalRetrivalQAChainRepoCloud",
     "engine": "flowise",
     "protocol": "https",
@@ -147,6 +163,33 @@
     "hostname": "9d81nz4o.rpcld.co",
     "port": 443,
     "chat_id": "85e4e8b3-28c9-4405-b4d9-9ec270cbabfe",
+    "request_path": "/api/v1/prediction/",
+    "upsert_path": "/api/v1/vector/upsert/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "chainName": "GPT4ToolAgentWithTextFileUpsertRepoCloud",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
+      "chunkOverlap": 200,
+      "chunkSize": 1000,
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "modelName": {
+        "chatOpenAI_0": "gpt-4-turbo-preview",
+        "openAIEmbeddings_0": "text-embedding-ada-002"
+      },
+      "name": "local_retriever",
+      "description": "local retriever",
+      "pineconeIndex": "textfiles"
+    },
+    "timeout_ms": 500000
+  },
+  {
+    "name": "GPT4ToolAgentWithCSVFileUpsert",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "48b416ed-a5df-4cc2-accd-fa7fc5126992",
     "request_path": "/api/v1/prediction/",
     "upsert_path": "/api/v1/vector/upsert/",
     "sessionId": "AMBER_FLUENT_SESSION_ID_01",

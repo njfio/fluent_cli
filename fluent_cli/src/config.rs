@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Value};
 use std::fs::File;
 use std::io::Read;
 use std::env;
@@ -112,7 +112,7 @@ impl EnvVarGuard {
         Ok(())
     }
 
-    fn set_env_var_from_amber(&mut self, env_key: &str, amber_key: &str) -> Result<(), Box<dyn Error>> {
+    fn set_env_var_from_amber(&mut self, _env_key: &str, amber_key: &str) -> Result<(), Box<dyn Error>> {
         let output = Command::new("amber")
             .args(&["print"])
             .output()?;

@@ -1,19 +1,19 @@
 use log::{debug, error};
 use std::env;
-use reqwest::{Client, multipart};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use reqwest::{Client};
+
 use serde_json::{json, Value};
-use std::time::Duration;
+
 use crate::config::{FlowConfig, replace_with_env_var};
 
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
 use tokio::fs::File;
-use tokio::io;
+
 use tokio::io::AsyncReadExt;
-use crate::client;
-use serde_yaml::to_string as to_yaml;  // Add serde_yaml to your Cargo.toml if not already included
+
+  // Add serde_yaml to your Cargo.toml if not already included
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -172,7 +172,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     let result = serde_json::from_str::<FluentCliOutput>(response_body);
     debug!("Result: {:?}", result);
     // If there's an error parsing the JSON, print the error and the raw response body
-    let response_text = match result {
+    let _response_text = match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("{:?}", parsed_output);
@@ -243,7 +243,7 @@ pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
 use reqwest;
 use tokio::io::AsyncWriteExt;
 use chrono::Local;
-use anyhow::{Context};
+
 
 // Correct definition of the function returning a Result with a boxed dynamic error
 
@@ -348,11 +348,11 @@ pub async fn process_webhook_payload(flow: &FlowConfig, request: &str, file_cont
 
         let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
 
-        let mut request_builder = client.post(&url);
+        let request_builder = client.post(&url);
 
 
         let mut form = Form::new();
-        let mut file_paths_clone = file_path.clone();
+        let file_paths_clone = file_path.clone();
 
         for file_path_item in file_paths_clone.iter() {
             let path = Path::new(file_path_item);
@@ -515,7 +515,7 @@ pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_j
 pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     let client = Client::new();
     let mut form = Form::new();
-    let mut file_paths_clone = file_paths.clone();
+    let file_paths_clone = file_paths.clone();
 
     for file_path in file_paths {
         let path = Path::new(file_path);
@@ -565,19 +565,19 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
-use std::collections::HashMap;
 
-use std::io::ErrorKind;
+
+
 use std::path::Path;
 use clap::ArgMatches;
-use pulldown_cmark::{Event, Parser, Tag};
+
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
 use serde::de::Error;
 
-use termimad::{FmtText, MadSkin};
-use termimad::minimad::once_cell::sync::Lazy;
-use tokio_util::codec::{BytesCodec, FramedRead};
+use termimad::{MadSkin};
+
+
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,

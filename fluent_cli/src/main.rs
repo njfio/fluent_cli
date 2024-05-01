@@ -1,14 +1,14 @@
 mod config;
 mod client;
 
-use ::config::Value;
-use clap::{App, Arg, Command};
+
+use clap::{Arg, Command};
 use tokio;
 
-use log::{info, warn, error, debug};
+use log::{debug};
 use env_logger;
 use tokio::fs::File;
-use tokio::io::{self, AsyncReadExt};
+use tokio::io::{AsyncReadExt};
 use crate::client::handle_response;
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
@@ -16,7 +16,7 @@ use anyhow::Result;
 
 
 use colored::*; // Import the colored crate
-use colored::control::*;
+
 use serde::de::Error;
 
 fn print_status(flowname: &str, request: &str, new_question: &str) {
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     colored::control::set_override(true);
 
     let mut configs = config::load_config()?;
-    let mut configs_clone = configs.clone();
+    let configs_clone = configs.clone();
 
     let matches = Command::new("Fluent")
         .version("0.3.0")
@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let file_path = matches.value_of("upload-image-path");
-    let file_path_clone = matches.value_of("upload-image-path").clone();
+    let _file_path_clone = matches.value_of("upload-image-path").clone();
 
 
     // Determine the final context from various sources
@@ -206,7 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Some(cli_context), true) => Some(cli_context.to_string()),
         (None, true) => None,
     };
-    let actual_final_context_clone  = actual_final_context.clone();
+    let _actual_final_context_clone  = actual_final_context.clone();
     let actual_final_context_clone2  = actual_final_context.clone();
 
     debug!("Actual Final context: {:?}", actual_final_context);
