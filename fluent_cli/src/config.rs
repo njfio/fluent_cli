@@ -21,6 +21,7 @@ pub struct FlowConfig {
     pub bearer_token: String,
     #[serde(rename = "overrideConfig")]
     pub override_config: Value,
+    pub tweaks: Value,
     pub timeout_ms: Option<u64>,
     pub protocol: String,
     pub webhook_url: Option<String>,
@@ -87,7 +88,13 @@ impl EnvVarGuard {
         // Assume overrideConfig might also have Amber encrypted keys
         self.decrypt_amber_keys_in_value(&mut flow.override_config)?;
         debug!("Decrypted keys: {:?}", self.keys);
+
+        self.decrypt_amber_keys_in_value(&mut flow.tweaks)?;
+        debug!("Decrypted keys: {:?}", self.keys);
+
         Ok(())
+
+
     }
 
     fn decrypt_amber_keys_in_value(&mut self, value: &mut Value) -> Result<(), Box<dyn Error>> {

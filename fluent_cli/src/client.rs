@@ -576,25 +576,49 @@ use reqwest::multipart::{Form, Part};
 use serde::de::Error;
 
 use termimad::{MadSkin};
-
-
+use crate::client;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,
 ) -> IoResult<Value> {
     let mut override_config = flow.override_config.clone();
+    let mut tweaks_config = flow.tweaks.clone();
+    debug!("Override config before update: {:?}", override_config);
+    debug!("Tweaks config before update: {:?}", tweaks_config);
+    replace_with_env_var(&mut tweaks_config);
     replace_with_env_var(&mut override_config); // Update config with env variables
     debug!("Override config after update: {:?}", override_config);
+    debug!("Tweaks config after update: {:?}", tweaks_config);
 
     let full_question = actual_final_context.as_ref().map_or_else(
         || question.to_string(),
         |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
-    let mut body = json!({
-        "question": full_question,
-        "overrideConfig": override_config,
-    });
+    let mut body = match flow.engine.as_str() {
+        "flowise" => {
+            serde_json::json!({
+                "question": full_question,
+                "overrideConfig": override_config,
+            })
+        },
+        "langflow" => {
+            let mut tweaks_config = flow.tweaks.clone();
+            replace_with_env_var(&mut tweaks_config);
+            serde_json::json!({
+                "question": full_question,
+                "tweaks": tweaks_config,
+            })
+        },
+        _ => {
+            serde_json::json!({
+                "question": full_question,
+                "overrideConfig": override_config,
+            })
+        }
+    };
+
+
 
     if cli_args.is_present("upload-image-path") && file_path.is_some() {
         let path = file_path.unwrap();
