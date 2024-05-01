@@ -49,6 +49,7 @@
         "chatOpenAI_0": "gpt-4-turbo-preview",
         "openAIEmbeddings_0": "text-embedding-3-large"
       },
+      "pineconeIndex": "large",
       "returnSourceDocuments": true
     },
     "tweaks": {
@@ -73,6 +74,8 @@
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
+      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
+
       "repoLink": "https://github.com/njfio/fluent_cli/",
       "branch":  "main",
       "chunkOverlap": 500,
@@ -145,28 +148,23 @@
     "overrideConfig": {
 
     },
-
     "tweaks": {
       "Prompt-SPWIv": {},
       "URL-3ptZT": {
-            "urls": {
-              "fluentcli": "https://fluentcli.com"
-            }
-      },
-      "ChatOutput-wCMub": {
+        "urls": [
+          "https://github.com/njfio/fluent_cli"
+        ]
       },
       "OpenAIModel-E1sw1": {
         "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
         "model_name": "gpt-4-turbo-preview"
       },
       "URL-iMcRn": {
-        "urls": {
-          "fluent_cli_github": "https://github.com/njfio/fluent_cli/"
-        }
+        "urls": [
+          "https://fluentcli.com"
+        ]
       },
       "ChatInput-b5wyA": {
-        "session_id": "AMBER_FLUENT_SESSION_ID_01",
-        "input_value": "Reference 1:\n\n{reference_1}\n\n---\n\nReference 2:\n\n{reference_2}\n\n---\n\n{instructions}\n\nBlog: \n\n\n"
       }
     },
     "timeout_ms": 50000

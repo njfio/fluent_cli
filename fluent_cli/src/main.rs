@@ -271,6 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let engine_type = &flow.engine;
     print_status(flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
+    debug!("Preparing Payload");
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");
