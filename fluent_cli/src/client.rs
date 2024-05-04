@@ -596,7 +596,7 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
     );
 
     let mut body = match flow.engine.as_str() {
-        "flowise" => {
+        "flowise" | "webhook" => {
             serde_json::json!({
                 "question": full_question,
                 "overrideConfig": override_config,
@@ -635,7 +635,7 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
         body.as_object_mut().unwrap().insert("uploads".to_string(), uploads);
     }
 
-    if cli_args.is_present("webhook") {
+    if flow.engine == "webhook"  {
             let webhook_details = json!({
                 "question": question.to_string(),
                 "context": actual_final_context.unwrap_or_default(),

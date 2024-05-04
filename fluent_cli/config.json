@@ -756,7 +756,7 @@
 
   {
     "name": "MakeLeonardoImagePost",
-    "engine": "flowise",
+    "engine": "webhook",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
