@@ -97,6 +97,11 @@ jobs:
         run: rustup target add $TARGET
       - name: List contents of the repository
         run: ls -la
+      - name: Print ls of working pwd
+        run: ls pwd
+      - name: set working dir
+        run:
+          working-directory: /home/runner/work/fluent_cli/fluent_cli/fluent_cli
       - name: Print current working directory
         run: pwd
       - uses: actions/checkout@v2
