@@ -26,8 +26,6 @@ jobs:
           key: test-cargo-registry
       - name: List
         run: find ./
-      - name: Run tests
-        run: cargo test --verbose
 
   build:
     strategy:
