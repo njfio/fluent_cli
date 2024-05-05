@@ -103,7 +103,7 @@ jobs:
         with:
           ref: 'main'
       - name: change path
-        run: cd fluent_cli
+        run: cd fluent_cli/fluent_cli
       - name: List contents of the repository
         run: ls -la
       - name: Run build
