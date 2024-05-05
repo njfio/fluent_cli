@@ -104,6 +104,8 @@ jobs:
           ref: 'main'
       - name: change path
         run: cd fluent_cli
+      - name: List contents of the repository
+        run: ls -la
       - name: Run build
         run: cargo build --release --verbose --target $TARGET
       - name: List target
