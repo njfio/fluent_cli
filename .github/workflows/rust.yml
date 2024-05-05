@@ -1,6 +1,5 @@
-- name: Build Rust Projects with Cross
-  uses: houseabsolute/actions-rust-cross@v0.0.12
----  
+name: Build Rust Projects with Cross
+ 
 on:
   push:
     branches: [ "main" ]
