@@ -48,7 +48,7 @@ jobs:
         run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Change to Project Directory
-         run: cd fluent_cli/
+        run: cd fluent_cli/
         
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0
@@ -57,4 +57,6 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: "--locked --release"
           strip: true
-        working-directory: fluent_cli
+        env:
+         CARGO_TARGET_DIR: fluent_cli/
+        
