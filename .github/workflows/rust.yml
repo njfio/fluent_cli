@@ -104,7 +104,7 @@ jobs:
       - name: List contents of the repository
         run: ls -la
       - name: Run build
-        run: cargo build --release --verbose --target $TARGET -manifest-path /Users/runner/work/fluent_cli/fluent_cli/Cargo.toml
+        run: cargo build --release --verbose --target $TARGET --manifest-path /Users/runner/work/fluent_cli/fluent_cli/Cargo.toml
       - name: List target
         run: find ./target
       - name: Compress
