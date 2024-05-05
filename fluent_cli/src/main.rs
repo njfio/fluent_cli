@@ -1,44 +1,57 @@
 mod config;
 mod client;
 
-use ::config::Value;
-use clap::{App, Arg, Command};
+
+use clap::{Arg, Command};
 use tokio;
 
-use log::{info, warn, error, debug};
+use log::{debug};
 use env_logger;
 use tokio::fs::File;
-use tokio::io::{self, AsyncReadExt};
-use crate::client::handle_response;
+use tokio::io::{AsyncReadExt};
+use crate::client::{generate_tick_strings, handle_response, print_full_width_bar};
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
-use anyhow::Result;
+
 
 
 use colored::*; // Import the colored crate
-use colored::control::*;
 
-fn print_status(flowname: &str, request: &str, new_question: &str) {
-    eprintln!(
-        "{}{}Fluent:\t\t{}\nRequest:\t{}\nContext:\n{}\n{}{}",
-        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
-        "\n".normal(),
+use serde::de::Error as SerdeError;
+
+use indicatif::{ProgressBar, ProgressStyle};
+use std::time::Duration;
+
+use colored::*; // Ensure the colored crate is included
+  // Ensure you've added `term_size` to your Cargo.toml
+
+
+
+fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_question: &str) {
+    spinner.set_message(format!(
+        "\n{}\t{}\n{}\t{}\n{}\n{}\n",
+
+        "Flow:  ".purple().italic(),
         flowname.bright_blue().bold(),
+        "Request:".purple().italic(),
         request.bright_blue().italic(),
+        "Context:".purple().italic(),
         new_question.bright_green(),
-        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
-        "\n".normal()
-    );
+
+    ));
 }
+use anyhow::{Context, Result};
+use crossterm::style::Stylize;
+use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     env_logger::init();
     colored::control::set_override(true);
 
-    let mut configs = config::load_config()?;
-    let mut configs_clone = configs.clone();
+    let mut configs = config::load_config().unwrap();
+    let configs_clone = configs.clone();
 
     let matches = Command::new("Fluent")
         .version("0.3.0")
@@ -139,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let flowname = matches.value_of("flowname").unwrap();
-    let flow = configs.iter_mut().find(|f| f.name == flowname).expect("Flow not found");
+    let flow = configs.iter_mut().find(|f| f.name == flowname).context("Flow not found")?;
     let flow_clone = flow.clone();
     let flow_clone2 = flow.clone();
     let flow_clone3 = flow.clone();
@@ -185,7 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let file_path = matches.value_of("upload-image-path");
-    let file_path_clone = matches.value_of("upload-image-path").clone();
+    let _file_path_clone = matches.value_of("upload-image-path").clone();
 
 
     // Determine the final context from various sources
@@ -205,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Some(cli_context), true) => Some(cli_context.to_string()),
         (None, true) => None,
     };
-    let actual_final_context_clone  = actual_final_context.clone();
+    let _actual_final_context_clone  = actual_final_context.clone();
     let actual_final_context_clone2  = actual_final_context.clone();
 
     debug!("Actual Final context: {:?}", actual_final_context);
@@ -217,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
-    let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow)?;
+    let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow).unwrap();
     debug!("EnvGuard result: {:?}", env_guard_result);
 
     // Within the main function after parsing command-line arguments
@@ -232,7 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         debug!("API URL: {}", api_url);
         // Call the upload function in the client module
         if let Err(e) = client::upload_files(&api_url, file_paths).await {
-            eprintln!("Error uploading files: {}", e);
+            eprintln!("Error uploading files: {}", e.to_string());
         }
     }
 
@@ -265,15 +278,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Use the merged override config as the payload
         if let Err(e) = client::upsert_with_json(&api_url, &flow_clone3, serde_json::json!({"overrideConfig": override_config})).await {
-            eprintln!("Error during JSON upsert: {}", e);
+            eprintln!("Error during JSON upsert: {}", e.to_string());
         }
     }
 
-    print_status(flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
+    let spinner = ProgressBar::new_spinner();
+    let tick_strings = generate_tick_strings();
+    spinner.set_style(ProgressStyle::default_spinner()
+        .tick_strings(&[
+            "",
+            "⫸ ",
+            "⫸⫸ ",
+            "⫸⫸⫸ ",
+            "⫸⫸⫸⫸ ",
+            "💛⫸⫸⫸⫸ ",
+            "⫸💛⫸⫸⫸ ",
+            "⫸⫸💛⫸⫸ ",
+            "⫸⫸⫸💛⫸ ",
+            "⫸⫸⫸⫸💛 ",
+            "⫸⫸⫸💛⫷ ",
+            "⫸⫸💛⫷⫷ ",
+            "⫸💛⫷⫷⫷ ",
+            "💛⫷⫷⫷⫷ ",
+            "⫷⫷⫷⫷ ",
+            "⫷⫷⫷ ",
+            "⫷⫷ ",
+            "⫷ ",
+            " ",
+
+        ])
+        .template("{spinner:.yellow}{msg}{spinner:.yellow}")
+        .expect("Failed to set progress style"));
+    spinner.enable_steady_tick(Duration::from_millis(300));
+
+
+    let engine_type = &flow.engine;
+    let start_time = Instant::now();
+
+    print_status(&spinner, flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
+    spinner.tick();
+    debug!("Preparing Payload");
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");
-    handle_response(response.as_str(), &matches).await?;
+
+    let duration = start_time.elapsed();
+    spinner.finish_with_message(format!(
+        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+        client::print_full_width_bar("■"),
+        "Flow: ".grey().italic(),
+        flowname.purple().italic(),
+        "Request: ".grey().italic(),
+        request.bright_blue().italic(),
+        "Duration: ".grey().italic(),
+        format!("{:.4}s", duration.as_secs_f32()).green().italic(),  // Apply bright yellow color to duration
+        client::print_full_width_bar("-")
+    ));
+
+    //spinner.finish_and_clear();
+    match engine_type.as_str() {
+        "flowise" | "webhook" => {
+            // Handle Flowise output
+            handle_response(response.as_str(), &matches).await
+        },
+        "langflow" => {
+            // Handle LangFlow output
+            client::handle_langflow_response(response.as_str(), &matches).await
+        },
+        _ => Ok({
+            // Handle default outputser);
+            serde_json::Error::custom("Unsupported engine type");
+        })
+    }.expect("TODO: panic message");
+    eprint!("\n\n{}\n\n", print_full_width_bar("■"));
+
     Ok(())
 }
 

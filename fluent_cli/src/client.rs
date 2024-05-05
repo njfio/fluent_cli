@@ -1,19 +1,19 @@
 use log::{debug, error};
 use std::env;
-use reqwest::{Client, multipart};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use reqwest::{Client};
+
 use serde_json::{json, Value};
-use std::time::Duration;
+
 use crate::config::{FlowConfig, replace_with_env_var};
 
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
 use tokio::fs::File;
-use tokio::io;
+
 use tokio::io::AsyncReadExt;
-use crate::client;
-use serde_yaml::to_string as to_yaml;  // Add serde_yaml to your Cargo.toml if not already included
+
+  // Add serde_yaml to your Cargo.toml if not already included
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,6 +28,7 @@ struct FluentCliOutput {
     pub(crate) session_id: String,
     #[serde(rename = "memoryType")]
     memory_type: Option<String>,
+
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -62,6 +63,131 @@ struct ResponseOutput {
     pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
 }
 
+
+// New structure to handle LangFlow output
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowOutput {
+    pub(crate) session_id: String,
+    pub(crate) outputs: Vec<LangFlowOutputDetail>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowOutputDetail {
+    pub(crate) inputs: LangFlowInput,
+    pub(crate) outputs: Vec<LangFlowResultDetail>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowInput {
+    pub(crate) input_value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowResultDetail {
+    pub(crate) results: LangFlowResult,
+    pub(crate) artifacts: Option<LangFlowArtifacts>,
+    pub(crate) messages: Vec<LangFlowMessage>,
+    #[serde(rename = "component_display_name")]
+    pub(crate) component_display_name: String,
+    #[serde(rename = "component_id")]
+    pub(crate) component_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowResult {
+    pub(crate) result: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowArtifacts {
+    pub(crate) message: String,
+    pub(crate) sender: String,
+    #[serde(rename = "sender_name")]
+    pub(crate) sender_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LangFlowMessage {
+    pub(crate) message: String,
+    pub(crate) sender: String,
+    #[serde(rename = "sender_name")]
+    pub(crate) sender_name: String,
+    #[serde(rename = "component_id")]
+    pub(crate) component_id: String,
+}
+
+// Example function to demonstrate using these structures
+pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
+    debug!("LangFlow response body: {}", response_body);
+    let result = serde_json::from_str::<LangFlowOutput>(response_body);
+    debug!("Parsed LangFlow result: {:?}", result);
+
+    match result {
+        Ok(lang_flow_output) => {
+            // Concatenate all results and messages
+            let response_text = lang_flow_output.outputs.iter()
+                .flat_map(|output| output.outputs.iter().map(|detail| detail.results.result.clone()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(&response_text); // Adjust the URL extraction as needed
+                download_media(urls, directory).await;
+            }
+
+            if matches.is_present("markdown-output") {
+                pretty_format_markdown(&response_text);
+            } else if matches.is_present("parse-code-output") {
+                let code_blocks = extract_code_blocks(&response_text);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            } else if matches.is_present("full-output") {
+                println!("{}", response_body);  // Output the full raw response
+            } else {
+                println!("{}", response_text);  // Default output
+            }
+        },
+        Err(e) => {
+            eprintln!("Error parsing LangFlow response: {:?}", e);
+            if let Some(directory) = matches.value_of("download-media") {
+                let urls = extract_urls(response_body); // Fallback to raw response
+                download_media(urls, directory).await;
+            }
+            println!("{}", response_body); // Print raw response if there is a parsing error
+        }
+    }
+
+    Ok(())
+}
+
+use terminal_size::{Width, terminal_size};
+
+pub fn generate_tick_strings() -> Vec<String> {
+    if let Some((Width(w), _)) = terminal_size() {
+        let total_width = w as usize;
+        let bar_length = total_width / 3;  // Calculate 33% of the terminal width
+        let mut ticks = vec![];
+        let tick_symbol = "⫸";
+        let mut current_length = 0;
+
+        while current_length < bar_length {
+            let tick = tick_symbol.repeat(current_length / 2 + 1);
+            ticks.push(tick);
+            current_length += 2;
+        }
+
+        // Add reverse order to complete the cycle
+        let mut reverse_ticks = ticks.clone();
+        reverse_ticks.reverse();
+        ticks.extend(reverse_ticks);
+        ticks
+    } else {
+        vec!["".to_string(); 20]  // Default fallback if terminal size cannot be determined
+    }
+}
+
+
 use serde_json::Error as SerdeError;
 
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
@@ -70,7 +196,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     let result = serde_json::from_str::<FluentCliOutput>(response_body);
     debug!("Result: {:?}", result);
     // If there's an error parsing the JSON, print the error and the raw response body
-    let response_text = match result {
+    let _response_text = match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("{:?}", parsed_output);
@@ -79,8 +205,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 download_media(urls, directory).await;
             }
             if matches.is_present("markdown-output") {
-                pretty_format_markdown(&parsed_output.text); // Ensure text is obtained correctly
-
+                pretty_format_markdown(&parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not
             } else if matches.is_present("parse-code-output") {
                 let code_blocks = extract_code_blocks(&parsed_output.text);
                 for block in code_blocks {
@@ -104,6 +229,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             }
             debug!("Download Response body: {}", response_body);
             println!("{}", response_body);
+            eprint!("\n\n");
             response_body.to_string();
         }
     };
@@ -119,9 +245,47 @@ fn extract_urls(text: &str) -> Vec<String> {
         .collect()
 }
 
+use term_size;
+pub fn print_full_width_bar(string: &str) -> String {
+    let buffer = 1;
+    let width = terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize).unwrap_or(80);
+    string.repeat(width).dark_yellow().to_string()
+}
+
+pub fn print_nearly_full_width_bar() -> String {
+    let total_width = terminal_size::terminal_size()
+        .map(|(terminal_size::Width(w), _)| w as usize)
+        .unwrap_or(80);  // Default to 80 if terminal size can't be determined
+
+    let bar_length = total_width * 85 / 100;  // Calculate 90% of the terminal width for the bar length
+    let padding = (total_width - bar_length) / 2; // Calculate padding to center the bar
+
+    let bar = "-".repeat(bar_length).yellow().to_string();
+    format!("{:padding$}{}{:padding$}", "", bar, "", padding = padding)
+}
+use termimad::*;
+
 fn pretty_format_markdown(markdown_content: &str) {
-    let skin = MadSkin::default(); // Assuming `termimad` is used
-    skin.print_text(markdown_content); // Render to a string
+    let mut skin = MadSkin::default(); // Assuming `termimad` is used
+    skin.bold.set_fg(crossterm::style::Color::Yellow);
+    skin.italic.set_fg(crossterm::style::Color::Blue);
+    skin.headers[0].set_fg(crossterm::style::Color::Yellow);
+   // skin.headers[0].set_bg(crossterm::style::Color::Black);
+    skin.headers[1].set_fg(crossterm::style::Color::Green);
+    //skin.headers[1].set_bg(crossterm::style::Color::Black);
+    skin.headers[2].set_fg(crossterm::style::Color::Blue);
+    //skin.inline_code.set_bg(crossterm::style::Color::Black);
+    skin.inline_code.set_fg(crossterm::style::Color::White);
+    //skin.code_block.set_bg(crossterm::style::Color::Black);
+    skin.code_block.set_fg(crossterm::style::Color::White);
+    //skin.set_bg(crossterm::style::Color::Black);
+
+    skin.paragraph.left_margin = 4;;
+    skin.paragraph.right_margin = 4;
+
+    let formatted_text = skin.print_text(markdown_content); // skin.display_markdown(&format!("\n{}\n", markdown_content))); //
+    // skin.term_text(&format!("\n{}\n", markdown_content))); //
+    formatted_text
 }
 
 fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
@@ -141,7 +305,7 @@ pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
 use reqwest;
 use tokio::io::AsyncWriteExt;
 use chrono::Local;
-use anyhow::{Context};
+
 
 // Correct definition of the function returning a Result with a boxed dynamic error
 
@@ -167,7 +331,7 @@ async fn download_media(urls: Vec<String>, directory: &str) {
                                 format!("download-{}.dat", Local::now().format("%Y%m%d%H%M%S"))
                             };
                             let filepath = Path::new(directory).join(filename);
-
+                            debug!("Downloading: {}\nto: {}\n", clean_url, filepath.display());
                             match File::create(&filepath).await {
                                 Ok(mut file) => {
                                     if let Err(e) = file.write_all(&content).await {
@@ -246,11 +410,11 @@ pub async fn process_webhook_payload(flow: &FlowConfig, request: &str, file_cont
 
         let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
 
-        let mut request_builder = client.post(&url);
+        let request_builder = client.post(&url);
 
 
         let mut form = Form::new();
-        let mut file_paths_clone = file_path.clone();
+        let file_paths_clone = file_path.clone();
 
         for file_path_item in file_paths_clone.iter() {
             let path = Path::new(file_path_item);
@@ -413,7 +577,7 @@ pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_j
 pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     let client = Client::new();
     let mut form = Form::new();
-    let mut file_paths_clone = file_paths.clone();
+    let file_paths_clone = file_paths.clone();
 
     for file_path in file_paths {
         let path = Path::new(file_path);
@@ -463,36 +627,62 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 use base64::encode;
-use std::collections::HashMap;
 
-use std::io::ErrorKind;
+
+
 use std::path::Path;
 use clap::ArgMatches;
-use pulldown_cmark::{Event, Parser, Tag};
+
+
+
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
 use serde::de::Error;
 
-use termimad::{FmtText, MadSkin};
-use termimad::minimad::once_cell::sync::Lazy;
-use tokio_util::codec::{BytesCodec, FramedRead};
+use termimad::{MadSkin};
+use termimad::crossterm::style::Stylize;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,
 ) -> IoResult<Value> {
     let mut override_config = flow.override_config.clone();
+    let mut tweaks_config = flow.tweaks.clone();
+    debug!("Override config before update: {:?}", override_config);
+    debug!("Tweaks config before update: {:?}", tweaks_config);
+    replace_with_env_var(&mut tweaks_config);
     replace_with_env_var(&mut override_config); // Update config with env variables
     debug!("Override config after update: {:?}", override_config);
+    debug!("Tweaks config after update: {:?}", tweaks_config);
 
     let full_question = actual_final_context.as_ref().map_or_else(
         || question.to_string(),
         |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
-    let mut body = json!({
-        "question": full_question,
-        "overrideConfig": override_config,
-    });
+    let mut body = match flow.engine.as_str() {
+        "flowise" | "webhook" => {
+            serde_json::json!({
+                "question": full_question,
+                "overrideConfig": override_config,
+            })
+        },
+        "langflow" => {
+            let mut tweaks_config = flow.tweaks.clone();
+            replace_with_env_var(&mut tweaks_config);
+            serde_json::json!({
+                "question": full_question,
+                "tweaks": tweaks_config,
+            })
+        },
+        _ => {
+            serde_json::json!({
+                "question": full_question,
+                "overrideConfig": override_config,
+            })
+        }
+    };
+
+
 
     if cli_args.is_present("upload-image-path") && file_path.is_some() {
         let path = file_path.unwrap();
@@ -509,7 +699,7 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
         body.as_object_mut().unwrap().insert("uploads".to_string(), uploads);
     }
 
-    if cli_args.is_present("webhook") {
+    if flow.engine == "webhook"  {
             let webhook_details = json!({
                 "question": question.to_string(),
                 "context": actual_final_context.unwrap_or_default(),
