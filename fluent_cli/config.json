@@ -1,6 +1,25 @@
 [
 
   {
+    "name": "LocalGoogleGeminiChain",
+    "engine": "flowise",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
+    "port": 3000,
+    "chat_id": "fbaa82fb-6312-4bbd-a841-bdcf2a8c2bba",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 50000
+  },
+
+  {
     "name": "StarCoder2HuggingFaceRepoCloud",
     "engine": "flowise",
     "protocol": "https",
@@ -233,17 +252,15 @@
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "chainName": "GPT4ToolAgentWithTextFileUpsertRepoCloud",
-      "pineconeApiKey": "AMBER_FLUENT_PINECONE_API_KEY_01",
-      "chunkOverlap": 200,
-      "chunkSize": 1000,
+      "chunkOverlap": 500,
+      "chunkSize": 3000,
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "modelName": {
         "chatOpenAI_0": "gpt-4-turbo-preview",
-        "openAIEmbeddings_0": "text-embedding-ada-002"
+        "openAIEmbeddings_0": "text-embedding-3-small"
       },
       "name": "local_retriever",
-      "description": "local retriever",
-      "pineconeIndex": "textfiles"
+      "description": "local retriever"
     },
     "tweaks": {
 

@@ -161,7 +161,31 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
     Ok(())
 }
 
+use terminal_size::{Width, terminal_size};
 
+pub fn generate_tick_strings() -> Vec<String> {
+    if let Some((Width(w), _)) = terminal_size() {
+        let total_width = w as usize;
+        let bar_length = total_width / 3;  // Calculate 33% of the terminal width
+        let mut ticks = vec![];
+        let tick_symbol = "⫸";
+        let mut current_length = 0;
+
+        while current_length < bar_length {
+            let tick = tick_symbol.repeat(current_length / 2 + 1);
+            ticks.push(tick);
+            current_length += 2;
+        }
+
+        // Add reverse order to complete the cycle
+        let mut reverse_ticks = ticks.clone();
+        reverse_ticks.reverse();
+        ticks.extend(reverse_ticks);
+        ticks
+    } else {
+        vec!["".to_string(); 20]  // Default fallback if terminal size cannot be determined
+    }
+}
 
 
 use serde_json::Error as SerdeError;
@@ -181,8 +205,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 download_media(urls, directory).await;
             }
             if matches.is_present("markdown-output") {
-                pretty_format_markdown(&parsed_output.text); // Ensure text is obtained correctly
-
+                pretty_format_markdown(&parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not
             } else if matches.is_present("parse-code-output") {
                 let code_blocks = extract_code_blocks(&parsed_output.text);
                 for block in code_blocks {
@@ -206,6 +229,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             }
             debug!("Download Response body: {}", response_body);
             println!("{}", response_body);
+            eprint!("\n\n");
             response_body.to_string();
         }
     };
@@ -221,9 +245,47 @@ fn extract_urls(text: &str) -> Vec<String> {
         .collect()
 }
 
+use term_size;
+pub fn print_full_width_bar(string: &str) -> String {
+    let buffer = 1;
+    let width = terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize).unwrap_or(80);
+    string.repeat(width).dark_yellow().to_string()
+}
+
+pub fn print_nearly_full_width_bar() -> String {
+    let total_width = terminal_size::terminal_size()
+        .map(|(terminal_size::Width(w), _)| w as usize)
+        .unwrap_or(80);  // Default to 80 if terminal size can't be determined
+
+    let bar_length = total_width * 85 / 100;  // Calculate 90% of the terminal width for the bar length
+    let padding = (total_width - bar_length) / 2; // Calculate padding to center the bar
+
+    let bar = "-".repeat(bar_length).yellow().to_string();
+    format!("{:padding$}{}{:padding$}", "", bar, "", padding = padding)
+}
+use termimad::*;
+
 fn pretty_format_markdown(markdown_content: &str) {
-    let skin = MadSkin::default(); // Assuming `termimad` is used
-    skin.print_text(markdown_content); // Render to a string
+    let mut skin = MadSkin::default(); // Assuming `termimad` is used
+    skin.bold.set_fg(crossterm::style::Color::Yellow);
+    skin.italic.set_fg(crossterm::style::Color::Blue);
+    skin.headers[0].set_fg(crossterm::style::Color::Yellow);
+   // skin.headers[0].set_bg(crossterm::style::Color::Black);
+    skin.headers[1].set_fg(crossterm::style::Color::Green);
+    //skin.headers[1].set_bg(crossterm::style::Color::Black);
+    skin.headers[2].set_fg(crossterm::style::Color::Blue);
+    //skin.inline_code.set_bg(crossterm::style::Color::Black);
+    skin.inline_code.set_fg(crossterm::style::Color::White);
+    //skin.code_block.set_bg(crossterm::style::Color::Black);
+    skin.code_block.set_fg(crossterm::style::Color::White);
+    //skin.set_bg(crossterm::style::Color::Black);
+
+    skin.paragraph.left_margin = 4;;
+    skin.paragraph.right_margin = 4;
+
+    let formatted_text = skin.print_text(markdown_content); // skin.display_markdown(&format!("\n{}\n", markdown_content))); //
+    // skin.term_text(&format!("\n{}\n", markdown_content))); //
+    formatted_text
 }
 
 fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
@@ -269,7 +331,7 @@ async fn download_media(urls: Vec<String>, directory: &str) {
                                 format!("download-{}.dat", Local::now().format("%Y%m%d%H%M%S"))
                             };
                             let filepath = Path::new(directory).join(filename);
-
+                            debug!("Downloading: {}\nto: {}\n", clean_url, filepath.display());
                             match File::create(&filepath).await {
                                 Ok(mut file) => {
                                     if let Err(e) = file.write_all(&content).await {
@@ -571,12 +633,14 @@ use base64::encode;
 use std::path::Path;
 use clap::ArgMatches;
 
+
+
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
 use serde::de::Error;
 
 use termimad::{MadSkin};
-use crate::client;
+use termimad::crossterm::style::Stylize;
 
 
 pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,

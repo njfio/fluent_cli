@@ -88,40 +88,40 @@ for FLOWNAME in "${FLOWNAMES[@]}"; do
         "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains the word TheLardCatFellFlatOnTheMat'"
 
     run_test "$FLOWNAME" "Combined Stdin and Additional Context Test" \
-        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline' --additional-context-file \"$OUTLINE_FILE\"" \
+        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline'' --additional-context-file \"$OUTLINE_FILE\"" \
         "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains TheLardCatFellFlatOnTheMat and talks about the word northstar or North Star'"
 
     run_test "$FLOWNAME" "Base Command Test and --system-prompt-override-inline" \
-        "$CLI_PATH $FLOWNAME 'This is a test, respond that this is a test' --system-prompt-override-inline 'You can only reply in german'" \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request is about this is a test and is in german'"
+        "$CLI_PATH $FLOWNAME 'This is a test, respond that this is a test' --system-prompt-override-inline 'You can only reply in German'" \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request is about this is a test and is in German'"
 
     run_test "$FLOWNAME" "Stdin Context Test and --system-prompt-override-inline" \
-        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context' --system-prompt-override-inline 'You can only reply in german' " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request has the word northstar or North Star and is in german'"
+        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context' --system-prompt-override-inline 'You can only reply in German' " \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request has the word northstar or North Star and is in German'"
 
     run_test "$FLOWNAME" "Additional Context File Test and --system-prompt-override-inline" \
-        "$CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-inline 'You can only reply in german' " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains the word TheLardCatFellFlatOnTheMat and is in german'"
+        "$CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-inline 'You can only reply in German' " \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains the word TheLardCatFellFlatOnTheMat and is in German'"
 
     run_test "$FLOWNAME" "Combined Stdin and Additional Context Test and --system-prompt-override-inline" \
-        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-inline 'You can only reply in german'" \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains TheLardCatFellFlatOnTheMat and talks about the word northstar or North Star and is in german'"
+        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-inline 'You can only reply in German'" \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains TheLardCatFellFlatOnTheMat and talks about the word northstar or North Star and is in German'"
 
     run_test "$FLOWNAME" "Base Command Test and --system-prompt-override-file" \
         "$CLI_PATH $FLOWNAME 'This is a test, respond that this is a test' --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request is about this is a test and is in spanish'"
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request is about this is a test and is in Spanish'"
 
     run_test "$FLOWNAME" "Stdin Context Test and --system-prompt-override-file" \
         "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context:' --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request has the word northstar or North Star and is in spanish'"
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request has the word northstar or North Star and is in Spanish'"
 
     run_test "$FLOWNAME" "Additional Context File Test and --system-prompt-override-file" \
-        "$CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains the word TheLardCatFellFlatOnTheMat and is in spanish'"
+        "$CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains the word TheLardCatFellFlatOnTheMat and is in Spanish'"
 
     run_test "$FLOWNAME" "Combined Stdin and Additional Context Test and --system-prompt-override-file" \
-        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the  outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains TheLardCatFellFlatOnTheMat and talks about the word northstar or North Star and is in spanish'"
+        "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'Repeat what I provide for context, and for the outline' --additional-context-file \"$OUTLINE_FILE\" --system-prompt-override-file \"$SYSTEM_PROMPT_FILE\" " \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL only if the request contains TheLardCatFellFlatOnTheMat and talks about the word northstar or North Star and is in Spanish'"
 
 done
 

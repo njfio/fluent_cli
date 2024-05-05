@@ -9,7 +9,7 @@ use log::{debug};
 use env_logger;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt};
-use crate::client::handle_response;
+use crate::client::{generate_tick_strings, handle_response, print_full_width_bar};
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
 
@@ -23,29 +23,25 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 use colored::*; // Ensure the colored crate is included
-use term_size;  // Ensure you've added `term_size` to your Cargo.toml
+  // Ensure you've added `term_size` to your Cargo.toml
 
-fn print_full_width_bar() -> String {
-    let buffer = 1;
-    let width = terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize).unwrap_or(80);
-    "-".repeat(width).bright_yellow().bold().to_string()
-}
 
 
 fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_question: &str) {
     spinner.set_message(format!(
-        "\n{}\n{}\t{}\n{}\t{}\n{}\n{}\n{}\n",
-        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
+        "\n{}\t{}\n{}\t{}\n{}\n{}\n",
+
         "Flow:  ".purple().italic(),
         flowname.bright_blue().bold(),
         "Request:".purple().italic(),
         request.bright_blue().italic(),
         "Context:".purple().italic(),
         new_question.bright_green(),
-        "⫸⫸⫸⫸⫸ ".bright_yellow().bold(),
+
     ));
 }
 use anyhow::{Context, Result};
+use crossterm::style::Stylize;
 use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
@@ -287,39 +283,33 @@ async fn main() -> Result<()> {
     }
 
     let spinner = ProgressBar::new_spinner();
+    let tick_strings = generate_tick_strings();
     spinner.set_style(ProgressStyle::default_spinner()
         .tick_strings(&[
-            "        ",
-            "F        ",
-            "Fl       ",
-            "Flo      ",
-            "Flow     ",
-            "Flowi    ",
-            "Flowin   ",
-            "Flowing  ",
-            "Flowing. ",
-            "Flowing..",
-            "Flowing...",
-            "Flowing....",
-            "Flowing.....",
-            "Flowing......",
-            "Flowing.....",
-            "Flowing....",
-            "Flowing...",
-            "Flowing..",
-            "Flowing.",
-            "Flowing",
-            "Flowin",
-            "Flowi",
-            "Flow",
-            "Flo",
-            "Fl",
-            "F",
-            " "
+            "",
+            "⫸ ",
+            "⫸⫸ ",
+            "⫸⫸⫸ ",
+            "⫸⫸⫸⫸ ",
+            "💛⫸⫸⫸⫸ ",
+            "⫸💛⫸⫸⫸ ",
+            "⫸⫸💛⫸⫸ ",
+            "⫸⫸⫸💛⫸ ",
+            "⫸⫸⫸⫸💛 ",
+            "⫸⫸⫸💛⫷ ",
+            "⫸⫸💛⫷⫷ ",
+            "⫸💛⫷⫷⫷ ",
+            "💛⫷⫷⫷⫷ ",
+            "⫷⫷⫷⫷ ",
+            "⫷⫷⫷ ",
+            "⫷⫷ ",
+            "⫷ ",
+            " ",
+
         ])
         .template("{spinner:.yellow}{msg}{spinner:.yellow}")
         .expect("Failed to set progress style"));
-    spinner.enable_steady_tick(Duration::from_millis(420));
+    spinner.enable_steady_tick(Duration::from_millis(300));
 
 
     let engine_type = &flow.engine;
@@ -331,14 +321,18 @@ async fn main() -> Result<()> {
     let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
     let response = crate::client::send_request(&flow, &payload).await?;
     debug!("Handling Response");
+
     let duration = start_time.elapsed();
     spinner.finish_with_message(format!(
-        "\n{}\n\tFlow:    \t{}\n\tRequest: \t{}\n\tDuration:\t{:.4?}\n{}\n\n",
-        print_full_width_bar(),
+        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+        client::print_full_width_bar("■"),
+        "Flow: ".grey().italic(),
         flowname.purple().italic(),
-        request.blue().italic(),
-        duration,
-        print_full_width_bar()
+        "Request: ".grey().italic(),
+        request.bright_blue().italic(),
+        "Duration: ".grey().italic(),
+        format!("{:.4}s", duration.as_secs_f32()).green().italic(),  // Apply bright yellow color to duration
+        client::print_full_width_bar("-")
     ));
 
     //spinner.finish_and_clear();
@@ -356,6 +350,7 @@ async fn main() -> Result<()> {
             serde_json::Error::custom("Unsupported engine type");
         })
     }.expect("TODO: panic message");
+    eprint!("\n\n{}\n\n", print_full_width_bar("■"));
 
     Ok(())
 }
