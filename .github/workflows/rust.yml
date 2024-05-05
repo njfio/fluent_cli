@@ -20,18 +20,6 @@ jobs:
             filename: precious-FreeBSD-x86_64.tar.gz
             command: build
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: precious.exe
-            filename: precious-Windows-x86_64.zip
-            command: both
-
-          - os: macOS-latest
-            target: x86_64-apple-darwin
-            bin: precious
-            filename: precious-Darwin-x86_64.tar.gz
-            command: both
-
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
