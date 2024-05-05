@@ -106,9 +106,9 @@ jobs:
       - name: Run build
         run: cargo build --release --verbose --target $TARGET --manifest-path fluent_cli/Cargo.toml
       - name: List contents of the repository
-        run: ls target/ -la
+        run: ls -lh target
       - name: List target
-        run: find target/
+        run: find target
       - name: Compress
         run: |
           mkdir -p ./artifacts
