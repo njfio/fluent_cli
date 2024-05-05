@@ -27,9 +27,6 @@ jobs:
 
       - name: Set up Cargo environment
         run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Change to Project Directory
-        run: cd fluent_cli/
         
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0
