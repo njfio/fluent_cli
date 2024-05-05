@@ -99,11 +99,8 @@ jobs:
         run: ls -la
       - name: Print current working directory
         run: pwd
-      - uses: actions/checkout@v2
-        with:
-          ref: 'main'
       - name: change path
-        run: cd fluent_cli/fluent_cli
+        run: cd fluent_cli/
       - name: List contents of the repository
         run: ls -la
       - name: Run build
