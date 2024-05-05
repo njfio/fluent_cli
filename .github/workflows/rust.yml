@@ -14,11 +14,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
-            target: x86_64-unknown-freebsd
+          - os: macOS-latest
+            target: x86_64-apple-darwin
             bin: precious
-            filename: precious-FreeBSD-x86_64.tar.gz
-            command: build
+            filename: precious-Darwin-x86_64.tar.gz
+            command: both
 
     runs-on: ${{ matrix.os }}
     steps:
