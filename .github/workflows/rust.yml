@@ -103,7 +103,7 @@ jobs:
         with:
           ref: 'main'
       - name: change path
-        run: cd /home/runner/work/fluent_cli/fluent_cli/fluent_cli/fluentcli
+        run: cd /home/runner/work/fluent_cli/fluent_cli/fluent_cli/
       - name: Run build
         run: cargo build --release --verbose --target $TARGET
       - name: List target
