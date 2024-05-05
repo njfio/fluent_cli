@@ -1,10 +1,12 @@
-name: Rust
-
+- name: Build Rust Projects with Cross
+  uses: houseabsolute/actions-rust-cross@v0.0.12
+  
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,7 +38,7 @@ jobs:
             name: precious-Darwin-x86_64.tar.gz
             command: both
 
-        
+            # more release targets here ...
 
     runs-on: ${{ matrix.platform.os }}
     steps:
