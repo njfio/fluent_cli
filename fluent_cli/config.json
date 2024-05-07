@@ -123,7 +123,7 @@
     "hostname": "njfio-langflow-preview.hf.space",
     "port": 443,
     "request_path": "/api/v1/run/",
-    "chat_id": "0bb3d0a9-87b0-4023-850b-62c4003e5558",
+    "chat_id": "b711ccd8-fc6f-4faf-acf1-bf155dd29c92?",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "input_value_key": "input_value",
     "sessionId": "",
@@ -158,7 +158,7 @@
     "hostname": "njfio-langflow-preview.hf.space",
     "port": 443,
     "request_path": "/api/v1/run/",
-    "chat_id": "c33be023-0326-49db-87b4-e52edab31006",
+    "chat_id": "7455a484-1e7d-46c9-8523-a8b1350d9784",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "input_value_key": "input_value",
     "sessionId": "",
@@ -168,26 +168,29 @@
 
     },
     "tweaks": {
-      "Prompt-SPWIv": {},
-      "URL-3ptZT": {
+      "Prompt-sU980": {},
+      "URL-m0Ust": {
         "urls": [
           "https://github.com/njfio/fluent_cli"
         ]
       },
-      "OpenAIModel-E1sw1": {
+      "OpenAIModel-xHBgn": {
         "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
         "model_name": "gpt-4-turbo-preview"
       },
-      "URL-iMcRn": {
+      "URL-cJhLd": {
         "urls": [
-          "https://fluentcli.com"
+          "https://www.fluentcli.com"
         ]
       },
-      "ChatInput-b5wyA": {
+      "TextInput-eohW7": {
+        "input_value": "Use the references above for style to write a new blog/tutorial about FluentCLI. Suggest non-covered topics."
       }
     },
     "timeout_ms": 50000
   },
+
+
   {
     "name": "GPTChainRepoCloud",
     "engine": "flowise",
@@ -368,7 +371,7 @@
   },
 
   {
-    "name": "PerplexitySonarMediumOnlineChainRepoCloud",
+    "name": "PerplexitySonarLargeOnlineChainRepoCloud",
     "engine": "flowise",
     "protocol": "https",
     "hostname": "9d81nz4o.rpcld.co",
@@ -379,7 +382,7 @@
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "overrideConfig": {
       "sessionId": "AMBER_FLUENT_SESSION_ID_01",
-      "modelName": "sonar-medium-online",
+      "modelName": "llama-3-sonar-large-32k-online",
       "openAIApiKey": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
       "allowImageUploads": false,
       "temperature": 0.9,
