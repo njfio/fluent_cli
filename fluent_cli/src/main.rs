@@ -1,29 +1,31 @@
-mod config;
 mod client;
-
+mod config;
 
 use clap::{Arg, Command};
+
 use tokio;
 
 use log::{debug};
+
 use env_logger;
+
 use tokio::fs::File;
+
 use tokio::io::{AsyncReadExt};
-use crate::client::{generate_tick_strings, handle_response, print_full_width_bar};
+
+use crate::client::{ handle_response, print_full_width_bar };
 
 use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
-
-
 
 use colored::*; // Import the colored crate
 
 use serde::de::Error as SerdeError;
 
 use indicatif::{ProgressBar, ProgressStyle};
+
 use std::time::Duration;
 
-use colored::*; // Ensure the colored crate is included
-  // Ensure you've added `term_size` to your Cargo.toml
+
 
 
 
@@ -105,6 +107,11 @@ async fn main() -> Result<()> {
             .short('g')  // Assigns a short flag
             .help("Generates a bash autocomplete script")
             .takes_value(false))
+        .arg(Arg::new("generate-fig-autocomplete")
+            .long("generate-fig-autocomplete")
+            .short('g')  // Assigns a short flag
+            .help("Generates a bash autocomplete script")
+            .takes_value(false))
         .arg(Arg::new("parse-code-output")
             .long("parse-code-output")
             .short('p')  // Assigns a short flag
@@ -137,7 +144,7 @@ async fn main() -> Result<()> {
             .help("Uploads a file to the specified endpoint")
             .multiple_values(true)
             .required(false))
-        .arg(Arg::with_name("webhook")
+        .arg(Arg::new("webhook")
             .long("webhook")
             .help("Sends the command payload to the webhook URL specified in config.json")
             .takes_value(false))
@@ -151,15 +158,16 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let flowname = matches.value_of("flowname").unwrap();
+
+    let flowname = matches.get_one::<String>("flowname").map(|s| s.as_str()).unwrap();
     let flow = configs.iter_mut().find(|f| f.name == flowname).context("Flow not found")?;
     let flow_clone = flow.clone();
     let flow_clone2 = flow.clone();
     let flow_clone3 = flow.clone();
-    let request = matches.value_of("request").unwrap();
+    let request = matches.get_one::<String>("request").map(|s| s.as_str()).unwrap();
 
     // Load context from stdin if not provided
-    let context = matches.value_of("context");
+    let context = matches.get_one::<String>("context").map(|s| s.as_str());
     let mut additional_context = String::new();
     if context.is_none() && !atty::is(atty::Stream::Stdin) {
         tokio::io::stdin().read_to_string(&mut additional_context).await?;
@@ -170,8 +178,8 @@ async fn main() -> Result<()> {
 
 
     // Load override value from CLI if specified for system prompt override, file will always win
-    let system_prompt_inline = matches.value_of("system-prompt-override-inline");
-    let system_prompt_file = matches.value_of("system-prompt-override-file");
+    let system_prompt_inline = matches.get_one::<String>("system-prompt-override-inline").map(|s| s.as_str());
+    let system_prompt_file = matches.get_one::<String>("system-prompt-override-file").map(|s| s.as_str());
     // Load override value from file if specified
     let system_message_override = if let Some(file_path) = system_prompt_file {
         let mut file = File::open(file_path).await?; // Corrected async file opening
@@ -197,12 +205,12 @@ async fn main() -> Result<()> {
     }
 
 
-    let file_path = matches.value_of("upload-image-path");
-    let _file_path_clone = matches.value_of("upload-image-path").clone();
+    let file_path = matches.get_one::<String>("upload-image-path").map(|s| s.as_str());
+    let _file_path_clone = matches.get_one::<String>("upload-image-path").map(|s| s.as_str());
 
 
     // Determine the final context from various sources
-    let file_context = matches.value_of("additional-context-file");
+    let file_context = matches.get_one::<String>("additional-context-file").map(|s| s.as_str());
     let mut file_contents = String::new();
     if let Some(file_path) = file_context {
         let mut file = File::open(file_path).await?;
@@ -234,8 +242,8 @@ async fn main() -> Result<()> {
     debug!("EnvGuard result: {:?}", env_guard_result);
 
     // Within the main function after parsing command-line arguments
-    if let Some(files) = matches.values_of("upsert-with-upload") {
-        let file_paths: Vec<&str> = files.collect();
+    if let Some(files) = matches.get_one::<String>("upsert-with-upload").map(|s| s.as_str()) {
+        let file_paths: Vec<&str> = files.split(',').collect();
         debug!("Uploading files: {:?}", file_paths);
         let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
         debug!("Flow: {:?}", flow);
@@ -249,7 +257,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    if let Some(json_str) = matches.value_of("upsert-no-upload") {
+    if let Some(json_str) = matches.get_one::<String>("upsert-no-upload").map(|s| s.as_str())  {
         let inline_json: serde_json::Value = serde_json::from_str(json_str).unwrap_or_else(|err| {
             eprintln!("Error parsing inline JSON: {}", err);
             serde_json::json!({})
@@ -283,7 +291,6 @@ async fn main() -> Result<()> {
     }
 
     let spinner = ProgressBar::new_spinner();
-    let tick_strings = generate_tick_strings();
     spinner.set_style(ProgressStyle::default_spinner()
         .tick_strings(&[
             "",

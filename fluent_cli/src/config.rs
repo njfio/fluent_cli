@@ -70,6 +70,7 @@ pub(crate) struct EnvVarGuard {
     keys: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl EnvVarGuard {
     pub fn new() -> Self {
         EnvVarGuard { keys: Vec::new() }
@@ -164,8 +165,6 @@ impl Drop for EnvVarGuard {
 }
 
 
-
-
 pub fn load_config() -> Result<Vec<FlowConfig>, Box<dyn Error>> {
     let config_path = env::var("FLUENT_CLI_CONFIG_PATH")
         .map_err(|_| "FLUENT_CLI_CONFIG_PATH environment variable is not set")?;
@@ -176,19 +175,6 @@ pub fn load_config() -> Result<Vec<FlowConfig>, Box<dyn Error>> {
 
     Ok(configs)
 }
-
-pub fn generate_json_autocomplete_script() -> String {
-    return format!(r#"
-# Assuming FLUENT_CLI_CONFIG_PATH points to a JSON file containing configuration
-autocomplete_flows() {{
-    local current_word="${{COMP_WORDS[COMP_CWORD]}}"
-    local flow_names=$(jq -r '.[].name' "$FLUENT_CLI_CONFIG_PATH")
-    COMPREPLY=($(compgen -W "${{flow_names}}" -- "$current_word"))
-}}
-complete -F autocomplete_flows fluent_cli
-"#)
-}
-
 
 
 pub fn generate_bash_autocomplete_script() -> String {

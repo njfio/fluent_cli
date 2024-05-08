@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug};
 use std::env;
 use reqwest::{Client};
 
@@ -6,18 +6,14 @@ use serde_json::{json, Value};
 
 use crate::config::{FlowConfig, replace_with_env_var};
 
-
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
 use tokio::fs::File;
 
 use tokio::io::AsyncReadExt;
 
-  // Add serde_yaml to your Cargo.toml if not already included
-
-
 #[derive(Serialize, Deserialize, Debug)]
-struct FluentCliOutput {
+pub struct FluentCliOutput {
     pub(crate) text: String,
     pub(crate) question: String,
     #[serde(rename = "chatId")]
@@ -40,7 +36,8 @@ struct Question {
 #[derive(Serialize, Deserialize)]
 struct RequestPayload {
     question: String,
-    overrideConfig: std::collections::HashMap<String, String>,
+    #[serde(rename="overrideConfig")]
+    override_config: std::collections::HashMap<String, String>,
     uploads: Option<Vec<Upload>>,
 }
 
@@ -53,6 +50,7 @@ struct Upload {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ResponseOutput {
     response_text: Option<String>,
     question: Option<String>,
@@ -130,19 +128,19 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 .collect::<Vec<String>>()
                 .join("\n");
 
-            if let Some(directory) = matches.value_of("download-media") {
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(&response_text); // Adjust the URL extraction as needed
                 download_media(urls, directory).await;
             }
 
-            if matches.is_present("markdown-output") {
+            if matches.contains_id("markdown-output") {
                 pretty_format_markdown(&response_text);
-            } else if matches.is_present("parse-code-output") {
+            } else if matches.contains_id("parse-code-output") {
                 let code_blocks = extract_code_blocks(&response_text);
                 for block in code_blocks {
                     println!("{}", block);
                 }
-            } else if matches.is_present("full-output") {
+            } else if matches.contains_id("full-output") {
                 println!("{}", response_body);  // Output the full raw response
             } else {
                 println!("{}", response_text);  // Default output
@@ -150,7 +148,7 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
         },
         Err(e) => {
             eprintln!("Error parsing LangFlow response: {:?}", e);
-            if let Some(directory) = matches.value_of("download-media") {
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Fallback to raw response
                 download_media(urls, directory).await;
             }
@@ -161,34 +159,9 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
     Ok(())
 }
 
-use terminal_size::{Width, terminal_size};
-
-pub fn generate_tick_strings() -> Vec<String> {
-    if let Some((Width(w), _)) = terminal_size() {
-        let total_width = w as usize;
-        let bar_length = total_width / 3;  // Calculate 33% of the terminal width
-        let mut ticks = vec![];
-        let tick_symbol = "⫸";
-        let mut current_length = 0;
-
-        while current_length < bar_length {
-            let tick = tick_symbol.repeat(current_length / 2 + 1);
-            ticks.push(tick);
-            current_length += 2;
-        }
-
-        // Add reverse order to complete the cycle
-        let mut reverse_ticks = ticks.clone();
-        reverse_ticks.reverse();
-        ticks.extend(reverse_ticks);
-        ticks
-    } else {
-        vec!["".to_string(); 20]  // Default fallback if terminal size cannot be determined
-    }
-}
 
 
-use serde_json::Error as SerdeError;
+
 
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     // Parse the response body, handle error properly here instead of unwrapping
@@ -200,18 +173,18 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("{:?}", parsed_output);
-            if let Some(directory) = matches.value_of("download-media") {
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 download_media(urls, directory).await;
             }
-            if matches.is_present("markdown-output") {
+            if matches.contains_id("markdown-output") {
                 pretty_format_markdown(&parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not
-            } else if matches.is_present("parse-code-output") {
+            } else if matches.contains_id("parse-code-output") {
                 let code_blocks = extract_code_blocks(&parsed_output.text);
                 for block in code_blocks {
                     println!("{}", block);
                 }
-            } else if matches.is_present("full-output") {
+            } else if matches.contains_id("full-output") {
                 println!("{}", response_body);  // Output the text used, whether parsed or raw
             } else {
                 println!("{}", parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
@@ -222,7 +195,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             if let Some(cause) = e.source() {
                 eprintln!("{:?}", cause);
             }
-            if let Some(directory) = matches.value_of("download-media") {
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 debug!("Extracted URLs: {:?}", urls);
                 download_media(urls, directory).await;
@@ -245,24 +218,12 @@ fn extract_urls(text: &str) -> Vec<String> {
         .collect()
 }
 
-use term_size;
+
 pub fn print_full_width_bar(string: &str) -> String {
-    let buffer = 1;
     let width = terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize).unwrap_or(80);
     string.repeat(width).dark_yellow().to_string()
 }
 
-pub fn print_nearly_full_width_bar() -> String {
-    let total_width = terminal_size::terminal_size()
-        .map(|(terminal_size::Width(w), _)| w as usize)
-        .unwrap_or(80);  // Default to 80 if terminal size can't be determined
-
-    let bar_length = total_width * 85 / 100;  // Calculate 90% of the terminal width for the bar length
-    let padding = (total_width - bar_length) / 2; // Calculate padding to center the bar
-
-    let bar = "-".repeat(bar_length).yellow().to_string();
-    format!("{:padding$}{}{:padding$}", "", bar, "", padding = padding)
-}
 use termimad::*;
 
 fn pretty_format_markdown(markdown_content: &str) {
@@ -280,7 +241,7 @@ fn pretty_format_markdown(markdown_content: &str) {
     skin.code_block.set_fg(crossterm::style::Color::White);
     //skin.set_bg(crossterm::style::Color::Black);
 
-    skin.paragraph.left_margin = 4;;
+    skin.paragraph.left_margin = 4;
     skin.paragraph.right_margin = 4;
 
     let formatted_text = skin.print_text(markdown_content); // skin.display_markdown(&format!("\n{}\n", markdown_content))); //
@@ -297,10 +258,6 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_fluent_cli_output(json_data: &str) -> Result<FluentCliOutput> {
-    let output: FluentCliOutput = serde_json::from_str(json_data)?;
-    Ok(output)
-}
 
 use reqwest;
 use tokio::io::AsyncWriteExt;
@@ -392,149 +349,8 @@ pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Resul
 }
 
 
-pub async fn process_webhook_payload(flow: &FlowConfig, request: &str, file_contents: String, context: Option<&str>, file_path: Option<&str>) -> Result<()> {
-    debug!("Processing WebhookFlow: {:?}", flow);
-
-        let client = reqwest::Client::new();
-        let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
-            env::var(&flow.bearer_token[6..]).unwrap_or_else(|_| flow.bearer_token.clone())
-        } else {
-            flow.bearer_token.clone()
-        };
-        debug!("Bearer token: {}", bearer_token);
-
-        let mut override_config = flow.override_config.clone();
-        debug!("Override config before update: {:?}", override_config);
-        replace_with_env_var(&mut override_config);
-        debug!("Override config after update: {:?}", override_config);
-
-        let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
-
-        let request_builder = client.post(&url);
-
-
-        let mut form = Form::new();
-        let file_paths_clone = file_path.clone();
-
-        for file_path_item in file_paths_clone.iter() {
-            let path = Path::new(file_path_item);
-            debug!("File path: {}", path.display());
-            let mime_type = mime_guess::from_path(path).first_or_octet_stream().essence_str().to_string(); // Convert to String here
-            debug!("MIME type: {}", mime_type);
-            let mut file = match File::open(path).await {
-                Ok(f) => f,
-                Err(e) => return Err(to_serde_json_error(e)),
-            };
-            debug!("File opened: {}", file_path_item);
-            let mut buffer = Vec::new();
-            if let Err(e) = file.read_to_end(&mut buffer).await {
-                return Err(to_serde_json_error(e));
-            }
-
-            let part = Part::bytes(buffer)
-                .file_name(path.file_name().unwrap().to_str().unwrap().to_owned())
-                .mime_str(&mime_type).map_err(to_serde_json_error)?; // Use a reference to the owned String
-
-            form = form.part("files", part);
-        }
-
-
-        // Constructing the payload
-        let payload = json!({
-
-            "request": request,
-            "file_content": file_contents,
-            "context": context,
-            "override_config": override_config
-        });
-
-        debug!("Webhook Payload: {:?}", payload);
-        let response = request_builder
-            .header("Authorization", format!("Bearer {}", bearer_token))
-            .json(&payload)
-            .send()
-            .await;
-
-        debug!("Webhook Response: {:?}", response);
-        match response {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    debug!("Webhook payload successfully sent.");
-                } else {
-                    error!("Failed to send webhook payload: {}", resp.status());
-                    return Err(serde_json::Error::custom("Failed to send webhook payload: {}"));
-                }
-            },
-            Err(e) => {
-                error!("Failed to send request: {}", e);
-                return Err(serde_json::Error::custom("Failed to send webhook payload: {}"));
-            }
-        }
-
-    Ok(())
-}
-
-
-pub(crate) fn build_request_payload(question: &str, context: Option<&str>) -> Value {
-    // Construct the basic question
-    let full_question = if let Some(ctx) = context {
-        format!("{} {}", question, ctx)  // Concatenate question and context
-    } else {
-        question.to_string()  // Use question as is if no context
-    };
-
-    // Start building the payload with the question
-    let mut payload = json!({
-        "question": full_question,  // Use the potentially modified question
-    });
-
-    // Add the context to the payload if it exists
-    if let Some(ctx) = context {
-        payload.as_object_mut().unwrap().insert("context".to_string(), serde_json::Value::String(ctx.to_string()));
-    }
-
-    payload
-
-}
-
-
-
-use thiserror::Error;
-use reqwest::Error as ReqwestError;
-use serde_json::Error as SerdeJsonError;
-use std::io::Error as IoError;
-
-#[derive(Error, Debug)]
-pub enum MyError {
-    #[error("Network error: {0}")]
-    Network(#[from] ReqwestError),
-
-    #[error("JSON error: {0}")]
-    Json(#[from] SerdeJsonError),
-
-    #[error("I/O error: {0}")]
-    Io(#[from] IoError),
-
-    #[error("Other error: {0}")]
-    Other(String),
-}
-
-
-
-// Function returns Result<(), serde_json::Error
-
-
 
 use std::error::Error as StdError;  // Import the StdError trait for `source` method
-
-
-
-fn to_json_error<E: std::fmt::Display>(error: E) -> SerdeError {
-    // Simulate a JSON parsing error
-    let faulty_json = format!("{{: \"{}\"", error); // Intentionally malformed JSON
-    serde_json::from_str::<Value>(&faulty_json).unwrap_err()
-}
-
 
 fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
     serde_json::Error::custom(err.to_string())
@@ -621,19 +437,11 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
 }
 
 
-
-
-
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
-use base64::encode;
-
-
 
 use std::path::Path;
 use clap::ArgMatches;
-
-
 
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
@@ -642,8 +450,9 @@ use serde::de::Error;
 use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 
-pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, file_contents: &str,
+pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, _file_contents: &str,
 ) -> IoResult<Value> {
     let mut override_config = flow.override_config.clone();
     let mut tweaks_config = flow.tweaks.clone();
@@ -683,13 +492,15 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
     };
 
 
-
-    if cli_args.is_present("upload-image-path") && file_path.is_some() {
+    if cli_args.contains_id("upload-image-path") && file_path.is_some() {
         let path = file_path.unwrap();
         let mut file = TokioFile::open(path).await?;
         let mut buffer = Vec::new();
         TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;
-        let encoded_image = encode(&buffer);
+
+        // Encoding using the STANDARD engine
+        let encoded_image = STANDARD.encode(&buffer);  // Correct use of the encode method with the STANDARD engine
+
         let uploads = json!([{
             "data": format!("data:image/png;base64,{}", encoded_image),
             "type": "file",
@@ -697,18 +508,6 @@ pub(crate) async fn prepare_payload(flow: &FlowConfig, question: &str, file_path
             "mime": "image/png"
         }]);
         body.as_object_mut().unwrap().insert("uploads".to_string(), uploads);
-    }
-
-    if flow.engine == "webhook"  {
-            let webhook_details = json!({
-                "question": question.to_string(),
-                "context": actual_final_context.unwrap_or_default(),
-                "file_contents": file_contents
-            });
-        // Assuming additional customization for webhook is done here
-        body.as_object_mut().unwrap().insert("webhook_details".to_string(), json!({
-            "webhook": webhook_details
-        }));
     }
 
     Ok(body)
