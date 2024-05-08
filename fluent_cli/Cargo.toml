@@ -10,13 +10,14 @@ serde_json = "1.0"
 reqwest = { version = "0.11", features = ["json", "blocking", "multipart", "stream"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "3.0", features = ["derive"] }
+clap_complete_fig = "3.1"
 tokio-console = "0.1" # For debugging async tasks
 config = "0.12"
 log = "0.4"
 env_logger = "0.9"
 atty = "0.2.14"
 amber = "0.2.0"
-base64 = "0.21.7"
+base64 = "0.22.1"
 infer = "0.8.0"
 pulldown-cmark = "0.9.0"
 regex = "1.10.4"

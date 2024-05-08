@@ -387,8 +387,9 @@
       "allowImageUploads": false,
       "temperature": 0.9,
       "frequencyPenalty": 0.9,
+      "systemMessage": "You are a helpful assistant",
       "openAIToolAgent_0": {
-        "systemMessage": "You are a helpful assistant"
+
       }
     },
     "tweaks": {
@@ -487,6 +488,34 @@
       "chainName": "groqChain",
       "systemMessagePrompt": "You are a helpful assistant",
       "temperature": 0.8,
+      "modelName":"llama3-70b-8192",
+      "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 500000
+  },
+  {
+    "name": "GroqLLama370bToolAgentRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "flowise.fluentcli.com",
+    "port": 443,
+    "chat_id": "19e0c3b5-d5ff-40aa-bf6a-bc6db22a7a58",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "groqApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01",
+      "chainName": "groqChain",
+      "systemMessagePrompt": "You are a helpful assistant",
+      "temperature": 0.8,
+      "openAIApiKey": {
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
       "modelName":"llama3-70b-8192",
       "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
     },
