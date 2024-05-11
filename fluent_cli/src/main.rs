@@ -1,7 +1,9 @@
 mod client;
 mod config;
 
-use clap::{Arg, Command};
+use std::io;
+use clap::{Arg, ArgAction, Command};
+
 
 use tokio;
 
@@ -15,7 +17,7 @@ use tokio::io::{AsyncReadExt};
 
 use crate::client::{ handle_response, print_full_width_bar };
 
-use crate::config::{EnvVarGuard, generate_bash_autocomplete_script, replace_with_env_var};
+use crate::config::{EnvVarGuard, replace_with_env_var};
 
 use colored::*; // Import the colored crate
 
@@ -24,6 +26,10 @@ use serde::de::Error as SerdeError;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use std::time::Duration;
+
+
+use clap_complete::generate;
+
 
 
 
@@ -43,7 +49,9 @@ fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_questi
     ));
 }
 use anyhow::{Context, Result};
+use clap_complete_fig::Fig;
 use crossterm::style::Stylize;
+
 use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
@@ -55,108 +63,136 @@ async fn main() -> Result<()> {
     let mut configs = config::load_config().unwrap();
     let configs_clone = configs.clone();
 
-    let matches = Command::new("Fluent")
-        .version("0.3.0")
+    let  mut command = Command::new("fluent")
+        .arg_required_else_help(true)
+        .allow_external_subcommands(true)
+        .bin_name("fluent")
+        .version("0.3.5")
         .author("Nicholas Ferguson <nick@njf.io>")
-        .about("Interacts with FlowiseAI and some HTTP workflows")
+        .about("Interacts with FlowiseAI, Langflow, and Webhook workflows")
         .arg(Arg::new("flowname")
+            .value_name("FLOWNAME")
+            .index(1)
             .help("The flow name to invoke")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .required_unless_present_any([
-                "generate-autocomplete",
+                "generate-fig-autocomplete",
                 "system-prompt-override-inline",
                 "system-prompt-override-file",
                 "additional-context-file"
             ]))
+
         .arg(Arg::new("request")
+            .index(2)
             .help("The request string to send")
-            .takes_value(true)
+            .action(ArgAction::Set)
             .required_unless_present_any([
-                "generate-autocomplete",
+                "generate-fig-autocomplete",
                 "system-prompt-override-inline",
                 "system-prompt-override-file",
                 "additional-context-file"
             ]))
+
         .arg(Arg::new("context")
+            .index(3)
             .short('c')  // Assigns a short flag
             .help("Optional context to include with the request")
-            .takes_value(true))
+            .action(ArgAction::Set)
+            .required(false))
+
         .arg(Arg::new("system-prompt-override-inline")
             .long("system-prompt-override-inline")
             .short('i')  // Assigns a short flag
             .help("Overrides the system message with an inline string")
-            .takes_value(true))
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
+
         .arg(Arg::new("system-prompt-override-file")
             .long("system-prompt-override-file")
             .short('f')  // Assigns a short flag
             .help("Overrides the system message from a specified file")
-            .takes_value(true))
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
+
         .arg(Arg::new("additional-context-file")
             .long("additional-context-file")
             .short('a')  // Assigns a short flag
             .help("Specifies a file from which additional request context is loaded")
-            .takes_value(true))
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
+
         .arg(Arg::new("upload-image-path")
             .long("upload-image-path")
             .short('u')  // Assigns a short flag
             .value_name("FILE")
             .help("Sets the input file to use")
-            .takes_value(true))
-        .arg(Arg::new("generate-bash-autocomplete")
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
+
+        .arg(Arg::new("generate-autocomplete")
             .long("generate-autocomplete")
-            .short('g')  // Assigns a short flag
             .help("Generates a bash autocomplete script")
-            .takes_value(false))
+            .action(ArgAction::SetTrue)
+            .required(false))
+
         .arg(Arg::new("generate-fig-autocomplete")
             .long("generate-fig-autocomplete")
-            .short('g')  // Assigns a short flag
-            .help("Generates a bash autocomplete script")
-            .takes_value(false))
+            .default_value("false")
+            .help("Generates a fig autocomplete script")
+            .action(ArgAction::SetTrue))
+
         .arg(Arg::new("parse-code-output")
             .long("parse-code-output")
             .short('p')  // Assigns a short flag
             .help("Extracts and displays only the code blocks from the response")
-            .takes_value(false))
+            .action(ArgAction::SetTrue))
+
         .arg(Arg::new("full-output")
             .long("full-output")
             .short('z')  // Assigns a short flag
             .help("Outputs all response data in JSON format")
-            .takes_value(false))
+            .action(ArgAction::SetTrue))
+
         .arg(Arg::new("markdown-output")
             .long("markdown-output")
             .short('m')  // Assigns a short flag
             .help("Outputs the response to the terminal in stylized markdown. Do not use for pipelines")
-            .takes_value(false))
+            .action(ArgAction::SetTrue))
+
         .arg(Arg::new("download-media")
             .long("download-media")
             .short('d')  // Assigns a short flag
             .help("Downloads all media files listed in the output to a specified directory")
-            .takes_value(true)
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false)
             .value_name("DIRECTORY"))
+
         .arg(Arg::new("upsert-no-upload")
             .long("upsert-no-upload")
             .help("Sends a JSON payload to the specified endpoint without uploading files")
-            .takes_value(true)
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
+
         .arg(Arg::new("upsert-with-upload")
             .long("upsert-with-upload")
             .value_name("FILE")
             .help("Uploads a file to the specified endpoint")
-            .multiple_values(true)
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
+
         .arg(Arg::new("webhook")
             .long("webhook")
             .help("Sends the command payload to the webhook URL specified in config.json")
-            .takes_value(false))
+            .action(ArgAction::SetTrue));
 
-
-        .get_matches();
-
-    let cli_args = matches.clone();
-    if matches.contains_id("generate-bash-autocomplete") {
-        println!("{}", generate_bash_autocomplete_script());
+ // Assuming build_cli() properly constructs a clap::Command
+    if std::env::args().any(|arg| arg == "--generate-fig-autocomplete") {
+        generate(Fig, &mut command, "fluent", &mut io::stdout());
         return Ok(());
     }
+
+    let matches = &command.get_matches();
+    let cli_args = matches.clone();
 
 
     let flowname = matches.get_one::<String>("flowname").map(|s| s.as_str()).unwrap();
