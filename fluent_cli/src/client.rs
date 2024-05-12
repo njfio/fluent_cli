@@ -469,7 +469,7 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
     );
 
     let mut body = match flow.engine.as_str() {
-        "flowise" | "webhook" => {
+        "flowise" => {
             serde_json::json!({
                 "question": full_question,
                 "overrideConfig": override_config,
@@ -481,6 +481,14 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
             serde_json::json!({
                 "question": full_question,
                 "tweaks": tweaks_config,
+            })
+        },
+        "webhook" => {
+            serde_json::json!({
+                "question": full_question,
+                "context": actual_final_context,
+                "file_contents": _file_contents,
+                "overrideConfig": override_config,
             })
         },
         _ => {
