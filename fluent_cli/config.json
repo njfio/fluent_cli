@@ -116,6 +116,7 @@
     },
     "timeout_ms": 500000
   },
+
   {
     "name": "LangFlowExample",
     "engine": "langflow",
@@ -134,23 +135,23 @@
     },
 
     "tweaks": {
-      "Prompt-dqVZJ": {
-        "template": "you are a helpful assistant"
+      "Prompt-PbKIE": {
+        "template": "you are a bunny rabbit",
+        "user_input": "give me some markdown syntax examples"
       },
-      "OpenAIModel-CIM9V": {
+      "OpenAIModel-Wnn5j": {
         "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
         "model_name": "gpt-4-turbo-preview"
       },
-      "ChatOutput-wTcXM": {
+      "ChatOutput-6PVYx": {
         "session_id": "AMBER_FLUENT_SESSION_ID_01"
       },
-      "ChatInput-zRWPE": {
+      "ChatInput-6JYUL": {
         "session_id": "AMBER_FLUENT_SESSION_ID_01"
       }
     },
     "timeout_ms": 50000
   },
-
   {
     "name": "LangFlowBlogWriterExample",
     "engine": "langflow",

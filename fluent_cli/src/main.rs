@@ -2,8 +2,8 @@ mod client;
 mod config;
 
 use std::io;
-use clap::{Arg, ArgAction, Command};
 
+use clap::{Arg, ArgAction, ColorChoice, Command};
 
 use tokio;
 
@@ -29,9 +29,6 @@ use std::time::Duration;
 
 
 use clap_complete::generate;
-
-
-
 
 
 
@@ -70,16 +67,14 @@ async fn main() -> Result<()> {
         .version("0.3.5")
         .author("Nicholas Ferguson <nick@njf.io>")
         .about("Interacts with FlowiseAI, Langflow, and Webhook workflows")
+        .color(ColorChoice::Auto)
         .arg(Arg::new("flowname")
-            .value_name("FLOWNAME")
+            .value_name("flowname")
             .index(1)
-            .help("The flow name to invoke")
+            .help("The flowname to invoke")
             .action(ArgAction::Set)
             .required_unless_present_any([
                 "generate-fig-autocomplete",
-                "system-prompt-override-inline",
-                "system-prompt-override-file",
-                "additional-context-file"
             ]))
 
         .arg(Arg::new("request")
@@ -88,9 +83,6 @@ async fn main() -> Result<()> {
             .action(ArgAction::Set)
             .required_unless_present_any([
                 "generate-fig-autocomplete",
-                "system-prompt-override-inline",
-                "system-prompt-override-file",
-                "additional-context-file"
             ]))
 
         .arg(Arg::new("context")
@@ -110,6 +102,7 @@ async fn main() -> Result<()> {
         .arg(Arg::new("system-prompt-override-file")
             .long("system-prompt-override-file")
             .short('f')  // Assigns a short flag
+            .value_hint(clap::ValueHint::FilePath)
             .help("Overrides the system message from a specified file")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
@@ -119,12 +112,14 @@ async fn main() -> Result<()> {
             .short('a')  // Assigns a short flag
             .help("Specifies a file from which additional request context is loaded")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .value_hint(clap::ValueHint::FilePath)
             .required(false))
 
         .arg(Arg::new("upload-image-path")
             .long("upload-image-path")
             .short('u')  // Assigns a short flag
-            .value_name("FILE")
+            .value_hint(clap::ValueHint::FilePath)
+            .value_name("FilePath")
             .help("Sets the input file to use")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
@@ -137,7 +132,6 @@ async fn main() -> Result<()> {
 
         .arg(Arg::new("generate-fig-autocomplete")
             .long("generate-fig-autocomplete")
-            .default_value("false")
             .help("Generates a fig autocomplete script")
             .action(ArgAction::SetTrue))
 
@@ -165,6 +159,7 @@ async fn main() -> Result<()> {
             .help("Downloads all media files listed in the output to a specified directory")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false)
+            .value_hint(clap::ValueHint::DirPath)
             .value_name("DIRECTORY"))
 
         .arg(Arg::new("upsert-no-upload")
@@ -176,6 +171,7 @@ async fn main() -> Result<()> {
         .arg(Arg::new("upsert-with-upload")
             .long("upsert-with-upload")
             .value_name("FILE")
+            .value_hint(clap::ValueHint::FilePath)
             .help("Uploads a file to the specified endpoint")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
@@ -183,7 +179,8 @@ async fn main() -> Result<()> {
         .arg(Arg::new("webhook")
             .long("webhook")
             .help("Sends the command payload to the webhook URL specified in config.json")
-            .action(ArgAction::SetTrue));
+            .action(ArgAction::SetTrue)
+            .required(false));
 
  // Assuming build_cli() properly constructs a clap::Command
     if std::env::args().any(|arg| arg == "--generate-fig-autocomplete") {
@@ -192,8 +189,8 @@ async fn main() -> Result<()> {
     }
 
     let matches = &command.get_matches();
-    let cli_args = matches.clone();
 
+    let cli_args = matches.clone();
 
     let flowname = matches.get_one::<String>("flowname").map(|s| s.as_str()).unwrap();
     let flow = configs.iter_mut().find(|f| f.name == flowname).context("Flow not found")?;

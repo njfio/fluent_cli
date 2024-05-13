@@ -51,6 +51,7 @@ struct Upload {
 
 #[derive(Debug)]
 #[allow(dead_code)]
+#[derive(Serialize, Deserialize)]
 struct ResponseOutput {
     response_text: Option<String>,
     question: Option<String>,
@@ -133,16 +134,19 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 download_media(urls, directory).await;
             }
 
-            if matches.contains_id("markdown-output") {
+            if let Some(_markdown) = matches.get_one::<bool>("markdown-output") {
                 pretty_format_markdown(&response_text);
-            } else if matches.contains_id("parse-code-output") {
+            } else if let Some(_parse_code) = matches.get_one::<bool>("parse-code-output") {
                 let code_blocks = extract_code_blocks(&response_text);
                 for block in code_blocks {
                     println!("{}", block);
                 }
-            } else if matches.contains_id("full-output") {
+            } else if let Some(_full_output) = matches.get_one::<bool>("full-output") {
                 println!("{}", response_body);  // Output the full raw response
-            } else {
+            } else if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+
                 println!("{}", response_text);  // Default output
             }
         },
@@ -172,22 +176,34 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     let _response_text = match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
-            debug!("{:?}", parsed_output);
+            debug!("Parsed Output:{:?}", parsed_output);
+
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 download_media(urls, directory).await;
-            }
-            if matches.contains_id("markdown-output") {
-                pretty_format_markdown(&parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not
-            } else if matches.contains_id("parse-code-output") {
-                let code_blocks = extract_code_blocks(&parsed_output.text);
-                for block in code_blocks {
-                    println!("{}", block);
+            } else if let Some(markdown) = matches.get_one::<bool>("markdown-output") {
+                if *markdown {
+                    debug!("markdown");
+                    pretty_format_markdown(&parsed_output.text);
                 }
-            } else if matches.contains_id("full-output") {
-                println!("{}", response_body);  // Output the text used, whether parsed or raw
-            } else {
-                println!("{}", parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
+            } else if let Some(parse_code) = matches.get_one::<bool>("parse-code-output") {
+                if *parse_code {
+                    debug!("parse code");
+                    let code_blocks = extract_code_blocks(&parsed_output.text);
+                    for block in code_blocks {
+                        println!("{}", block);
+                    }
+                }
+            } else if let Some(full_output) = matches.get_one::<bool>("full-output") {
+                if *full_output {
+                    debug!("full output");
+                    println!("{}", response_body);  // Output the text used, whether parsed or raw
+                }
+            } else if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("default");
+                println!("{}", &parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
             }
         },
         Err(e) => {
@@ -468,22 +484,68 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
         |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
+    let full_question_clone = full_question.clone();
+
+    debug!("Engine: {}", flow.engine);
     let mut body = match flow.engine.as_str() {
         "flowise" => {
+
+            let system_prompt_inline = cli_args.get_one::<String>("system-prompt-override-inline").map(|s| s.as_str());
+            let system_prompt_file = cli_args.get_one::<String>("system-prompt-override-file").map(|s| s.as_str());
+            // Load override value from file if specified
+            let system_message_override = if let Some(file_path) = system_prompt_file {
+                let mut file = File::open(file_path).await?; // Corrected async file opening
+                let mut contents = String::new();
+                file.read_to_string(&mut contents).await?; // Read file content asynchronously
+                Some(contents)
+            } else {
+                system_prompt_inline.map(|s| s.to_string())
+            };
+
+
+            // Update the configuration with the override if it exists
+            // Update the configuration based on what's present in the overrideConfig
+            let mut flow_clone = flow.clone();
+            if let Some(override_value) = system_message_override {
+                if let Some(obj) = flow_clone.override_config.as_object_mut() {
+                    if obj.contains_key("systemMessage") {
+                        obj.insert("systemMessage".to_string(), serde_json::Value::String(override_value.to_string()));
+                    }
+                    if obj.contains_key("systemMessagePrompt") {
+                        obj.insert("systemMessagePrompt".to_string(), serde_json::Value::String(override_value.to_string()));
+                    }
+                }
+            }
+
+
+            debug!("Flowise Engine");
             serde_json::json!({
                 "question": full_question,
                 "overrideConfig": override_config,
             })
         },
         "langflow" => {
+            debug!("Langflow Engine");
             let mut tweaks_config = flow.tweaks.clone();
+            debug!("Tweaks config before update: {:?}", tweaks_config);
             replace_with_env_var(&mut tweaks_config);
+
+            let mut flow_clone = flow.clone();
+
+            if let Some(obj) = flow_clone.tweaks.as_object_mut() {
+                if obj.contains_key("user_input") {
+                    obj.insert("user_input".to_string(), serde_json::Value::String(full_question_clone));
+                }
+            }
+
+            debug!("Tweaks config after update: {:?}", tweaks_config);
             serde_json::json!({
-                "question": full_question,
+                "input_value": full_question,
                 "tweaks": tweaks_config,
             })
         },
         "webhook" => {
+            debug!("Webhook Engine");
             serde_json::json!({
                 "question": full_question,
                 "context": actual_final_context,
@@ -492,6 +554,7 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
             })
         },
         _ => {
+            debug!("Unknown engine: {}", flow.engine);
             serde_json::json!({
                 "question": full_question,
                 "overrideConfig": override_config,
@@ -499,7 +562,7 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
         }
     };
 
-
+    debug!("Body: {:?}", body);
     if cli_args.contains_id("upload-image-path") && file_path.is_some() {
         let path = file_path.unwrap();
         let mut file = TokioFile::open(path).await?;
