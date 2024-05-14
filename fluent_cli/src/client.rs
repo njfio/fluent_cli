@@ -134,16 +134,28 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 download_media(urls, directory).await;
             }
 
-            if let Some(_markdown) = matches.get_one::<bool>("markdown-output") {
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 pretty_format_markdown(&response_text);
-            } else if let Some(_parse_code) = matches.get_one::<bool>("parse-code-output") {
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 let code_blocks = extract_code_blocks(&response_text);
                 for block in code_blocks {
                     println!("{}", block);
                 }
-            } else if let Some(_full_output) = matches.get_one::<bool>("full-output") {
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                    !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                    matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 println!("{}", response_body);  // Output the full raw response
-            } else if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
 
@@ -181,31 +193,41 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 download_media(urls, directory).await;
-            } else if let Some(markdown) = matches.get_one::<bool>("markdown-output") {
-                if *markdown {
-                    debug!("markdown");
-                    pretty_format_markdown(&parsed_output.text);
+            }
+
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("markdown");
+                pretty_format_markdown(&parsed_output.text);
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("parse code");
+                let code_blocks = extract_code_blocks(&parsed_output.text);
+                for block in code_blocks {
+                    println!("{}", block);
                 }
-            } else if let Some(parse_code) = matches.get_one::<bool>("parse-code-output") {
-                if *parse_code {
-                    debug!("parse code");
-                    let code_blocks = extract_code_blocks(&parsed_output.text);
-                    for block in code_blocks {
-                        println!("{}", block);
-                    }
-                }
-            } else if let Some(full_output) = matches.get_one::<bool>("full-output") {
-                if *full_output {
-                    debug!("full output");
-                    println!("{}", response_body);  // Output the text used, whether parsed or raw
-                }
-            } else if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);  // Output the text used, whether parsed or raw
+            }
+
+            if  !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 debug!("default");
                 println!("{}", &parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
             }
-        },
+
+            },
+
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
             if let Some(cause) = e.source() {
@@ -485,6 +507,7 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
     );
 
     let full_question_clone = full_question.clone();
+    let full_question_clone2 = full_question.clone();
 
     debug!("Engine: {}", flow.engine);
     let mut body = match flow.engine.as_str() {
@@ -535,6 +558,9 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
             if let Some(obj) = flow_clone.tweaks.as_object_mut() {
                 if obj.contains_key("user_input") {
                     obj.insert("user_input".to_string(), serde_json::Value::String(full_question_clone));
+                }
+                if obj.contains_key("input_value") {
+                    obj.insert("user_input".to_string(), serde_json::Value::String(full_question_clone2));
                 }
             }
 

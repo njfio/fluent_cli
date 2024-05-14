@@ -133,10 +133,9 @@
     "overrideConfig": {
 
     },
-
     "tweaks": {
       "Prompt-PbKIE": {
-        "template": "you are a bunny rabbit",
+        "template": "you are a helpful assistant",
         "user_input": "give me some markdown syntax examples"
       },
       "OpenAIModel-Wnn5j": {
@@ -147,6 +146,7 @@
         "session_id": "AMBER_FLUENT_SESSION_ID_01"
       },
       "ChatInput-6JYUL": {
+        "input_value": "",
         "session_id": "AMBER_FLUENT_SESSION_ID_01"
       }
     },
@@ -498,12 +498,12 @@
     "timeout_ms": 500000
   },
   {
-    "name": "GroqLLama370bToolAgentRepoCloud",
+    "name": "GroqLLama38bToolAgentRepoCloud",
     "engine": "flowise",
     "protocol": "https",
     "hostname": "flowise.fluentcli.com",
     "port": 443,
-    "chat_id": "19e0c3b5-d5ff-40aa-bf6a-bc6db22a7a58",
+    "chat_id": "e526c370-8c7c-4193-bd72-4fe660228a86",
     "request_path": "/api/v1/prediction/",
     "sessionId": "",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
@@ -517,7 +517,7 @@
       "openAIApiKey": {
         "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
       },
-      "modelName":"llama3-70b-8192",
+      "modelName":"llama3-8b-8192",
       "memoryKey": "AMBER_FLUENT_SESSION_ID_01"
     },
     "tweaks": {

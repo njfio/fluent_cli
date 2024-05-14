@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         .arg_required_else_help(true)
         .allow_external_subcommands(true)
         .bin_name("fluent")
-        .version("0.3.5")
+        .version("0.3.5.6")
         .author("Nicholas Ferguson <nick@njf.io>")
         .about("Interacts with FlowiseAI, Langflow, and Webhook workflows")
         .color(ColorChoice::Auto)
@@ -73,7 +73,8 @@ async fn main() -> Result<()> {
             .index(1)
             .help("The flowname to invoke")
             .action(ArgAction::Set)
-            .required_unless_present_any([
+            .requires("request")
+             .required_unless_present_any([
                 "generate-fig-autocomplete",
             ]))
 
@@ -81,14 +82,14 @@ async fn main() -> Result<()> {
             .index(2)
             .help("The request string to send")
             .action(ArgAction::Set)
+            .value_parser(clap::builder::NonEmptyStringValueParser::new())
+            .requires("flowname")
             .required_unless_present_any([
                 "generate-fig-autocomplete",
             ]))
 
         .arg(Arg::new("context")
-            .index(3)
-            .short('c')  // Assigns a short flag
-            .help("Optional context to include with the request")
+            .help("Optional context to include with the request, prefer to <stdin>")
             .action(ArgAction::Set)
             .required(false))
 
@@ -128,28 +129,32 @@ async fn main() -> Result<()> {
             .long("generate-autocomplete")
             .help("Generates a bash autocomplete script")
             .action(ArgAction::SetTrue)
-            .required(false))
+             .exclusive(true))
 
         .arg(Arg::new("generate-fig-autocomplete")
             .long("generate-fig-autocomplete")
             .help("Generates a fig autocomplete script")
+            .exclusive(true)
             .action(ArgAction::SetTrue))
 
         .arg(Arg::new("parse-code-output")
             .long("parse-code-output")
             .short('p')  // Assigns a short flag
             .help("Extracts and displays only the code blocks from the response")
+            .conflicts_with_all(["full-output", "markdown-output"])
             .action(ArgAction::SetTrue))
 
         .arg(Arg::new("full-output")
             .long("full-output")
             .short('z')  // Assigns a short flag
             .help("Outputs all response data in JSON format")
+            .conflicts_with_all(["parse-code-output", "markdown-output"])
             .action(ArgAction::SetTrue))
 
         .arg(Arg::new("markdown-output")
             .long("markdown-output")
             .short('m')  // Assigns a short flag
+            .conflicts_with_all(["full-output", "parse-code-output"])
             .help("Outputs the response to the terminal in stylized markdown. Do not use for pipelines")
             .action(ArgAction::SetTrue))
 

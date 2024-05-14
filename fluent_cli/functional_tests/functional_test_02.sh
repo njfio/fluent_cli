@@ -81,15 +81,15 @@ for FLOWNAME in "${FLOWNAMES[@]}"; do
 
     run_test "$FLOWNAME" "Stdin Context Test" \
         "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'This is a test, what is the context'" \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL the request is this is a test and about the northstar'"
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL the request is this is a test the word northstar'"
 
     run_test "$FLOWNAME" "Additional Context File Test" \
-        "$CLI_PATH $FLOWNAME 'This is a test, what is the outline  the outline ' --additional-context-file \"$OUTLINE_FILE\"" \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL if it includes the word TheLardCatFellFlatOnTheMat and  the word northstar or North Star'"
+        "$CLI_PATH $FLOWNAME 'This is a test, what is the outline  ' --additional-context-file \"$OUTLINE_FILE\"" \
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL if it includes the word TheLardCatFellFlatOnTheMat and  the word northstar'"
 
     run_test "$FLOWNAME" "Combined Stdin and Additional Context Test" \
         "cat \"$CONTEXT_FILE\" | $CLI_PATH $FLOWNAME 'This is a test, what is the context and the outline ' --additional-context-file \"$OUTLINE_FILE\"" \
-        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL if it includes the word northstar and the word TheLardCatFellFlatOnTheMat'"
+        "$VALIDATION_CLI $VALIDATION_FLOWNAME 'Answer PASS or FAIL if the request includes context: northstar and outline: TheLardCatFellFlatOnTheMat '"
 
     run_test "$FLOWNAME" "Base Command Test and --system-prompt-override-inline" \
         "$CLI_PATH $FLOWNAME 'This is a test, respond that this is a test' --system-prompt-override-inline 'You can only reply in German'" \
