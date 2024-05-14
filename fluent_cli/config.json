@@ -222,7 +222,32 @@
     "timeout_ms": 50000
   },
 
+  {
+    "name": "GPT4oToolAgentRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "e7f3499e-7c1d-4638-a92f-f2951d0515d0",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "stripNewLines": true,
+      "modelName": {
+        "chatOpenAICustom_0": "gpt-4o"
+      },
+      "openAIApiKey": {
+        "chatOpenAICustom_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "systemMessagePrompt": "you are a helpful assistant",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01"
+    },
+    "tweaks": {
 
+    },
+    "timeout_ms": 50000
+  },
   {
     "name": "GPTChainRepoCloud",
     "engine": "flowise",

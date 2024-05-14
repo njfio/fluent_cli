@@ -185,7 +185,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     let result = serde_json::from_str::<FluentCliOutput>(response_body);
     debug!("Result: {:?}", result);
     // If there's an error parsing the JSON, print the error and the raw response body
-    let _response_text = match result {
+    match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("Parsed Output:{:?}", parsed_output);
@@ -282,9 +282,7 @@ fn pretty_format_markdown(markdown_content: &str) {
     skin.paragraph.left_margin = 4;
     skin.paragraph.right_margin = 4;
 
-    let formatted_text = skin.print_text(markdown_content); // skin.display_markdown(&format!("\n{}\n", markdown_content))); //
-    // skin.term_text(&format!("\n{}\n", markdown_content))); //
-    formatted_text
+     skin.print_text(markdown_content);
 }
 
 fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
@@ -297,7 +295,6 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
 }
 
 
-use reqwest;
 use tokio::io::AsyncWriteExt;
 use chrono::Local;
 

@@ -95,7 +95,6 @@ impl EnvVarGuard {
 
         Ok(())
 
-
     }
 
     fn decrypt_amber_keys_in_value(&mut self, value: &mut Value) -> Result<(), Box<dyn Error>> {
@@ -106,9 +105,9 @@ impl EnvVarGuard {
                 debug!("Decrypting key: {}, value: {:?}", key, val);
                 if let Some(str_val) = val.as_str() {
                     debug!("Decrypting str_val: {}", str_val);
-                    if str_val.starts_with("AMBER_") {
+                    if let Some(str_val)= str_val.strip_prefix("AMBER_") {
                         debug!("Decrypting str_val: {}", str_val);
-                        self.set_env_var_from_amber(key, &str_val[6..])?;
+                        self.set_env_var_from_amber(key, str_val)?;
                         debug!("Decrypted key: {}, value: {:?}", key, val);
                     }
                 } else {
@@ -122,7 +121,7 @@ impl EnvVarGuard {
 
     fn set_env_var_from_amber(&mut self, _env_key: &str, amber_key: &str) -> Result<(), Box<dyn Error>> {
         let output = Command::new("amber")
-            .args(&["print"])
+            .args(["print"])
             .output()?;
         debug!("Output of 'amber print {}': {}", amber_key, str::from_utf8(&output.stdout)?);
 

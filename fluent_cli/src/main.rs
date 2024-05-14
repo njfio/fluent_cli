@@ -5,11 +5,7 @@ use std::io;
 
 use clap::{Arg, ArgAction, ColorChoice, Command};
 
-use tokio;
-
 use log::{debug};
-
-use env_logger;
 
 use tokio::fs::File;
 
@@ -45,7 +41,7 @@ fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_questi
 
     ));
 }
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use clap_complete_fig::Fig;
 use crossterm::style::Stylize;
 
@@ -270,8 +266,8 @@ async fn main() -> Result<()> {
 
     // Decrypt the keys in the flow config
     let mut env_guard = EnvVarGuard::new();
-    let env_guard_result = env_guard.decrypt_amber_keys_for_flow(flow).unwrap();
-    debug!("EnvGuard result: {:?}", env_guard_result);
+    env_guard.decrypt_amber_keys_for_flow(flow).unwrap();
+    //debug!("EnvGuard result: {:?}", env_guard_result);
 
     // Within the main function after parsing command-line arguments
     if let Some(files) = matches.get_one::<String>("upsert-with-upload").map(|s| s.as_str()) {
@@ -285,7 +281,7 @@ async fn main() -> Result<()> {
         debug!("API URL: {}", api_url);
         // Call the upload function in the client module
         if let Err(e) = client::upload_files(&api_url, file_paths).await {
-            eprintln!("Error uploading files: {}", e.to_string());
+            eprintln!("Error uploading files: {}", e);
         }
     }
 
@@ -318,7 +314,7 @@ async fn main() -> Result<()> {
 
         // Use the merged override config as the payload
         if let Err(e) = client::upsert_with_json(&api_url, &flow_clone3, serde_json::json!({"overrideConfig": override_config})).await {
-            eprintln!("Error during JSON upsert: {}", e.to_string());
+            eprintln!("Error during JSON upsert: {}", e);
         }
     }
 
@@ -357,8 +353,8 @@ async fn main() -> Result<()> {
     print_status(&spinner, flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
     spinner.tick();
     debug!("Preparing Payload");
-    let payload = crate::client::prepare_payload(&flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
-    let response = crate::client::send_request(&flow, &payload).await?;
+    let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone ).await?;
+    let response = crate::client::send_request(flow, &payload).await?;
     debug!("Handling Response");
 
     let duration = start_time.elapsed();
@@ -378,19 +374,18 @@ async fn main() -> Result<()> {
     match engine_type.as_str() {
         "flowise" | "webhook" => {
             // Handle Flowise output
-            handle_response(response.as_str(), &matches).await
+            handle_response(response.as_str(), matches).await
         },
         "langflow" => {
             // Handle LangFlow output
-            client::handle_langflow_response(response.as_str(), &matches).await
+            client::handle_langflow_response(response.as_str(), matches).await
         },
-        _ => Ok({
-            // Handle default outputser);
-            serde_json::Error::custom("Unsupported engine type");
-        })
+        _ => {
+                // Handle default output);
+                return Err(Error::from(serde_json::Error::custom("Unsupported engine type")));
+        }
     }.expect("TODO: panic message");
-    eprint!("\n\n{}\n\n", print_full_width_bar("■"));
-
+        eprint!("\n\n{}\n\n", print_full_width_bar("■"));
     Ok(())
 }
 
