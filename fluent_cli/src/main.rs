@@ -113,7 +113,6 @@ async fn main() -> Result<()> {
         .arg(Arg::new("upsert-no-upload")
             .long("upsert-no-upload")
             .help("Sends a JSON payload to the specified endpoint without uploading files")
-            .default_value("{}")
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
 
