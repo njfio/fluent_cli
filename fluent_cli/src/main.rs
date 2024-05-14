@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
         .arg(Arg::new("flowname")
             .value_name("flowname")
             .index(1)
-            .help("The flowname to invoke")
+            .help("The flow name to invoke")
             .action(ArgAction::Set)
             .requires("request")
              .required_unless_present_any([
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
 
         .arg(Arg::new("request")
             .index(2)
-            .help("The request string to send")
+            .help("The request to send the workflow")
             .action(ArgAction::Set)
             .value_parser(clap::builder::NonEmptyStringValueParser::new())
             .requires("flowname")
@@ -89,23 +89,8 @@ async fn main() -> Result<()> {
             ]))
 
         .arg(Arg::new("context")
-            .help("Optional context to include with the request, prefer to <stdin>")
+            .help("Optional context provided through <stdin>")
             .action(ArgAction::Set)
-            .required(false))
-
-        .arg(Arg::new("system-prompt-override-inline")
-            .long("system-prompt-override-inline")
-            .short('i')  // Assigns a short flag
-            .help("Overrides the system message with an inline string")
-            .action(ArgAction::Set)  // Use Append if multiple values may be provided
-            .required(false))
-
-        .arg(Arg::new("system-prompt-override-file")
-            .long("system-prompt-override-file")
-            .short('f')  // Assigns a short flag
-            .value_hint(clap::ValueHint::FilePath)
-            .help("Overrides the system message from a specified file")
-            .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
 
         .arg(Arg::new("additional-context-file")
@@ -125,31 +110,35 @@ async fn main() -> Result<()> {
             .action(ArgAction::Set)  // Use Append if multiple values may be provided
             .required(false))
 
-        .arg(Arg::new("generate-autocomplete")
-            .long("generate-autocomplete")
-            .help("Generates a bash autocomplete script")
-            .action(ArgAction::SetTrue)
-             .exclusive(true))
+        .arg(Arg::new("upsert-no-upload")
+            .long("upsert-no-upload")
+            .help("Sends a JSON payload to the specified endpoint without uploading files")
+            .default_value("{}")
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
 
-        .arg(Arg::new("generate-fig-autocomplete")
-            .long("generate-fig-autocomplete")
-            .help("Generates a fig autocomplete script")
-            .exclusive(true)
-            .action(ArgAction::SetTrue))
+        .arg(Arg::new("upsert-with-upload")
+            .long("upsert-with-upload")
+            .value_name("FILE")
+            .value_hint(clap::ValueHint::FilePath)
+            .help("Uploads a file to the specified endpoint")
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
 
-        .arg(Arg::new("parse-code-output")
-            .long("parse-code-output")
-            .short('p')  // Assigns a short flag
-            .help("Extracts and displays only the code blocks from the response")
-            .conflicts_with_all(["full-output", "markdown-output"])
-            .action(ArgAction::SetTrue))
+        .arg(Arg::new("system-prompt-override-inline")
+            .long("system-prompt-override-inline")
+            .short('i')  // Assigns a short flag
+            .help("Overrides the system message with an inline string")
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
 
-        .arg(Arg::new("full-output")
-            .long("full-output")
-            .short('z')  // Assigns a short flag
-            .help("Outputs all response data in JSON format")
-            .conflicts_with_all(["parse-code-output", "markdown-output"])
-            .action(ArgAction::SetTrue))
+        .arg(Arg::new("system-prompt-override-file")
+            .long("system-prompt-override-file")
+            .short('f')  // Assigns a short flag
+            .value_hint(clap::ValueHint::FilePath)
+            .help("Overrides the system message from a specified file")
+            .action(ArgAction::Set)  // Use Append if multiple values may be provided
+            .required(false))
 
         .arg(Arg::new("markdown-output")
             .long("markdown-output")
@@ -167,25 +156,31 @@ async fn main() -> Result<()> {
             .value_hint(clap::ValueHint::DirPath)
             .value_name("DIRECTORY"))
 
-        .arg(Arg::new("upsert-no-upload")
-            .long("upsert-no-upload")
-            .help("Sends a JSON payload to the specified endpoint without uploading files")
-            .action(ArgAction::Set)  // Use Append if multiple values may be provided
-            .required(false))
+        .arg(Arg::new("parse-code-output")
+            .long("parse-code-output")
+            .short('p')  // Assigns a short flag
+            .help("Extracts and displays only the code blocks from the response")
+            .conflicts_with_all(["full-output", "markdown-output"])
+            .action(ArgAction::SetTrue))
 
-        .arg(Arg::new("upsert-with-upload")
-            .long("upsert-with-upload")
-            .value_name("FILE")
-            .value_hint(clap::ValueHint::FilePath)
-            .help("Uploads a file to the specified endpoint")
-            .action(ArgAction::Set)  // Use Append if multiple values may be provided
-            .required(false))
+        .arg(Arg::new("full-output")
+            .long("full-output")
+            .short('z')  // Assigns a short flag
+            .help("Outputs all response data in JSON format")
+            .conflicts_with_all(["parse-code-output", "markdown-output"])
+            .action(ArgAction::SetTrue))
 
-        .arg(Arg::new("webhook")
-            .long("webhook")
-            .help("Sends the command payload to the webhook URL specified in config.json")
+        .arg(Arg::new("generate-autocomplete")
+            .long("generate-autocomplete")
+            .help("Generates a bash autocomplete script")
             .action(ArgAction::SetTrue)
-            .required(false));
+            .exclusive(true))
+
+        .arg(Arg::new("generate-fig-autocomplete")
+            .long("generate-fig-autocomplete")
+            .help("Generates a fig autocomplete script")
+            .exclusive(true)
+            .action(ArgAction::SetTrue));
 
  // Assuming build_cli() properly constructs a clap::Command
     if std::env::args().any(|arg| arg == "--generate-fig-autocomplete") {

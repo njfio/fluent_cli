@@ -48,7 +48,7 @@ run_test() {
     echo -e "${GREEN}Test Number $test_number: Testing $test_id for Flow: $flowname${NC}" | tee -a "$LOG_FILE"
     echo -e "${BOLD}-------------------------------------------------------------------------------------------------${NC}" | tee -a "$LOG_FILE"
 
-    local test_output=$(eval "$command" | tee -a "$LOG_FILE" | tee /dev/tty | eval "$validation_command")
+    local test_output=$(eval "$command" | tee -a "$LOG_FILE" | tee | eval "$validation_command")
     local result=$(echo "$test_output" | grep -oE "PASS|FAIL")
 
     local test_end_time=$(date +%s)  # End time for this test

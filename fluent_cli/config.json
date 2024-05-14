@@ -191,6 +191,37 @@
     "timeout_ms": 50000
   },
 
+  {
+    "name": "CohereChainRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "36b556a8-1ce4-4735-ad21-dcc3cda95a2f",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "stripNewLines": true,
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "modelName": {
+        "chatAnthropic_0": "claude-3-sonnet-20240229",
+        "chatOpenAI_0": "gpt-3.5-turbo-16k",
+        "openAIEmbeddings_0": "text-embedding-3-small"
+      },
+      "openAIApiKey": {
+        "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "chatOpenAI_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "systemMessagePrompt": "you are a helpful assistant",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01"
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 50000
+  },
+
 
   {
     "name": "GPTChainRepoCloud",
