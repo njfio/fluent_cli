@@ -18,3 +18,4 @@ Cargo.lock
 .idea/modules.xml
 .idea/workspace.xml
 fluent_cli/.DS_Store
+fluent_cli/available_fields_cache.json
