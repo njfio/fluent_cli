@@ -404,7 +404,8 @@ pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_j
     let client = reqwest::Client::new();
     debug!("Sending to URL: {}", api_url);
     debug!("Payload: {:?}", payload);
-    eprintln!("Upserting with JSON: {:?}", payload);
+    eprintln!("Upserting.....");
+    debug!("Upserting with JSON: {:?}", payload);
     let response = client.post(api_url)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", bearer_token))
@@ -416,7 +417,7 @@ pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_j
     if response.status().is_success() {
         let response_json: serde_json::Value = response.json().await.map_err(to_serde_json_error)?;
         debug!("Success response: {:#?}", response_json);
-        println!("Success: {:#?}", response_json);
+        eprintln!("Success: {:#?}", response_json);
     } else {
         let error_message = format!("Failed to upsert data: Status code: {}", response.status());
         return Err(serde_json::Error::custom(error_message));
@@ -503,8 +504,7 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
         |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
-    let full_question_clone = full_question.clone();
-    let full_question_clone2 = full_question.clone();
+
 
     debug!("Engine: {}", flow.engine);
     let mut body = match flow.engine.as_str() {
@@ -550,20 +550,11 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
             debug!("Tweaks config before update: {:?}", tweaks_config);
             replace_with_env_var(&mut tweaks_config);
 
-            let mut flow_clone = flow.clone();
-
-            if let Some(obj) = flow_clone.tweaks.as_object_mut() {
-                if obj.contains_key("user_input") {
-                    obj.insert("user_input".to_string(), serde_json::Value::String(full_question_clone));
-                }
-                if obj.contains_key("input_value") {
-                    obj.insert("user_input".to_string(), serde_json::Value::String(full_question_clone2));
-                }
-            }
-
             debug!("Tweaks config after update: {:?}", tweaks_config);
             serde_json::json!({
                 "input_value": full_question,
+                "input_type": flow.input_type,
+                "output_type:": flow.output_type,
                 "tweaks": tweaks_config,
             })
         },
