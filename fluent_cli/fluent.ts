@@ -20,6 +20,7 @@ const completion: Fig.Spec = {
               name: name,
               description: "Flow name",
               icon: "🫠",
+              insertValue: `${name} "{cursor}"`
             };
           });
         },
@@ -32,7 +33,7 @@ const completion: Fig.Spec = {
       isCommand: false,
       isOptional: false,
       isVariadic: true,
-      default: "{cursor}",
+      default: "{cursor}", // Ensure cursor is positioned correctly inside quotes
     },
   ],
   options: [
@@ -184,7 +185,7 @@ const completion: Fig.Spec = {
             return [
               "jq",
               "-r",
-              `map(select(.name == "${flowName}") | .overrideConfig | paths(scalars) as $p | ($p | map(tostring) | join("."))) | .[]`,
+              `map(select(.name == "${flowName}") | {overrideConfig: .overrideConfig, tweaks: .tweaks} | .[] | paths(scalars) as $p | ($p | map(tostring) | join("."))) | .[]`,
               "/Users/n/RustroverProjects/fluent_cli/fluent_cli/config.json"
             ];
           },
@@ -192,7 +193,7 @@ const completion: Fig.Spec = {
             return out.split('\n').filter(Boolean).map((key) => {
               return {
                 name: key,
-                description: "Config key",
+                description: "Config or tweak key",
                 icon: "🔧",
               };
             });
