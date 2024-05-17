@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
         .arg(Arg::new("upsert-no-upload")
             .long("upsert-no-upload")
             .help("Sends a JSON payload to the specified endpoint without uploading files")
-            .action(ArgAction::Set)
+            .action(ArgAction::SetTrue)
             .required(false))
         .arg(Arg::new("upsert-with-upload")
             .long("upsert-with-upload")
@@ -273,30 +273,65 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Handle upsert with no upload
-    if let Some(json_str) = matches.get_one::<String>("upsert-no-upload").map(|s| s.as_str()) {
-        let inline_json: serde_json::Value = serde_json::from_str(json_str).unwrap_or_else(|err| {
-            eprintln!("Error parsing inline JSON: {}", err);
-            serde_json::json!({})
-        });
 
+
+    let mut override_config = flow.override_config.clone();
+    let mut tweaks_config = flow.tweaks.clone(); // Assuming flow has a tweaks field
+
+    if let Some(overrides) = matches.get_many::<String>("override") {
+        let overrides: HashMap<String, String> = overrides
+            .map(|s| parse_key_value_pair(s).unwrap())
+            .collect();
+
+        for (key, value) in overrides {
+            // Split the key into parts
+            let key_parts: Vec<&str> = key.split('.').collect();
+
+            if key_parts.len() == 1 {
+                // Update override_config
+                if let Some(obj) = override_config.as_object_mut() {
+                    if obj.contains_key(&key) {
+                        obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+                    }
+                }
+
+                // Update tweaks_config (top-level keys)
+                if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
+                    for (_, tweak) in tweaks_obj.iter_mut() {
+                        if let Some(tweak_obj) = tweak.as_object_mut() {
+                            if tweak_obj.contains_key(&key) {
+                                tweak_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Handle nested keys for tweaks_config
+                if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
+                    if let Some(tweak) = tweaks_obj.get_mut(key_parts[0]) {
+                        if let Some(tweak_obj) = tweak.as_object_mut() {
+                            tweak_obj.insert(key_parts[1].to_string(), serde_json::Value::String(value.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        flow.override_config = override_config.clone();
+        flow.tweaks = tweaks_config.clone(); // Update the flow's tweaks
+    }
+
+    // Handle upsert with no upload
+    if matches.get_flag("upsert-no-upload") {
         let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
 
-        let mut override_config = flow.override_config.clone();
         debug!("Override config before update: {:?}", override_config);
         replace_with_env_var(&mut override_config);
         debug!("Override config after update: {:?}", override_config);
 
-        debug!("Override config: {:?}", override_config);
-        // Merge inline JSON with the existing override config
-        if let serde_json::Value::Object(ref mut base) = override_config {
-            if let serde_json::Value::Object(additional) = inline_json {
-                for (key, value) in additional {
-                    base.insert(key, value);
-                }
-            }
-        }
-        debug!("Merged override config: {:?}", override_config);
+        debug!("Tweaks config before update: {:?}", tweaks_config);
+        replace_with_env_var(&mut tweaks_config);
+        debug!("Tweaks config after update: {:?}", tweaks_config);
 
         let api_url = format!(
             "{}://{}:{}{}{}",
@@ -304,29 +339,17 @@ async fn main() -> Result<()> {
         );
         debug!("API URL: {}", api_url);
 
-        // Use the merged override config as the payload
-        if let Err(e) = client::upsert_with_json(&api_url, &flow_clone3, serde_json::json!({"overrideConfig": override_config})).await {
+        // Use the merged override config and tweaks as the payload
+        let payload = serde_json::json!({
+            "overrideConfig": override_config,
+            "tweaks": tweaks_config
+        });
+
+        if let Err(e) = client::upsert_with_json(&api_url, &flow_clone3, payload).await {
             eprintln!("Error during JSON upsert: {}", e);
         }
     }
 
-    // Handle inline overrides
-    if let Some(overrides) = matches.get_many::<String>("override") {
-        let mut override_config = flow.override_config.clone();
-        let overrides: HashMap<String, String> = overrides
-            .map(|s| parse_key_value_pair(s).unwrap())
-            .collect();
-
-        for (key, value) in overrides {
-            if let Some(obj) = override_config.as_object_mut() {
-                if obj.contains_key(&key) {
-                    obj.insert(key, serde_json::Value::String(value));
-                }
-            }
-        }
-
-        flow.override_config = override_config;
-    }
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(

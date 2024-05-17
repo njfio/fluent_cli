@@ -172,21 +172,60 @@
       "Prompt-sU980": {},
       "URL-m0Ust": {
         "urls": [
-          "https://github.com/njfio/fluent_cli"
+          ""
         ]
       },
+      "ChatOutput-804eN": {
+        "system_message": "You are a helpful assistant"
+      },
       "OpenAIModel-xHBgn": {
-        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
-        "model_name": "gpt-4-turbo-preview"
+        "model_kwargs": {}
       },
       "URL-cJhLd": {
         "urls": [
-          "https://www.fluentcli.com"
+          ""
         ]
       },
       "TextInput-eohW7": {
-        "input_value": "Use the references above for style to write a new blog/tutorial about FluentCLI. Suggest non-covered topics."
+        "record_template": ""
       }
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "LangFlowChainOfThoughtExample",
+    "engine": "langflow",
+    "protocol": "https",
+    "hostname": "njfio-langflow-preview.hf.space",
+    "port": 443,
+    "request_path": "/api/v1/run/",
+    "chat_id": "2f224ad7-3579-4e4b-8964-18678fd2ee01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "input_value_key": "input_value",
+    "input_value": "message",
+    "sessionId": "",
+    "output_type": "chat",
+    "input_type": "chat",
+    "overrideConfig": {
+
+    },
+    "tweaks": {
+      "Prompt-DoqBg": {
+      },
+      "ChatOutput-g2gga": {},
+      "OpenAIModel-WvjnV": {
+        "model_kwargs": {},
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "TextInput-0pH93": {
+        "input_value": "message"
+      },
+      "Prompt-xiPZp": {
+      },
+      "OpenAIModel-dCDLX": {
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "ChatOutput-mBx2g": {}
     },
     "timeout_ms": 50000
   },
@@ -872,14 +911,12 @@
     "sessionId": "",
     "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
     "overrideConfig": {
-      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
-      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
-      "alchemy": true,
-      "photoReal": true,
-      "photoRealVersion":"v2",
-      "presetStyle": "",
-      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
-      "seed": ""
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
     },
     "tweaks": {
 

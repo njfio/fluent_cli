@@ -27,6 +27,9 @@ pub struct FlowConfig {
     pub webhook_url: Option<String>,
     pub webhook_headers: Option<Value>,
     pub engine: String,
+    pub input_type: Option<String>,
+    pub output_type: Option<String>,
+    pub input_value: Option<String>,
 }
 
 
