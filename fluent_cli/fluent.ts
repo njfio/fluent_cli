@@ -1,3 +1,5 @@
+const BASEPATH = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/";
+
 const completion: Fig.Spec = {
   name: "fluent",
   description: "Interacts with FlowiseAI, Langflow, and Webhook workflows",
@@ -13,7 +15,7 @@ const completion: Fig.Spec = {
       isScript: false,
       isOptional: false,
       generators: {
-        script: ["jq", "-r", '.[].name', "/Users/n/RustroverProjects/fluent_cli/fluent_cli/config.json"],
+        script: ["jq", "-r", '.[].name', `${BASEPATH}config.json`],
         postProcess: (out: string) => {
           return out.split('\n').filter(Boolean).map((name) => {
             return {
@@ -186,7 +188,7 @@ const completion: Fig.Spec = {
               "jq",
               "-r",
               `map(select(.name == "${flowName}") | {overrideConfig: .overrideConfig, tweaks: .tweaks} | .[] | paths(scalars) as $p | ($p | map(tostring) | join("."))) | .[]`,
-              "/Users/n/RustroverProjects/fluent_cli/fluent_cli/config.json"
+              `${BASEPATH}config.json`
             ];
           },
           postProcess: (out: string) => {
