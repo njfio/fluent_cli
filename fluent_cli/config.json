@@ -116,6 +116,44 @@
     },
     "timeout_ms": 500000
   },
+  {
+    "name": "FluentCLIAstraRetrivalQAChainRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "9d81nz4o.rpcld.co",
+    "port": 443,
+    "chat_id": "e976497f-7fa6-40b0-a879-ed1b49ffd4bc",
+    "request_path": "/api/v1/prediction/",
+    "upsert_path": "/api/v1/vector/upsert/",
+    "sessionId": "",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "returnSourceDocuments": true,
+      "chainName": "FluentCLIAstraRetrivalQAChainRepoCloud",
+      "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
+      "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
+
+
+      "repoLink": "https://github.com/njfio/fluent_cli/",
+      "branch":  "main",
+      "recursive": true,
+      "maxRetries" : 3,
+      "language":{
+
+      },
+
+      "modelName": {
+        "chatOpenAI_0": "gpt-4o",
+        "openAIEmbeddings_0": "text-embedding-ada-002"
+      }
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 500000
+  },
 
   {
     "name": "LangFlowExample",

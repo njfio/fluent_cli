@@ -14,18 +14,48 @@ use tokio::io::AsyncReadExt;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FluentCliOutput {
-    pub(crate) text: String,
-    pub(crate) question: String,
+    pub text: String,
+    pub question: String,
     #[serde(rename = "chatId")]
-    pub(crate) chat_id: String,
+    pub chat_id: String,
     #[serde(rename = "chatMessageId")]
-    chat_message_id: String,
+    pub chat_message_id: String,
     #[serde(rename = "sessionId")]
-    pub(crate) session_id: String,
+    pub session_id: String,
     #[serde(rename = "memoryType")]
-    memory_type: Option<String>,
-
+    pub memory_type: Option<String>,
+    #[serde(rename = "sourceDocuments")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_documents: Option<Vec<SourceDocument>>,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SourceDocument {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_content: Option<String>,
+    pub metadata: Metadata,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Metadata {
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>, // Make repository optional
+    pub branch: String,
+    pub loc: Location,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Location {
+    pub lines: Lines,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Lines {
+    pub from: i32,
+    pub to: i32,
+}
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Question {
@@ -58,8 +88,9 @@ struct ResponseOutput {
     chat_id: Option<String>,
     session_id: Option<String>,
     memory_type: Option<String>,
-    code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
-    pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
+    code_blocks: Option<Vec<String>>,
+    pretty_text: Option<String>,
+    source: Option<String>,
 }
 
 
@@ -198,8 +229,28 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                debug!("markdown");
                 pretty_format_markdown(&parsed_output.text);
+                if let Some(documents) = &parsed_output.source_documents {
+                    pretty_format_markdown("\n---\n");
+                    pretty_format_markdown("\n\n# Source Documents\n");
+                    pretty_format_markdown("\n---\n");
+                    for doc in documents { // Visual separator for each document
+                        let markdown_link = format!(
+                            "[View Source]({}/blob/{}/{}#L{}-L{})",
+                            doc.metadata.repository.as_ref().unwrap_or(&"".to_string()),
+                            doc.metadata.branch,
+                            doc.metadata.source,
+                            doc.metadata.loc.lines.from,
+                            doc.metadata.loc.lines.to
+                        );
+                        pretty_format_markdown(&markdown_link);
+                        match &doc.page_content {
+                            Some(content) if !content.is_empty() => pretty_format_markdown("**Page Content:**\n{content}"),
+                            _ => pretty_format_markdown("**Page Content:**\nNo content available"),
+                        }
+                    }
+                    pretty_format_markdown("---\n");
+                }
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
@@ -297,11 +348,6 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
 
 use tokio::io::AsyncWriteExt;
 use chrono::Local;
-
-
-// Correct definition of the function returning a Result with a boxed dynamic error
-
-
 
 async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
