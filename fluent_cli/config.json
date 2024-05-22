@@ -18,6 +18,79 @@
     },
     "timeout_ms": 50000
   },
+  {
+  "name": "LocalGoogleFlashChain",
+  "engine": "flowise",
+  "protocol": "http",
+  "hostname": "127.0.0.1",
+  "port": 3000,
+  "chat_id": "fbaa82fb-6312-4bbd-a841-bdcf2a8c2bba",
+  "request_path": "/api/v1/prediction/",
+  "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+  "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+  "overrideConfig": {
+    "modelName": "gemini-1.5-flash-latest"
+  },
+  "tweaks": {
+
+  },
+  "timeout_ms": 50000
+},
+
+  {
+    "name": "LocalGPT4SupervisorWorkerFlow",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "flowise.fluentcli.com",
+    "port": 443,
+    "chat_id": "57ead6df-627f-45c9-948a-9bc2b19e6a2e",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "stripNewLines": true,
+      "modelName": {
+        "chatOpenAICustom_0": "gpt-4o"
+      },
+      "openAIApiKey": {
+        "chatOpenAICustom_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "temperature": 0,
+      "systemMessage": "you are a helpful assistant",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01"
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "GPT4SupervisorWorkerBrowserAndGitHubFlowRepoCloud",
+    "engine": "flowise",
+    "protocol": "https",
+    "hostname": "flowise.fluentcli.com",
+    "port": 443,
+    "chat_id": "d170e885-f0d6-42f1-b27f-8fe6c579ac64",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+      "stripNewLines": true,
+      "modelName": {
+        "chatOpenAICustom_0": "gpt-4o"
+      },
+      "openAIApiKey": {
+        "chatOpenAICustom_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+      },
+      "temperature": 0,
+      "systemMessage": "you are a helpful assistant",
+      "serpApiKey": "AMBER_FLUENT_SERPAPI_KEY_01"
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 500000
+  },
 
   {
     "name": "StarCoder2HuggingFaceRepoCloud",
@@ -135,19 +208,43 @@
       "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01",
       "accessToken": "AMBER_FLUENT_GITHUB_PAT_KEY_01",
 
-
       "repoLink": "https://github.com/njfio/fluent_cli/",
       "branch":  "main",
       "recursive": true,
       "maxRetries" : 3,
       "language":{
-
       },
-
       "modelName": {
         "chatOpenAI_0": "gpt-4o",
         "openAIEmbeddings_0": "text-embedding-ada-002"
-      }
+      },
+
+      "applicationToken": "AMBER_ASTRA_LANGFLOW_APP_TOKEN",
+      "dbEndPoint": "https://ee12d7de-4703-467d-aaee-8cde05f10f47-us-east-2.apps.astra.datastax.com",
+      "astraNamespace": "fluent",
+      "astraCollection": "fluent_collection",
+      "vectorDimension": 1536,
+      "similarityMetric": "cosine",
+      "topK": 10,
+      "searchType": "similarity",
+      "fetchK": 20,
+      "lambda": 0.5,
+      "temperature": 0.1,
+      "maxTokens": 1500,
+      "topP": 0.9,
+      "frequencyPenalty": 0.5,
+      "presencePenalty": 0.6,
+      "rephrasePrompt": "Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.\n\nChat History:\n{chat_history}\nFollow Up Input: {question}\nStandalone Question:",
+      "responsePrompt": "I want you to act as a document that I am having a conversation with. Your name is \"AI Assistant\". Using the provided context, answer the user's question to the best of your ability using the resources provided.\nIf there is nothing in the context relevant to the question at hand, just say \"Hmm, I'm not sure\" and stop after that. Refuse to answer any question not about the info. Never break character.\n------------\n{context}\n------------\nREMEMBER: If there is no relevant information within the context, just say \"Hmm, I'm not sure\". Don't try to make up an answer. Never break character.",
+      "allowImageUploads": true,
+      "imageResolution": "high",
+      "webPath": "https://njf.gitbook.io/fluent_cli_gitbook",
+      "shouldLoadAllPaths": true,
+      "maxConcurrency": 5,
+      "stripNewLines": false,
+      "batchSize": 100,
+      "chunkSize": 1000,
+      "chunkOverlap": 200
     },
     "tweaks": {
 
@@ -962,12 +1059,60 @@
     "timeout_ms": 5000000
   },
   {
+    "name": "MakeDalleImagePostRawOutput",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "ns0sts8l8tqgeztgyftrdpvrsc1jas7m",
+    "request_path": "/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
+  },
+  {
     "name": "MakeLeonardoImagePost",
     "engine": "webhook",
     "protocol": "https",
     "hostname": "hook.us1.make.com",
     "port": 443,
     "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
+    "request_path": "/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "alchemy": true,
+      "photoReal": true,
+      "photoRealVersion":"v2",
+      "presetStyle": "",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+      "seed": ""
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "MakeLeonardoImagePostRawOutput",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "hook.us1.make.com",
+    "port": 443,
+    "chat_id": "hbxg9tuxhh9bjki2reop2993ogbjr6ej",
     "request_path": "/",
     "sessionId": "",
     "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
