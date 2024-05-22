@@ -12,26 +12,69 @@ use tokio::fs::File;
 
 use tokio::io::AsyncReadExt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Deserialize)]
 pub struct FluentCliOutput {
-    pub(crate) text: String,
-    pub(crate) question: String,
+    pub text: String,
+    pub question: Option<String>,
     #[serde(rename = "chatId")]
-    pub(crate) chat_id: String,
+    pub chat_id: Option<String>,
     #[serde(rename = "chatMessageId")]
-    chat_message_id: String,
+    pub chat_message_id: Option<String>,
     #[serde(rename = "sessionId")]
-    pub(crate) session_id: String,
+    pub session_id: Option<String>,
     #[serde(rename = "memoryType")]
-    memory_type: Option<String>,
+    pub memory_type: Option<String>,
+    #[serde(rename = "sourceDocuments")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_documents: Option<Vec<Option<SourceDocument>>>,
+    #[serde(rename = "agentReasoning")]
+    pub agent_reasoning: Option<Vec<AgentReasoning>>,
+}
 
+#[derive(Debug, Deserialize)]
+pub struct AgentReasoning {
+    #[serde(rename = "agentName")]
+    pub agent_name: String,
+    pub messages: Vec<String>,
+    pub next: Option<String>,
+    pub instructions: Option<String>,
+    #[serde(rename = "usedTools")]
+    pub used_tools: Option<Vec<Option<String>>>,
+    #[serde(rename = "sourceDocuments")]
+    pub source_documents: Option<Vec<Option<SourceDocument>>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SourceDocument {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_content: Option<String>,
+    pub metadata: Option<Metadata>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Metadata {
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>, // Make repository optional
+    pub branch: String,
+    pub loc: Location,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Location {
+    pub lines: Lines,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Lines {
+    pub from: i32,
+    pub to: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Question {
     question: String,
 }
-
 
 #[derive(Serialize, Deserialize)]
 struct RequestPayload {
@@ -58,10 +101,10 @@ struct ResponseOutput {
     chat_id: Option<String>,
     session_id: Option<String>,
     memory_type: Option<String>,
-    code_blocks: Option<Vec<String>>,  // Only populated if `--parse-code-output` is present
-    pretty_text: Option<String>,       // Only populated if `--parse-code-output` is not present
+    code_blocks: Option<Vec<String>>,
+    pretty_text: Option<String>,
+    source: Option<String>,
 }
-
 
 // New structure to handle LangFlow output
 #[derive(Serialize, Deserialize, Debug)]
@@ -150,15 +193,14 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                    !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
-                    matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 println!("{}", response_body);  // Output the full raw response
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-
                 println!("{}", response_text);  // Default output
             }
         },
@@ -175,20 +217,48 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
     Ok(())
 }
 
-
-
-
-
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     // Parse the response body, handle error properly here instead of unwrapping
     debug!("Response body: {}", response_body);
     let result = serde_json::from_str::<FluentCliOutput>(response_body);
     debug!("Result: {:?}", result);
+
     // If there's an error parsing the JSON, print the error and the raw response body
     match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
-            debug!("Parsed Output:{:?}", parsed_output);
+            debug!("Parsed Output: {:?}", parsed_output);
+
+            // Print agent reasoning details if present
+            if let Some(agent_reasoning) = &parsed_output.agent_reasoning {
+                eprintln!("\nAgent Reasoning Details:");
+                for agent in agent_reasoning {
+                    eprintln!("Agent Name: {}", agent.agent_name);
+                    if !agent.messages.is_empty() {
+                        eprintln!("Messages:");
+                        for message in &agent.messages {
+                            eprintln!("- {}", message);
+                        }
+                    }
+                    if let Some(next) = &agent.next {
+                        eprintln!("Next Step: {}", next);
+                    }
+                    if let Some(instructions) = &agent.instructions {
+                        eprintln!("Instructions: {}", instructions);
+                    }
+                    if let Some(used_tools) = &agent.used_tools {
+                        if !used_tools.is_empty() {
+                            eprintln!("Used Tools:");
+                            for tool in used_tools {
+                                if let Some(tool_name) = tool {
+                                    eprintln!("- {}", tool_name);
+                                }
+                            }
+                        }
+                    }
+                    eprintln!("\n---\n");
+                }
+            }
 
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
@@ -198,8 +268,30 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                debug!("markdown");
                 pretty_format_markdown(&parsed_output.text);
+                if let Some(documents) = &parsed_output.source_documents {
+                    pretty_format_markdown("\n---\n");
+                    pretty_format_markdown("\n\n# Source Documents\n");
+                    pretty_format_markdown("\n---\n");
+                    for doc_option in documents {
+                        if let Some(doc) = doc_option {
+                            let markdown_link = format!(
+                                "[View Source]({}/blob/{}/{}#L{}-L{})",
+                                doc.metadata.as_ref().unwrap().repository.as_ref().unwrap_or(&"".to_string()),
+                                doc.metadata.as_ref().unwrap().branch,
+                                doc.metadata.as_ref().unwrap().source,
+                                doc.metadata.as_ref().unwrap().loc.lines.from,
+                                doc.metadata.as_ref().unwrap().loc.lines.to
+                            );
+                            pretty_format_markdown(&markdown_link);
+                            match &doc.page_content {
+                                Some(content) if !content.is_empty() => pretty_format_markdown(&format!("**Page Content:**\n{}", content)),
+                                _ => pretty_format_markdown("**Page Content:**\nNo content available"),
+                            }
+                        }
+                    }
+                    pretty_format_markdown("---\n");
+                }
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
@@ -216,22 +308,22 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 debug!("full output");
-                println!("{}", response_body);  // Output the text used, whether parsed or raw
+                println!("{}", response_body);
             }
 
             if  !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 debug!("default");
-                println!("{}", &parsed_output.text);  // Output the text used, whether parsed or raw, but only if the --markdown-output flag is not set").text;
+                println!("{}", &parsed_output.text);
             }
 
-            },
-
+        },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
+            eprintln!("Failed to parse JSON: {}", e);
             if let Some(cause) = e.source() {
-                eprintln!("{:?}", cause);
+                eprintln!("Cause: {:?}", cause);
             }
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
@@ -240,14 +332,11 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             }
             debug!("Download Response body: {}", response_body);
             println!("{}", response_body);
-            eprint!("\n\n");
-            response_body.to_string();
         }
     };
 
     Ok(())
 }
-
 
 fn extract_urls(text: &str) -> Vec<String> {
     let url_regex = Regex::new(r"https?://[^\s]+").unwrap();
@@ -255,7 +344,6 @@ fn extract_urls(text: &str) -> Vec<String> {
         .map(|mat| mat.as_str().to_string())
         .collect()
 }
-
 
 pub fn print_full_width_bar(string: &str) -> String {
     let width = terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize).unwrap_or(80);
@@ -269,20 +357,15 @@ fn pretty_format_markdown(markdown_content: &str) {
     skin.bold.set_fg(crossterm::style::Color::Yellow);
     skin.italic.set_fg(crossterm::style::Color::Blue);
     skin.headers[0].set_fg(crossterm::style::Color::Yellow);
-   // skin.headers[0].set_bg(crossterm::style::Color::Black);
     skin.headers[1].set_fg(crossterm::style::Color::Green);
-    //skin.headers[1].set_bg(crossterm::style::Color::Black);
     skin.headers[2].set_fg(crossterm::style::Color::Blue);
-    //skin.inline_code.set_bg(crossterm::style::Color::Black);
     skin.inline_code.set_fg(crossterm::style::Color::White);
-    //skin.code_block.set_bg(crossterm::style::Color::Black);
     skin.code_block.set_fg(crossterm::style::Color::White);
-    //skin.set_bg(crossterm::style::Color::Black);
 
     skin.paragraph.left_margin = 4;
     skin.paragraph.right_margin = 4;
 
-     skin.print_text(markdown_content);
+    skin.print_text(markdown_content);
 }
 
 fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
@@ -294,14 +377,8 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
         .collect()
 }
 
-
 use tokio::io::AsyncWriteExt;
 use chrono::Local;
-
-
-// Correct definition of the function returning a Result with a boxed dynamic error
-
-
 
 async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
@@ -344,10 +421,8 @@ async fn download_media(urls: Vec<String>, directory: &str) {
     }
 }
 
-
 // Change the signature to accept a simple string for `question`
-
-pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Result<String> {
+pub async fn send_request(flow: &FlowConfig, payload: &Value) -> reqwest::Result<String> {
     let client = Client::new();
 
     // Dynamically fetch the bearer token from environment variables if it starts with "AMBER_"
@@ -363,7 +438,6 @@ pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Resul
     debug!("Override config before update: {:?}", override_config);
     replace_with_env_var(&mut override_config);
     debug!("Override config after update: {:?}", override_config);
-
 
     let url = format!("{}://{}:{}{}{}", flow.protocol, flow.hostname, flow.port, flow.request_path, flow.chat_id);
     debug!("URL: {}", url);
@@ -383,14 +457,11 @@ pub async fn send_request(flow: &FlowConfig,  payload: &Value) -> reqwest::Resul
     response.text().await
 }
 
-
-
 use std::error::Error as StdError;  // Import the StdError trait for `source` method
 
 fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
     serde_json::Error::custom(err.to_string())
 }
-
 
 pub async fn upsert_with_json(api_url: &str, flow: &FlowConfig, payload: serde_json::Value) -> Result<()> {
     let bearer_token = if flow.bearer_token.starts_with("AMBER_") {
@@ -472,7 +543,6 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     Ok(())
 }
 
-
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 
@@ -504,8 +574,6 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
         |ctx| format!("\n{}\n{}\n", question, ctx)
     );
 
-
-
     debug!("Engine: {}", flow.engine);
     let mut body = match flow.engine.as_str() {
         "flowise" => {
@@ -522,7 +590,6 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
                 system_prompt_inline.map(|s| s.to_string())
             };
 
-
             // Update the configuration with the override if it exists
             // Update the configuration based on what's present in the overrideConfig
             let mut flow_clone = flow.clone();
@@ -536,7 +603,6 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
                     }
                 }
             }
-
 
             debug!("Flowise Engine");
             serde_json::json!({
