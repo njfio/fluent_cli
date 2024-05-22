@@ -41,8 +41,8 @@
     "name": "LocalGPT4SupervisorWorkerFlow",
     "engine": "flowise",
     "protocol": "https",
-    "hostname": "flowise.fluentcli.com",
-    "port": 443,
+    "hostname": "127.0.0.1",
+    "port": 3000,
     "chat_id": "57ead6df-627f-45c9-948a-9bc2b19e6a2e",
     "request_path": "/api/v1/prediction/",
     "sessionId": "AMBER_FLUENT_SESSION_ID_01",
@@ -63,6 +63,30 @@
 
     },
     "timeout_ms": 50000
+  },
+  {
+    "name": "LocalGPT4SupervisorWorkerBrowserAndGithubFlow",
+    "engine": "flowise",
+    "protocol": "http",
+    "hostname": "127.0.0.1",
+    "port": 3000,
+    "chat_id": "d6c83c82-3423-4ee9-bb12-152cbdcb8a7c",
+    "request_path": "/api/v1/prediction/",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "overrideConfig": {
+
+      "modelName": {
+        "chatOpenAICustom_0": "gpt-4o"
+      },
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "temperature": 0
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 500000
   },
   {
     "name": "GPT4SupervisorWorkerBrowserAndGitHubFlowRepoCloud",

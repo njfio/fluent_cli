@@ -218,41 +218,48 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
 }
 
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
-    // Parse the response body, handle error properly here instead of unwrapping
     debug!("Response body: {}", response_body);
-    let result = serde_json::from_str::<FluentCliOutput>(response_body);
+
+    // Parse the response body as a generic JSON value
+    let result: Result<Value> = serde_json::from_str(response_body);
     debug!("Result: {:?}", result);
 
-    // If there's an error parsing the JSON, print the error and the raw response body
     match result {
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
 
-            // Print agent reasoning details if present
-            if let Some(agent_reasoning) = &parsed_output.agent_reasoning {
+            // Extract text field if available
+            if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                println!("{}", text);
+            }
+
+            // Extract agent reasoning details if present
+            if let Some(agent_reasoning) = parsed_output.get("agentReasoning").and_then(Value::as_array) {
                 eprintln!("\nAgent Reasoning Details:");
                 for agent in agent_reasoning {
-                    eprintln!("Agent Name: {}", agent.agent_name);
-                    if !agent.messages.is_empty() {
+                    if let Some(agent_name) = agent.get("agentName").and_then(Value::as_str) {
+                        eprintln!("Agent Name: {}", agent_name);
+                    }
+                    if let Some(messages) = agent.get("messages").and_then(Value::as_array) {
                         eprintln!("Messages:");
-                        for message in &agent.messages {
-                            eprintln!("- {}", message);
+                        for message in messages {
+                            if let Some(msg) = message.as_str() {
+                                eprintln!("- {}", msg);
+                            }
                         }
                     }
-                    if let Some(next) = &agent.next {
+                    if let Some(next) = agent.get("next").and_then(Value::as_str) {
                         eprintln!("Next Step: {}", next);
                     }
-                    if let Some(instructions) = &agent.instructions {
+                    if let Some(instructions) = agent.get("instructions").and_then(Value::as_str) {
                         eprintln!("Instructions: {}", instructions);
                     }
-                    if let Some(used_tools) = &agent.used_tools {
-                        if !used_tools.is_empty() {
-                            eprintln!("Used Tools:");
-                            for tool in used_tools {
-                                if let Some(tool_name) = tool {
-                                    eprintln!("- {}", tool_name);
-                                }
+                    if let Some(used_tools) = agent.get("usedTools").and_then(Value::as_array) {
+                        eprintln!("Used Tools:");
+                        for tool in used_tools {
+                            if let Some(tool_name) = tool.as_str() {
+                                eprintln!("- {}", tool_name);
                             }
                         }
                     }
@@ -268,25 +275,47 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                pretty_format_markdown(&parsed_output.text);
-                if let Some(documents) = &parsed_output.source_documents {
+                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                    pretty_format_markdown(text);
+                }
+                if let Some(documents) = parsed_output.get("sourceDocuments").and_then(Value::as_array) {
                     pretty_format_markdown("\n---\n");
                     pretty_format_markdown("\n\n# Source Documents\n");
                     pretty_format_markdown("\n---\n");
                     for doc_option in documents {
-                        if let Some(doc) = doc_option {
+                        if let Some(doc) = doc_option.as_object() {
                             let markdown_link = format!(
                                 "[View Source]({}/blob/{}/{}#L{}-L{})",
-                                doc.metadata.as_ref().unwrap().repository.as_ref().unwrap_or(&"".to_string()),
-                                doc.metadata.as_ref().unwrap().branch,
-                                doc.metadata.as_ref().unwrap().source,
-                                doc.metadata.as_ref().unwrap().loc.lines.from,
-                                doc.metadata.as_ref().unwrap().loc.lines.to
+                                doc.get("metadata")
+                                    .and_then(|meta| meta.get("repository"))
+                                    .and_then(Value::as_str)
+                                    .unwrap_or(""),
+                                doc.get("metadata")
+                                    .and_then(|meta| meta.get("branch"))
+                                    .and_then(Value::as_str)
+                                    .unwrap_or(""),
+                                doc.get("metadata")
+                                    .and_then(|meta| meta.get("source"))
+                                    .and_then(Value::as_str)
+                                    .unwrap_or(""),
+                                doc.get("metadata")
+                                    .and_then(|meta| meta.get("loc"))
+                                    .and_then(|loc| loc.get("lines"))
+                                    .and_then(|lines| lines.get("from"))
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or(0),
+                                doc.get("metadata")
+                                    .and_then(|meta| meta.get("loc"))
+                                    .and_then(|loc| loc.get("lines"))
+                                    .and_then(|lines| lines.get("to"))
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or(0)
                             );
                             pretty_format_markdown(&markdown_link);
-                            match &doc.page_content {
-                                Some(content) if !content.is_empty() => pretty_format_markdown(&format!("**Page Content:**\n{}", content)),
-                                _ => pretty_format_markdown("**Page Content:**\nNo content available"),
+                            if let Some(content) = doc.get("page_content").and_then(Value::as_str) {
+                                pretty_format_markdown(&format!("**Page Content:**\n{}", content));
+                            } else {
+                                pretty_format_markdown("**Page Content:**\nNo content available");
                             }
                         }
                     }
@@ -298,9 +327,11 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 debug!("parse code");
-                let code_blocks = extract_code_blocks(&parsed_output.text);
-                for block in code_blocks {
-                    println!("{}", block);
+                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                    let code_blocks = extract_code_blocks(text);
+                    for block in code_blocks {
+                        println!("{}", block);
+                    }
                 }
             }
 
@@ -311,13 +342,14 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 println!("{}", response_body);
             }
 
-            if  !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 debug!("default");
-                println!("{}", &parsed_output.text);
+                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                    println!("{}", text);
+                }
             }
-
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
@@ -326,7 +358,8 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 eprintln!("Cause: {:?}", cause);
             }
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
-                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                let urls = extract_urls(response_body);
+                // Assume extract_urls can handle any text
                 debug!("Extracted URLs: {:?}", urls);
                 download_media(urls, directory).await;
             }
