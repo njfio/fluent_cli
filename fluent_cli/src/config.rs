@@ -30,6 +30,7 @@ pub struct FlowConfig {
     pub input_type: Option<String>,
     pub output_type: Option<String>,
     pub input_value: Option<String>,
+    pub input_value_key: Option<String>,
 }
 
 

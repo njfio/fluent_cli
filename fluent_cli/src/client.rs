@@ -353,7 +353,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
-            eprintln!("Failed to parse JSON: {}", e);
+            eprintln!("Failed to parse JSON, this might be normal if it's a webhook request: {}", e);
             if let Some(cause) = e.source() {
                 eprintln!("Cause: {:?}", cause);
             }
@@ -590,8 +590,13 @@ use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-
-pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Option<&str>, actual_final_context: Option<String>, cli_args: &ArgMatches, _file_contents: &str,
+pub async fn prepare_payload(
+    flow: &FlowConfig,
+    question: &str,
+    file_path: Option<&str>,
+    actual_final_context: Option<String>,
+    cli_args: &ArgMatches,
+    _file_contents: &str,
 ) -> IoResult<Value> {
     let mut override_config = flow.override_config.clone();
     let mut tweaks_config = flow.tweaks.clone();
@@ -610,7 +615,6 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
     debug!("Engine: {}", flow.engine);
     let mut body = match flow.engine.as_str() {
         "flowise" => {
-
             let system_prompt_inline = cli_args.get_one::<String>("system-prompt-override-inline").map(|s| s.as_str());
             let system_prompt_file = cli_args.get_one::<String>("system-prompt-override-file").map(|s| s.as_str());
             // Load override value from file if specified
@@ -645,15 +649,26 @@ pub async fn prepare_payload(flow: &FlowConfig, question: &str, file_path: Optio
         },
         "langflow" => {
             debug!("Langflow Engine");
-            let mut tweaks_config = flow.tweaks.clone();
-            debug!("Tweaks config before update: {:?}", tweaks_config);
-            replace_with_env_var(&mut tweaks_config);
+
+            // Get the input value key from the flow configuration
+            if let Some(input_value_key) = flow.input_value_key.as_deref() {
+                // Update the tweaks config with the full question at the specified input value key
+                if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
+                    for (_, tweak) in tweaks_obj.iter_mut() {
+                        if let Some(tweak_obj) = tweak.as_object_mut() {
+                            if tweak_obj.contains_key(input_value_key) {
+                                tweak_obj.insert(input_value_key.to_string(), serde_json::Value::String(full_question.clone()));
+                            }
+                        }
+                    }
+                }
+            }
 
             debug!("Tweaks config after update: {:?}", tweaks_config);
             serde_json::json!({
                 "input_value": full_question,
                 "input_type": flow.input_type,
-                "output_type:": flow.output_type,
+                "output_type": flow.output_type,
                 "tweaks": tweaks_config,
             })
         },

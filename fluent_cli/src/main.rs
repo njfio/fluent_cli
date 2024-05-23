@@ -48,6 +48,20 @@ use crossterm::style::Stylize;
 use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
+use serde_json::{Value, Map};
+
+fn update_value(existing_value: &mut Value, new_value: &str) {
+    match existing_value {
+        Value::Array(arr) => {
+            // Preserve the array if the existing value is an array
+            *existing_value = Value::Array(vec![Value::String(new_value.to_string())]);
+        }
+        _ => {
+            // Default to string replacement
+            *existing_value = Value::String(new_value.to_string());
+        }
+    }
+}
 
 
 use std::collections::HashMap;
@@ -290,8 +304,10 @@ async fn main() -> Result<()> {
             if key_parts.len() == 1 {
                 // Update override_config
                 if let Some(obj) = override_config.as_object_mut() {
-                    if obj.contains_key(&key) {
-                        obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+                    if let Some(existing_value) = obj.get_mut(&key) {
+                        update_value(existing_value, &value);
+                    } else {
+                        obj.insert(key.clone(), Value::String(value.clone()));
                     }
                 }
 
@@ -299,8 +315,10 @@ async fn main() -> Result<()> {
                 if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
                     for (_, tweak) in tweaks_obj.iter_mut() {
                         if let Some(tweak_obj) = tweak.as_object_mut() {
-                            if tweak_obj.contains_key(&key) {
-                                tweak_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+                            if let Some(existing_value) = tweak_obj.get_mut(&key) {
+                                update_value(existing_value, &value);
+                            } else {
+                                tweak_obj.insert(key.clone(), Value::String(value.clone()));
                             }
                         }
                     }
@@ -310,7 +328,11 @@ async fn main() -> Result<()> {
                 if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
                     if let Some(tweak) = tweaks_obj.get_mut(key_parts[0]) {
                         if let Some(tweak_obj) = tweak.as_object_mut() {
-                            tweak_obj.insert(key_parts[1].to_string(), serde_json::Value::String(value.clone()));
+                            if let Some(existing_value) = tweak_obj.get_mut(key_parts[1]) {
+                                update_value(existing_value, &value);
+                            } else {
+                                tweak_obj.insert(key_parts[1].to_string(), Value::String(value.clone()));
+                            }
                         }
                     }
                 }

@@ -318,38 +318,53 @@
     "hostname": "njfio-langflow-preview.hf.space",
     "port": 443,
     "request_path": "/api/v1/run/",
-    "chat_id": "7455a484-1e7d-46c9-8523-a8b1350d9784",
+    "chat_id": "b602b03e-4e32-4963-8e05-838f588a0b87",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "input_value_key": "input_value",
     "sessionId": "",
     "output_type": "chat",
     "input_type": "chat",
     "overrideConfig": {
-
     },
     "tweaks": {
-      "Prompt-sU980": {},
-      "URL-m0Ust": {
+      "Prompt-gn4sP": {
+        "template": "Reference 1:\n\n{reference_1}\n\n---\n\nReference 2:\n\n{reference_2}\n\n---\n\n{instructions}\n\nBlog: \n\n\n",
+        "reference_1": "",
+        "reference_2": "",
+        "instructions": ""
+      },
+      "URL-TDZNk": {
         "urls": [
-          ""
+          "https://www.promptingguide.ai/techniques/prompt_chaining"
         ]
       },
-      "ChatOutput-804eN": {
-        "system_message": "You are a helpful assistant"
+      "ChatOutput-0RasW": {
+        "record_template": "{text}",
+        "return_record": false,
+        "sender": "Machine",
+        "sender_name": "AI"
       },
-      "OpenAIModel-xHBgn": {
-        "model_kwargs": {}
+      "OpenAIModel-EO6fM": {
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "max_tokens": 1024,
+        "model_kwargs": "{}",
+        "model_name": "gpt-3.5-turbo-0125",
+        "stream": true,
+        "temperature": 0.1
       },
-      "URL-cJhLd": {
+      "URL-rJpsL": {
         "urls": [
-          ""
+          "https://www.promptingguide.ai/introduction/basics"
         ]
       },
-      "TextInput-eohW7": {
+      "TextInput-iwhDe": {
+        "input_value": "Use the references above for style to write a new blog/tutorial about prompt engineering techniques. Suggest non-covered topics.",
         "record_template": ""
       }
     },
     "timeout_ms": 50000
+
+
   },
   {
     "name": "LangFlowChainOfThoughtExample",
@@ -1204,6 +1219,99 @@
 
     },
     "timeout_ms": 5000000
+  },
+
+  {
+    "name": "N8NDalleImagePostTest",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "kvnnmo99-n8n.myjfmo.easypanel.host",
+    "port": 443,
+    "chat_id": "cdf12254-e7c0-49fb-91a9-00a3995d70cd",
+    "request_path": "/webhook-test/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "N8NDalleImagePost",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "kvnnmo99-n8n.myjfmo.easypanel.host",
+    "port": 443,
+    "chat_id": "cdf12254-e7c0-49fb-91a9-00a3995d70cd",
+    "request_path": "/webhook/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "N8NChatFlow",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "kvnnmo99-n8n.myjfmo.easypanel.host",
+    "port": 443,
+    "chat_id": "8f0d0b79-9359-427f-93c0-fa1b8824eba5",
+    "request_path": "/webhook/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "TESTN8NChatFlow",
+    "engine": "webhook",
+    "protocol": "https",
+    "hostname": "kvnnmo99-n8n.myjfmo.easypanel.host",
+    "port": 443,
+    "chat_id": "8f0d0b79-9359-427f-93c0-fa1b8824eba5",
+    "request_path": "/webhook-test/",
+    "sessionId": "",
+    "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+    "overrideConfig": {
+      "size": "1024x1792",
+      "quality":"HD",
+      "style": "Vivid",
+      "responseFormat": "url",
+      "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST"
+
+    },
+    "tweaks": {
+
+    },
+    "timeout_ms": 5000000
   }
-  
+
 ]
