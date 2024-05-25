@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use log::{debug};
 use std::env;
 use reqwest::{Client};
@@ -106,7 +107,8 @@ struct ResponseOutput {
     source: Option<String>,
 }
 
-// New structure to handle LangFlow output
+use std::collections::{ HashSet};
+
 #[derive(Serialize, Deserialize, Debug)]
 struct LangFlowOutput {
     pub(crate) session_id: String,
@@ -158,7 +160,6 @@ struct LangFlowMessage {
     pub(crate) component_id: String,
 }
 
-// Example function to demonstrate using these structures
 pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("LangFlow response body: {}", response_body);
     let result = serde_json::from_str::<LangFlowOutput>(response_body);
@@ -166,11 +167,38 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
 
     match result {
         Ok(lang_flow_output) => {
-            // Concatenate all results and messages
-            let response_text = lang_flow_output.outputs.iter()
-                .flat_map(|output| output.outputs.iter().map(|detail| detail.results.result.clone()))
-                .collect::<Vec<String>>()
-                .join("\n");
+            // Use a HashSet to collect unique messages
+            let mut response_texts: HashSet<String> = HashSet::new();
+
+            for output in lang_flow_output.outputs {
+                for detail in output.outputs {
+                    if !detail.results.result.is_empty() {
+                        response_texts.insert(detail.results.result.clone());
+                    }
+                    if let Some(artifacts) = &detail.artifacts {
+                        if !artifacts.message.is_empty() {
+                            response_texts.insert(artifacts.message.clone());
+                        }
+                    }
+                    for message in &detail.messages {
+                        if !message.message.is_empty() {
+                            response_texts.insert(message.message.clone());
+                        }
+                    }
+                }
+            }
+
+            let response_text = response_texts.into_iter().collect::<Vec<String>>().join("\n");
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(&response_text);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+                return Ok(());
+            }
 
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(&response_text); // Adjust the URL extraction as needed
@@ -181,27 +209,16 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 pretty_format_markdown(&response_text);
+                return Ok(());
             }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
-                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                let code_blocks = extract_code_blocks(&response_text);
-                for block in code_blocks {
-                    println!("{}", block);
-                }
-            }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
-                println!("{}", response_body);  // Output the full raw response
-            }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 println!("{}", response_text);  // Default output
+                return Ok(());
             }
         },
         Err(e) => {
@@ -217,6 +234,7 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
     Ok(())
 }
 
+
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("Response body: {}", response_body);
 
@@ -231,7 +249,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
 
             // Extract text field if available
             if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
-                println!("{}", text);
+                debug!("parsed_output text: {}", text);
             }
 
             // Extract agent reasoning details if present
@@ -265,6 +283,19 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                     }
                     eprintln!("\n---\n");
                 }
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("parse code");
+                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                    let code_blocks = extract_code_blocks(text);
+                    for block in code_blocks {
+                        println!("{}", block);
+                    }
+                }
+                return Ok(());
             }
 
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
@@ -321,25 +352,16 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                     }
                     pretty_format_markdown("---\n");
                 }
+                return Ok(());
             }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
-                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                debug!("parse code");
-                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
-                    let code_blocks = extract_code_blocks(text);
-                    for block in code_blocks {
-                        println!("{}", block);
-                    }
-                }
-            }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 debug!("full output");
                 println!("{}", response_body);
+                return Ok(());
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
@@ -349,6 +371,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
                     println!("{}", text);
                 }
+                return Ok(());
             }
         },
         Err(e) => {
@@ -576,6 +599,15 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     Ok(())
 }
 
+fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = pair.splitn(2, '=').collect();
+    if parts.len() == 2 {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 
@@ -650,14 +682,31 @@ pub async fn prepare_payload(
         "langflow" => {
             debug!("Langflow Engine");
 
-            // Get the input value key from the flow configuration
+            // Update the tweaks config with the full question at the specified input value key
             if let Some(input_value_key) = flow.input_value_key.as_deref() {
-                // Update the tweaks config with the full question at the specified input value key
-                if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
-                    for (_, tweak) in tweaks_obj.iter_mut() {
-                        if let Some(tweak_obj) = tweak.as_object_mut() {
-                            if tweak_obj.contains_key(input_value_key) {
-                                tweak_obj.insert(input_value_key.to_string(), serde_json::Value::String(full_question.clone()));
+                if let Some(tweak) = tweaks_config.get_mut(input_value_key) {
+                    if let Some(tweak_obj) = tweak.as_object_mut() {
+                        tweak_obj.insert("input_value".to_string(), serde_json::Value::String(full_question.clone()));
+                    }
+                }
+            }
+
+            // Process overrides for tweaks
+            if let Some(overrides) = cli_args.get_many::<String>("override") {
+                let overrides: HashMap<String, String> = overrides
+                    .map(|s| parse_key_value_pair(s).unwrap())
+                    .collect();
+
+                for (key, value) in overrides {
+                    // Split the key into parts
+                    let key_parts: Vec<&str> = key.split('.').collect();
+                    if key_parts.len() == 2 {
+                        if let Some(tweak) = tweaks_config.get_mut(key_parts[0]) {
+                            if let Some(tweak_obj) = tweak.as_object_mut() {
+                                // Only override if the value is not an empty string
+                                if !value.trim().is_empty() {
+                                    tweak_obj.insert(key_parts[1].to_string(), serde_json::Value::String(value.clone()));
+                                }
                             }
                         }
                     }
@@ -666,7 +715,7 @@ pub async fn prepare_payload(
 
             debug!("Tweaks config after update: {:?}", tweaks_config);
             serde_json::json!({
-                "input_value": full_question,
+                "input_value": "message",
                 "input_type": flow.input_type,
                 "output_type": flow.output_type,
                 "tweaks": tweaks_config,
@@ -711,3 +760,6 @@ pub async fn prepare_payload(
 
     Ok(body)
 }
+
+
+

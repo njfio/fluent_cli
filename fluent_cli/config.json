@@ -312,52 +312,224 @@
     "timeout_ms": 50000
   },
   {
-    "name": "LangFlowBlogWriterExample",
+    "name": "LangFlowChainOfThoughtExample",
     "engine": "langflow",
     "protocol": "https",
     "hostname": "njfio-langflow-preview.hf.space",
     "port": 443,
     "request_path": "/api/v1/run/",
-    "chat_id": "b602b03e-4e32-4963-8e05-838f588a0b87",
+    "chat_id": "c787b6ca-66aa-4994-b932-07d755b44b6e",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "input_value_key": "TextInput-2NhZ7",
+    "sessionId": "",
+    "output_type": "chat",
+    "input_type": "chat",
+    "overrideConfig": {
+
+    },
+    "tweaks": {
+      "Prompt-I7E8t": {
+        "template": "Given the question below, come up with a rationale to answer it.\n\nQuestion: {question}\nRationale: ",
+        "question": ""
+      },
+      "ChatOutput-p8C7z": {
+        "record_template": "{text}",
+        "return_record": false,
+        "sender": "Machine",
+        "sender_name": "Reasoning"
+      },
+      "OpenAIModel-LQZp6": {
+        "max_tokens": 256,
+        "model_kwargs": "{}",
+        "model_name": "gpt-3.5-turbo",
+        "openai_api_key": "AMBER_OPENAI_API_KEY_01",
+        "stream": false,
+        "temperature": 0.1
+      },
+      "TextInput-2NhZ7": {
+        "input_value": "I went to the market and bought 10 apples. I gave 2 apples to the neighbor and 2 to the repairman. I then went and bought 5 more apples and ate 1. How many apples did I remain with?",
+        "record_template": ""
+      },
+      "Prompt-Qzo1h": {
+        "template": "Given the question and rationale below, come up with the final answer.\n\nQuestion: {question}\nRationale: {rationale}\nFinal Answer: ",
+        "question": "",
+        "rationale": ""
+      },
+      "OpenAIModel-TjiUS": {
+        "max_tokens": 256,
+        "model_kwargs": "{}",
+        "model_name": "gpt-3.5-turbo",
+        "openai_api_key": "AMBER_OPENAI_API_KEY_01",
+        "stream": false,
+        "temperature": 0.1
+      },
+      "ChatOutput-WGgql": {
+        "record_template": "{text}",
+        "return_record": false,
+        "sender": "Machine",
+        "sender_name": "Answer"
+      }
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "LangFlowParallelWorkersExample",
+    "engine": "langflow",
+    "protocol": "https",
+    "hostname": "njfio-langflow-preview.hf.space",
+    "port": 443,
+    "request_path": "/api/v1/run/",
+    "chat_id": "6a459fdb-cfbe-4788-ae01-871ad19c8c9c",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "input_value_key": "TextInput-J8Raj",
+    "input_value": "message",
+    "sessionId": "123",
+    "output_type": "chat",
+    "input_type": "chat",
+    "overrideConfig": {
+    },
+    "tweaks": {
+      "CustomComponent-BrJAP": {
+        "API_MODEL_KEY": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "detail_text": true,
+        "internal_prompt_instruction": "",
+        "internal_prompt_theme": "",
+        "model": "gpt-4o",
+        "web": ""
+      },
+      "ChatOutput-ZfVZ4": {
+        "record_template": "{text}",
+        "return_record": true,
+        "sender": "Machine",
+        "sender_name": ""
+      },
+      "TextInput-l7she": {
+        "input_value": "You should create 5 topics for this theme",
+        "record_template": ""
+      },
+      "TextInput-auD4z": {
+        "input_value": "I want you to generate topics related to",
+        "record_template": ""
+      },
+      "TextInput-J8Raj": {
+        "input_value": "Artificial intelligence (AI) is a branch of computer science that involves creating systems capable of performing tasks that would typically require human intelligence. These tasks include learning (the acquisition of information and rules for using the information), reasoning (using rules to reach approximate or definite conclusions), and self-correction. Prominent AI applications include expert systems, natural language processing (NLP), speech recognition, and machine vision.  AI is categorized into two main types:  Narrow AI: Also known as weak AI, this type of artificial intelligence operates within a limited context and is a simulation of human intelligence. Narrow AI is often focused on performing a single task extremely well and while these machines may seem intelligent, they are operating under far more constraints and limitations than even the most basic human intelligence. General AI: Also known as strong AI, this type of AI systems possess the ability to perform any intellectual task that a human being can. General AI is still a largely theoretical concept in current research, though numerous breakthroughs in AI capabilities bring the possibility of future development closer. Authors and thought leaders in AI and related fields often discuss its implications, including ethical considerations, the impact on jobs, privacy, and the future interaction between humans and intelligent machines. Their works provide a crucial insight into how AI continues to evolve and reshape our world.",
+        "record_template": ""
+      },
+      "TextInput-l9fag": {
+        "input_value": "AI Applied to Agriculture",
+        "record_template": ""
+      }
+    },
+      "timeout_ms": 50000
+  },
+  {
+    "name": "LangFlowGeneratedKnowledgeExample",
+    "engine": "langflow",
+    "protocol": "https",
+    "hostname": "njfio-langflow-preview.hf.space",
+    "port": 443,
+    "request_path": "/api/v1/run/",
+    "chat_id": "3c750603-e925-4345-836b-4a08dca3b057",
     "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
     "input_value_key": "input_value",
     "sessionId": "",
     "output_type": "chat",
     "input_type": "chat",
     "overrideConfig": {
+
     },
     "tweaks": {
-      "Prompt-gn4sP": {
+      "Prompt-eJcEQ": {
+        "template": "Input: Greece is larger than mexico.\nKnowledge: Greece is approximately 131,957 sq km, while Mexico is approximately 1,964,375 sq km, making Mexico 1,389% larger than Greece.\nInput: Glasses always fog up.\nKnowledge: Condensation occurs on eyeglass lenses when water vapor from your sweat, breath, and ambient humidity lands on a cold surface, cools, and then changes into tiny drops of liquid, forming a film that you see as fog. Your lenses will be relatively cool compared to your breath, especially when the outside air is cold.\nInput: A fish is capable of thinking.\nKnowledge: Fish are more intelligent than they appear. In many areas, such as memory, their cognitive powers match or exceed those of ’higher’ vertebrates including non-human primates. Fish’s long-term memories help them keep track of complex social relationships.\nInput: A common effect of smoking lots of cigarettes in one’s lifetime is a higher than normal chance of getting lung cancer.\nKnowledge: Those who consistently averaged less than one cigarette per day over their lifetime had nine times the risk of dying from lung cancer than never smokers. Among people who smoked between one and 10 cigarettes per day, the risk of dying from lung cancer was nearly 12 times higher than that of never smokers.\nInput: A rock is the same size as a pebble.\nKnowledge: A pebble is a clast of rock with a particle size of 4 to 64 millimetres based on the Udden-Wentworth scale of sedimentology. Pebbles are generally considered larger than granules (2 to 4 millimetres diameter) and smaller than cobbles (64 to 256 millimetres diameter).\nInput: {input}\nKnowledge:",
+        "input": ""
+      },
+      "OpenAIModel-c4otl": {
+        "max_tokens": 256,
+        "model_kwargs": "{}",
+        "model_name": "gpt-4o",
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "stream": false,
+        "temperature": 0.1
+      },
+      "ChatOutput-4xE50": {
+        "record_template": "{text}",
+        "return_record": false,
+        "sender": "Machine",
+        "sender_name": "Knowledge"
+      },
+      "TextInput-EBfvh": {
+        "input_value": "Part of golf is trying to get a higher point total than others.",
+        "record_template": ""
+      },
+      "Prompt-OtULG": {
+        "template": "{knowledge}\n\nGiven the knowledge context above, answer:\n\n{statement}\n\nIs the statement TRUE or FALSE?",
+        "knowledge": "",
+        "statement": ""
+      },
+      "OpenAIModel-VlSn0": {
+        "max_tokens": 256,
+        "model_kwargs": "{}",
+        "model_name": "gpt-4o",
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "stream": false,
+        "temperature": 0.1
+      },
+      "ChatOutput-ibNlY": {
+        "record_template": "{text}",
+        "return_record": false,
+        "sender": "Machine",
+        "sender_name": "Answer"
+      }
+    },
+    "timeout_ms": 50000
+  },
+  {
+    "name": "LangFlowBlogWriterExample",
+    "engine": "langflow",
+    "protocol": "https",
+    "hostname": "njfio-langflow-preview.hf.space",
+    "port": 443,
+    "request_path": "/api/v1/run/",
+    "chat_id": "1034ce6b-6aae-4c98-8db6-242cdc129a6e",
+    "bearer_token": "AMBER_REPO_CLOUD_FLUENT_DEMO_KEY",
+    "input_value_key": "TextInput-i7mxW",
+    "sessionId": "",
+    "output_type": "chat",
+    "input_type": "chat",
+    "overrideConfig": {
+    },
+    "tweaks": {
+      "Prompt-mfY6j": {
         "template": "Reference 1:\n\n{reference_1}\n\n---\n\nReference 2:\n\n{reference_2}\n\n---\n\n{instructions}\n\nBlog: \n\n\n",
         "reference_1": "",
         "reference_2": "",
         "instructions": ""
       },
-      "URL-TDZNk": {
+      "URL-dVtT6": {
         "urls": [
           "https://www.promptingguide.ai/techniques/prompt_chaining"
         ]
       },
-      "ChatOutput-0RasW": {
+      "ChatOutput-ohw3s": {
         "record_template": "{text}",
         "return_record": false,
         "sender": "Machine",
         "sender_name": "AI"
       },
-      "OpenAIModel-EO6fM": {
-        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "OpenAIModel-QAE75": {
         "max_tokens": 1024,
         "model_kwargs": "{}",
         "model_name": "gpt-3.5-turbo-0125",
+        "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
         "stream": true,
         "temperature": 0.1
       },
-      "URL-rJpsL": {
+      "URL-Fzv2k": {
         "urls": [
           "https://www.promptingguide.ai/introduction/basics"
         ]
       },
-      "TextInput-iwhDe": {
+      "TextInput-i7mxW": {
         "input_value": "Use the references above for style to write a new blog/tutorial about prompt engineering techniques. Suggest non-covered topics.",
         "record_template": ""
       }

@@ -48,11 +48,11 @@ use crossterm::style::Stylize;
 use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
-use serde_json::{Value, Map};
+use serde_json::{Value};
 
 fn update_value(existing_value: &mut Value, new_value: &str) {
     match existing_value {
-        Value::Array(arr) => {
+        Value::Array(_arr) => {
             // Preserve the array if the existing value is an array
             *existing_value = Value::Array(vec![Value::String(new_value.to_string())]);
         }
