@@ -1,5 +1,8 @@
 mod client;
 mod config;
+mod openai_agent_client;
+
+use openai_agent_client::{send_openai_request, OpenAIResponse};
 
 use std::io;
 
@@ -13,7 +16,7 @@ use tokio::io::{AsyncReadExt};
 
 use crate::client::{ handle_response, print_full_width_bar };
 
-use crate::config::{EnvVarGuard, replace_with_env_var};
+use crate::config::{EnvVarGuard, FlowConfig, replace_with_env_var};
 
 use colored::*; // Import the colored crate
 
@@ -65,6 +68,7 @@ fn update_value(existing_value: &mut Value, new_value: &str) {
 
 
 use std::collections::HashMap;
+use crate::openai_agent_client::Message;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -407,32 +411,77 @@ async fn main() -> Result<()> {
 
     print_status(&spinner, flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
     spinner.tick();
-    debug!("Preparing Payload");
-    let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
-    let response = crate::client::send_request(flow, &payload).await?;
+    let prompt = format!("{} {}", request, &actual_final_context_clone2.as_ref().unwrap_or(&new_question));
+
     debug!("Handling Response");
 
-    let duration = start_time.elapsed();
-    spinner.finish_with_message(format!(
-        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
-        client::print_full_width_bar("■"),
-        "Flow: ".grey().italic(),
-        flowname.purple().italic(),
-        "Request: ".grey().italic(),
-        request.bright_blue().italic(),
-        "Duration: ".grey().italic(),
-        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
-        client::print_full_width_bar("-")
-    ));
-
-    match engine_type.as_str() {
+    let output = match flow.engine.as_str() {
         "flowise" | "webhook" => {
+
             // Handle Flowise output
+            let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
+            let response = crate::client::send_request(flow, &payload).await?;
+            let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+            spinner.finish_with_message(format!(
+                "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                client::print_full_width_bar("■"),
+                "Flow: ".grey().italic(),
+                flowname.purple().italic(),
+                "Request: ".grey().italic(),
+                request.bright_blue().italic(),
+                "Duration: ".grey().italic(),
+                format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                client::print_full_width_bar("-")
+            ));
             handle_response(response.as_str(), matches).await
         }
         "langflow" => {
+
+            let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
+            let response = crate::client::send_request(flow, &payload).await?;
+            let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+            spinner.finish_with_message(format!(
+                "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                client::print_full_width_bar("■"),
+                "Flow: ".grey().italic(),
+                flowname.purple().italic(),
+                "Request: ".grey().italic(),
+                request.bright_blue().italic(),
+                "Duration: ".grey().italic(),
+                format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                client::print_full_width_bar("-")
+            ));
             // Handle LangFlow output
             client::handle_langflow_response(response.as_str(), matches).await
+
+        }
+        "openai" => {
+
+            // Handle OpenAI output
+
+            match openai_agent_client::handle_openai_agent(&prompt, &flow, matches).await {
+
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_openai_response(&response, &matches).await?
+                },
+                Err(e) => eprintln!("Error handling OpenAI response: {}", e),
+            };
+            Ok(())
         }
         _ => {
             // Handle default output);
@@ -441,6 +490,7 @@ async fn main() -> Result<()> {
     }
         .expect("TODO: panic message");
     eprint!("\n\n{}\n\n", print_full_width_bar("■"));
+
     Ok(())
 }
 
@@ -454,6 +504,5 @@ fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
 }
 
 
-
-
+const MAX_ITERATIONS: usize = 10;
 

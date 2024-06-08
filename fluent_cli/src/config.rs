@@ -36,7 +36,7 @@ pub struct FlowConfig {
 
 
 // Helper function to replace config strings starting with "AMBER_" with their env values
-pub(crate) fn replace_with_env_var(value: &mut Value) {
+pub fn replace_with_env_var(value: &mut Value) {
     match value {
         Value::String(s) if s.starts_with("AMBER_") => {
             let env_key = &s[6..]; // Skip the "AMBER_" prefix to fetch the correct env var
@@ -70,7 +70,7 @@ pub(crate) fn replace_with_env_var(value: &mut Value) {
 
 
 
-pub(crate) struct EnvVarGuard {
+pub struct EnvVarGuard {
     keys: Vec<String>,
 }
 
