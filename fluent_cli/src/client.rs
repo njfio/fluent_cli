@@ -160,6 +160,26 @@ struct LangFlowMessage {
     pub(crate) component_id: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct DalleResponse {
+    data: Vec<ImageUrl>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ImageUrl {
+    url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DalleRequest {
+    prompt: String,
+    n: u64,
+    size: String,
+    style: Option<String>,
+    quality: Option<String>,
+    model: Option<String>,
+}
+
 pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("LangFlow response body: {}", response_body);
     let result = serde_json::from_str::<LangFlowOutput>(response_body);
@@ -393,6 +413,113 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
 
     Ok(())
 }
+
+
+pub async fn handle_dalle_flow(
+    prompt: &str,
+    flow: &FlowConfig,
+    matches: &ArgMatches,
+) -> std::result::Result<String, Box<dyn StdError + Send + Sync>> {
+    let mut flow = flow.clone();
+    replace_with_env_var(&mut flow.override_config);
+
+    let api_key = env::var("FLUENT_OPENAI_API_KEY_01")?;
+    debug!("Using OpenAI API key: {}", api_key);
+
+    let url = format!("{}://{}:{}/v1/images/generations", flow.protocol, flow.hostname, flow.port);
+
+    let n = flow.override_config["n"].as_u64().unwrap_or(1);
+    let size = flow.override_config["size"].as_str().unwrap_or("1024x1024");
+    let style = flow.override_config.get("style").and_then(|s| s.as_str());
+    let quality = flow.override_config.get("quality").and_then(|q| q.as_str());
+    let model = flow.override_config.get("model").and_then(|m| m.as_str());
+
+    debug!("DALL-E request parameters - prompt: {}, n: {}, size: {}, style: {:?}, quality: {:?}", prompt, n, size, style, quality);
+
+    let response = send_dalle_request(prompt, &api_key, &url, n, size, style, quality, model).await?;
+
+    let urls: Vec<String> = response.data.into_iter().map(|img| img.url).collect();
+
+    debug!("Generated image URLs: {:?}", urls);
+
+    if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+        debug!("Downloading images to directory: {}", directory);
+        let saved_files = download_and_save_images(urls.clone(), prompt, directory).await?;
+        debug!("Saved files: {:?}", saved_files);
+        Ok(saved_files.join("\n"))
+    } else {
+        Ok(urls.join("\n"))
+    }
+}
+
+async fn download_and_save_images(urls: Vec<String>, prompt: &str, directory: &str) -> std::result::Result<Vec<String>, Box<dyn StdError + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let sanitized_prompt = sanitize_filename(prompt);
+    let shortened_prompt = sanitized_prompt.split('_').take(5).collect::<Vec<_>>().join("_");
+    let timestamp = Utc::now().format("%Y%m%d%H%M%S").to_string();
+
+    let mut saved_files = Vec::new();
+
+    for (i, url) in urls.iter().enumerate() {
+        debug!("Downloading image from URL: {}", url);
+        let response = client.get(url).send().await?;
+        let bytes = response.bytes().await?;
+
+        let file_name = format!("{}_{}_{}.png", shortened_prompt, timestamp, i);
+        let file_path = format!("{}/{}", directory, file_name);
+
+        debug!("Saving image to path: {}", file_path);
+
+        let mut file = tokio::fs::File::create(&file_path).await?;
+        tokio::io::copy(&mut bytes.as_ref(), &mut file).await?;
+
+        saved_files.push(file_path);
+    }
+
+    Ok(saved_files)
+}
+
+fn sanitize_filename(filename: &str) -> String {
+    let re = regex::Regex::new(r"[^\w\d]").unwrap();
+    re.replace_all(filename, "_").to_string()
+}
+
+pub async fn send_dalle_request(
+    prompt: &str,
+    api_key: &str,
+    url: &str,
+    n: u64,
+    size: &str,
+    style: Option<&str>,
+    quality: Option<&str>,
+    model: Option<&str>,
+) -> std::result::Result<DalleResponse, Box<dyn StdError + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let request_body = DalleRequest {
+        prompt: prompt.to_string(),
+        n,
+        model: model.map(|m| m.to_string()),
+        size: size.to_string(),
+        style: style.map(|s| s.to_string()),
+        quality: quality.map(|q| q.to_string()),
+    };
+
+    debug!("Sending DALL-E request with body: {:?}", request_body);
+
+    let response = client
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&request_body)
+        .send()
+        .await?
+        .json::<DalleResponse>()
+        .await?;
+
+    debug!("Received DALL-E response: {:?}", response);
+
+    Ok(response)
+}
+
 
 
 pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
@@ -737,7 +864,7 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
 }
 
 use tokio::io::AsyncWriteExt;
-use chrono::Local;
+use chrono::{Local, Utc};
 
 async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
@@ -816,7 +943,7 @@ pub async fn send_request(flow: &FlowConfig, payload: &Value) -> reqwest::Result
     response.text().await
 }
 
-use std::error::Error as StdError;  // Import the StdError trait for `source` method
+use std::error::Error as StdError; // Import the StdError trait for `source` method
 
 fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
     serde_json::Error::custom(err.to_string())
