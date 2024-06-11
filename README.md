@@ -12,6 +12,7 @@ Fluent CLI is a command-line interface (CLI) tool designed to simplify interacti
 ## Features
 
 - **Multi-Engine Support:**  Interact with FlowiseAI, Langflow, and Webhook workflows seamlessly.
+- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, Anthropic.
 - **Simplified Request Handling:** Send requests to your workflows with a simple command structure.
 - **Context Management:** Provide additional context via stdin or files for richer interactions.
 - **Configuration Management:** Load and modify workflow configurations from a centralized JSON file.
@@ -23,6 +24,11 @@ Fluent CLI is a command-line interface (CLI) tool designed to simplify interacti
 - **Media Download:** Download media files linked in responses directly from the CLI.
 - **Autocomplete Generation:** Generate Bash and Fig autocomplete scripts for enhanced usability.
 - **Amber Integration:** Securely decrypt and manage sensitive keys using the Amber secrets management tool.
+
+## FluentCLI Utility Ecosystem
+- [Rust Fluent Code Utility Repository](https://github.com/njfio/rfcu)
+- [Rust Airtable Utility Repository](https://github.com/njfio/rau)
+- [Rust Logseq Utility Repository](https://github.com/njfio/rlu)
 
 ## Installation
 
