@@ -1,8 +1,8 @@
 mod client;
 mod config;
 mod openai_agent_client;
+mod anthropic_agent_client;
 
-use openai_agent_client::{send_openai_request, OpenAIResponse};
 
 use std::io;
 
@@ -16,7 +16,7 @@ use tokio::io::{AsyncReadExt};
 
 use crate::client::{ handle_response, print_full_width_bar };
 
-use crate::config::{EnvVarGuard, FlowConfig, replace_with_env_var};
+use crate::config::{EnvVarGuard, replace_with_env_var};
 
 use colored::*; // Import the colored crate
 
@@ -68,7 +68,7 @@ fn update_value(existing_value: &mut Value, new_value: &str) {
 
 
 use std::collections::HashMap;
-use crate::openai_agent_client::Message;
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -415,7 +415,7 @@ async fn main() -> Result<()> {
 
     debug!("Handling Response");
 
-    let output = match flow.engine.as_str() {
+    let _output = match engine_type.as_str() {
         "flowise" | "webhook" => {
 
             // Handle Flowise output
@@ -483,6 +483,50 @@ async fn main() -> Result<()> {
             };
             Ok(())
         }
+        "open_ai_assistant" => {
+            match openai_agent_client::handle_openai_assistant(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_openai_assistant_response(&response, &matches).await?
+                },
+                Err(e) => eprintln!("Error handling OpenAI Assistant response: {}", e),
+            };
+            Ok(())
+        },
+        // Add other engines as needed
+        "anthropic" => {
+            match anthropic_agent_client::handle_anthropic_agent(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    debug!("Response: {}", response);
+                    let duration = start_time.elapsed();
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(),
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_anthropic_response(&response, matches).await?
+                }
+                Err(e) => eprintln!("Error handling Anthropic response: {}", e),
+            };
+            Ok(())
+        }
         _ => {
             // Handle default output);
             return Err(Error::from(serde_json::Error::custom("Unsupported engine type")));
@@ -502,7 +546,4 @@ fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
         None
     }
 }
-
-
-const MAX_ITERATIONS: usize = 10;
 

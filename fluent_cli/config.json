@@ -1,6 +1,48 @@
 [
 
   {
+    "name": "Opus",
+    "engine": "anthropic",
+    "protocol": "https",
+    "hostname": "api.anthropic.com",
+    "port": 443,
+    "request_path": "/v1/messages",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+    "overrideConfig": {
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "claude-3-opus-20240229",
+      "max_tokens": 4000,
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "stop_sequences": ["finish\n\n"],
+      "stream": false,
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ticker": {
+                "type": "string",
+                "description": "The stock ticker symbol, e.g. AAPL for Apple Inc."
+              }
+            },
+            "required": ["ticker"]
+          }
+        }
+      ]
+    },
+    "tweaks": {},
+    "timeout_ms": 50000
+  }
+,
+
+  {
     "name": "Omni",
     "engine": "openai",
     "protocol": "https",
@@ -13,15 +55,76 @@
     "overrideConfig": {
       "max_iterations": 10,
       "stripNewLines": true,
+      "modelName": "gpt-4",
+      "max_tokens": 4000,
+      "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1,
+      "frequency_penalty": 0,
+      "presence_penalty": 0,
+      "stop": ["\n\nFinished", "User:"],
+      "n": 1,
+      "logprobs": null,
+      "echo": false,
+      "user": "example-user-id"
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "OmniAssistant",
+    "engine": "open_ai_assistant",
+    "protocol": "https",
+    "hostname": "api.openai.com",
+    "port": 443,
+    "request_path": "/v1/chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+    "overrideConfig": {
+      "max_iterations": 25,
+      "stripNewLines": true,
       "modelName": "gpt-4o",
       "max_tokens": -1,
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "temperature": 0.7,
-      "systemMessage": "You are a helpful assistant."
+      "systemMessage": "You are a helpful assistant.",
+      "assistant_id": "asst_HwtZFIUrYQxenwWU91Z5UBUG",
+      "instructions": "Please address the user as Jane Doe. The user has a premium account.",
+      "additional_instructions": "Be concise in your responses.",
+      "tools": [
+        {
+          "type": "code_interpreter"
+        }
+      ],
+      "tool_choices": {
+        "type": "function", "function": {
+          "name": "get_stock_price"
+        }
+      },
+      "metadata": {
+        "user_id": "AMBER_FLUENT_SESSION_ID_01",
+        "session_id": "AMBER_FLUENT_SESSION_ID_01"
+      },
+      "stream": false,
+      "top_p": 1.0,
+      "max_prompt_tokens": -1,
+      "max_completion_tokens": -1,
+      "truncation_strategy": {
+        "type": "auto",
+        "last_messages": null
+      },
+      "tool_choice": "auto",
+      "parallel_tool_calls": true,
+      "response_format": "auto"
     },
+
     "tweaks": {},
-    "timeout_ms": 50000
+    "timeout_ms": 5000000
   },
+
+
 
   {
     "name": "LocalGoogleGeminiChain",
@@ -1278,7 +1381,7 @@
     "tweaks": {
 
     },
-    "timeout_ms": 50000
+    "timeout_ms": 5000000
   },
 
   {
