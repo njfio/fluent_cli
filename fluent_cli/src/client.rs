@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use log::{debug};
 use std::env;
 use reqwest::{Client};
@@ -106,7 +107,8 @@ struct ResponseOutput {
     source: Option<String>,
 }
 
-// New structure to handle LangFlow output
+use std::collections::{ HashSet};
+
 #[derive(Serialize, Deserialize, Debug)]
 struct LangFlowOutput {
     pub(crate) session_id: String,
@@ -158,7 +160,26 @@ struct LangFlowMessage {
     pub(crate) component_id: String,
 }
 
-// Example function to demonstrate using these structures
+#[derive(Deserialize, Debug)]
+struct DalleResponse {
+    data: Vec<ImageUrl>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ImageUrl {
+    url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DalleRequest {
+    prompt: String,
+    n: u64,
+    size: String,
+    style: Option<String>,
+    quality: Option<String>,
+    model: Option<String>,
+}
+
 pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("LangFlow response body: {}", response_body);
     let result = serde_json::from_str::<LangFlowOutput>(response_body);
@@ -166,11 +187,38 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
 
     match result {
         Ok(lang_flow_output) => {
-            // Concatenate all results and messages
-            let response_text = lang_flow_output.outputs.iter()
-                .flat_map(|output| output.outputs.iter().map(|detail| detail.results.result.clone()))
-                .collect::<Vec<String>>()
-                .join("\n");
+            // Use a HashSet to collect unique messages
+            let mut response_texts: HashSet<String> = HashSet::new();
+
+            for output in lang_flow_output.outputs {
+                for detail in output.outputs {
+                    if !detail.results.result.is_empty() {
+                        response_texts.insert(detail.results.result.clone());
+                    }
+                    if let Some(artifacts) = &detail.artifacts {
+                        if !artifacts.message.is_empty() {
+                            response_texts.insert(artifacts.message.clone());
+                        }
+                    }
+                    for message in &detail.messages {
+                        if !message.message.is_empty() {
+                            response_texts.insert(message.message.clone());
+                        }
+                    }
+                }
+            }
+
+            let response_text = response_texts.into_iter().collect::<Vec<String>>().join("\n");
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(&response_text);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+                return Ok(());
+            }
 
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(&response_text); // Adjust the URL extraction as needed
@@ -181,27 +229,16 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 pretty_format_markdown(&response_text);
+                return Ok(());
             }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
-                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                let code_blocks = extract_code_blocks(&response_text);
-                for block in code_blocks {
-                    println!("{}", block);
-                }
-            }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
-                println!("{}", response_body);  // Output the full raw response
-            }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
                 println!("{}", response_text);  // Default output
+                return Ok(());
             }
         },
         Err(e) => {
@@ -217,6 +254,7 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
     Ok(())
 }
 
+
 pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("Response body: {}", response_body);
 
@@ -231,7 +269,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
 
             // Extract text field if available
             if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
-                println!("{}", text);
+                debug!("parsed_output text: {}", text);
             }
 
             // Extract agent reasoning details if present
@@ -265,6 +303,19 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                     }
                     eprintln!("\n---\n");
                 }
+            }
+
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("parse code");
+                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
+                    let code_blocks = extract_code_blocks(text);
+                    for block in code_blocks {
+                        println!("{}", block);
+                    }
+                }
+                return Ok(());
             }
 
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
@@ -321,25 +372,16 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                     }
                     pretty_format_markdown("---\n");
                 }
+                return Ok(());
             }
 
-            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
-                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
-                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
-                debug!("parse code");
-                if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
-                    let code_blocks = extract_code_blocks(text);
-                    for block in code_blocks {
-                        println!("{}", block);
-                    }
-                }
-            }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 debug!("full output");
                 println!("{}", response_body);
+                return Ok(());
             }
 
             if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
@@ -349,6 +391,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
                     println!("{}", text);
                 }
+                return Ok(());
             }
         },
         Err(e) => {
@@ -371,6 +414,416 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
     Ok(())
 }
 
+
+pub async fn handle_dalle_flow(
+    prompt: &str,
+    flow: &FlowConfig,
+    matches: &ArgMatches,
+) -> std::result::Result<String, Box<dyn StdError + Send + Sync>> {
+    let mut flow = flow.clone();
+    replace_with_env_var(&mut flow.override_config);
+
+    let api_key = env::var("FLUENT_OPENAI_API_KEY_01")?;
+    debug!("Using OpenAI API key: {}", api_key);
+
+    let url = format!("{}://{}:{}/v1/images/generations", flow.protocol, flow.hostname, flow.port);
+
+    let n = flow.override_config["n"].as_u64().unwrap_or(1);
+    let size = flow.override_config["size"].as_str().unwrap_or("1024x1024");
+    let style = flow.override_config.get("style").and_then(|s| s.as_str());
+    let quality = flow.override_config.get("quality").and_then(|q| q.as_str());
+    let model = flow.override_config.get("model").and_then(|m| m.as_str());
+
+    debug!("DALL-E request parameters - prompt: {}, n: {}, size: {}, style: {:?}, quality: {:?}", prompt, n, size, style, quality);
+
+    let response = send_dalle_request(prompt, &api_key, &url, n, size, style, quality, model).await?;
+
+    let urls: Vec<String> = response.data.into_iter().map(|img| img.url).collect();
+
+    debug!("Generated image URLs: {:?}", urls);
+
+    if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+        debug!("Downloading images to directory: {}", directory);
+        let saved_files = download_and_save_images(urls.clone(), prompt, directory).await?;
+        debug!("Saved files: {:?}", saved_files);
+        Ok(saved_files.join("\n"))
+    } else {
+        Ok(urls.join("\n"))
+    }
+}
+
+async fn download_and_save_images(urls: Vec<String>, prompt: &str, directory: &str) -> std::result::Result<Vec<String>, Box<dyn StdError + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let sanitized_prompt = sanitize_filename(prompt);
+    let shortened_prompt = sanitized_prompt.split('_').take(5).collect::<Vec<_>>().join("_");
+    let timestamp = Utc::now().format("%Y%m%d%H%M%S").to_string();
+
+    let mut saved_files = Vec::new();
+
+    for (i, url) in urls.iter().enumerate() {
+        debug!("Downloading image from URL: {}", url);
+        let response = client.get(url).send().await?;
+        let bytes = response.bytes().await?;
+
+        let file_name = format!("{}_{}_{}.png", shortened_prompt, timestamp, i);
+        let file_path = format!("{}/{}", directory, file_name);
+
+        debug!("Saving image to path: {}", file_path);
+
+        let mut file = tokio::fs::File::create(&file_path).await?;
+        tokio::io::copy(&mut bytes.as_ref(), &mut file).await?;
+
+        saved_files.push(file_path);
+    }
+
+    Ok(saved_files)
+}
+
+fn sanitize_filename(filename: &str) -> String {
+    let re = regex::Regex::new(r"[^\w\d]").unwrap();
+    re.replace_all(filename, "_").to_string()
+}
+
+pub async fn send_dalle_request(
+    prompt: &str,
+    api_key: &str,
+    url: &str,
+    n: u64,
+    size: &str,
+    style: Option<&str>,
+    quality: Option<&str>,
+    model: Option<&str>,
+) -> std::result::Result<DalleResponse, Box<dyn StdError + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let request_body = DalleRequest {
+        prompt: prompt.to_string(),
+        n,
+        model: model.map(|m| m.to_string()),
+        size: size.to_string(),
+        style: style.map(|s| s.to_string()),
+        quality: quality.map(|q| q.to_string()),
+    };
+
+    debug!("Sending DALL-E request with body: {:?}", request_body);
+
+    let response = client
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&request_body)
+        .send()
+        .await?
+        .json::<DalleResponse>()
+        .await?;
+
+    debug!("Received DALL-E response: {:?}", response);
+
+    Ok(response)
+}
+
+
+
+pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
+    debug!("Response body: {}", response_body);
+
+    // Attempt to parse the response body as JSON
+    let result: Result<Value> = serde_json::from_str(response_body);
+    debug!("Result: {:?}", result);
+
+    match result {
+        Ok(parsed_output) => {
+            // If parsing is successful, use the parsed data
+            debug!("Parsed Output: {:?}", parsed_output);
+
+            // Extract choices field if available
+            if let Some(choices) = parsed_output.get("choices").and_then(Value::as_array) {
+                for choice in choices {
+                    if let Some(text) = choice.get("message").and_then(|msg| msg.get("content")).and_then(Value::as_str) {
+                        debug!("Parsed choice text: {}", text);
+
+                        // Handle markdown-output
+                        if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            pretty_format_markdown(text);
+                        }
+
+                        // Handle parse-code-output
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            let code_blocks = extract_code_blocks(text);
+                            for block in code_blocks {
+                                println!("{}", block);
+                            }
+                        }
+
+                        // Default output
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            println!("{}", text);
+                        }
+                    }
+                }
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        },
+        Err(_) => {
+            // If parsing fails, handle as plain text
+            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            // Handle markdown-output
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                pretty_format_markdown(response_body);
+            }
+
+            // Handle parse-code-output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(response_body);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            }
+
+            // Default output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                println!("{}", response_body);
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+    };
+
+    Ok(())
+}
+
+
+
+pub async fn handle_openai_assistant_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
+    // Try to parse the JSON string into a serde_json::Value
+    let parsed_output: Result<Value> = serde_json::from_str(response_body);
+    match parsed_output {
+        Ok(parsed_output) => {
+            debug!("Parsed Output: {:?}", parsed_output);
+
+            // Extract messages field if available
+            if let Some(data) = parsed_output.get("data").and_then(Value::as_array) {
+                for message in data {
+                    if let Some(content) = message.get("content").and_then(Value::as_array) {
+                        for item in content {
+                            if let Some(text) = item.get("text").and_then(|txt| txt.get("value")).and_then(Value::as_str) {
+                                debug!("Parsed message text: {}", text);
+
+                                // Handle markdown-output
+                                if matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) {
+                                    debug!("Formatting markdown");
+                                    pretty_format_markdown(text);
+                                }
+
+                                // Handle parse-code-output
+                                if matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) {
+                                    debug!("Parsing code blocks");
+                                    let code_blocks = extract_code_blocks(text);
+                                    for block in code_blocks {
+                                        println!("{}", block);
+                                    }
+                                }
+
+                                // Default output
+                                if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                                    !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                                    !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                                    println!("{}", text);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("full output");
+                println!("{}", parsed_output.to_string());
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(&parsed_output.to_string()); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+        Err(_) => {
+            // Handle the response body as plain text if JSON parsing fails
+            debug!("Failed to parse JSON, handling as plain text");
+
+            // Handle markdown-output
+            if matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) {
+                debug!("markdown output");
+                pretty_format_markdown(response_body);
+            }
+
+            // Handle parse-code-output
+            if matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) {
+                debug!("parse code output");
+                let code_blocks = extract_code_blocks(response_body);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            }
+
+            // Default output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("default output");
+                println!("{}", response_body);
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
+
+
+pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
+    debug!("Response body: {}", response_body);
+
+    let result: Result<Value> = serde_json::from_str(response_body);
+    debug!("Result: {:?}", result);
+
+    match result {
+        Ok(parsed_output) => {
+            debug!("Parsed Output: {:?}", parsed_output);
+
+            if let Some(content) = parsed_output.get("content").and_then(Value::as_array) {
+                for block in content {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        debug!("Parsed content text: {}", text);
+
+                        if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            pretty_format_markdown(text);
+                        }
+
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            let code_blocks = extract_code_blocks(text);
+                            for block in code_blocks {
+                                println!("{}", block);
+                            }
+                        }
+
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            println!("{}", text);
+                        }
+                    }
+                }
+            }
+
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        },
+        Err(_) => {
+            // If parsing fails, handle as plain text
+            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            // Handle markdown-output
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                pretty_format_markdown(response_body);
+            }
+
+            // Handle parse-code-output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(response_body);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            }
+
+            // Default output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                println!("{}", response_body);
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+    };
+
+    Ok(())
+}
+
+
+
+
+
+
 fn extract_urls(text: &str) -> Vec<String> {
     let url_regex = Regex::new(r"https?://[^\s]+").unwrap();
     url_regex.find_iter(text)
@@ -385,7 +838,7 @@ pub fn print_full_width_bar(string: &str) -> String {
 
 use termimad::*;
 
-fn pretty_format_markdown(markdown_content: &str) {
+pub(crate) fn pretty_format_markdown(markdown_content: &str) {
     let mut skin = MadSkin::default(); // Assuming `termimad` is used
     skin.bold.set_fg(crossterm::style::Color::Yellow);
     skin.italic.set_fg(crossterm::style::Color::Blue);
@@ -411,7 +864,7 @@ fn extract_code_blocks(markdown_content: &str) -> Vec<String> {
 }
 
 use tokio::io::AsyncWriteExt;
-use chrono::Local;
+use chrono::{Local, Utc};
 
 async fn download_media(urls: Vec<String>, directory: &str) {
     let client = reqwest::Client::new();
@@ -490,7 +943,7 @@ pub async fn send_request(flow: &FlowConfig, payload: &Value) -> reqwest::Result
     response.text().await
 }
 
-use std::error::Error as StdError;  // Import the StdError trait for `source` method
+use std::error::Error as StdError; // Import the StdError trait for `source` method
 
 fn to_serde_json_error<E: std::fmt::Display>(err: E) -> serde_json::Error {
     serde_json::Error::custom(err.to_string())
@@ -576,20 +1029,32 @@ pub async fn upload_files(api_url: &str, file_paths: Vec<&str>) -> Result<()> {
     Ok(())
 }
 
+fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = pair.splitn(2, '=').collect();
+    if parts.len() == 2 {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 
 use std::path::Path;
+
 use clap::ArgMatches;
 
 use regex::Regex;
 use reqwest::multipart::{Form, Part};
-use serde::de::Error;
+use serde::de::{Error};
 
 use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use crate::openai_agent_client::Message;
+
 pub async fn prepare_payload(
     flow: &FlowConfig,
     question: &str,
@@ -650,14 +1115,31 @@ pub async fn prepare_payload(
         "langflow" => {
             debug!("Langflow Engine");
 
-            // Get the input value key from the flow configuration
+            // Update the tweaks config with the full question at the specified input value key
             if let Some(input_value_key) = flow.input_value_key.as_deref() {
-                // Update the tweaks config with the full question at the specified input value key
-                if let Some(tweaks_obj) = tweaks_config.as_object_mut() {
-                    for (_, tweak) in tweaks_obj.iter_mut() {
-                        if let Some(tweak_obj) = tweak.as_object_mut() {
-                            if tweak_obj.contains_key(input_value_key) {
-                                tweak_obj.insert(input_value_key.to_string(), serde_json::Value::String(full_question.clone()));
+                if let Some(tweak) = tweaks_config.get_mut(input_value_key) {
+                    if let Some(tweak_obj) = tweak.as_object_mut() {
+                        tweak_obj.insert("input_value".to_string(), serde_json::Value::String(full_question.clone()));
+                    }
+                }
+            }
+
+            // Process overrides for tweaks
+            if let Some(overrides) = cli_args.get_many::<String>("override") {
+                let overrides: HashMap<String, String> = overrides
+                    .map(|s| parse_key_value_pair(s).unwrap())
+                    .collect();
+
+                for (key, value) in overrides {
+                    // Split the key into parts
+                    let key_parts: Vec<&str> = key.split('.').collect();
+                    if key_parts.len() == 2 {
+                        if let Some(tweak) = tweaks_config.get_mut(key_parts[0]) {
+                            if let Some(tweak_obj) = tweak.as_object_mut() {
+                                // Only override if the value is not an empty string
+                                if !value.trim().is_empty() {
+                                    tweak_obj.insert(key_parts[1].to_string(), serde_json::Value::String(value.clone()));
+                                }
                             }
                         }
                     }
@@ -666,10 +1148,27 @@ pub async fn prepare_payload(
 
             debug!("Tweaks config after update: {:?}", tweaks_config);
             serde_json::json!({
-                "input_value": full_question,
+                "input_value": "message",
                 "input_type": flow.input_type,
                 "output_type": flow.output_type,
                 "tweaks": tweaks_config,
+            })
+        },
+        "openai" => {
+            debug!("OpenAI Engine");
+
+            let model = flow.override_config["modelName"].as_str().unwrap_or("gpt-4o");
+            let temperature = flow.override_config["temperature"].as_f64().unwrap_or(0.7) as f32;
+
+            let  messages = vec![
+                Message { role: "system".to_string(), content: flow.override_config["systemMessage"].as_str().unwrap_or("You are a helpful assistant.").to_string() },
+                Message { role: "user".to_string(), content: full_question.to_string() },
+            ];
+
+            serde_json::json!({
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
             })
         },
         "webhook" => {
@@ -711,3 +1210,7 @@ pub async fn prepare_payload(
 
     Ok(body)
 }
+
+
+
+

@@ -1,5 +1,8 @@
 mod client;
 mod config;
+mod openai_agent_client;
+mod anthropic_agent_client;
+
 
 use std::io;
 
@@ -11,7 +14,7 @@ use tokio::fs::File;
 
 use tokio::io::{AsyncReadExt};
 
-use crate::client::{ handle_response, print_full_width_bar };
+use crate::client::{handle_dalle_flow, handle_response, print_full_width_bar};
 
 use crate::config::{EnvVarGuard, replace_with_env_var};
 
@@ -48,11 +51,11 @@ use crossterm::style::Stylize;
 use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
-use serde_json::{Value, Map};
+use serde_json::{Value};
 
 fn update_value(existing_value: &mut Value, new_value: &str) {
     match existing_value {
-        Value::Array(arr) => {
+        Value::Array(_arr) => {
             // Preserve the array if the existing value is an array
             *existing_value = Value::Array(vec![Value::String(new_value.to_string())]);
         }
@@ -64,15 +67,23 @@ fn update_value(existing_value: &mut Value, new_value: &str) {
 }
 
 
+
+
 use std::collections::HashMap;
+
+
+use clap::ArgMatches;
+
+
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     colored::control::set_override(true);
 
-    let mut configs = config::load_config().unwrap();
-    let configs_clone = configs.clone();
+    let configs = config::load_config().unwrap();
+    let mut configs_clone = configs.clone();
 
     let mut command = Command::new("fluent")
         .arg_required_else_help(true)
@@ -192,13 +203,12 @@ async fn main() -> Result<()> {
 
     let matches = &command.get_matches();
 
-    let cli_args = matches.clone();
-
     let flowname = matches.get_one::<String>("flowname").map(|s| s.as_str()).unwrap();
-    let flow = configs.iter_mut().find(|f| f.name == flowname).context("Flow not found")?;
+    let flow = configs_clone.iter_mut().find(|f| f.name == flowname).context("Flow not found")?;
     let flow_clone = flow.clone();
     let flow_clone2 = flow.clone();
     let flow_clone3 = flow.clone();
+    let cli_args = matches.clone();
     let request = matches.get_one::<String>("request").map(|s| s.as_str()).unwrap();
 
     // Load context from stdin if not provided
@@ -225,7 +235,6 @@ async fn main() -> Result<()> {
     };
 
     // Update the configuration with the override if it exists
-    // Update the configuration based on what's present in the overrideConfig
     if let Some(override_value) = system_message_override {
         if let Some(obj) = flow.override_config.as_object_mut() {
             if obj.contains_key("systemMessage") {
@@ -274,7 +283,7 @@ async fn main() -> Result<()> {
     if let Some(files) = matches.get_one::<String>("upsert-with-upload").map(|s| s.as_str()) {
         let file_paths: Vec<&str> = files.split(',').collect();
         debug!("Uploading files: {:?}", file_paths);
-        let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
+        let flow = &configs.iter().find(|f| f.name == flowname).expect("Flow not found");
         debug!("Flow: {:?}", flow);
 
         let api_url = format!(
@@ -286,8 +295,6 @@ async fn main() -> Result<()> {
             eprintln!("Error uploading files: {}", e);
         }
     }
-
-
 
     let mut override_config = flow.override_config.clone();
     let mut tweaks_config = flow.tweaks.clone(); // Assuming flow has a tweaks field
@@ -345,7 +352,7 @@ async fn main() -> Result<()> {
 
     // Handle upsert with no upload
     if matches.get_flag("upsert-no-upload") {
-        let flow = configs_clone.iter().find(|f| f.name == flowname).expect("Flow not found");
+        let flow = &configs.iter().find(|f| f.name == flowname).expect("Flow not found");
 
         debug!("Override config before update: {:?}", override_config);
         replace_with_env_var(&mut override_config);
@@ -371,7 +378,6 @@ async fn main() -> Result<()> {
             eprintln!("Error during JSON upsert: {}", e);
         }
     }
-
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -407,42 +413,148 @@ async fn main() -> Result<()> {
 
     print_status(&spinner, flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
     spinner.tick();
-    debug!("Preparing Payload");
-    let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
-    let response = crate::client::send_request(flow, &payload).await?;
+    let prompt = format!("{} {}", request, &actual_final_context_clone2.as_ref().unwrap_or(&new_question));
+
     debug!("Handling Response");
 
-    let duration = start_time.elapsed();
-    spinner.finish_with_message(format!(
-        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
-        client::print_full_width_bar("■"),
-        "Flow: ".grey().italic(),
-        flowname.purple().italic(),
-        "Request: ".grey().italic(),
-        request.bright_blue().italic(),
-        "Duration: ".grey().italic(),
-        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
-        client::print_full_width_bar("-")
-    ));
-
-    match engine_type.as_str() {
+    let _output = match engine_type.as_str() {
         "flowise" | "webhook" => {
             // Handle Flowise output
+            let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
+            let response = crate::client::send_request(flow, &payload).await?;
+            let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+            spinner.finish_with_message(format!(
+                "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                client::print_full_width_bar("■"),
+                "Flow: ".grey().italic(),
+                flowname.purple().italic(),
+                "Request: ".grey().italic(),
+                request.bright_blue().italic(),
+                "Duration: ".grey().italic(),
+                format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                client::print_full_width_bar("-")
+            ));
             handle_response(response.as_str(), matches).await
         }
         "langflow" => {
+            let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
+            let response = crate::client::send_request(flow, &payload).await?;
+            let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+            spinner.finish_with_message(format!(
+                "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                client::print_full_width_bar("■"),
+                "Flow: ".grey().italic(),
+                flowname.purple().italic(),
+                "Request: ".grey().italic(),
+                request.bright_blue().italic(),
+                "Duration: ".grey().italic(),
+                format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                client::print_full_width_bar("-")
+            ));
             // Handle LangFlow output
             client::handle_langflow_response(response.as_str(), matches).await
         }
+        "openai" => {
+            // Handle OpenAI output
+            match openai_agent_client::handle_openai_agent(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_openai_response(&response, &matches).await?
+                },
+                Err(e) => eprintln!("Error handling OpenAI response: {}", e),
+            };
+            Ok(())
+        }
+        "open_ai_assistant" => {
+            match openai_agent_client::handle_openai_assistant(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_openai_assistant_response(&response, &matches).await?
+                },
+                Err(e) => eprintln!("Error handling OpenAI Assistant response: {}", e),
+            };
+            Ok(())
+        }
+        // Add other engines as needed
+        "anthropic" => {
+            match anthropic_agent_client::handle_anthropic_agent(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    debug!("Response: {}", response);
+                    let duration = start_time.elapsed();
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(),
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_anthropic_response(&response, matches).await?
+                }
+                Err(e) => eprintln!("Error handling Anthropic response: {}", e),
+            };
+            Ok(())
+        }
+        "dalle" => {
+            match handle_dalle_flow(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    println!("{}", response);
+                },
+                Err(e) => eprintln!("Error handling DALL-E response: {}", e),
+            };
+            Ok(())
+        }
         _ => {
-            // Handle default output);
+            // Handle default output
             return Err(Error::from(serde_json::Error::custom("Unsupported engine type")));
         }
-    }
-        .expect("TODO: panic message");
+    }.expect("TODO: panic message");
     eprint!("\n\n{}\n\n", print_full_width_bar("■"));
+
     Ok(())
 }
+
 
 fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = pair.splitn(2, '=').collect();
@@ -452,8 +564,4 @@ fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
         None
     }
 }
-
-
-
-
 
