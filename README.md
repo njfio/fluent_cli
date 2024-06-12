@@ -21,7 +21,7 @@ Fluent CLI is a command-line interface (CLI) tool designed to simplify interacti
 ## Features
 
 - **Multi-Engine Support:**  Interact with FlowiseAI, Langflow, and Webhook workflows seamlessly.
-- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, Anthropic.
+- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, Anthropic, GroqLPU, and Perplexity models.
 - **Simplified Request Handling:** Send requests to your workflows with a simple command structure.
 - **Context Management:** Provide additional context via stdin or files for richer interactions.
 - **Configuration Management:** Load and modify workflow configurations from a centralized JSON file.
