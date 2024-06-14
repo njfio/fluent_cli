@@ -1,4 +1,4 @@
-![fluent_logo](https://njf.gitbook.io/~gitbook/image?url=https%3A%2F%2F2467274695-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Fspaces%252FCLfJPQjN34tS0eWZ4JVf%252Fuploads%252F4C1WJaXeUrI8eolRjFzU%252Ffluent_logo_small-removebg-preview.png%3Falt%3Dmedia%26token%3Dac9c5ba3-2b93-47e7-be85-403c42a9c789&width=768&dpr=1&quality=100&sign=3c8374ebba3b2d02be7822cd9fd897126eacab6e72266f796d4003984dc02ee4)
+![fluent_logo](https://github.com/njfio/fluent_cli/assets/7220/7ac05cb2-db37-4173-9dc4-35085ae2696b)
 
 > This project is under very active development.
 > 
