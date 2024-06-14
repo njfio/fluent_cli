@@ -1,4 +1,4 @@
-use reqwest::Client;
+use reqwest::{Client, multipart};
 use serde_json::{json, Value};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -6,18 +6,34 @@ use clap::ArgMatches;
 
 use log::{debug, error};
 use std::error::Error;
+use std::path::Path;
 use std::time::Duration;
+use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE};
 use serde::ser::StdError;
+use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
+use tokio::io::AsyncReadExt as TokioAsyncReadExt;
 
 use tokio::time::{Instant, sleep};
 
-use crate::client::{handle_openai_assistant_response};
+use crate::client::{handle_openai_assistant_response, resolve_env_var};
 use crate::config::{FlowConfig, replace_with_env_var};
-
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
-    pub choices: Vec<Choice>,
-    pub usage: Usage,
+    pub id: Option<String>,
+    pub object: Option<String>,
+    pub created: Option<u64>,
+    pub model: Option<String>,
+    pub choices: Option<Vec<Choice>>,
+    pub error: Option<OpenAIError>,  // Add this to capture errors
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OpenAIError {  // Define the error struct
+    pub code: Option<String>,
+    pub message: String,
+    pub param: Option<String>,
+    pub type_: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +46,18 @@ pub struct Choice {
 pub struct Message {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+enum Content {
+    Text { r#type: String, text: String },
+    Image { r#type: String, image_url: ImageUrl },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ImageUrl {
+    url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +215,9 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
     let timeout_duration = Duration::from_secs(timeout / 1000);
     debug!("Timeout duration: {:?}", timeout_duration);
 
+    // Store processed tool_call_ids to avoid duplication
+    let mut processed_tool_calls = std::collections::HashSet::new();
+
     // Poll for the run status
     loop {
         let run_status_response = get_run_status(&api_key, &thread_id, &run_id).await?;
@@ -204,19 +235,26 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
                     let mut tool_outputs = Vec::new();
                     for tool_call in tool_calls {
                         if let Some(tool_call_id) = tool_call.get("id").and_then(|v| v.as_str()) {
+                            if processed_tool_calls.contains(tool_call_id) {
+                                debug!("Skipping already processed tool call: {}", tool_call_id);
+                                continue;
+                            }
                             let output = get_tool_output(tool_call).await?;
                             tool_outputs.push(json!({
                                 "tool_call_id": tool_call_id,
                                 "output": output
                             }));
+                            processed_tool_calls.insert(tool_call_id.to_string());
                         } else {
                             error!("Missing 'id' in tool_call: {:?}", tool_call);
                         }
                     }
 
-                    debug!("Submitting tool outputs: {:?}", tool_outputs);
-                    let submission_response = submit_tool_outputs(&api_key, &thread_id, &run_id, json!(tool_outputs)).await?;
-                    debug!("Tool output submission response: {:?}", submission_response);
+                    if !tool_outputs.is_empty() {
+                        debug!("Submitting tool outputs: {:?}", tool_outputs);
+                        let submission_response = submit_tool_outputs(&api_key, &thread_id, &run_id, json!(tool_outputs)).await?;
+                        debug!("Tool output submission response: {:?}", submission_response);
+                    }
                 } else {
                     error!("Missing 'tool_calls' in required_action: {:?}", required_action);
                 }
@@ -229,32 +267,37 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
             return Err("Timeout while waiting for run to complete".into());
         }
 
-        sleep(Duration::from_secs(2)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 
-    // Retrieve the messages from the thread
+    // Retrieve and return the final assistant message
     let thread_messages = get_thread_messages(&api_key, &thread_id).await?;
     debug!("Thread messages: {:?}", thread_messages);
 
-    // Call handle_openai_assistant_response with the raw JSON string
-    let response_body = serde_json::to_string(&thread_messages)?;
-    handle_openai_assistant_response(&response_body, matches).await?;
-
-    // Extract the assistant's response from thread messages
     if let Some(last_message) = thread_messages["data"].as_array().and_then(|msgs| msgs.iter().rev().find(|msg| msg["role"] == "assistant")) {
-        if let Some(content) = last_message.get("content").and_then(|c| c.as_array()).and_then(|arr| arr.iter().find_map(|item| item.get("text").and_then(|txt| txt.get("value")).and_then(Value::as_str))) {
-            return Ok(content.to_string());
+        if let Some(content_array) = last_message["content"].as_array() {
+            let mut full_response = String::new();
+            for content_item in content_array {
+                if let Some(text) = content_item.get("text").and_then(|txt| txt.get("value")).and_then(|v| v.as_str()) {
+                    full_response.push_str(text);
+                }
+            }
+            return Ok(full_response);
         }
     }
 
     Err("Failed to get assistant response".into())
 }
 
+
 pub async fn get_tool_output(_tool_call: &Value) -> Result<String, Box<dyn Error + Send + Sync>> {
     // Implement the logic to handle tool calls and generate the appropriate output
     // For demonstration purposes, we return a dummy output
     Ok("tool_output_example".to_string())
 }
+
+
+
 
 pub async fn send_openai_request(
     messages: Vec<Message>,
@@ -269,55 +312,114 @@ pub async fn send_openai_request(
         messages,
         temperature,
     };
-
+    debug!("Request body: {:?}", request_body);
     let response = client
         .post(url)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&request_body)
         .send()
-        .await?
-        .json::<OpenAIResponse>()
         .await?;
 
-    Ok(response)
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await?;
+        debug!("Error response body: {}", error_text);
+        return Err(format!("Request failed with status: {}", status).into());
+    }
+
+    let openai_response: OpenAIResponse = response.json().await?;
+    debug!("OpenAI response: {:?}", openai_response);
+
+    if let Some(error) = openai_response.error {
+        return Err(format!("OpenAI API error: {}", error.message).into());
+    }
+
+    Ok(openai_response)
 }
 
 
+async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let mut file = TokioFile::open(image_path).await?;
+    let mut buffer = Vec::new();
+    TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;
+    Ok(STANDARD.encode(&buffer))
+}
 
 
-pub async fn handle_openai_agent(prompt: &str, flow: &FlowConfig, _matches: &ArgMatches) -> Result<String, Box<dyn StdError + Send + Sync>> {
+pub async fn handle_openai_agent(
+    prompt: &str,
+    flow: &FlowConfig,
+    matches: &ArgMatches,
+) -> Result<String, Box<dyn StdError + Send + Sync>> {
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
 
-    let api_key = env::var("FLUENT_OPENAI_API_KEY_01").expect("FLUENT_OPENAI_API_KEY_01 not set");
+    // Resolve the API key from the environment variable if it starts with "AMBER_"
+    let api_key = resolve_env_var(&flow.bearer_token)?;
+
     debug!("Using OpenAI API key: {}", api_key);
 
     let url = format!("{}://{}:{}/{}", flow.protocol, flow.hostname, flow.port, flow.request_path);
 
-    let model = flow.override_config["modelName"]["chatOpenAICustom_0"].as_str().unwrap_or("gpt-4o");
+    let model = flow.override_config["modelName"].as_str().unwrap_or("gpt-4o");
     let temperature = flow.override_config["temperature"].as_f64().unwrap_or(0.7) as f32;
     let max_iterations = flow.override_config["max_iterations"].as_u64().unwrap_or(10) as usize;
 
     let mut messages = vec![
-        Message { role: "system".to_string(), content: flow.override_config["systemMessage"].as_str().unwrap_or("You are a helpful assistant.").to_string() },
-        Message { role: "user".to_string(), content: prompt.to_string() },
+        Message {
+            role: "system".to_string(),
+            content: flow.override_config["systemMessage"]
+                .as_str()
+                .unwrap_or("You are a helpful assistant.")
+                .to_string(),
+        },
+        Message {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        },
     ];
+
+    if let Some(file_path) = matches.get_one::<String>("upload-image-path") {
+        let path = Path::new(file_path);
+        let encoded_image = encode_image(path).await?;
+
+        // Add image data as a base64 string
+        messages.push(Message {
+            role: "user".to_string(),
+            content: format!("data:image/jpeg;base64,{}", encoded_image),
+        });
+    }
+
+    debug!("API key: {}", api_key);
+    debug!("Protocol: {}", flow.protocol);
+    debug!("Hostname: {}", flow.hostname);
+    debug!("Port: {}", flow.port);
+    debug!("Request path: {}", flow.request_path);
+    debug!("System message: {}", flow.override_config["systemMessage"].as_str().unwrap_or("You are a helpful assistant."));
+    debug!("Prompt: {}", prompt);
+    debug!("Model: {}", model);
+    debug!("Temperature: {}", temperature);
+    debug!("Max iterations: {}", max_iterations);
     debug!("Messages: {:?}", messages);
     debug!("Model: {}", model);
     debug!("Temperature: {}", temperature);
     debug!("Max iterations: {}", max_iterations);
     debug!("URL: {}", url);
 
-
     let mut full_response = String::new();
     for _ in 0..max_iterations {
         let openai_response = send_openai_request(messages.clone(), &api_key, &url, model, temperature).await?;
         debug!("OpenAI response: {:?}", openai_response);
-        for choice in openai_response.choices {
+        for choice in openai_response.choices.unwrap_or_default() {
             debug!("Choice: {:?}", &choice);
             if let Some(message) = choice.message {
                 full_response.push_str(&message.content);
-                messages.push(Message { role: "assistant".to_string(), content: message.content.clone() });
+                messages.push(Message {
+                    role: "assistant".to_string(),
+                    content: message.content.clone(),
+                });
             }
             debug!("Full response: {}", full_response);
             debug!("Messages: {:?}", messages);
@@ -333,6 +435,8 @@ pub async fn handle_openai_agent(prompt: &str, flow: &FlowConfig, _matches: &Arg
     debug!("Full response: {}", full_response);
     Ok(full_response)
 }
+
+
 
 
 
