@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use log::{debug, error};
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE};
@@ -15,9 +16,12 @@ use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::AsyncReadExt as TokioAsyncReadExt;
 
 use tokio::time::{Instant, sleep};
+use uuid::Uuid;
 
 use crate::client::{handle_openai_assistant_response, resolve_env_var};
 use crate::config::{FlowConfig, replace_with_env_var};
+use crate::neo4j_client::{capture_llm_interaction, Neo4jClient, Neo4jResponseData};
+
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
     pub id: Option<String>,
@@ -192,7 +196,7 @@ pub async fn submit_tool_outputs(api_key: &str, thread_id: &str, run_id: &str, t
 pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &ArgMatches) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
-
+    let model = flow.override_config["modelName"].as_str().unwrap_or("gpt-4o");
     let api_key = env::var("FLUENT_OPENAI_API_KEY_01").expect("FLUENT_OPENAI_API_KEY_01 not set");
     debug!("Using OpenAI API key: {}", api_key);
 
@@ -214,6 +218,7 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
     let timeout = flow.timeout_ms.expect("timeout_ms not set");
     let timeout_duration = Duration::from_secs(timeout / 1000);
     debug!("Timeout duration: {:?}", timeout_duration);
+    let model = flow.override_config["modelName"].as_str().unwrap_or("gpt-4o");
 
     // Store processed tool_call_ids to avoid duplication
     let mut processed_tool_calls = std::collections::HashSet::new();
@@ -282,6 +287,18 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
                     full_response.push_str(text);
                 }
             }
+            debug!("Connection to neo4j");
+            let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
+
+            // After getting a response from your LLM:
+            capture_llm_interaction(
+                Arc::clone(&neo4j_client),
+                &flow,
+                &prompt,
+                &full_response,
+                &model
+            ).await?;
+
             return Ok(full_response);
         }
     }
@@ -353,9 +370,10 @@ pub async fn handle_openai_agent(
     flow: &FlowConfig,
     matches: &ArgMatches,
 ) -> Result<String, Box<dyn StdError + Send + Sync>> {
+    let flow_clone = Arc::new(flow.clone());
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
-
+    let model = flow.override_config["modelName"].as_str().unwrap_or("gpt-4o");
     // Resolve the API key from the environment variable if it starts with "AMBER_"
     let api_key = resolve_env_var(&flow.bearer_token)?;
 
@@ -408,6 +426,13 @@ pub async fn handle_openai_agent(
     debug!("Max iterations: {}", max_iterations);
     debug!("URL: {}", url);
 
+    // Initialize the Neo4j client
+
+    // Capture the session information
+    let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
+    let chat_id = flow.session_id;
+    let chat_message_id = Uuid::new_v4().to_string(); // Replace with actual chat message ID if available
+
     let mut full_response = String::new();
     for _ in 0..max_iterations {
         let openai_response = send_openai_request(messages.clone(), &api_key, &url, model, temperature).await?;
@@ -420,6 +445,7 @@ pub async fn handle_openai_agent(
                     role: "assistant".to_string(),
                     content: message.content.clone(),
                 });
+
             }
             debug!("Full response: {}", full_response);
             debug!("Messages: {:?}", messages);
@@ -427,6 +453,18 @@ pub async fn handle_openai_agent(
             debug!("Choice finish reason: {:?}", choice.finish_reason);
             if choice.finish_reason.as_deref() != Some("length") {
                 // If finish_reason is not "length", we have the complete response
+                debug!("connection to neo4j");
+                let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
+
+                // After getting a response from your LLM:
+                capture_llm_interaction(
+                    Arc::clone(&neo4j_client),
+                    &flow_clone,
+                    &prompt,
+                    &full_response,
+                    &model
+                ).await?;
+                debug!("captured_llm_interaction");
                 return Ok(full_response);
             }
         }

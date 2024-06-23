@@ -4,10 +4,14 @@ use std::collections::HashMap;
 use std::env;
 use reqwest::Client;
 use std::error::Error;
+use std::sync::Arc;
+use chrono::Utc;
 use clap::ArgMatches;
 use log::debug;
+use uuid::Uuid;
 
 use crate::config::{FlowConfig, replace_with_env_var};
+use crate::neo4j_client::{capture_llm_interaction, Metadata, Neo4jClient, Node, NodeType, Relationship, RelationType, VersionInfo};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AnthropicRequest {
@@ -101,6 +105,7 @@ pub async fn send_anthropic_request(
 }
 
 pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &ArgMatches) -> Result<String, Box<dyn std::error::Error>> {
+    let flow_clone = flow.clone();
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
 
@@ -133,6 +138,14 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
         Message { role: "user".to_string(), content: Value::String(prompt.to_string()) },
     ];
 
+    let neo4j_client = Arc::new(Neo4jClient::initialize().await.expect("Failed to create Neo4j client"));
+
+// Capture the session information
+    let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
+    let chat_id = flow.session_id;
+    let chat_message_id = Uuid::new_v4().to_string();
+
+
     let mut full_response = String::new();
     for _ in 0..max_iterations {
         let anthropic_response = send_anthropic_request(messages.clone(), &api_key, &url, model, temperature, max_tokens, stop_sequences.clone(), system.clone(), tools.clone()).await?;
@@ -144,9 +157,20 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
         for block in response_json.content {
             if let Some(text) = block.text {
                 full_response.push_str(&text);
-                messages.push(Message { role: "assistant".to_string(), content: Value::String(text) });
+                messages.push(Message { role: "assistant".to_string(), content: Value::String(text.clone()) });
             }
         }
+
+        let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
+
+    // After getting a response from your LLM:
+        capture_llm_interaction(
+            Arc::clone(&neo4j_client),
+            &flow_clone,
+            &prompt,
+            &full_response,
+            &model
+        ).await?;
 
         // Check for stop condition
         if let Some(stop_reason) = response_json.stop_reason {

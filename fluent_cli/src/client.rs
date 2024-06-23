@@ -312,6 +312,7 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
         }
     }
 
+
     Ok(())
 }
 
@@ -327,6 +328,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
+
 
             // Extract text field if available
             if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
@@ -608,6 +610,8 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
 
+
+
             // Extract choices field if available
             if let Some(choices) = parsed_output.get("choices").and_then(Value::as_array) {
                 for choice in choices {
@@ -662,6 +666,8 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
         Err(_) => {
             // If parsing fails, handle as plain text
             debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+
+
             // Handle markdown-output
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
@@ -722,6 +728,7 @@ pub async fn handle_gemini_response(response_body: &str, matches: &ArgMatches) -
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
 
+
             // Extract candidates field if available
             if let Some(candidates) = parsed_output.get("candidates").and_then(Value::as_array) {
                 for candidate in candidates {
@@ -781,6 +788,7 @@ pub async fn handle_gemini_response(response_body: &str, matches: &ArgMatches) -
             // If parsing fails, handle as plain text
             debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
             // Handle markdown-output
+
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
                 !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
@@ -1110,7 +1118,10 @@ pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches
         },
         Err(_) => {
             // If parsing fails, handle as plain text
-            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            debug!("Raw Response Body: {}", response_body);
+            debug!("Markdown Output: {}", matches.get_one::<bool>("markdown-output").map_or(true, |&v| v));
+            debug!("Parse Code Output: {}", matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v));
+            debug!("Full Output: {}", matches.get_one::<bool>("full-output").map_or(true, |&v| v));
             // Handle markdown-output
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
@@ -1392,6 +1403,7 @@ use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use crate::neo4j_client::{Neo4jClient, Neo4jResponseData, QueryResult};
 use crate::openai_agent_client::Message;
 
 pub async fn prepare_payload(

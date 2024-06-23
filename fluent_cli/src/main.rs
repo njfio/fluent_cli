@@ -5,7 +5,10 @@ mod anthropic_agent_client;
 mod google_ai_client;
 mod cohere_client;
 
-use std::io;
+mod neo4j_client;
+
+
+use std::{env, io};
 
 use clap::{Arg, ArgAction, ColorChoice, Command};
 
@@ -36,6 +39,9 @@ use std::{collections::HashMap, process::Command as ShellCommand};
 
 use clap::ArgMatches;
 
+use tokio;
+use chrono::Utc;
+
 
 fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_question: &str) {
     spinner.set_message(format!(
@@ -58,6 +64,10 @@ use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 use serde_json::{Value};
+use uuid::Uuid;
+use crate::neo4j_client::{Neo4jClient, Neo4jClientError, Neo4jResponseData};
+use std::sync::Arc;
+
 
 fn update_value(existing_value: &mut Value, new_value: &str) {
     match existing_value {
@@ -547,6 +557,9 @@ async fn main() -> Result<()> {
     }.expect("TODO: panic message");
 
     eprint!("\n\n{}\n\n", print_full_width_bar("■"));
+
+
+
 
 
     Ok(())

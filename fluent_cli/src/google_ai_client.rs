@@ -5,6 +5,7 @@ use std::env;
 use reqwest::Client;
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use clap::ArgMatches;
@@ -13,10 +14,11 @@ use serde::de::StdError;
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::AsyncReadExt as TokioAsyncReadExt;
 use tokio::time::Instant;
+use uuid::Uuid;
 use crate::client::resolve_env_var;
 
 use crate::config::{FlowConfig, replace_with_env_var};
-
+use crate::neo4j_client::{Neo4jClient, Neo4jResponseData};
 
 
 #[derive(Debug, Deserialize)]
@@ -154,7 +156,7 @@ pub async fn handle_google_gemini_agent(
     );
 
     let mut prompt_message = prompt.to_string();
-
+    let model = flow.override_config["modelName"].as_str().unwrap_or("claude-3");
     if let Some(file_path) = matches.get_one::<String>("upload-image-path") {
         let path = Path::new(file_path);
         let encoded_image = encode_image(path).await?;
@@ -167,6 +169,13 @@ pub async fn handle_google_gemini_agent(
     }
 
     debug!("Prompt message: {}", prompt_message);
+    let neo4j_client = Arc::new(Neo4jClient::initialize().await.expect("Failed to create Neo4j client"));
+
+    // Capture the session information
+    let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
+    let chat_id = flow.session_id;
+    let chat_message_id = Uuid::new_v4().to_string(); // Replace with actual chat message ID if available
+
 
     let start_time = Instant::now();
     let google_response = send_google_ai_request(&prompt_message, &api_key, &url).await?;
@@ -175,6 +184,18 @@ pub async fn handle_google_gemini_agent(
     debug!("Google AI response: {:?}", google_response);
     if let Some(generated_text) = google_response.candidates.first().and_then(|c| c.content.parts.first().map(|p| p.text.clone())) {
         debug!("Generated text: {}", generated_text);
+        let response_data = Neo4jResponseData {
+            text: generated_text.clone(),
+            question: prompt.to_string(),
+            chatId: chat_id.to_string(),
+            chatMessageId: chat_message_id.to_string(),
+            sessionId: session_id.clone(),
+            memoryType: flow.override_config["memoryType"].as_str().unwrap_or("Buffer Window Memory").to_string(),
+            modelType: model.to_string(),
+        };
+
+        neo4j_client.add_response_data(&response_data).await.expect("Failed to log response data");
+
         Ok(generated_text)
     } else if let Some(error) = google_response.candidates.first().and_then(|c| c.safetyRatings.first()) {
         debug!("Error from Google AI API: {}", error.category);
