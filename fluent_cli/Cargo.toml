@@ -38,6 +38,8 @@ sanitize-filename = "0.5.0"
 shell_command = "0.1.0"
 neo4rs = "0.7.1"
 uuid = { version = "1.8.0", features = ["v4"] }
+tokenizers = "0.13.3"
+ndarray = "0.15.6"
 
 
 [dependencies.getrandom]

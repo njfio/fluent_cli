@@ -8,9 +8,14 @@ use thiserror::Error;
 use log::debug;
 use std::collections::HashMap;
 use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 use crate::config::FlowConfig;
 
+use tokenizers::Tokenizer;
+use tokenizers::models::bpe::BPE;
+use tokio::task;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Node {
@@ -80,6 +85,8 @@ pub enum Neo4jClientError {
     OtherError(String),
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] serde_json::Error),
+    #[error("Vector representation error: {0}")]
+    VectorRepresentationError(#[from] VectorRepresentationError),
     #[error("Other error: {0}")]
     RowError(String),
 }
@@ -106,6 +113,29 @@ pub struct QueryResult {
     pub entity: String,
     pub properties: HashMap<String, serde_json::Value>,
 }
+
+#[derive(Error, Debug)]
+pub enum VectorRepresentationError {
+    #[error("Tokenizer error: {0}")]
+    TokenizerError(String),
+    #[error("BPE builder error: {0}")]
+    BpeBuilderError(String),
+    #[error("File error: {0}")]
+    FileError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Other error: {0}")]
+    OtherError(String),
+}
+
+impl From<tokenizers::Error> for VectorRepresentationError {
+    fn from(err: tokenizers::Error) -> Self {
+        VectorRepresentationError::TokenizerError(err.to_string())
+    }
+}
+
+
+
 
 mod duration_option_serde {
     use chrono::Duration;
@@ -286,9 +316,11 @@ impl Neo4jClient {
             map.put(BoltString::from(format!("prop_{}", key).as_str()), self.json_to_bolt_type(value)?);
         }
 
-        // Vector representation (if present)
         if let Some(vector) = &node.vector_representation {
-            let vector_list = BoltList::new();
+            let mut vector_list = BoltList::new();
+            for &f in vector {
+                vector_list.push(BoltType::Float(BoltFloat::new(f as f64)));
+            }
             map.put(BoltString::from("vector_representation"), BoltType::List(vector_list));
         }
 
@@ -587,6 +619,82 @@ impl Neo4jClient {
 
 }
 
+fn safe_preview(s: &str, max_chars: usize) -> String {
+    s.chars().take(max_chars).collect::<String>() + if s.chars().count() > max_chars { "..." } else { "" }
+}
+
+
+pub async fn create_vector_representation(content: &str) -> Result<Vec<f32>, VectorRepresentationError> {
+    debug!("Creating vector representation for content:");
+    let content = content.to_string(); // Clone the content
+
+    // Check if files exist, are readable, and contain data
+    let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
+    let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
+
+    debug!("Checking vocab file");
+    let mut vocab_content = String::new();
+    File::open(vocab_path)?.read_to_string(&mut vocab_content)?;
+    if vocab_content.is_empty() {
+        return Err(VectorRepresentationError::FileError("Vocab file is empty".to_string()));
+    }
+    debug!("Vocab file content (preview): {}", safe_preview(&vocab_content, 100));
+
+    debug!("Checking merges file");
+    let mut merges_content = String::new();
+    File::open(merges_path)?.read_to_string(&mut merges_content)?;
+    if merges_content.is_empty() {
+        return Err(VectorRepresentationError::FileError("Merges file is empty".to_string()));
+    }
+    debug!("Merges file content (preview): {}", safe_preview(&merges_content, 100));
+
+    // Spawn a blocking task for CPU-intensive tokenization
+    task::spawn_blocking(move || {
+        debug!("Creating BPE tokenizer and encoding:");
+        // Initialize BPE
+        let bpe_builder = BPE::from_file(vocab_path, merges_path);
+        debug!("BPE builder created");
+        let bpe = match bpe_builder.build() {
+            Ok(bpe) => {
+                debug!("BPE built successfully");
+                bpe
+            },
+            Err(e) => {
+                debug!("Error building BPE: {}", e);
+                return Err(VectorRepresentationError::BpeBuilderError(e.to_string()));
+            },
+        };
+
+        debug!("Creating tokenizer");
+        let tokenizer = Tokenizer::new(bpe);
+
+        // Tokenize the content
+        debug!("Tokenizing content");
+        let encoding = match tokenizer.encode(content, false) {
+            Ok(encoding) => {
+                debug!("Content tokenized successfully");
+                encoding
+            },
+            Err(e) => {
+                debug!("Error encoding content: {}", e);
+                return Err(VectorRepresentationError::TokenizerError(e.to_string()));
+            },
+        };
+
+        // Get tokens
+        let tokens = encoding.get_tokens();
+        debug!("Tokens (preview): {:?}", safe_preview(&format!("{:?}", tokens), 100));
+
+        // Create vector representation
+        let vector: Vec<f32> = tokens.iter()
+            .map(|token| tokenizer.token_to_id(token).unwrap_or(0) as f32)
+            .collect();
+        debug!("Vector created with length: {}", vector.len());
+
+        Ok(vector)
+    }).await.map_err(|e| VectorRepresentationError::OtherError(e.to_string()))?
+}
+
 pub async fn capture_llm_interaction(
     neo4j_client: Arc<Neo4jClient>,
     flow: &FlowConfig,
@@ -594,10 +702,25 @@ pub async fn capture_llm_interaction(
     response: &str,
     model: &str,
 ) -> Result<(), Neo4jClientError> {
+    debug!("Capturing LLM interaction");
     let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
+    debug!("Session ID: {}", session_id);
     let chat_id = flow.session_id.clone();
+    debug!("Chat ID: {}", chat_id);
     let chat_message_id = Uuid::new_v4().to_string();
+    debug!("Chat Message ID: {}", chat_message_id);
     let timestamp = Utc::now();
+    debug!("Timestamp: {}", timestamp);
+
+
+
+    // Create vector representations
+    let prompt_vector = create_vector_representation(prompt).await?;
+    debug!("Prompt vector: ");
+    let response_vector = create_vector_representation(response).await?;
+    debug!("Response vector: ");
+
+
 
     // Create or update Session Node
     let session_node = Node {
@@ -629,6 +752,7 @@ pub async fn capture_llm_interaction(
     };
 
     let session_node_id = neo4j_client.add_or_update_node(&session_node).await?;
+    debug!("Session Node ID: {}", session_node_id);
 
     // Create or update Model Node
     let model_node = Node {
@@ -658,6 +782,7 @@ pub async fn capture_llm_interaction(
     };
 
     let model_node_id = neo4j_client.add_or_update_node(&model_node).await?;
+    debug!("Model Node ID: {}", model_node_id);
 
     // Create or update Question Node
     let question_node = Node {
@@ -666,13 +791,14 @@ pub async fn capture_llm_interaction(
         node_type: NodeType::Question,
         attributes: HashMap::new(),
         relationships: vec![],
+
         metadata: Metadata {
             tags: vec!["question".to_string()],
             source: "User".to_string(),
             timestamp,
             confidence: 1.0,
         },
-        vector_representation: None,
+        vector_representation: Some(prompt_vector),
         properties: {
             let mut props = HashMap::new();
             props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
@@ -690,6 +816,7 @@ pub async fn capture_llm_interaction(
     };
 
     let question_node_id = neo4j_client.add_or_update_node(&question_node).await?;
+    debug!("Question Node ID: {}", question_node_id);
 
     // Create Response Node
     let response_node = Node {
@@ -704,7 +831,7 @@ pub async fn capture_llm_interaction(
             timestamp,
             confidence: 1.0,
         },
-        vector_representation: None,
+        vector_representation: Some(response_vector),
         properties: {
             let mut props = HashMap::new();
             props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
@@ -723,7 +850,7 @@ pub async fn capture_llm_interaction(
     };
 
     let response_node_id = neo4j_client.add_or_update_node(&response_node).await?;
-
+    debug!("Response Node ID: {}", response_node_id);
     // Create relationships
     neo4j_client.create_relationship(&session_node_id, &question_node_id, &RelationType::Contains).await?;
     neo4j_client.create_relationship(&question_node_id, &response_node_id, &RelationType::AnsweredBy).await?;
