@@ -39,7 +39,15 @@ shell_command = "0.1.0"
 neo4rs = "0.7.1"
 uuid = { version = "1.8.0", features = ["v4"] }
 tokenizers = "0.13.3"
+rand = "0.8.5"
 ndarray = "0.15.6"
+ndarray-stats = "0.5.1"
+ndarray-rand = "0.14.0"
+rusty-machine = "0.5.4"
+linfa = "0.6.1"
+linfa-clustering = "0.6.1"
+rand_isaac = "0.3.0"
+
 
 
 [dependencies.getrandom]

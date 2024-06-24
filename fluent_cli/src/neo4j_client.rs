@@ -1,21 +1,40 @@
-use neo4rs::{Graph, query, Node as Neo4jNode, Relation, BoltString, BoltType, ConfigBuilder, Query, BoltBoolean, BoltFloat, BoltInteger, BoltMap, BoltList, BoltNull};
-use serde_json::Value as JsonValue;
+use neo4rs::{Graph, query, Node as Neo4jNode, Relation, BoltString, BoltType, ConfigBuilder, Query, BoltBoolean, BoltFloat, BoltInteger, BoltMap, BoltList, BoltNull, DeError};
+use serde_json::{json, Value as JsonValue};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, Duration};
 use thiserror::Error;
-use log::debug;
+use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
+use linfa::DatasetBase;
+use linfa::traits::{Fit, Predict};
+use linfa_clustering::KMeans;
+use ndarray::{Array1, Array2, ArrayView, ArrayView1, Axis, Ix1};
+use rand::seq::SliceRandom;
 use crate::config::FlowConfig;
 
 use tokenizers::Tokenizer;
 use tokenizers::models::bpe::BPE;
 use tokio::task;
+
+use rusty_machine::learning::dbscan::DBSCAN;
+use rusty_machine::prelude::{Matrix, UnSupModel};
+use ndarray_stats::QuantileExt;
+
+use linfa::prelude::*;
+use ndarray_rand::RandomExt;
+use rand::SeedableRng;
+use rand_isaac::Isaac64Rng;
+
+
+const VECTOR_SIZE: usize = 768;  // Choose an appropriate size for your vectors
+
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Node {
@@ -87,14 +106,17 @@ pub enum Neo4jClientError {
     DeserializationError(#[from] serde_json::Error),
     #[error("Vector representation error: {0}")]
     VectorRepresentationError(#[from] VectorRepresentationError),
-    #[error("Other error: {0}")]
+    #[error("Row error: {0}")]
     RowError(String),
+    #[error("Deserialization error: {0}")]
+    DeError(#[from] DeError),
 }
+
 
 pub struct Neo4jClient {
     graph: Graph,
+    tokenizer: Arc<Tokenizer>,
 }
-
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -176,7 +198,13 @@ impl Neo4jClient {
             .map_err(Neo4jClientError::Neo4jError)?;
 
         let graph = Graph::connect(config).await?;
-        Ok(Neo4jClient { graph })
+
+        // Initialize tokenizer
+        let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
+        let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
+        let tokenizer = Arc::new(Self::create_tokenizer(vocab_path, merges_path)?);
+
+        Ok(Neo4jClient { graph, tokenizer })
     }
 
     pub async fn add_or_update_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
@@ -188,6 +216,35 @@ impl Neo4jClient {
             _ => Err(Neo4jClientError::OtherError("Unsupported node type".to_string())),
         }
     }
+
+    fn create_tokenizer(vocab_path: &str, merges_path: &str) -> Result<Tokenizer, VectorRepresentationError> {
+        let bpe_builder = BPE::from_file(vocab_path, merges_path);
+        let bpe = bpe_builder.build()
+            .map_err(|e| VectorRepresentationError::BpeBuilderError(e.to_string()))?;
+        Ok(Tokenizer::new(bpe))
+    }
+
+
+    pub async fn create_vector_representation(&self, content: &str) -> Result<Vec<f32>, VectorRepresentationError> {
+        let content = content.to_string();
+        let tokenizer = Arc::clone(&self.tokenizer);
+
+        let vector = task::spawn_blocking(move || -> Result<Vec<f32>, VectorRepresentationError> {
+            let encoding = tokenizer.encode(content, false)
+                .map_err(|e| VectorRepresentationError::TokenizerError(e.to_string()))?;
+
+            let tokens = encoding.get_ids();
+            let mut vector = vec![0f32; VECTOR_SIZE];
+            for (i, &token) in tokens.iter().enumerate().take(VECTOR_SIZE) {
+                vector[i] = token as f32;
+            }
+            Ok(vector)
+        }).await.map_err(|e| VectorRepresentationError::OtherError(e.to_string()))??;
+
+        Ok(vector)
+    }
+
+
 
     async fn add_or_update_session_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
         let chat_id = node.properties.get("chatId").and_then(|v| v.as_str()).ok_or_else(|| Neo4jClientError::OtherError("Chat ID not found".to_string()))?;
@@ -617,6 +674,339 @@ impl Neo4jClient {
         }
 
 
+    pub async fn find_similar_questions(&self, question: &str, limit: usize) -> Result<Vec<String>, Neo4jClientError> {
+        let question_vector = self.create_vector_representation(question).await?;
+
+        if question_vector.len() != VECTOR_SIZE {
+            return Err(Neo4jClientError::OtherError(format!("Expected vector of size {}, got {}", VECTOR_SIZE, question_vector.len())));
+        }
+
+        let query_str = r#"
+        MATCH (q:Question)
+        WHERE q.vector_representation IS NOT NULL AND size(q.vector_representation) = $vector_size
+        WITH q, gds.similarity.cosine(q.vector_representation, $vector) AS similarity
+        ORDER BY similarity DESC
+        LIMIT $limit
+        RETURN q.content AS content, similarity
+        "#;
+
+        let mut vector_list = BoltList::new();
+        for &value in &question_vector {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("vector", BoltType::List(vector_list))
+            .param("limit", BoltType::Integer(BoltInteger::new(limit as i64)))
+            .param("vector_size", BoltType::Integer(BoltInteger::new(VECTOR_SIZE as i64)))
+        ).await?;
+
+        let mut similar_questions = Vec::new();
+        while let Some(row) = result.next().await? {
+            let content: String = row.get("content").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            similar_questions.push(content);
+        }
+
+        Ok(similar_questions)
+    }
+
+    pub async fn analyze_response_clusters(&self, n_clusters: usize) -> Result<Vec<Vec<String>>, Neo4jClientError> {
+        let query_str = r#"
+        MATCH (r:Response)
+        WHERE r.vector_representation IS NOT NULL AND size(r.vector_representation) = $vector_size
+        RETURN r.id AS id, r.vector_representation AS vector
+        "#;
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("vector_size", BoltType::Integer(BoltInteger::new(VECTOR_SIZE as i64)))
+        ).await?;
+
+        let mut vectors = Vec::new();
+        let mut ids = Vec::new();
+        while let Some(row) = result.next().await? {
+            let id: String = row.get("id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            if vector.len() == VECTOR_SIZE {
+                vectors.push(vector);
+                ids.push(id);
+            } else {
+                warn!("Skipping vector for id {} due to incorrect size", id);
+            }
+        }
+
+        if vectors.is_empty() {
+            return Err(Neo4jClientError::OtherError("No valid vectors found for clustering".to_string()));
+        }
+
+        // Perform k-means clustering
+        let clusters = self.kmeans(&vectors, n_clusters);
+
+        // Group response IDs by cluster
+        let mut clustered_responses = vec![Vec::new(); n_clusters];
+        for (id, &cluster) in ids.iter().zip(clusters.iter()) {
+            clustered_responses[cluster].push(id.clone());
+        }
+
+        Ok(clustered_responses)
+    }
+
+
+    fn kmeans(&self, data: &[Vec<f32>], k: usize) -> Vec<usize> {
+        let n = data.len();
+        let dim = data[0].len();
+        debug!("Number of data points: {}", n);
+        debug!("Number of dimensions: {}", dim);
+
+        // Initialize centroids randomly
+        let mut centroids: Vec<Vec<f32>> = (0..k)
+            .map(|_| data.choose(&mut rand::thread_rng()).unwrap().clone())
+            .collect();
+
+        let mut assignments = vec![0; n];
+        let mut changed = true;
+
+        while changed {
+            changed = false;
+
+            // Assign points to nearest centroid
+            for (i, point) in data.iter().enumerate() {
+                let closest = (0..k)
+                    .min_by_key(|&j| {
+                        let dist: f32 = centroids[j].iter().zip(point.iter())
+                            .map(|(&a, &b)| (a - b).powi(2))
+                            .sum();
+                        (dist * 1000.0) as i32 // Scale for integer comparison
+                    })
+                    .unwrap();
+
+                if assignments[i] != closest {
+                    assignments[i] = closest;
+                    changed = true;
+                }
+            }
+
+            // Update centroids
+            for j in 0..k {
+                let mut new_centroid = vec![0.0; dim];
+                let mut count = 0;
+
+                for (i, point) in data.iter().enumerate() {
+                    if assignments[i] == j {
+                        for d in 0..dim {
+                            new_centroid[d] += point[d];
+                        }
+                        count += 1;
+                    }
+                }
+
+                if count > 0 {
+                    for d in 0..dim {
+                        new_centroid[d] /= count as f32;
+                    }
+                    centroids[j] = new_centroid;
+                }
+            }
+        }
+
+        assignments
+    }
+
+    fn cosine_similarity(&self, a: &Array1<f32>, b: &Array1<f32>) -> f32 {
+        let dot_product = a.dot(b);
+        let norm_a = a.dot(a).sqrt();
+        let norm_b = b.dot(b).sqrt();
+        dot_product / (norm_a * norm_b)
+    }
+
+    pub async fn detect_anomalies(&self, threshold: f32) -> Result<Vec<String>, Neo4jClientError> {
+        let vectors = self.fetch_all_vectors().await?;
+        let mean_vector = vectors.mean_axis(Axis(0)).unwrap();
+
+        let mut anomaly_indices = Vec::new();
+        for (i, vector) in vectors.outer_iter().enumerate() {
+            let distance = euclidean_distance(&vector, &mean_vector);
+            if distance > threshold {
+                anomaly_indices.push(i);
+            }
+        }
+
+        // Fetch content for anomalous vectors
+        let anomalous_content = self.fetch_content_for_indices(&anomaly_indices).await?;
+
+        Ok(anomalous_content)
+    }
+
+    pub async fn cluster_vectors(&self, eps: f64, min_points: usize) -> Result<Vec<Vec<String>>, Neo4jClientError> {
+        let vectors = self.fetch_all_vectors().await?;
+        let mut dbscan = DBSCAN::new(eps, min_points);
+        let matrix = Matrix::new(
+            vectors.nrows(),
+            vectors.ncols(),
+            vectors.into_raw_vec().into_iter().map(|x| x as f64).collect::<Vec<f64>>()
+        );
+
+        // Train the model
+        dbscan.train(&matrix).map_err(|e| Neo4jClientError::OtherError(format!("DBSCAN training error: {}", e)))?;
+
+        // Predict clusters
+        let clusters = dbscan.predict(&matrix).map_err(|e| Neo4jClientError::OtherError(format!("DBSCAN prediction error: {}", e)))?;
+
+        // Group content by cluster
+        let max_cluster = clusters.iter().flatten().max().map(|&x| x + 1).unwrap_or(0);
+        let mut clustered_content = vec![Vec::new(); max_cluster];
+        for (i, cluster) in clusters.iter().enumerate() {
+            if let Some(c) = cluster {
+                let content = self.fetch_content_for_index(i).await?;
+                clustered_content[*c].push(content);
+            }
+        }
+
+        Ok(clustered_content)
+    }
+
+    pub async fn analyze_trends(&self, time_window: chrono::Duration) -> Result<Vec<(String, f32)>, Neo4jClientError> {
+        let query_str = r#"
+        MATCH (n)
+        WHERE n.timestamp > datetime() - duration($time_window)
+        RETURN n.vector_representation AS vector, n.content AS content, n.timestamp AS timestamp
+        ORDER BY timestamp
+        "#;
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("time_window", time_window.num_seconds())
+        ).await?;
+
+        let mut vectors = Vec::new();
+        let mut contents = Vec::new();
+        while let Some(row) = result.next().await? {
+            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            let content: String = row.get("content").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            vectors.push(vector);
+            contents.push(content);
+        }
+
+        // Simple trend analysis: compare each vector to the average
+        let avg_vector = Array2::from_shape_vec((vectors.len(), vectors[0].len()), vectors.concat())
+            .map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
+            .mean_axis(Axis(0))
+            .unwrap();
+
+        let mut trends = Vec::new();
+        for (content, vector) in contents.into_iter().zip(vectors.iter()) {
+            let similarity = self.cosine_similarity(&Array1::from_vec(vector.clone()), &avg_vector);
+            trends.push((content, similarity));
+        }
+
+        trends.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        Ok(trends)
+    }
+
+
+    pub async fn vector_arithmetic(&self, positive_terms: &[&str], negative_terms: &[&str]) -> Result<Vec<String>, Neo4jClientError> {
+        let mut result_vector = Array1::zeros(VECTOR_SIZE);
+
+        for term in positive_terms {
+            let term_vector = self.create_vector_representation(term).await?;
+            result_vector += &Array1::from_vec(term_vector);
+        }
+
+        for term in negative_terms {
+            let term_vector = self.create_vector_representation(term).await?;
+            result_vector -= &Array1::from_vec(term_vector);
+        }
+
+        // Find nearest neighbors to result_vector
+        let nearest_neighbors = self.find_nearest_neighbors(&result_vector, 5).await?;
+
+        Ok(nearest_neighbors)
+    }
+
+    // Helper functions
+
+    async fn fetch_all_vectors(&self) -> Result<Array2<f32>, Neo4jClientError> {
+        let query_str = r#"
+        MATCH (n)
+        WHERE n.vector_representation IS NOT NULL
+        RETURN n.vector_representation AS vector
+        "#;
+
+        let mut result = self.graph.execute(query(query_str)).await?;
+        let mut vectors = Vec::new();
+        while let Some(row) = result.next().await? {
+            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
+            vectors.push(vector);
+        }
+
+        Array2::from_shape_vec((vectors.len(), vectors[0].len()), vectors.concat())
+            .map_err(|e| Neo4jClientError::OtherError(e.to_string()))
+    }
+
+
+    async fn fetch_content_for_indices(&self, indices: &[usize]) -> Result<Vec<String>, Neo4jClientError> {
+        let query_str = r#"
+        MATCH (n)
+        WHERE n.vector_representation IS NOT NULL
+        WITH n, id(n) AS id
+        WHERE id IN $indices
+        RETURN n.content AS content
+        "#;
+
+        let mut indices_list = BoltList::new();
+        for &i in indices {
+            indices_list.push(BoltType::Integer(BoltInteger::new(i as i64)));
+        }
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("indices", BoltType::List(indices_list))
+        ).await?;
+
+        let mut contents = Vec::new();
+        while let Some(row) = result.next().await? {
+            let content: String = row.get("content")?;
+            contents.push(content);
+        }
+
+        Ok(contents)
+    }
+
+
+    async fn fetch_content_for_index(&self, index: usize) -> Result<String, Neo4jClientError> {
+        let contents = self.fetch_content_for_indices(&[index]).await?;
+        contents.into_iter().next().ok_or_else(|| Neo4jClientError::OtherError("No content found for index".to_string()))
+    }
+
+
+    async fn find_nearest_neighbors(&self, vector: &Array1<f32>, k: usize) -> Result<Vec<String>, Neo4jClientError> {
+        let query_str = r#"
+        MATCH (n)
+        WHERE n.vector_representation IS NOT NULL
+        WITH n, gds.similarity.cosine(n.vector_representation, $vector) AS similarity
+        ORDER BY similarity DESC
+        LIMIT $k
+        RETURN n.content AS content
+        "#;
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("vector", vector.as_slice())
+            .param("k", k as i64)
+        ).await?;
+
+        let mut neighbors = Vec::new();
+        while let Some(row) = result.next().await? {
+            let content: String = row.get("content")?;
+            neighbors.push(content);
+        }
+
+        Ok(neighbors)
+    }
+
+
+
+}
+
+
+fn euclidean_distance(a: &ArrayView<f32, Ix1>, b: &Array1<f32>) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
 }
 
 fn safe_preview(s: &str, max_chars: usize) -> String {
@@ -631,6 +1021,7 @@ pub async fn create_vector_representation(content: &str) -> Result<Vec<f32>, Vec
     // Check if files exist, are readable, and contain data
     let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
     let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
+
 
     debug!("Checking vocab file");
     let mut vocab_content = String::new();
@@ -702,25 +1093,18 @@ pub async fn capture_llm_interaction(
     response: &str,
     model: &str,
 ) -> Result<(), Neo4jClientError> {
-    debug!("Capturing LLM interaction");
-    let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
-    debug!("Session ID: {}", session_id);
+    let session_id = std::env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
     let chat_id = flow.session_id.clone();
-    debug!("Chat ID: {}", chat_id);
     let chat_message_id = Uuid::new_v4().to_string();
-    debug!("Chat Message ID: {}", chat_message_id);
     let timestamp = Utc::now();
-    debug!("Timestamp: {}", timestamp);
-
-
 
     // Create vector representations
-    let prompt_vector = create_vector_representation(prompt).await?;
-    debug!("Prompt vector: ");
-    let response_vector = create_vector_representation(response).await?;
-    debug!("Response vector: ");
+    let prompt_vector = neo4j_client.create_vector_representation(prompt).await?;
+    let response_vector = neo4j_client.create_vector_representation(response).await?;
 
-
+    if prompt_vector.len() != VECTOR_SIZE || response_vector.len() != VECTOR_SIZE {
+        return Err(Neo4jClientError::OtherError(format!("Vector size mismatch. Expected {}, got {} and {}", VECTOR_SIZE, prompt_vector.len(), response_vector.len())));
+    }
 
     // Create or update Session Node
     let session_node = Node {
@@ -752,7 +1136,6 @@ pub async fn capture_llm_interaction(
     };
 
     let session_node_id = neo4j_client.add_or_update_node(&session_node).await?;
-    debug!("Session Node ID: {}", session_node_id);
 
     // Create or update Model Node
     let model_node = Node {
@@ -782,29 +1165,26 @@ pub async fn capture_llm_interaction(
     };
 
     let model_node_id = neo4j_client.add_or_update_node(&model_node).await?;
-    debug!("Model Node ID: {}", model_node_id);
-
-    // Create or update Question Node
     let question_node = Node {
         id: Uuid::new_v4().to_string(),
         content: prompt.to_string(),
         node_type: NodeType::Question,
         attributes: HashMap::new(),
         relationships: vec![],
-
         metadata: Metadata {
             tags: vec!["question".to_string()],
             source: "User".to_string(),
             timestamp,
             confidence: 1.0,
         },
-        vector_representation: Some(prompt_vector),
+        vector_representation: Some(prompt_vector.clone()),
         properties: {
             let mut props = HashMap::new();
             props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
             props.insert("chatMessageId".to_string(), JsonValue::String(chat_message_id.clone()));
             props.insert("request".to_string(), JsonValue::String(prompt.to_string()));
             props.insert("modelType".to_string(), JsonValue::String(model.to_string()));
+            props.insert("vector_representation".to_string(), json!(prompt_vector));
             props
         },
         version_info: VersionInfo {
@@ -816,7 +1196,25 @@ pub async fn capture_llm_interaction(
     };
 
     let question_node_id = neo4j_client.add_or_update_node(&question_node).await?;
-    debug!("Question Node ID: {}", question_node_id);
+
+    // Find similar questions
+    let similar_questions = neo4j_client.find_similar_questions(prompt, 5).await?;
+    info!("Similar questions: {:?}", similar_questions);
+    let mut similar_questions_list = BoltList::new();
+    for q in &similar_questions {
+        similar_questions_list.push(BoltType::String(BoltString::from(q.as_str())));
+    }
+    // Update question node with similar questions
+    let update_query = query(
+        "MATCH (q:Question {id: $id})
+         SET q.similar_questions = $similar_questions
+         RETURN q"
+    )
+        .param("id", BoltType::String(BoltString::from(question_node_id.as_str())))
+        .param("similar_questions", BoltType::List(similar_questions_list));
+
+
+    neo4j_client.graph.run(update_query).await?;
 
     // Create Response Node
     let response_node = Node {
@@ -831,7 +1229,7 @@ pub async fn capture_llm_interaction(
             timestamp,
             confidence: 1.0,
         },
-        vector_representation: Some(response_vector),
+        vector_representation: Some(response_vector.clone()),
         properties: {
             let mut props = HashMap::new();
             props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
@@ -839,6 +1237,7 @@ pub async fn capture_llm_interaction(
             props.insert("sessionId".to_string(), JsonValue::String(session_id.clone()));
             props.insert("memoryType".to_string(), JsonValue::String(flow.override_config["memoryType"].as_str().unwrap_or("Buffer Window Memory").to_string()));
             props.insert("modelType".to_string(), JsonValue::String(model.to_string()));
+            props.insert("vector_representation".to_string(), json!(response_vector));
             props
         },
         version_info: VersionInfo {
@@ -850,12 +1249,36 @@ pub async fn capture_llm_interaction(
     };
 
     let response_node_id = neo4j_client.add_or_update_node(&response_node).await?;
-    debug!("Response Node ID: {}", response_node_id);
+
     // Create relationships
     neo4j_client.create_relationship(&session_node_id, &question_node_id, &RelationType::Contains).await?;
     neo4j_client.create_relationship(&question_node_id, &response_node_id, &RelationType::AnsweredBy).await?;
     neo4j_client.create_relationship(&response_node_id, &model_node_id, &RelationType::GeneratedBy).await?;
     neo4j_client.create_relationship(&session_node_id, &model_node_id, &RelationType::Uses).await?;
+
+    // Analyze response clusters
+    let n_clusters = 3; // You can adjust this number based on your needs
+    let clustered_responses = neo4j_client.analyze_response_clusters(n_clusters).await?;
+    info!("Response clusters: {:?}", clustered_responses);
+
+    // Update response nodes with cluster information
+    for (cluster_id, response_ids) in clustered_responses.iter().enumerate() {
+        let mut response_ids_list = BoltList::new();
+        for id in response_ids {
+            response_ids_list.push(BoltType::String(BoltString::from(id.as_str())));
+        }
+
+        let update_query = query(
+            "MATCH (r:Response)
+             WHERE r.id IN $response_ids
+             SET r.cluster = $cluster_id
+             RETURN r"
+        )
+            .param("response_ids", BoltType::List(response_ids_list))
+            .param("cluster_id", BoltType::Integer(BoltInteger::new(cluster_id as i64)));
+
+        neo4j_client.graph.run(update_query).await?;
+    }
 
     Ok(())
 }
