@@ -1,7 +1,8 @@
-
+use crate::db;
 use log::{debug};
 use std::env;
 use reqwest::{Client};
+use anyhow::{Result as AnyhowResult, Context as AnyhowContext};
 
 use serde_json::{json, Value};
 
@@ -1056,6 +1057,13 @@ pub async fn handle_cohere_response(response_body: &str, matches: &ArgMatches) -
 pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
     debug!("Response body: {}", response_body);
 
+
+    let conn = get_connection().await?;
+    debug!("Connection: {:?}", conn);
+    let start_time = Instant::now();
+
+    let duration = start_time.elapsed().as_secs_f64();
+
     let result: Result<Value> = serde_json::from_str(response_body);
     debug!("Result: {:?}", result);
 
@@ -1109,6 +1117,9 @@ pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches
             }
         },
         Err(_) => {
+            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+
+
             // If parsing fails, handle as plain text
             debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
             // Handle markdown-output
@@ -1381,6 +1392,8 @@ use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::{AsyncReadExt as TokioAsyncReadExt, Result as IoResult};
 
 use std::path::Path;
+use std::time::Duration;
+use anyhow::Context;
 
 use clap::ArgMatches;
 
@@ -1392,6 +1405,10 @@ use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use tokio::time::Instant;
+use crate::db::{get_connection, log_response};
+
+
 use crate::openai_agent_client::Message;
 
 pub async fn prepare_payload(

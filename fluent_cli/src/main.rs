@@ -5,6 +5,9 @@ mod anthropic_agent_client;
 mod google_ai_client;
 mod cohere_client;
 
+mod db;
+mod custom_error;
+
 use std::io;
 
 use clap::{Arg, ArgAction, ColorChoice, Command};
@@ -58,6 +61,8 @@ use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 use serde_json::{Value};
+use fluent::custom_error::FluentError;
+use fluent::db::{get_connection, log_request};
 
 fn update_value(existing_value: &mut Value, new_value: &str) {
     match existing_value {
@@ -186,7 +191,7 @@ async fn main() -> Result<()> {
     let flow_clone3 = flow.clone();
     let cli_args = matches.clone();
     let request = matches.get_one::<String>("request").map(|s| s.as_str()).unwrap();
-
+    debug!("Request: {}", request);
     // Load context from stdin if not provided
     let context = matches.get_one::<String>("context").map(|s| s.as_str());
     let mut additional_context = String::new();
@@ -329,7 +334,7 @@ async fn main() -> Result<()> {
             eprintln!("Error during JSON upsert: {}", e);
         }
     }
-
+    debug!("Setting spinner");
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
         ProgressStyle::default_spinner()
@@ -366,7 +371,7 @@ async fn main() -> Result<()> {
     spinner.tick();
     let prompt = format!("{}", new_question);
 
-    debug!("Handling Response");
+
 
     let output = match engine_type.as_str() {
         "flowise" | "webhook" => {
@@ -452,8 +457,12 @@ async fn main() -> Result<()> {
             Ok(())
         }
         "anthropic" => {
+            debug!("Anthropic");
             match anthropic_agent_client::handle_anthropic_agent(&prompt, &flow, matches).await {
                 Ok(response) => {
+                    let start_time = Instant::now();
+                    let duration = start_time.elapsed().as_secs_f64();
+
                     debug!("Response: {}", response);
                     let duration = start_time.elapsed();
                     spinner.finish_with_message(format!(

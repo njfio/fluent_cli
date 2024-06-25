@@ -126,6 +126,45 @@
     },
     "tweaks": {},
     "timeout_ms": 50000
+  },  {
+    "name": "Sonnet3.5",
+    "engine": "anthropic",
+    "protocol": "https",
+    "hostname": "api.anthropic.com",
+    "port": 443,
+    "request_path": "/v1/messages",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+    "overrideConfig": {
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "claude-3-5-sonnet-20240620",
+      "max_tokens": 4000,
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "stop_sequences": ["finish\n\n"],
+      "stream": false,
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ticker": {
+                "type": "string",
+                "description": "The stock ticker symbol, e.g. AAPL for Apple Inc."
+              }
+            },
+            "required": ["ticker"]
+          }
+        }
+      ]
+    },
+    "tweaks": {},
+    "timeout_ms": 50000
   },
   {
     "name": "Haiku",

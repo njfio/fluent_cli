@@ -18,6 +18,8 @@ use tokio::time::{Instant, sleep};
 
 use crate::client::{handle_openai_assistant_response, resolve_env_var};
 use crate::config::{FlowConfig, replace_with_env_var};
+use crate::db::{get_connection, log_openai_agent_interaction};
+
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
     pub id: Option<String>,
@@ -26,6 +28,7 @@ pub struct OpenAIResponse {
     pub model: Option<String>,
     pub choices: Option<Vec<Choice>>,
     pub error: Option<OpenAIError>,  // Add this to capture errors
+    pub(crate) usage: Option<Usage>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -50,7 +53,7 @@ pub struct Message {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum Content {
+pub enum Content {
     Text { r#type: String, text: String },
     Image { r#type: String, image_url: ImageUrl },
 }
@@ -62,8 +65,12 @@ struct ImageUrl {
 
 #[derive(Debug, Deserialize)]
 pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
     pub total_tokens: u32,
 }
+
+
 
 #[derive(Debug, Serialize)]
 pub struct OpenAIRequest {
@@ -90,6 +97,21 @@ pub struct OpenAIAssistantRequest {
     pub messages: Vec<Message>,
     pub temperature: f32,
 }
+
+#[derive(Debug, Clone)]
+pub struct ThreadData {
+    pub assistant_id: Option<String>,
+    pub thread_id: Option<String>,
+    pub run_id: Option<String>,
+    pub message_id: Option<String>,
+    pub role: Option<String>,
+    pub content: Option<String>,
+    pub created_at: u64,
+    pub assistant_metadata: Option<String>,
+    pub thread_metadata: Option<String>,
+}
+
+
 
 
 pub async fn create_thread(api_key: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
@@ -190,6 +212,9 @@ pub async fn submit_tool_outputs(api_key: &str, thread_id: &str, run_id: &str, t
 }
 
 pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &ArgMatches) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let conn = get_connection().await?;
+    let start_time = Instant::now();
+
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
 
@@ -269,25 +294,60 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
 
         sleep(Duration::from_secs(5)).await;
     }
-
-    // Retrieve and return the final assistant message
     let thread_messages = get_thread_messages(&api_key, &thread_id).await?;
-    debug!("Thread messages: {:?}", thread_messages);
 
-    if let Some(last_message) = thread_messages["data"].as_array().and_then(|msgs| msgs.iter().rev().find(|msg| msg["role"] == "assistant")) {
-        if let Some(content_array) = last_message["content"].as_array() {
-            let mut full_response = String::new();
-            for content_item in content_array {
-                if let Some(text) = content_item.get("text").and_then(|txt| txt.get("value")).and_then(|v| v.as_str()) {
-                    full_response.push_str(text);
-                }
-            }
-            return Ok(full_response);
-        }
-    }
+    let (full_response, thread_data) = if let Some(last_message) = thread_messages["data"].as_array().and_then(|msgs| msgs.iter().rev().find(|msg| msg["role"] == "assistant")) {
+        let content = last_message["content"].as_array()
+            .map(|content_array| content_array.iter()
+                .filter_map(|content_item| content_item.get("text").and_then(|txt| txt.get("value")).and_then(|v| v.as_str()))
+                .collect::<Vec<&str>>()
+                .join(""))
+            .unwrap_or_default();
 
-    Err("Failed to get assistant response".into())
+        let thread_data = ThreadData {
+            assistant_id: last_message["assistant_id"].as_str().map(String::from),
+            thread_id: last_message["thread_id"].as_str().map(String::from),
+            run_id: last_message["run_id"].as_str().map(String::from),
+            message_id: last_message["id"].as_str().map(String::from),
+            role: last_message["role"].as_str().map(String::from),
+            content: Some(content.clone()),
+            created_at: last_message["created_at"].as_u64().unwrap_or(0),
+            assistant_metadata: serde_json::to_string(&last_message["metadata"]).ok(),
+            thread_metadata: serde_json::to_string(&thread_messages).ok(),
+        };
+
+        (content, Some(thread_data))
+    } else {
+        (String::new(), None)
+    };
+
+    let response_for_logging = OpenAIResponse {
+        id: Some(run_id.clone()),
+        object: Some("assistant.run".to_string()),
+        created: Some(start_time.elapsed().as_secs() as u64),
+        model: Some(assistant_id.to_string()),
+        choices: Some(vec![Choice {
+            message: Some(Message {
+                role: "assistant".to_string(),
+                content: full_response.clone(),
+            }),
+            finish_reason: Some("stop".to_string()),
+        }]),
+        error: None,
+        usage: Some(Usage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        }),
+    };
+
+    let duration = start_time.elapsed().as_secs_f64();
+
+    log_openai_agent_interaction(&conn, &flow.name, &flow, prompt, &response_for_logging, "openai_assistant", duration, thread_data.as_ref())?;
+
+    Ok(full_response)
 }
+
 
 
 pub async fn get_tool_output(_tool_call: &Value) -> Result<String, Box<dyn Error + Send + Sync>> {
@@ -347,12 +407,14 @@ async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send 
     Ok(STANDARD.encode(&buffer))
 }
 
-
 pub async fn handle_openai_agent(
     prompt: &str,
     flow: &FlowConfig,
     matches: &ArgMatches,
 ) -> Result<String, Box<dyn StdError + Send + Sync>> {
+    let conn = get_connection().await?;
+
+    let start_time = Instant::now();
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
 
@@ -411,23 +473,29 @@ pub async fn handle_openai_agent(
     let mut full_response = String::new();
     for _ in 0..max_iterations {
         let openai_response = send_openai_request(messages.clone(), &api_key, &url, model, temperature).await?;
-        debug!("OpenAI response: {:?}", openai_response);
-        for choice in openai_response.choices.unwrap_or_default() {
-            debug!("Choice: {:?}", &choice);
-            if let Some(message) = choice.message {
-                full_response.push_str(&message.content);
-                messages.push(Message {
-                    role: "assistant".to_string(),
-                    content: message.content.clone(),
-                });
-            }
-            debug!("Full response: {}", full_response);
-            debug!("Messages: {:?}", messages);
 
-            debug!("Choice finish reason: {:?}", choice.finish_reason);
-            if choice.finish_reason.as_deref() != Some("length") {
-                // If finish_reason is not "length", we have the complete response
-                return Ok(full_response);
+        if let Some(choices) = &openai_response.choices {
+            for choice in choices {
+                debug!("Choice: {:?}", &choice);
+                if let Some(message) = &choice.message {
+                    full_response.push_str(&message.content);
+                    messages.push(Message {
+                        role: "assistant".to_string(),
+                        content: message.content.clone(),
+                    });
+                }
+                debug!("Full response: {}", full_response);
+                debug!("Messages: {:?}", messages);
+
+                debug!("Choice finish reason: {:?}", choice.finish_reason);
+                if choice.finish_reason.as_deref() != Some("length") {
+                    let duration = start_time.elapsed().as_secs_f64();
+
+                    // Log the interaction without ThreadData for regular OpenAI calls
+                    log_openai_agent_interaction(&conn, &flow.name, &flow, prompt, &openai_response, &flow.engine, duration, None)?;
+
+                    return Ok(full_response);
+                }
             }
         }
     }
@@ -435,8 +503,3 @@ pub async fn handle_openai_agent(
     debug!("Full response: {}", full_response);
     Ok(full_response)
 }
-
-
-
-
-

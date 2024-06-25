@@ -4,10 +4,15 @@ use std::collections::HashMap;
 use std::env;
 use reqwest::Client;
 use std::error::Error;
+use anyhow::Context;
 use clap::ArgMatches;
 use log::debug;
+use tokio::time::Instant;
 
 use crate::config::{FlowConfig, replace_with_env_var};
+use crate::custom_error::FluentError;
+use crate::db;
+use crate::db::{get_connection, log_anthropic_interaction, log_interaction};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AnthropicRequest {
@@ -41,28 +46,30 @@ struct ToolSchema {
 }
 
 
-#[derive(Debug, Deserialize)]
-pub struct ContentBlock {
-    r#type: String,
-    text: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AnthropicResponse {
-    content: Vec<ContentBlock>,
-    id: String,
-    model: String,
-    role: String,
-    stop_reason: Option<String>,
-    stop_sequence: Option<String>,
-    usage: Option<Usage>,
+    pub content: Vec<ContentBlock>,
+    pub id: String,
+    pub response_type: Option<String>,
+    pub model: String,
+    pub role: String,
+    pub stop_reason: Option<String>,
+    pub stop_sequence: Option<String>,
+    pub usage: Option<Usage>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Usage {
-    input_tokens: usize,
-    output_tokens: usize,
+#[derive(Debug, Deserialize, Clone)]
+pub struct ContentBlock {
+    pub r#type: String,
+    pub text: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Usage {
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+}
+
 
 pub async fn send_anthropic_request(
     messages: Vec<Message>,
@@ -101,7 +108,13 @@ pub async fn send_anthropic_request(
 }
 
 pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &ArgMatches) -> Result<String, Box<dyn std::error::Error>> {
+
+    let start_time = Instant::now();
+
+    let duration = start_time.elapsed().as_secs_f64();
+    let original_flow_clone = flow.clone();
     let mut flow = flow.clone();
+
     replace_with_env_var(&mut flow.override_config);
 
     let api_key = env::var("FLUENT_ANTHROPIC_KEY_01").expect("FLUENT_ANTHROPIC_KEY_01 not set");
@@ -137,9 +150,11 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
     for _ in 0..max_iterations {
         let anthropic_response = send_anthropic_request(messages.clone(), &api_key, &url, model, temperature, max_tokens, stop_sequences.clone(), system.clone(), tools.clone()).await?;
 
+        debug!("Anthropic response: {}", anthropic_response);
         // Parse response as JSON
         let response_json: AnthropicResponse = serde_json::from_str(&anthropic_response)?;
-
+        debug!("Response JSON: {:?}", response_json);
+        let response_json_clone = &response_json.clone();
         // Process the response messages
         for block in response_json.content {
             if let Some(text) = block.text {
@@ -148,9 +163,39 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
             }
         }
 
-        // Check for stop condition
-        if let Some(stop_reason) = response_json.stop_reason {
+        // Process the usage
+        if let Some(usage) = response_json.usage {
+            debug!("Input tokens: {}", usage.input_tokens);
+            debug!("Output tokens: {}", usage.output_tokens);
+        }
+        // Collect content into a string first
+
+        let mut content_string = String::new();
+        for block in &response_json_clone.content {
+            if let Some(text) = &block.text {
+                content_string.push_str(text);
+            }
+        }
+
+        let mut full_response = String::new();
+        for block in &response_json_clone.content {
+            if let Some(text) = &block.text {
+                full_response.push_str(text);
+                messages.push(Message {
+                    role: "assistant".to_string(),
+                    content: serde_json::Value::String(text.clone())
+                });
+            }
+        }
+
+        if let Some(stop_reason) = &response_json_clone.stop_reason {
             if stop_reason != "max_tokens" {
+                debug!("Stop reason: {}", stop_reason);
+                let conn = get_connection().await?;
+
+                log_anthropic_interaction(&conn, &flow.name, &original_flow_clone, prompt, &response_json_clone, &flow.engine, duration)?;
+
+
                 return Ok(full_response);
             }
         }
