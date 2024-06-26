@@ -65,7 +65,7 @@ use tokio::time::Instant;
 // use env_logger; // Uncomment this when you are using it to initialize logs
 use serde_json::{Value};
 use uuid::Uuid;
-use crate::neo4j_client::{Neo4jClient, Neo4jClientError, Neo4jResponseData};
+use crate::neo4j_client::{Neo4jClient, Neo4jClientError};
 use std::sync::Arc;
 
 

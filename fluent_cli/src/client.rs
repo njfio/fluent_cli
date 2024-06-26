@@ -1403,7 +1403,7 @@ use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use crate::neo4j_client::{Neo4jClient, Neo4jResponseData, QueryResult};
+
 use crate::openai_agent_client::Message;
 
 pub async fn prepare_payload(

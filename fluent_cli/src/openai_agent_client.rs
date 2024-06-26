@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::client::{handle_openai_assistant_response, resolve_env_var};
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{capture_llm_interaction, Neo4jClient, Neo4jResponseData};
+use crate::neo4j_client::{capture_llm_interaction, Neo4jClient};
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -288,16 +288,7 @@ pub async fn handle_openai_assistant(prompt: &str, flow: &FlowConfig, matches: &
                 }
             }
             debug!("Connection to neo4j");
-            let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
 
-            // After getting a response from your LLM:
-            capture_llm_interaction(
-                Arc::clone(&neo4j_client),
-                &flow,
-                &prompt,
-                &full_response,
-                &model
-            ).await?;
 
             return Ok(full_response);
         }
@@ -454,16 +445,7 @@ pub async fn handle_openai_agent(
             if choice.finish_reason.as_deref() != Some("length") {
                 // If finish_reason is not "length", we have the complete response
                 debug!("connection to neo4j");
-                let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
 
-                // After getting a response from your LLM:
-                capture_llm_interaction(
-                    Arc::clone(&neo4j_client),
-                    &flow_clone,
-                    &prompt,
-                    &full_response,
-                    &model
-                ).await?;
                 debug!("captured_llm_interaction");
                 return Ok(full_response);
             }

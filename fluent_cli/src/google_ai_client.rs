@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::client::resolve_env_var;
 
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{Neo4jClient, Neo4jResponseData};
+use crate::neo4j_client::{Neo4jClient};
 
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +169,7 @@ pub async fn handle_google_gemini_agent(
     }
 
     debug!("Prompt message: {}", prompt_message);
-    let neo4j_client = Arc::new(Neo4jClient::initialize().await.expect("Failed to create Neo4j client"));
+
 
     // Capture the session information
     let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
@@ -184,17 +184,8 @@ pub async fn handle_google_gemini_agent(
     debug!("Google AI response: {:?}", google_response);
     if let Some(generated_text) = google_response.candidates.first().and_then(|c| c.content.parts.first().map(|p| p.text.clone())) {
         debug!("Generated text: {}", generated_text);
-        let response_data = Neo4jResponseData {
-            text: generated_text.clone(),
-            question: prompt.to_string(),
-            chatId: chat_id.to_string(),
-            chatMessageId: chat_message_id.to_string(),
-            sessionId: session_id.clone(),
-            memoryType: flow.override_config["memoryType"].as_str().unwrap_or("Buffer Window Memory").to_string(),
-            modelType: model.to_string(),
-        };
 
-        neo4j_client.add_response_data(&response_data).await.expect("Failed to log response data");
+
 
         Ok(generated_text)
     } else if let Some(error) = google_response.candidates.first().and_then(|c| c.safetyRatings.first()) {

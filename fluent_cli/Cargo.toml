@@ -47,8 +47,8 @@ rusty-machine = "0.5.4"
 linfa = "0.6.1"
 linfa-clustering = "0.6.1"
 rand_isaac = "0.3.0"
-
-
+stop-words = "0.7.0"
+rust-stemmers = "1.2.0"
 
 [dependencies.getrandom]
 version = "0.2"

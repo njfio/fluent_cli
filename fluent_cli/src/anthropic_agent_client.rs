@@ -11,7 +11,7 @@ use log::debug;
 use uuid::Uuid;
 
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{capture_llm_interaction, Metadata, Neo4jClient, Node, NodeType, Relationship, RelationType, VersionInfo};
+use crate::neo4j_client::{capture_llm_interaction, Neo4jClient};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AnthropicRequest {
@@ -138,7 +138,7 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
         Message { role: "user".to_string(), content: Value::String(prompt.to_string()) },
     ];
 
-    let neo4j_client = Arc::new(Neo4jClient::initialize().await.expect("Failed to create Neo4j client"));
+
 
 // Capture the session information
     let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
@@ -160,17 +160,17 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
                 messages.push(Message { role: "assistant".to_string(), content: Value::String(text.clone()) });
             }
         }
-
         let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
 
-    // After getting a response from your LLM:
+// After getting a response from your LLM:
         capture_llm_interaction(
             Arc::clone(&neo4j_client),
             &flow_clone,
             &prompt,
             &full_response,
-            &model
+            model
         ).await?;
+
 
         // Check for stop condition
         if let Some(stop_reason) = response_json.stop_reason {

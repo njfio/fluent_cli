@@ -1,193 +1,143 @@
 use neo4rs::{Graph, query, Node as Neo4jNode, Relation, BoltString, BoltType, ConfigBuilder, Query, BoltBoolean, BoltFloat, BoltInteger, BoltMap, BoltList, BoltNull, DeError};
-use serde_json::{json, Value as JsonValue};
-
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
+use serde_json::json;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
-use thiserror::Error;
-use log::{debug, info, warn};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fs::File;
-use std::io::Read;
-use std::sync::Arc;
-use linfa::DatasetBase;
-use linfa::traits::{Fit, Predict};
-use linfa_clustering::KMeans;
-use ndarray::{Array1, Array2, ArrayView, ArrayView1, Axis, Ix1};
-use rand::seq::SliceRandom;
+use std::sync::{Arc, RwLock};
+use log::debug;
+use thiserror::Error;
+use tokio::task;
 use crate::config::FlowConfig;
 
-use tokenizers::Tokenizer;
-use tokenizers::models::bpe::BPE;
-use tokio::task;
-
-use rusty_machine::learning::dbscan::DBSCAN;
-use rusty_machine::prelude::{Matrix, UnSupModel};
-use ndarray_stats::QuantileExt;
-
-use linfa::prelude::*;
-use ndarray_rand::RandomExt;
-use rand::SeedableRng;
-use rand_isaac::Isaac64Rng;
+use neo4rs::{ Error as Neo4rsError};
+use serde_json::Error as SerdeError;
+use stop_words::get;
 
 
-const VECTOR_SIZE: usize = 768;  // Choose an appropriate size for your vectors
+use rust_stemmers::{Algorithm, Stemmer};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+// Additional structs needed for the implementation
+#[derive(Debug, Clone)]
+pub struct Neo4jSession {
+    pub id: String,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+    pub context: String,
+    pub session_id: String,
+    pub user_id: String,
+}
 
+#[derive(Debug, Clone)]
+pub struct Neo4jInteraction {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub order: i32,
+    pub session_id: String,
+    pub question: Option<Neo4jQuestion>,
+    pub response: Option<Neo4jResponse>,
+}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Node {
+#[derive(Debug, Clone)]
+pub struct Neo4jQuestion {
     pub id: String,
     pub content: String,
-    pub node_type: NodeType,
-    pub attributes: HashMap<String, JsonValue>,
-    pub relationships: Vec<Relationship>,
-    pub metadata: Metadata,
-    pub vector_representation: Option<Vec<f32>>,
-    pub properties: HashMap<String, JsonValue>,
-    pub version_info: VersionInfo,
-    pub temporal_info: Option<TemporalInfo>,
+    pub vector: Vec<f32>,
+    pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NodeType {
-    Question,
-    Answer,
-    Session,
-    Response,
-    Model,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Relationship {
-    pub relation_type: RelationType,
-    pub target_id: String,
-    pub properties: HashMap<String, JsonValue>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Metadata {
-    pub tags: Vec<String>,
-    pub source: String,
+#[derive(Debug, Clone)]
+pub struct Neo4jResponse {
+    pub id: String,
+    pub content: String,
+    pub vector: Vec<f32>,
     pub timestamp: DateTime<Utc>,
     pub confidence: f64,
+    pub llm_specific_data: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VersionInfo {
-    pub version: u32,
-    pub created_at: DateTime<Utc>,
-    pub modified_at: DateTime<Utc>,
+#[derive(Debug, Clone)]
+pub struct Neo4jModel {
+    pub id: String,
+    pub name: String,
+    pub version: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TemporalInfo {
-    pub start_time: Option<DateTime<Utc>>,
-    pub end_time: Option<DateTime<Utc>>,
-    pub duration: Option<std::time::Duration>,
+#[derive(Debug, Clone)]
+pub struct Neo4jFlowConfiguration {
+    pub id: String,
+    pub config_hash: String,
+    pub config_data: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum RelationType {
-    Contains,
-    AnsweredBy,
-    GeneratedBy,
-    Uses,
+#[derive(Debug, Clone)]
+pub struct Neo4jTokenUsage {
+    pub id: String,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
 }
 
-#[derive(Error, Debug)]
-pub enum Neo4jClientError {
-    #[error("Neo4j error: {0}")]
-    Neo4jError(#[from] neo4rs::Error),
-    #[error("Other error: {0}")]
-    OtherError(String),
-    #[error("Deserialization error: {0}")]
-    DeserializationError(#[from] serde_json::Error),
-    #[error("Vector representation error: {0}")]
-    VectorRepresentationError(#[from] VectorRepresentationError),
-    #[error("Row error: {0}")]
-    RowError(String),
-    #[error("Deserialization error: {0}")]
-    DeError(#[from] DeError),
+#[derive(Debug, Clone)]
+pub struct Neo4jResponseMetrics {
+    pub id: String,
+    pub response_time: chrono::Duration,
+    pub token_count: i32,
+    pub confidence_score: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Neo4jModelPerformanceMetrics {
+    pub model_name: String,
+    pub response_count: i64,
+    pub avg_response_time: chrono::Duration,
+    pub avg_confidence_score: f64,
+    pub total_tokens_used: i64,
 }
 
 
 pub struct Neo4jClient {
     graph: Graph,
-    tokenizer: Arc<Tokenizer>,
+    document_count: RwLock<usize>,
+    word_document_count: RwLock<HashMap<String, usize>>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Neo4jClientError {
+    #[error("Neo4j error: {0}")]
+    Neo4jError(#[from] Neo4rsError),
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Neo4jResponseData {
-    pub text: String,
-    pub question: String,
-    pub chatId: String,
-    pub chatMessageId: String,
-    pub sessionId: String,
-    pub memoryType: String,
-    pub modelType: String,
-}
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] SerdeError),
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QueryResult {
-    pub entity: String,
-    pub properties: HashMap<String, serde_json::Value>,
-}
+    #[error("Deserialization error: {0}")]
+    DeserializationError(#[from] DeError),
 
-#[derive(Error, Debug)]
-pub enum VectorRepresentationError {
-    #[error("Tokenizer error: {0}")]
-    TokenizerError(String),
-    #[error("BPE builder error: {0}")]
-    BpeBuilderError(String),
-    #[error("File error: {0}")]
-    FileError(String),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    #[error("Vector representation error: {0}")]
+    VectorRepresentationError(String),
+
+    #[error("Other error: {0}")]
+    Other(String),
+
     #[error("Other error: {0}")]
     OtherError(String),
 }
 
-impl From<tokenizers::Error> for VectorRepresentationError {
-    fn from(err: tokenizers::Error) -> Self {
-        VectorRepresentationError::TokenizerError(err.to_string())
-    }
-}
 
 
 
 
-mod duration_option_serde {
-    use chrono::Duration;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn serialize<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-    {
-        match duration {
-            Some(d) => serializer.serialize_some(&d.num_milliseconds()),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-        where
-            D: Deserializer<'de>,
-    {
-        Option::<i64>::deserialize(deserializer).map(|opt_ms| opt_ms.map(Duration::milliseconds))
-    }
-}
 
 impl Neo4jClient {
 
     pub async fn initialize() -> Result<Self, Neo4jClientError> {
+        debug!("Initializing Neo4j client...");
         let neo4j_uri = env::var("NEO4J_URI").expect("NEO4J_URI must be set");
         let neo4j_user = env::var("NEO4J_USER").expect("NEO4J_USER must be set");
         let neo4j_password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD must be set");
         let neo4j_db = env::var("NEO4J_DB").expect("NEO4J_DB must be set");
+        debug!("Connecting to Neo4j with URI: {}, user: {}, password: {}, and database: {}", neo4j_uri, neo4j_user, neo4j_password, neo4j_db);
 
         let config = ConfigBuilder::default()
             .uri(&neo4j_uri)
@@ -202,1083 +152,887 @@ impl Neo4jClient {
         // Initialize tokenizer
         let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
         let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
-        let tokenizer = Arc::new(Self::create_tokenizer(vocab_path, merges_path)?);
+        // let tokenizer = Arc::new(Self::create_tokenizer(vocab_path, merges_path)?);
 
-        Ok(Neo4jClient { graph, tokenizer })
+        Ok(Neo4jClient {
+            graph,
+            document_count: RwLock::new(0),
+            word_document_count: RwLock::new(HashMap::new()),
+        })
     }
 
-    pub async fn add_or_update_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        match node.node_type {
-            NodeType::Session => self.add_or_update_session_node(node).await,
-            NodeType::Question => self.add_or_update_question_node(node).await,
-            NodeType::Response => self.add_or_update_response_node(node).await,
-            NodeType::Model => self.add_or_update_model_node(node).await,
-            _ => Err(Neo4jClientError::OtherError("Unsupported node type".to_string())),
+
+
+    pub async fn create_or_update_session(&self, session: &Neo4jSession) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (s:Session {id: $id})
+    ON CREATE SET
+        s.start_time = $start_time,
+        s.end_time = $end_time,
+        s.context = $context,
+        s.session_id = $session_id,
+        s.user_id = $user_id
+    ON MATCH SET
+        s.end_time = $end_time,
+        s.context = $context
+    RETURN s.id as session_id
+    "#;
+
+        let query = query(query_str)
+            .param("id", session.id.to_string())
+            .param("start_time", session.start_time.to_rfc3339())
+            .param("end_time", session.end_time.to_rfc3339())
+            .param("context", session.context.to_string())
+            .param("session_id", session.session_id.to_string())
+            .param("user_id", session.user_id.to_string());
+
+        println!("Executing query for create_or_update_session");
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            let session_id: String = row.get("session_id")?;
+            Ok(session_id)
+        } else {
+            Err(Neo4jClientError::Other("No result returned when creating session".to_string()))
         }
     }
 
-    fn create_tokenizer(vocab_path: &str, merges_path: &str) -> Result<Tokenizer, VectorRepresentationError> {
-        let bpe_builder = BPE::from_file(vocab_path, merges_path);
-        let bpe = bpe_builder.build()
-            .map_err(|e| VectorRepresentationError::BpeBuilderError(e.to_string()))?;
-        Ok(Tokenizer::new(bpe))
-    }
+    pub async fn create_interaction(&self, interaction: &Neo4jInteraction) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MATCH (s:Session {id: $session_id})
+    CREATE (i:Interaction {
+        id: $id,
+        timestamp: $timestamp,
+        order: $order
+    })
+    CREATE (s)-[:CONTAINS]->(i)
+    RETURN i.id as interaction_id
+    "#;
 
+        let query = query(query_str)
+            .param("id", interaction.id.to_string())
+            .param("session_id", interaction.session_id.to_string())
+            .param("timestamp", interaction.timestamp.to_rfc3339())
+            .param("order", interaction.order);
 
-    pub async fn create_vector_representation(&self, content: &str) -> Result<Vec<f32>, VectorRepresentationError> {
-        let content = content.to_string();
-        let tokenizer = Arc::clone(&self.tokenizer);
+        println!("Executing query for create_interaction");
+        println!("Query: {}", query_str);
+        println!("Parameters: id={}, session_id={}, timestamp={}, order={}",
+                 interaction.id, interaction.session_id, interaction.timestamp, interaction.order);
 
-        let vector = task::spawn_blocking(move || -> Result<Vec<f32>, VectorRepresentationError> {
-            let encoding = tokenizer.encode(content, false)
-                .map_err(|e| VectorRepresentationError::TokenizerError(e.to_string()))?;
+        let mut result = self.graph.execute(query).await?;
 
-            let tokens = encoding.get_ids();
-            let mut vector = vec![0f32; VECTOR_SIZE];
-            for (i, &token) in tokens.iter().enumerate().take(VECTOR_SIZE) {
-                vector[i] = token as f32;
-            }
-            Ok(vector)
-        }).await.map_err(|e| VectorRepresentationError::OtherError(e.to_string()))??;
-
-        Ok(vector)
-    }
-
-
-
-    async fn add_or_update_session_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        let chat_id = node.properties.get("chatId").and_then(|v| v.as_str()).ok_or_else(|| Neo4jClientError::OtherError("Chat ID not found".to_string()))?;
-
-        let query_str =
-            "MERGE (n:Session {prop_chatId: $chat_id})
-             ON CREATE SET n = $props
-             ON MATCH SET n += $props
-             RETURN n.id as node_id";
-
-        let props = self.flatten_node(node)?;
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("chat_id", BoltType::String(BoltString::from(chat_id)))
-            .param("props", BoltType::Map(props))
-        ).await?;
-
-        let node_id = if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
+        if let Some(row) = result.next().await? {
+            let interaction_id: String = row.get("interaction_id")?;
+            Ok(interaction_id)
         } else {
-            return Err(Neo4jClientError::OtherError("Failed to create or update session node".to_string()));
-        };
-
-        Ok(node_id)
+            Err(Neo4jClientError::Other("No result returned when creating interaction node".to_string()))
+        }
     }
 
+    pub async fn create_or_update_question(&self, question: &Neo4jQuestion, interaction_id: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (q:Question {content: $content})
+    ON CREATE SET
+        q = $props
+    ON MATCH SET
+        q.vector = $props.vector,
+        q.timestamp = $props.timestamp
+    WITH q
+    MATCH (i:Interaction {id: $interaction_id})
+    MERGE (i)-[:HAS_QUESTION]->(q)
+    RETURN q.id as question_id
+    "#;
 
-    async fn add_or_update_question_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        let content = &node.content;
+        let mut props = BoltMap::new();
+        props.put(BoltString::from("id"), BoltType::String(BoltString::from(question.id.as_str())));
+        props.put(BoltString::from("content"), BoltType::String(BoltString::from(question.content.as_str())));
 
-        let query_str =
-            "MERGE (n:Question {content: $content})
-             ON CREATE SET n = $props
-             ON MATCH SET n += $props
-             RETURN n.id as node_id";
+        // Manually create BoltList for the vector
+        let mut vector_list = BoltList::new();
+        for &value in &question.vector {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+        props.put(BoltString::from("vector"), BoltType::List(vector_list));
 
-        let props = self.flatten_node(node)?;
+        props.put(BoltString::from("timestamp"), BoltType::String(BoltString::from(question.timestamp.to_rfc3339().as_str())));
 
         let mut result = self.graph.execute(query(query_str)
-            .param("content", BoltType::String(BoltString::from(content.as_str())))
+            .param("content", BoltType::String(BoltString::from(question.content.as_str())))
             .param("props", BoltType::Map(props))
+            .param("interaction_id", BoltType::String(BoltString::from(interaction_id)))
         ).await?;
 
-        let node_id = if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
+        let question_id = if let Some(row) = result.next().await? {
+            row.get::<String>("question_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
         } else {
             return Err(Neo4jClientError::OtherError("Failed to create or update question node".to_string()));
         };
 
-        Ok(node_id)
+        Ok(question_id)
     }
 
-    async fn add_or_update_response_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        let query_str =
-            "CREATE (n:Response)
-             SET n = $props
-             RETURN n.id as node_id";
+    pub async fn create_response(&self, response: &Neo4jResponse, interaction_id: &str, model_id: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    CREATE (r:Response $props)
+    WITH r
+    MATCH (i:Interaction {id: $interaction_id})
+    MATCH (m:Model {id: $model_id})
+    CREATE (i)-[:HAS_RESPONSE]->(r)
+    CREATE (r)-[:GENERATED_BY]->(m)
+    RETURN r.id as response_id
+    "#;
 
-        let props = self.flatten_node(node)?;
+        let mut props = BoltMap::new();
+        props.put(BoltString::from("id"), BoltType::String(BoltString::from(response.id.as_str())));
+        props.put(BoltString::from("content"), BoltType::String(BoltString::from(response.content.as_str())));
+
+        // Create BoltList for the vector
+        let mut vector_list = BoltList::new();
+        for &value in &response.vector {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+        props.put(BoltString::from("vector"), BoltType::List(vector_list));
+
+        props.put(BoltString::from("timestamp"), BoltType::String(BoltString::from(response.timestamp.to_rfc3339().as_str())));
+        props.put(BoltString::from("confidence"), BoltType::Float(BoltFloat::new(response.confidence)));
+
+        // Convert llm_specific_data to BoltType
+        let llm_data = self.json_to_bolt_type(&response.llm_specific_data)?;
+        props.put(BoltString::from("llm_specific_data"), llm_data);
 
         let mut result = self.graph.execute(query(query_str)
             .param("props", BoltType::Map(props))
+            .param("interaction_id", BoltType::String(BoltString::from(interaction_id)))
+            .param("model_id", BoltType::String(BoltString::from(model_id)))
         ).await?;
 
-        let node_id = if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
+        let response_id = if let Some(row) = result.next().await? {
+            row.get::<String>("response_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
         } else {
             return Err(Neo4jClientError::OtherError("Failed to create response node".to_string()));
         };
 
-        Ok(node_id)
+        Ok(response_id)
     }
 
-    async fn add_or_update_model_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        let content = &node.content;
-
-        let query_str =
-            "MERGE (m:Model {content: $content})
-             ON CREATE SET m = $props
-             ON MATCH SET m += $props
-             RETURN m.id as node_id";
-
-        let props = self.flatten_node(node)?;
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("content", BoltType::String(BoltString::from(content.as_str())))
-            .param("props", BoltType::Map(props))
-        ).await?;
-
-        let node_id = if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
-        } else {
-            return Err(Neo4jClientError::OtherError("Failed to create or update model node".to_string()));
-        };
-
-        Ok(node_id)
-    }
-
-    fn flatten_node(&self, node: &Node) -> Result<BoltMap, Neo4jClientError> {
-        let mut map = BoltMap::new();
-
-        // Standard properties for all nodes
-        map.put(BoltString::from("id"), BoltType::String(BoltString::from(node.id.as_str())));
-        map.put(BoltString::from("content"), BoltType::String(BoltString::from(node.content.as_str())));
-        map.put(BoltString::from("node_type"), BoltType::String(BoltString::from(format!("{:?}", node.node_type).as_str())));
-        map.put(BoltString::from("timestamp"), BoltType::String(BoltString::from(node.metadata.timestamp.to_rfc3339().as_str())));
-
-        // Metadata
-        map.put(BoltString::from("meta_confidence"), BoltType::Float(BoltFloat::new(node.metadata.confidence)));
-        map.put(BoltString::from("meta_source"), BoltType::String(BoltString::from(node.metadata.source.as_str())));
-        let tags_list = BoltList::new();
-        map.put(BoltString::from("meta_tags"), BoltType::List(tags_list));
-
-        // Version info
-        map.put(BoltString::from("version"), BoltType::Integer(BoltInteger::new(node.version_info.version as i64)));
-        map.put(BoltString::from("created_at"), BoltType::String(BoltString::from(node.version_info.created_at.to_rfc3339().as_str())));
-        map.put(BoltString::from("modified_at"), BoltType::String(BoltString::from(node.version_info.modified_at.to_rfc3339().as_str())));
-
-        // Flatten attributes
-        for (key, value) in &node.attributes {
-            map.put(BoltString::from(format!("attr_{}", key).as_str()), self.json_to_bolt_type(value)?);
-        }
-
-        // Flatten properties
-        for (key, value) in &node.properties {
-            map.put(BoltString::from(format!("prop_{}", key).as_str()), self.json_to_bolt_type(value)?);
-        }
-
-        if let Some(vector) = &node.vector_representation {
-            let mut vector_list = BoltList::new();
-            for &f in vector {
-                vector_list.push(BoltType::Float(BoltFloat::new(f as f64)));
-            }
-            map.put(BoltString::from("vector_representation"), BoltType::List(vector_list));
-        }
-
-        // Temporal info (if present)
-        if let Some(temporal_info) = &node.temporal_info {
-            if let Some(start_time) = temporal_info.start_time {
-                map.put(BoltString::from("temporal_start_time"), BoltType::String(BoltString::from(start_time.to_rfc3339().as_str())));
-            }
-            if let Some(end_time) = temporal_info.end_time {
-                map.put(BoltString::from("temporal_end_time"), BoltType::String(BoltString::from(end_time.to_rfc3339().as_str())));
-            }
-            if let Some(duration) = temporal_info.duration {
-                map.put(BoltString::from("temporal_duration"), BoltType::Integer(BoltInteger::new(duration.as_millis() as i64)));
-            }
-        }
-
-        Ok(map)
-    }
-
-    pub async fn add_node(&self, node: &Node) -> Result<String, Neo4jClientError> {
-        let node_type_label = match node.node_type {
-            NodeType::Response => "Response",
-            NodeType::Question => "Question",
-            NodeType::Session => "Session",
-            NodeType::Answer => "Answer",
-            _ => {
-                return Err(Neo4jClientError::OtherError(format!("Unsupported node type: {:?}", node.node_type)))
-            }
-        };
-
-        let query_str = format!(
-            "CREATE (n:{} $props) RETURN n.id as node_id",
-            node_type_label
-        );
-
-        let props = self.flatten_node(node)?;
-
-        let mut result = self.graph.execute(query(&query_str).param("props", BoltType::Map(props))).await?;
-
-        let node_id = if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
-        } else {
-            return Err(Neo4jClientError::OtherError("Failed to create node".to_string()));
-        };
-
-        for relationship in &node.relationships {
-            self.create_relationship(&node_id, &relationship.target_id, &relationship.relation_type).await?;
-        }
-
-        Ok(node_id)
-    }
-
-
-    fn json_to_bolt_map(&self, value: &JsonValue) -> Result<BoltMap, Neo4jClientError> {
-        let mut map = BoltMap::new();
+    // Helper function to convert JsonValue to BoltType
+    fn json_to_bolt_type(&self, value: &serde_json::Value) -> Result<BoltType, Neo4jClientError> {
         match value {
-            JsonValue::Object(obj) => {
-                for (k, v) in obj {
-                    let bolt_key = BoltString::from(k.as_str());
-                    let bolt_value = self.json_to_bolt_type(v)?;
-                    map.put(bolt_key, bolt_value);
-                }
-            },
-            _ => return Err(Neo4jClientError::OtherError("Expected object at top level".to_string())),
-        }
-        Ok(map)
-    }
-
-    fn json_to_bolt_type(&self, value: &JsonValue) -> Result<BoltType, Neo4jClientError> {
-        match value {
-            JsonValue::Null => Ok(BoltType::Null(Default::default())),
-            JsonValue::Bool(b) => Ok(BoltType::Boolean(BoltBoolean::new(*b))),
-            JsonValue::Number(n) => {
+            serde_json::Value::Null => Ok(BoltType::Null(BoltNull)),
+            serde_json::Value::Bool(b) => Ok(BoltType::Boolean(BoltBoolean::new(*b))),
+            serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Ok(BoltType::Integer(BoltInteger::new(i)))
                 } else if let Some(f) = n.as_f64() {
                     Ok(BoltType::Float(BoltFloat::new(f)))
                 } else {
-                    Err(Neo4jClientError::OtherError("Invalid number".to_string()))
+                    Err(Neo4jClientError::OtherError("Invalid number type".to_string()))
                 }
             },
-            JsonValue::String(s) => Ok(BoltType::String(BoltString::from(s.as_str()))),
-            JsonValue::Array(arr) => {
-                let bolt_list = BoltList::new();
-                Ok(BoltType::List(bolt_list))
+            serde_json::Value::String(s) => Ok(BoltType::String(BoltString::from(s.as_str()))),
+            serde_json::Value::Array(arr) => {
+                let mut list = BoltList::new();
+                for item in arr {
+                    list.push(self.json_to_bolt_type(item)?);
+                }
+                Ok(BoltType::List(list))
             },
-            JsonValue::Object(_) => {
-                // Convert complex objects to JSON string
-                Ok(BoltType::String(BoltString::from(value.to_string().as_str())))
+            serde_json::Value::Object(obj) => {
+                let mut map = BoltMap::new();
+                for (key, value) in obj {
+                    map.put(BoltString::from(key.as_str()), self.json_to_bolt_type(value)?);
+                }
+                Ok(BoltType::Map(map))
             },
         }
     }
-    async fn create_relationship(&self, start_id: &str, end_id: &str, rel_type: &RelationType) -> Result<(), Neo4jClientError> {
-        let type_str = match rel_type {
-            RelationType::Contains => "CONTAINS",
-            RelationType::AnsweredBy => "ANSWERED_BY",
-            RelationType::GeneratedBy => "GENERATED_BY",
-            RelationType::Uses => "USES",
-        };
 
-        let query_str = format!(
-            "MATCH (a), (b)
-             WHERE a.id = $start_id AND b.id = $end_id
-             MERGE (a)-[r:{}]->(b)
-             ON CREATE SET r.created_at = datetime()
-             RETURN type(r) as rel_type",
-            type_str
-        );
+    pub async fn create_or_update_model(&self, model: &Neo4jModel) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (m:Model {name: $name})
+    ON CREATE SET
+        m.id = $id,
+        m.version = $version
+    ON MATCH SET
+        m.version = $version
+    RETURN m.id as model_id
+    "#;
 
-        let mut result = self.graph.execute(query(&query_str)
-            .param("start_id", BoltType::String(BoltString::from(start_id)))
-            .param("end_id", BoltType::String(BoltString::from(end_id)))
+        let query = query(query_str)
+            .param("id", model.id.to_string())
+            .param("name", model.name.to_string())
+            .param("version", model.version.to_string());
+
+        println!("Executing query for create_or_update_model");
+        println!("Query: {}", query_str);
+        println!("Parameters: id={}, name={}, version={}",
+                 model.id, model.name, model.version);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            let model_id: String = row.get("model_id")?;
+            Ok(model_id)
+        } else {
+            Err(Neo4jClientError::Other("No result returned when creating or updating model node".to_string()))
+        }
+    }
+
+    pub async fn create_or_get_keyword(&self, keyword: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (k:Keyword {value: $value})
+    ON CREATE SET k.id = $id
+    RETURN k.id as keyword_id
+    "#;
+
+        let id = Uuid::new_v4().to_string();
+        let query = query(query_str)
+            .param("value", keyword)
+            .param("id", id.clone());
+
+        println!("Executing query for create_or_get_keyword");
+        println!("Query: {}", query_str);
+        println!("Parameters: value={}, id={}", keyword, id);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            match row.get::<String>("keyword_id") {
+                Ok(keyword_id) => {
+                    println!("Keyword created/retrieved successfully with id: {}", keyword_id);
+                    Ok(keyword_id)
+                },
+                Err(e) => {
+                    eprintln!("Error getting keyword_id from row: {:?}", e);
+                    Err(Neo4jClientError::OtherError(format!("Failed to get keyword_id: {}", e)))
+                }
+            }
+        } else {
+            eprintln!("No result returned when creating/getting keyword");
+            Err(Neo4jClientError::OtherError("No result returned".to_string()))
+        }
+    }
+
+    pub async fn create_or_get_theme(&self, theme: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (t:Theme {value: $value})
+    ON CREATE SET t.id = $id
+    RETURN t.id as theme_id
+    "#;
+
+        let id = Uuid::new_v4().to_string();
+        let query = query(query_str)
+            .param("value", theme)
+            .param("id", id.clone());
+
+        println!("Executing query for create_or_get_theme");
+        println!("Query: {}", query_str);
+        println!("Parameters: value={}, id={}", theme, id);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            match row.get::<String>("theme_id") {
+                Ok(theme_id) => {
+                    println!("Theme created/retrieved successfully with id: {}", theme_id);
+                    Ok(theme_id)
+                },
+                Err(e) => {
+                    eprintln!("Error getting theme_id from row: {:?}", e);
+                    Err(Neo4jClientError::OtherError(format!("Failed to get theme_id: {}", e)))
+                }
+            }
+        } else {
+            eprintln!("No result returned when creating/getting theme");
+            Err(Neo4jClientError::OtherError("No result returned".to_string()))
+        }
+    }
+
+    pub async fn create_or_get_flow_configuration(&self, config: &Neo4jFlowConfiguration) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MERGE (f:FlowConfiguration {config_hash: $config_hash})
+    ON CREATE SET
+        f = $props
+    RETURN f.id as config_id
+    "#;
+
+        let mut props = BoltMap::new();
+        props.put(BoltString::from("id"), BoltType::String(BoltString::from(config.id.as_str())));
+        props.put(BoltString::from("config_hash"), BoltType::String(BoltString::from(config.config_hash.as_str())));
+
+        // Convert config_data to BoltType
+        let config_data = self.json_to_bolt_type(&config.config_data)?;
+        props.put(BoltString::from("config_data"), config_data);
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("config_hash", BoltType::String(BoltString::from(config.config_hash.as_str())))
+            .param("props", BoltType::Map(props))
         ).await?;
 
-        if result.next().await?.is_none() {
-            return Err(Neo4jClientError::OtherError("Failed to create relationship".to_string()));
+        match result.next().await {
+            Ok(Some(row)) => {
+                row.get::<String>("config_id")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get config_id: {}", e)))
+            },
+            Ok(None) => Err(Neo4jClientError::OtherError("No result returned".to_string())),
+            Err(e) => Err(Neo4jClientError::OtherError(format!("Error fetching result: {}", e))),
+        }
+    }
+
+    pub async fn create_token_usage(&self, usage: &Neo4jTokenUsage, interaction_id: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MATCH (i:Interaction {id: $interaction_id})
+    CREATE (t:TokenUsage {
+        id: $id,
+        prompt_tokens: $prompt_tokens,
+        completion_tokens: $completion_tokens,
+        total_tokens: $total_tokens
+    })
+    CREATE (i)-[:HAS_TOKEN_USAGE]->(t)
+    RETURN t.id as usage_id
+    "#;
+
+        let query = query(query_str)
+            .param("id", usage.id.to_string())
+            .param("interaction_id", interaction_id.to_string())
+            .param("prompt_tokens", usage.prompt_tokens)
+            .param("completion_tokens", usage.completion_tokens)
+            .param("total_tokens", usage.total_tokens);
+
+        println!("Executing query for create_token_usage");
+        println!("Query: {}", query_str);
+        println!("Parameters: id={}, interaction_id={}, prompt_tokens={}, completion_tokens={}, total_tokens={}",
+                 usage.id, interaction_id, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            let usage_id: String = row.get("usage_id")?;
+            Ok(usage_id)
+        } else {
+            Err(Neo4jClientError::Other("No result returned when creating token usage node".to_string()))
+        }
+    }
+
+    pub async fn create_response_metrics(&self, metrics: &Neo4jResponseMetrics, response_id: &str) -> Result<String, Neo4jClientError> {
+        let query_str = r#"
+    MATCH (r:Response {id: $response_id})
+    CREATE (m:ResponseMetrics $props)
+    CREATE (r)-[:HAS_METRICS]->(m)
+    RETURN m.id as metrics_id
+    "#;
+
+        let mut props = BoltMap::new();
+        props.put(BoltString::from("id"), BoltType::String(BoltString::from(metrics.id.as_str())));
+        props.put(BoltString::from("response_time"), BoltType::Integer(BoltInteger::new(metrics.response_time.num_milliseconds())));
+        props.put(BoltString::from("token_count"), BoltType::Integer(BoltInteger::new(metrics.token_count as i64)));
+        props.put(BoltString::from("confidence_score"), BoltType::Float(BoltFloat::new(metrics.confidence_score)));
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("response_id", BoltType::String(BoltString::from(response_id)))
+            .param("props", BoltType::Map(props))
+        ).await?;
+
+        match result.next().await {
+            Ok(Some(row)) => {
+                row.get::<String>("metrics_id")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get metrics_id: {}", e)))
+            },
+            Ok(None) => Err(Neo4jClientError::OtherError("No result returned".to_string())),
+            Err(e) => Err(Neo4jClientError::OtherError(format!("Error fetching result: {}", e))),
+        }
+    }
+
+    pub async fn find_similar_questions(&self, vector: &[f32], limit: usize) -> Result<Vec<Neo4jQuestion>, Neo4jClientError> {
+        let query_str = r#"
+    CALL db.index.vector.queryNodes('question_vector_index', $limit, $vector)
+    YIELD node, score
+    RETURN node.id as id, node.content as content, node.vector as vector, node.timestamp as timestamp, score
+    ORDER BY score DESC
+    "#;
+
+        let mut vector_list = BoltList::new();
+        for &value in vector {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("limit", BoltType::Integer(BoltInteger::new(limit as i64)))
+            .param("vector", BoltType::List(vector_list))
+        ).await?;
+
+        let mut questions = Vec::new();
+
+        while let Some(row) = result.next().await? {
+            questions.push(Neo4jQuestion {
+                id: row.get("id")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get id: {}", e)))?,
+                content: row.get("content")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get content: {}", e)))?,
+                vector: row.get::<Vec<f64>>("vector")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get vector: {}", e)))?
+                    .into_iter()
+                    .map(|v| v as f32)
+                    .collect(),
+                timestamp: row.get("timestamp")
+                    .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get timestamp: {}", e)))?,
+            });
+        }
+
+        Ok(questions)
+    }
+
+    pub async fn find_similar_responses(&self, vector: &[f32], limit: usize) -> Result<Vec<Neo4jResponse>, Neo4jClientError> {
+        let query = query(
+            r#"
+            CALL db.index.vector.queryNodes('response_vector_index', $limit, $vector)
+            YIELD node, score
+            RETURN node.id as id, node.content as content, node.vector as vector, node.timestamp as timestamp,
+                   node.confidence as confidence, node.llm_specific_data as llm_specific_data, score
+            ORDER BY score DESC
+            "#
+        )
+            .param("limit", limit as i64)
+            .param("vector", vector.to_vec());
+
+        let mut result = self.graph.execute(query).await?;
+        let mut responses = Vec::new();
+
+        while let Some(row) = result.next().await? {
+            responses.push(Neo4jResponse {
+                id: row.get("id")?,
+                content: row.get("content")?,
+                vector: row.get("vector")?,
+                timestamp: row.get("timestamp")?,
+                confidence: row.get("confidence")?,
+                llm_specific_data: row.get("llm_specific_data")?,
+            });
+        }
+
+        Ok(responses)
+    }
+
+    pub async fn update_similarity_relationships(&self) -> Result<(), Neo4jClientError> {
+        let query_str = r#"
+    MATCH (q1:Question)
+    WITH q1
+    CALL db.index.vector.queryNodes('question_vector_index', 5, q1.vector) YIELD node as q2, score
+    WHERE q1 <> q2 AND score > 0.8
+    MERGE (q1)-[r:SIMILAR_TO]-(q2)
+    ON CREATE SET r.score = score
+    ON MATCH SET r.score = score
+    RETURN count(*) as updated
+    "#;
+
+        let mut result = self.graph.execute(query(query_str)).await?;
+
+        if let Some(row) = result.next().await? {
+            let updated: i64 = row.get("updated")
+                .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get updated count: {}", e)))?;
+            debug!("Updated {} similarity relationships", updated);
+            Ok(())
+        } else {
+            Err(Neo4jClientError::OtherError("No result returned from similarity update query".to_string()))
+        }
+    }
+
+
+
+
+    pub async fn extract_and_link_keywords(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
+        println!("Extracting keywords from content: {}", content);
+
+        let stop_words_vec: Vec<String> = get(stop_words::LANGUAGE::English);
+        let stop_words: HashSet<_> = stop_words_vec.iter().collect();
+        let en_stemmer = Stemmer::create(Algorithm::English);
+
+        // Tokenize and filter words
+        let words: Vec<String> = content.split_whitespace()
+            .map(|word| word.to_lowercase())
+            .filter(|word| word.len() > 3 && !stop_words.contains(word))
+            .map(|word| en_stemmer.stem(&word).to_string())
+            .collect();
+
+        // Calculate term frequency
+        let mut term_freq = HashMap::new();
+        for word in &words {
+            *term_freq.entry(word.clone()).or_insert(0) += 1;
+        }
+
+        // Update document count and word document count
+        {
+            let mut doc_count = self.document_count.write().unwrap();
+            *doc_count += 1;
+        }
+        {
+            let mut word_doc_count = self.word_document_count.write().unwrap();
+            for word in term_freq.keys() {
+                *word_doc_count.entry(word.clone()).or_insert(0) += 1;
+            }
+        }
+
+        // Calculate TF-IDF scores
+        let doc_count = *self.document_count.read().unwrap();
+        let word_doc_count = self.word_document_count.read().unwrap();
+        let mut tfidf_scores: Vec<(String, f64)> = term_freq.iter()
+            .map(|(word, freq)| {
+                let tf = *freq as f64 / words.len() as f64;
+                let idf = (doc_count as f64 / *word_doc_count.get(word).unwrap_or(&1) as f64).ln();
+                (word.clone(), tf * idf)
+            })
+            .collect();
+
+        // Sort by TF-IDF score and take top 5 keywords
+        tfidf_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let keywords: Vec<String> = tfidf_scores.into_iter().take(5).map(|(word, _)| word).collect();
+
+
+        for keyword in keywords {
+            println!("Processing keyword: {}", keyword);
+            match self.create_or_get_keyword(&keyword).await {
+                Ok(keyword_id) => {
+                    let query_str = r#"
+                    MATCH (n) WHERE n.id = $node_id
+                    MATCH (k:Keyword) WHERE k.id = $keyword_id
+                    MERGE (n)-[:HAS_KEYWORD]->(k)
+                    RETURN count(*) as linked
+                    "#;
+
+                    let query = query(query_str)
+                        .param("node_id", node_id)
+                        .param("keyword_id", keyword_id.clone());
+
+                    println!("Executing query for linking keyword");
+                    println!("Query: {}", query_str);
+                    println!("Parameters: node_id={}, keyword_id={}", node_id, keyword_id);
+
+                    let mut result = self.graph.execute(query).await?;
+
+                    if let Some(row) = result.next().await? {
+                        let linked: i64 = row.get("linked")?;
+                        if linked == 0 {
+                            return Err(Neo4jClientError::OtherError(format!("Failed to link keyword {} to node {}", keyword, node_id)));
+                        }
+                    } else {
+                        return Err(Neo4jClientError::OtherError(format!("No result returned when linking keyword {} to node {}", keyword, node_id)));
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Error creating or getting keyword '{}': {:?}", keyword, e);
+                    return Err(e);
+                }
+            }
         }
 
         Ok(())
     }
 
 
-    pub async fn get_or_create_node(&self, id: &str, node_type: NodeType, content: &str) -> Result<String, Neo4jClientError> {
-        let node_type_label = match node_type {
-            NodeType::Response => "Response",
-            NodeType::Question => "Question",
-            NodeType::Session => "Session",
-            _ => return Err(Neo4jClientError::OtherError(format!("Unsupported node type: {:?}", node_type)))
-        };
+    pub async fn extract_and_link_themes(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
+        println!("Extracting themes from content: {}", content);
+        let themes = vec!["AI", "Machine Learning", "Natural Language Processing"];
 
-        let query_str = format!(
-            "MERGE (n:{} {{id: $id}})
-        ON CREATE SET n.content = $content, n.created_at = datetime(), n.label = $label
-        RETURN n.id as node_id",
-            node_type_label
-        );
+        for theme in themes {
+            println!("Processing theme: {}", theme);
+            match self.create_or_get_theme(theme).await {
+                Ok(theme_id) => {
+                    let query_str = r#"
+                MATCH (n) WHERE n.id = $node_id
+                MATCH (t:Theme) WHERE t.id = $theme_id
+                MERGE (n)-[:HAS_THEME]->(t)
+                RETURN count(*) as linked
+                "#;
 
-        let mut result = self.graph.execute(query(&query_str)
-            .param("id", id)
-            .param("content", content)
-            .param("label", node_type_label)
+                    let query = query(query_str)
+                        .param("node_id", node_id)
+                        .param("theme_id", theme_id.clone());
+
+                    println!("Executing query for linking theme");
+                    println!("Query: {}", query_str);
+                    println!("Parameters: node_id={}, theme_id={}", node_id, theme_id);
+
+                    let mut result = self.graph.execute(query).await?;
+
+                    if let Some(row) = result.next().await? {
+                        let linked: i64 = row.get("linked")?;
+                        if linked == 0 {
+                            return Err(Neo4jClientError::OtherError(format!("Failed to link theme {} to node {}", theme, node_id)));
+                        }
+                    } else {
+                        return Err(Neo4jClientError::OtherError(format!("No result returned when linking theme {} to node {}", theme, node_id)));
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Error creating or getting theme '{}': {:?}", theme, e);
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+    pub async fn get_interaction_chain(&self, session_id: &str) -> Result<Vec<Neo4jInteraction>, Neo4jClientError> {
+        let query = query(
+            r#"
+            MATCH (s:Session {id: $session_id})-[:CONTAINS]->(i:Interaction)
+            OPTIONAL MATCH (i)-[:HAS_QUESTION]->(q:Question)
+            OPTIONAL MATCH (i)-[:HAS_RESPONSE]->(r:Response)
+            RETURN i.id as interaction_id, i.timestamp as timestamp, i.order as order,
+                   q.id as question_id, q.content as question_content,
+                   r.id as response_id, r.content as response_content
+            ORDER BY i.order
+            "#
+        )
+            .param("session_id", session_id);
+
+        let mut result = self.graph.execute(query).await?;
+        let mut interactions = Vec::new();
+
+        while let Some(row) = result.next().await? {
+            interactions.push(Neo4jInteraction {
+                id: row.get("interaction_id")?,
+                timestamp: row.get("timestamp")?,
+                order: row.get("order")?,
+                session_id: session_id.to_string(),
+                question: Some(Neo4jQuestion {
+                    id: row.get("question_id")?,
+                    content: row.get("question_content")?,
+                    vector: Vec::new(), // We're not fetching the vector here for efficiency
+                    timestamp: Utc::now(), // Using current time as a placeholder
+                }),
+                response: Some(Neo4jResponse {
+                    id: row.get("response_id")?,
+                    content: row.get("response_content")?,
+                    vector: Vec::new(), // We're not fetching the vector here for efficiency
+                    timestamp: Utc::now(), // Using current time as a placeholder
+                    confidence: 0.0, // Using a placeholder value
+                    llm_specific_data: serde_json::Value::Null, // Using a placeholder value
+                }),
+            });
+        }
+
+        Ok(interactions)
+    }
+
+    pub async fn get_model_performance_metrics(&self, model_name: &str, start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> Result<Neo4jModelPerformanceMetrics, Neo4jClientError> {
+        let query_str = r#"
+    MATCH (m:Model {name: $model_name})<-[:GENERATED_BY]-(r:Response)<-[:HAS_RESPONSE]-(i:Interaction)
+    WHERE i.timestamp >= $start_time AND i.timestamp <= $end_time
+    MATCH (r)-[:HAS_METRICS]->(rm:ResponseMetrics)
+    MATCH (i)-[:HAS_TOKEN_USAGE]->(tu:TokenUsage)
+    RETURN
+        count(r) as response_count,
+        avg(rm.response_time) as avg_response_time,
+        avg(rm.confidence_score) as avg_confidence_score,
+        sum(tu.total_tokens) as total_tokens_used
+    "#;
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("model_name", model_name)
+            .param("start_time", start_time.to_rfc3339())
+            .param("end_time", end_time.to_rfc3339())
         ).await?;
 
         if let Some(row) = result.next().await? {
-            row.get::<String>("node_id").map_err(|e| Neo4jClientError::RowError(e.to_string()))
+            Ok(Neo4jModelPerformanceMetrics {
+                model_name: model_name.to_string(),
+                response_count: row.get::<i64>("response_count")?,
+                avg_response_time: chrono::Duration::milliseconds(row.get::<f64>("avg_response_time")? as i64),
+                avg_confidence_score: row.get::<f64>("avg_confidence_score")?,
+                total_tokens_used: row.get::<i64>("total_tokens_used")?,
+            })
         } else {
-            Err(Neo4jClientError::OtherError("Failed to get or create node".to_string()))
+            Err(Neo4jClientError::OtherError("No result returned".to_string()))
         }
     }
 
-
-
-
-        pub async fn add_response_data(
-            &self,
-            response_data: &Neo4jResponseData,
-        ) -> Result<(), Neo4jClientError> {
-            // Ensure session exists based on chatId
-            let session_query_str = "
-            MERGE (s:Session {chatId: $chatId})
-            SET s.id = $id, s.chatMessageId = $chatMessageId, s.memoryType = $memoryType
-            RETURN s
-        ";
-            let session_q = query(session_query_str)
-                .param("id", response_data.sessionId.as_str())
-                .param("chatId", response_data.chatId.as_str())
-                .param("chatMessageId", response_data.chatMessageId.as_str())
-                .param("memoryType", response_data.memoryType.as_str());
-            self.graph.run(session_q).await?;
-
-            // Ensure question exists based on content
-            let question_query_str = "
-            MERGE (q:Question {content: $content})
-            SET q.timestamp = $timestamp
-            RETURN q
-        ";
-            let question_q = query(question_query_str)
-                .param("content", response_data.question.as_str())
-                .param("timestamp", Utc::now().to_rfc3339());
-            self.graph.run(question_q).await?;
-
-            // Create or find request based on content
-            let request_query_str = "
-            MERGE (r:Request {content: $content})
-            SET r.id = $id, r.timestamp = $timestamp
-            RETURN r
-        ";
-            let request_q = query(request_query_str)
-                .param("id", Uuid::new_v4().to_string().as_str())
-                .param("content", response_data.question.as_str())
-                .param("timestamp", Utc::now().to_rfc3339());
-            self.graph.run(request_q).await?;
-
-            // Link request to question
-            let request_question_rel_query_str = "
-            MATCH (r:Request {content: $content}), (q:Question {content: $content})
-            MERGE (r)-[:IS_QUESTION]->(q)
-        ";
-            let request_question_rel_q = query(request_question_rel_query_str)
-                .param("content", response_data.question.as_str());
-            self.graph.run(request_question_rel_q).await?;
-
-            // Link request to session
-            let request_session_rel_query_str = "
-            MATCH (r:Request {content: $content}), (s:Session {chatId: $chatId})
-            MERGE (r)-[:MADE_IN]->(s)
-        ";
-            let request_session_rel_q = query(request_session_rel_query_str)
-                .param("content", response_data.question.as_str())
-                .param("chatId", response_data.chatId.as_str());
-            self.graph.run(request_session_rel_q).await?;
-
-            // Create response
-            let response_query_str = "
-            CREATE (s:Response {id: $id, content: $content, timestamp: $timestamp, status: $status})
-        ";
-            let response_id = Uuid::new_v4().to_string();
-            let response_q = query(response_query_str)
-                .param("id", response_id.as_str())
-                .param("content", response_data.text.as_str())
-                .param("timestamp", Utc::now().to_rfc3339())
-                .param("status", "success");
-            self.graph.run(response_q).await?;
-
-            // Link response to request
-            let response_request_rel_query_str = "
-            MATCH (r:Request {content: $content}), (s:Response {id: $response_id})
-            MERGE (r)-[:GENERATED]->(s)
-        ";
-            let response_request_rel_q = query(response_request_rel_query_str)
-                .param("content", response_data.question.as_str())
-                .param("response_id", response_id.as_str());
-            self.graph.run(response_request_rel_q).await?;
-
-            // Ensure model exists
-            let model_query_str = "
-            MERGE (m:Model {type: $type})
-            RETURN m
-        ";
-            let model_q = query(model_query_str).param("type", response_data.modelType.as_str());
-            self.graph.run(model_q).await?;
-
-            // Link response to model
-            let response_model_rel_query_str = "
-            MATCH (s:Response {id: $response_id}), (m:Model {type: $model_type})
-            MERGE (s)-[:USED_MODEL]->(m)
-        ";
-            let response_model_rel_q = query(response_model_rel_query_str)
-                .param("response_id", response_id.as_str())
-                .param("model_type", response_data.modelType.as_str());
-            self.graph.run(response_model_rel_q).await?;
-
-            Ok(())
-        }
-
-        pub async fn query_content(&self) -> Result<Vec<QueryResult>, Neo4jClientError> {
-            let query_str = "
-            MATCH (n)
-            WHERE (n.timestamp) IS NOT NULL
-            RETURN DISTINCT 'node' AS entity, n AS properties
-            LIMIT 25
-            UNION ALL
-            MATCH ()-[r]-()
-            WHERE (r.timestamp) IS NOT NULL
-            RETURN DISTINCT 'relationship' AS entity, r AS properties
-            LIMIT 25
-        ";
-            let mut result = self.graph.execute(query(query_str)).await?;
-            let mut query_results = Vec::new();
-
-            while let Some(row) = result.next().await? {
-                let entity: String = row.get("entity").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-                let properties: HashMap<String, serde_json::Value> = row.get("properties").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-                query_results.push(QueryResult {
-                    entity,
-                    properties,
-                });
-            }
-            Ok(query_results)
-        }
-
-        pub async fn update_node_properties(&self, node_id: i64, properties: &HashMap<String, serde_json::Value>) -> Result<(), Neo4jClientError> {
-            let properties_str = serde_json::to_string(properties)?;
-            let query_str = format!(
-                "MATCH (n) WHERE ID(n) = {} SET n += {}",
-                node_id, properties_str
-            );
-            let q = query(&query_str);
-            debug!("Update node properties Query: {}", query_str);
-
-            self.graph.run(q).await?;
-            debug!("Successfully updated properties for node {}", node_id);
-            Ok(())
-        }
-
-
-    pub async fn find_similar_questions(&self, question: &str, limit: usize) -> Result<Vec<String>, Neo4jClientError> {
-        let question_vector = self.create_vector_representation(question).await?;
-
-        if question_vector.len() != VECTOR_SIZE {
-            return Err(Neo4jClientError::OtherError(format!("Expected vector of size {}, got {}", VECTOR_SIZE, question_vector.len())));
-        }
-
+    pub async fn get_top_keywords(&self, limit: usize) -> Result<Vec<(String, i64)>, Neo4jClientError> {
         let query_str = r#"
-        MATCH (q:Question)
-        WHERE q.vector_representation IS NOT NULL AND size(q.vector_representation) = $vector_size
-        WITH q, gds.similarity.cosine(q.vector_representation, $vector) AS similarity
-        ORDER BY similarity DESC
-        LIMIT $limit
-        RETURN q.content AS content, similarity
-        "#;
-
-        let mut vector_list = BoltList::new();
-        for &value in &question_vector {
-            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
-        }
+    MATCH (k:Keyword)<-[:HAS_KEYWORD]-()
+    RETURN k.value as keyword, count(*) as usage_count
+    ORDER BY usage_count DESC
+    LIMIT $limit
+    "#;
 
         let mut result = self.graph.execute(query(query_str)
-            .param("vector", BoltType::List(vector_list))
-            .param("limit", BoltType::Integer(BoltInteger::new(limit as i64)))
-            .param("vector_size", BoltType::Integer(BoltInteger::new(VECTOR_SIZE as i64)))
+            .param("limit", limit as i64)
         ).await?;
 
-        let mut similar_questions = Vec::new();
+        let mut keywords = Vec::new();
+
         while let Some(row) = result.next().await? {
-            let content: String = row.get("content").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            similar_questions.push(content);
+            keywords.push((
+                row.get::<String>("keyword")?,
+                row.get::<i64>("usage_count")?
+            ));
         }
 
-        Ok(similar_questions)
+        Ok(keywords)
     }
-
-    pub async fn analyze_response_clusters(&self, n_clusters: usize) -> Result<Vec<Vec<String>>, Neo4jClientError> {
-        let query_str = r#"
-        MATCH (r:Response)
-        WHERE r.vector_representation IS NOT NULL AND size(r.vector_representation) = $vector_size
-        RETURN r.id AS id, r.vector_representation AS vector
-        "#;
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("vector_size", BoltType::Integer(BoltInteger::new(VECTOR_SIZE as i64)))
-        ).await?;
-
-        let mut vectors = Vec::new();
-        let mut ids = Vec::new();
-        while let Some(row) = result.next().await? {
-            let id: String = row.get("id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            if vector.len() == VECTOR_SIZE {
-                vectors.push(vector);
-                ids.push(id);
-            } else {
-                warn!("Skipping vector for id {} due to incorrect size", id);
-            }
-        }
-
-        if vectors.is_empty() {
-            return Err(Neo4jClientError::OtherError("No valid vectors found for clustering".to_string()));
-        }
-
-        // Perform k-means clustering
-        let clusters = self.kmeans(&vectors, n_clusters);
-
-        // Group response IDs by cluster
-        let mut clustered_responses = vec![Vec::new(); n_clusters];
-        for (id, &cluster) in ids.iter().zip(clusters.iter()) {
-            clustered_responses[cluster].push(id.clone());
-        }
-
-        Ok(clustered_responses)
-    }
-
-
-    fn kmeans(&self, data: &[Vec<f32>], k: usize) -> Vec<usize> {
-        let n = data.len();
-        let dim = data[0].len();
-        debug!("Number of data points: {}", n);
-        debug!("Number of dimensions: {}", dim);
-
-        // Initialize centroids randomly
-        let mut centroids: Vec<Vec<f32>> = (0..k)
-            .map(|_| data.choose(&mut rand::thread_rng()).unwrap().clone())
-            .collect();
-
-        let mut assignments = vec![0; n];
-        let mut changed = true;
-
-        while changed {
-            changed = false;
-
-            // Assign points to nearest centroid
-            for (i, point) in data.iter().enumerate() {
-                let closest = (0..k)
-                    .min_by_key(|&j| {
-                        let dist: f32 = centroids[j].iter().zip(point.iter())
-                            .map(|(&a, &b)| (a - b).powi(2))
-                            .sum();
-                        (dist * 1000.0) as i32 // Scale for integer comparison
-                    })
-                    .unwrap();
-
-                if assignments[i] != closest {
-                    assignments[i] = closest;
-                    changed = true;
-                }
-            }
-
-            // Update centroids
-            for j in 0..k {
-                let mut new_centroid = vec![0.0; dim];
-                let mut count = 0;
-
-                for (i, point) in data.iter().enumerate() {
-                    if assignments[i] == j {
-                        for d in 0..dim {
-                            new_centroid[d] += point[d];
-                        }
-                        count += 1;
-                    }
-                }
-
-                if count > 0 {
-                    for d in 0..dim {
-                        new_centroid[d] /= count as f32;
-                    }
-                    centroids[j] = new_centroid;
-                }
-            }
-        }
-
-        assignments
-    }
-
-    fn cosine_similarity(&self, a: &Array1<f32>, b: &Array1<f32>) -> f32 {
-        let dot_product = a.dot(b);
-        let norm_a = a.dot(a).sqrt();
-        let norm_b = b.dot(b).sqrt();
-        dot_product / (norm_a * norm_b)
-    }
-
-    pub async fn detect_anomalies(&self, threshold: f32) -> Result<Vec<String>, Neo4jClientError> {
-        let vectors = self.fetch_all_vectors().await?;
-        let mean_vector = vectors.mean_axis(Axis(0)).unwrap();
-
-        let mut anomaly_indices = Vec::new();
-        for (i, vector) in vectors.outer_iter().enumerate() {
-            let distance = euclidean_distance(&vector, &mean_vector);
-            if distance > threshold {
-                anomaly_indices.push(i);
-            }
-        }
-
-        // Fetch content for anomalous vectors
-        let anomalous_content = self.fetch_content_for_indices(&anomaly_indices).await?;
-
-        Ok(anomalous_content)
-    }
-
-    pub async fn cluster_vectors(&self, eps: f64, min_points: usize) -> Result<Vec<Vec<String>>, Neo4jClientError> {
-        let vectors = self.fetch_all_vectors().await?;
-        let mut dbscan = DBSCAN::new(eps, min_points);
-        let matrix = Matrix::new(
-            vectors.nrows(),
-            vectors.ncols(),
-            vectors.into_raw_vec().into_iter().map(|x| x as f64).collect::<Vec<f64>>()
+    pub async fn get_theme_distribution(&self) -> Result<HashMap<String, i64>, Neo4jClientError> {
+        let query = query(
+            r#"
+            MATCH (t:Theme)<-[:HAS_THEME]-()
+            RETURN t.value as theme, count(*) as count
+            "#
         );
 
-        // Train the model
-        dbscan.train(&matrix).map_err(|e| Neo4jClientError::OtherError(format!("DBSCAN training error: {}", e)))?;
+        let mut result = self.graph.execute(query).await?;
+        let mut distribution = HashMap::new();
 
-        // Predict clusters
-        let clusters = dbscan.predict(&matrix).map_err(|e| Neo4jClientError::OtherError(format!("DBSCAN prediction error: {}", e)))?;
-
-        // Group content by cluster
-        let max_cluster = clusters.iter().flatten().max().map(|&x| x + 1).unwrap_or(0);
-        let mut clustered_content = vec![Vec::new(); max_cluster];
-        for (i, cluster) in clusters.iter().enumerate() {
-            if let Some(c) = cluster {
-                let content = self.fetch_content_for_index(i).await?;
-                clustered_content[*c].push(content);
-            }
-        }
-
-        Ok(clustered_content)
-    }
-
-    pub async fn analyze_trends(&self, time_window: chrono::Duration) -> Result<Vec<(String, f32)>, Neo4jClientError> {
-        let query_str = r#"
-        MATCH (n)
-        WHERE n.timestamp > datetime() - duration($time_window)
-        RETURN n.vector_representation AS vector, n.content AS content, n.timestamp AS timestamp
-        ORDER BY timestamp
-        "#;
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("time_window", time_window.num_seconds())
-        ).await?;
-
-        let mut vectors = Vec::new();
-        let mut contents = Vec::new();
         while let Some(row) = result.next().await? {
-            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            let content: String = row.get("content").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            vectors.push(vector);
-            contents.push(content);
+            distribution.insert(row.get::<String>("theme")?, row.get("count")?);
         }
 
-        // Simple trend analysis: compare each vector to the average
-        let avg_vector = Array2::from_shape_vec((vectors.len(), vectors[0].len()), vectors.concat())
-            .map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
-            .mean_axis(Axis(0))
-            .unwrap();
-
-        let mut trends = Vec::new();
-        for (content, vector) in contents.into_iter().zip(vectors.iter()) {
-            let similarity = self.cosine_similarity(&Array1::from_vec(vector.clone()), &avg_vector);
-            trends.push((content, similarity));
-        }
-
-        trends.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        Ok(trends)
+        Ok(distribution)
     }
-
-
-    pub async fn vector_arithmetic(&self, positive_terms: &[&str], negative_terms: &[&str]) -> Result<Vec<String>, Neo4jClientError> {
-        let mut result_vector = Array1::zeros(VECTOR_SIZE);
-
-        for term in positive_terms {
-            let term_vector = self.create_vector_representation(term).await?;
-            result_vector += &Array1::from_vec(term_vector);
-        }
-
-        for term in negative_terms {
-            let term_vector = self.create_vector_representation(term).await?;
-            result_vector -= &Array1::from_vec(term_vector);
-        }
-
-        // Find nearest neighbors to result_vector
-        let nearest_neighbors = self.find_nearest_neighbors(&result_vector, 5).await?;
-
-        Ok(nearest_neighbors)
-    }
-
-    // Helper functions
-
-    async fn fetch_all_vectors(&self) -> Result<Array2<f32>, Neo4jClientError> {
-        let query_str = r#"
-        MATCH (n)
-        WHERE n.vector_representation IS NOT NULL
-        RETURN n.vector_representation AS vector
-        "#;
-
-        let mut result = self.graph.execute(query(query_str)).await?;
-        let mut vectors = Vec::new();
-        while let Some(row) = result.next().await? {
-            let vector: Vec<f32> = row.get("vector").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?;
-            vectors.push(vector);
-        }
-
-        Array2::from_shape_vec((vectors.len(), vectors[0].len()), vectors.concat())
-            .map_err(|e| Neo4jClientError::OtherError(e.to_string()))
-    }
-
-
-    async fn fetch_content_for_indices(&self, indices: &[usize]) -> Result<Vec<String>, Neo4jClientError> {
-        let query_str = r#"
-        MATCH (n)
-        WHERE n.vector_representation IS NOT NULL
-        WITH n, id(n) AS id
-        WHERE id IN $indices
-        RETURN n.content AS content
-        "#;
-
-        let mut indices_list = BoltList::new();
-        for &i in indices {
-            indices_list.push(BoltType::Integer(BoltInteger::new(i as i64)));
-        }
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("indices", BoltType::List(indices_list))
-        ).await?;
-
-        let mut contents = Vec::new();
-        while let Some(row) = result.next().await? {
-            let content: String = row.get("content")?;
-            contents.push(content);
-        }
-
-        Ok(contents)
-    }
-
-
-    async fn fetch_content_for_index(&self, index: usize) -> Result<String, Neo4jClientError> {
-        let contents = self.fetch_content_for_indices(&[index]).await?;
-        contents.into_iter().next().ok_or_else(|| Neo4jClientError::OtherError("No content found for index".to_string()))
-    }
-
-
-    async fn find_nearest_neighbors(&self, vector: &Array1<f32>, k: usize) -> Result<Vec<String>, Neo4jClientError> {
-        let query_str = r#"
-        MATCH (n)
-        WHERE n.vector_representation IS NOT NULL
-        WITH n, gds.similarity.cosine(n.vector_representation, $vector) AS similarity
-        ORDER BY similarity DESC
-        LIMIT $k
-        RETURN n.content AS content
-        "#;
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("vector", vector.as_slice())
-            .param("k", k as i64)
-        ).await?;
-
-        let mut neighbors = Vec::new();
-        while let Some(row) = result.next().await? {
-            let content: String = row.get("content")?;
-            neighbors.push(content);
-        }
-
-        Ok(neighbors)
-    }
-
-
-
 }
 
 
-fn euclidean_distance(a: &ArrayView<f32, Ix1>, b: &Array1<f32>) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
-}
+// Helper function to create a vector index
+async fn create_vector_index(graph: &Graph, label: &str, property: &str) -> Result<(), Neo4jClientError> {
+    let query_str = format!(r#"
+    CALL db.index.vector.createNodeIndex('{0}_{1}_index', '{0}', '{1}', 768, 'cosine')
+    "#, label, property);
 
-fn safe_preview(s: &str, max_chars: usize) -> String {
-    s.chars().take(max_chars).collect::<String>() + if s.chars().count() > max_chars { "..." } else { "" }
-}
-
-
-pub async fn create_vector_representation(content: &str) -> Result<Vec<f32>, VectorRepresentationError> {
-    debug!("Creating vector representation for content:");
-    let content = content.to_string(); // Clone the content
-
-    // Check if files exist, are readable, and contain data
-    let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
-    let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
-
-
-    debug!("Checking vocab file");
-    let mut vocab_content = String::new();
-    File::open(vocab_path)?.read_to_string(&mut vocab_content)?;
-    if vocab_content.is_empty() {
-        return Err(VectorRepresentationError::FileError("Vocab file is empty".to_string()));
-    }
-    debug!("Vocab file content (preview): {}", safe_preview(&vocab_content, 100));
-
-    debug!("Checking merges file");
-    let mut merges_content = String::new();
-    File::open(merges_path)?.read_to_string(&mut merges_content)?;
-    if merges_content.is_empty() {
-        return Err(VectorRepresentationError::FileError("Merges file is empty".to_string()));
-    }
-    debug!("Merges file content (preview): {}", safe_preview(&merges_content, 100));
-
-    // Spawn a blocking task for CPU-intensive tokenization
-    task::spawn_blocking(move || {
-        debug!("Creating BPE tokenizer and encoding:");
-        // Initialize BPE
-        let bpe_builder = BPE::from_file(vocab_path, merges_path);
-        debug!("BPE builder created");
-        let bpe = match bpe_builder.build() {
-            Ok(bpe) => {
-                debug!("BPE built successfully");
-                bpe
-            },
-            Err(e) => {
-                debug!("Error building BPE: {}", e);
-                return Err(VectorRepresentationError::BpeBuilderError(e.to_string()));
-            },
-        };
-
-        debug!("Creating tokenizer");
-        let tokenizer = Tokenizer::new(bpe);
-
-        // Tokenize the content
-        debug!("Tokenizing content");
-        let encoding = match tokenizer.encode(content, false) {
-            Ok(encoding) => {
-                debug!("Content tokenized successfully");
-                encoding
-            },
-            Err(e) => {
-                debug!("Error encoding content: {}", e);
-                return Err(VectorRepresentationError::TokenizerError(e.to_string()));
-            },
-        };
-
-        // Get tokens
-        let tokens = encoding.get_tokens();
-        debug!("Tokens (preview): {:?}", safe_preview(&format!("{:?}", tokens), 100));
-
-        // Create vector representation
-        let vector: Vec<f32> = tokens.iter()
-            .map(|token| tokenizer.token_to_id(token).unwrap_or(0) as f32)
-            .collect();
-        debug!("Vector created with length: {}", vector.len());
-
-        Ok(vector)
-    }).await.map_err(|e| VectorRepresentationError::OtherError(e.to_string()))?
+    graph.execute(query(&query_str)).await?;
+    Ok(())
 }
 
 pub async fn capture_llm_interaction(
     neo4j_client: Arc<Neo4jClient>,
-    flow: &FlowConfig,
+    _flow: &FlowConfig,
     prompt: &str,
     response: &str,
     model: &str,
 ) -> Result<(), Neo4jClientError> {
     let session_id = std::env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
-    let chat_id = flow.session_id.clone();
-    let chat_message_id = Uuid::new_v4().to_string();
+    debug!("Session ID: {}", session_id);
     let timestamp = Utc::now();
+    debug!("Timestamp: {}", timestamp);
 
-    // Create vector representations
-    let prompt_vector = neo4j_client.create_vector_representation(prompt).await?;
-    let response_vector = neo4j_client.create_vector_representation(response).await?;
-
-    if prompt_vector.len() != VECTOR_SIZE || response_vector.len() != VECTOR_SIZE {
-        return Err(Neo4jClientError::OtherError(format!("Vector size mismatch. Expected {}, got {} and {}", VECTOR_SIZE, prompt_vector.len(), response_vector.len())));
-    }
-
-    // Create or update Session Node
-    let session_node = Node {
-        id: chat_id.clone(),
-        content: "Chat Session".to_string(),
-        node_type: NodeType::Session,
-        attributes: HashMap::new(),
-        relationships: vec![],
-        metadata: Metadata {
-            tags: vec!["session".to_string()],
-            source: "System".to_string(),
-            timestamp,
-            confidence: 1.0,
-        },
-        vector_representation: None,
-        properties: {
-            let mut props = HashMap::new();
-            props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
-            props.insert("sessionId".to_string(), JsonValue::String(session_id.clone()));
-            props.insert("memoryType".to_string(), JsonValue::String(flow.override_config["memoryType"].as_str().unwrap_or("Buffer Window Memory").to_string()));
-            props
-        },
-        version_info: VersionInfo {
-            version: 1,
-            created_at: timestamp,
-            modified_at: timestamp,
-        },
-        temporal_info: None,
+    println!("Creating session node...");
+    let session = Neo4jSession {
+        id: session_id.clone(),
+        start_time: timestamp,
+        end_time: timestamp,
+        context: "".to_string(),
+        session_id: session_id.clone(),
+        user_id: "".to_string(),
     };
+    let session_node_id = neo4j_client.create_or_update_session(&session).await?;
+    println!("Session node created successfully with id: {}", session_node_id);
 
-    let session_node_id = neo4j_client.add_or_update_node(&session_node).await?;
-
-    // Create or update Model Node
-    let model_node = Node {
-        id: model.to_string(),
-        content: model.to_string(),
-        node_type: NodeType::Model,
-        attributes: HashMap::new(),
-        relationships: vec![],
-        metadata: Metadata {
-            tags: vec!["model".to_string()],
-            source: "System".to_string(),
-            timestamp,
-            confidence: 1.0,
-        },
-        vector_representation: None,
-        properties: {
-            let mut props = HashMap::new();
-            props.insert("modelType".to_string(), JsonValue::String(model.to_string()));
-            props
-        },
-        version_info: VersionInfo {
-            version: 1,
-            created_at: timestamp,
-            modified_at: timestamp,
-        },
-        temporal_info: None,
+    println!("Creating interaction node...");
+    let interaction = Neo4jInteraction {
+        id: Uuid::new_v4().to_string(),
+        timestamp,
+        order: 0,
+        session_id: session_id.clone(),
+        question: None,
+        response: None,
     };
+    let interaction_node_id = neo4j_client.create_interaction(&interaction).await?;
+    println!("Interaction node created successfully with id: {}", interaction_node_id);
 
-    let model_node_id = neo4j_client.add_or_update_node(&model_node).await?;
-    let question_node = Node {
+
+    println!("Creating question node...");
+    let question = Neo4jQuestion {
         id: Uuid::new_v4().to_string(),
         content: prompt.to_string(),
-        node_type: NodeType::Question,
-        attributes: HashMap::new(),
-        relationships: vec![],
-        metadata: Metadata {
-            tags: vec!["question".to_string()],
-            source: "User".to_string(),
-            timestamp,
-            confidence: 1.0,
-        },
-        vector_representation: Some(prompt_vector.clone()),
-        properties: {
-            let mut props = HashMap::new();
-            props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
-            props.insert("chatMessageId".to_string(), JsonValue::String(chat_message_id.clone()));
-            props.insert("request".to_string(), JsonValue::String(prompt.to_string()));
-            props.insert("modelType".to_string(), JsonValue::String(model.to_string()));
-            props.insert("vector_representation".to_string(), json!(prompt_vector));
-            props
-        },
-        version_info: VersionInfo {
-            version: 1,
-            created_at: timestamp,
-            modified_at: timestamp,
-        },
-        temporal_info: None,
+        vector: Vec::new(),
+        timestamp,
     };
-
-    let question_node_id = neo4j_client.add_or_update_node(&question_node).await?;
-
-    // Find similar questions
-    let similar_questions = neo4j_client.find_similar_questions(prompt, 5).await?;
-    info!("Similar questions: {:?}", similar_questions);
-    let mut similar_questions_list = BoltList::new();
-    for q in &similar_questions {
-        similar_questions_list.push(BoltType::String(BoltString::from(q.as_str())));
-    }
-    // Update question node with similar questions
-    let update_query = query(
-        "MATCH (q:Question {id: $id})
-         SET q.similar_questions = $similar_questions
-         RETURN q"
-    )
-        .param("id", BoltType::String(BoltString::from(question_node_id.as_str())))
-        .param("similar_questions", BoltType::List(similar_questions_list));
+    let question_node_id = neo4j_client.create_or_update_question(&question, &interaction_node_id).await?;
+    println!("Question node created successfully with id: {}", question_node_id);
 
 
-    neo4j_client.graph.run(update_query).await?;
+    println!("Creating model node...");
+    let model_node = Neo4jModel {
+        id: Uuid::new_v4().to_string(),
+        name: model.to_string(),
+        version: "1.0".to_string(), // You might want to pass this as a parameter or get it from somewhere
+    };
+    let model_node_id = neo4j_client.create_or_update_model(&model_node).await?;
+    println!("Model node created successfully with id: {}", model_node_id);
 
-    // Create Response Node
-    let response_node = Node {
+
+    println!("Creating response node...");
+    let response_node = Neo4jResponse {
         id: Uuid::new_v4().to_string(),
         content: response.to_string(),
-        node_type: NodeType::Response,
-        attributes: HashMap::new(),
-        relationships: vec![],
-        metadata: Metadata {
-            tags: vec!["response".to_string()],
-            source: "Anthropic".to_string(),
-            timestamp,
-            confidence: 1.0,
+        vector: Vec::new(), // You might want to implement vector representation
+        timestamp: Utc::now(),
+        confidence: 1.0, // You might want to pass this as a parameter
+        llm_specific_data: serde_json::Value::Null, // You might want to pass this as a parameter
+    };
+    let response_node_id = neo4j_client.create_response(&response_node, &interaction_node_id, &model_node_id).await?;
+    println!("Response node created successfully with id: {}", response_node_id);
+
+    println!("Creating token usage node...");
+    let token_usage = Neo4jTokenUsage {
+        id: Uuid::new_v4().to_string(),
+        prompt_tokens: 100, // You would need to get these values from the LLM response
+        completion_tokens: 50,
+        total_tokens: 150,
+    };
+    let token_usage_node_id = match neo4j_client.create_token_usage(&token_usage, &interaction_node_id).await {
+        Ok(id) => {
+            println!("Token usage node created successfully with id: {}", id);
+            id
         },
-        vector_representation: Some(response_vector.clone()),
-        properties: {
-            let mut props = HashMap::new();
-            props.insert("chatId".to_string(), JsonValue::String(chat_id.clone()));
-            props.insert("chatMessageId".to_string(), JsonValue::String(chat_message_id.clone()));
-            props.insert("sessionId".to_string(), JsonValue::String(session_id.clone()));
-            props.insert("memoryType".to_string(), JsonValue::String(flow.override_config["memoryType"].as_str().unwrap_or("Buffer Window Memory").to_string()));
-            props.insert("modelType".to_string(), JsonValue::String(model.to_string()));
-            props.insert("vector_representation".to_string(), json!(response_vector));
-            props
-        },
-        version_info: VersionInfo {
-            version: 1,
-            created_at: timestamp,
-            modified_at: timestamp,
-        },
-        temporal_info: None,
+        Err(e) => {
+            eprintln!("Error creating token usage node: {:?}", e);
+            return Err(e);
+        }
     };
 
-    let response_node_id = neo4j_client.add_or_update_node(&response_node).await?;
-
-    // Create relationships
-    neo4j_client.create_relationship(&session_node_id, &question_node_id, &RelationType::Contains).await?;
-    neo4j_client.create_relationship(&question_node_id, &response_node_id, &RelationType::AnsweredBy).await?;
-    neo4j_client.create_relationship(&response_node_id, &model_node_id, &RelationType::GeneratedBy).await?;
-    neo4j_client.create_relationship(&session_node_id, &model_node_id, &RelationType::Uses).await?;
-
-    // Analyze response clusters
-    let n_clusters = 3; // You can adjust this number based on your needs
-    let clustered_responses = neo4j_client.analyze_response_clusters(n_clusters).await?;
-    info!("Response clusters: {:?}", clustered_responses);
-
-    // Update response nodes with cluster information
-    for (cluster_id, response_ids) in clustered_responses.iter().enumerate() {
-        let mut response_ids_list = BoltList::new();
-        for id in response_ids {
-            response_ids_list.push(BoltType::String(BoltString::from(id.as_str())));
+    println!("Creating response metrics node...");
+    let response_metrics = Neo4jResponseMetrics {
+        id: Uuid::new_v4().to_string(),
+        response_time: chrono::Duration::seconds(1), // You would need to measure this
+        token_count: 150,
+        confidence_score: 1.0, // You might want to pass this as a parameter
+    };
+    let response_metrics_node_id = match neo4j_client.create_response_metrics(&response_metrics, &response_node_id).await {
+        Ok(id) => {
+            println!("Response metrics node created successfully with id: {}", id);
+            id
+        },
+        Err(e) => {
+            eprintln!("Error creating response metrics node: {:?}", e);
+            return Err(e);
         }
+    };
+    debug!("Session: {:?}", session);
+    debug!("Interaction: {:?}", interaction);
+    debug!("Question node: {:?}", question_node_id);
+    debug!("Response node: {:?}", response_node_id);
+    debug!("Token usage: {:?}", token_usage);
+    debug!("Token usage node: {:?}", token_usage_node_id);
+    debug!("Response metrics: {:?}", response_metrics);
+    debug!("Response metrics node: {:?}", response_metrics_node_id);
+    debug!("Model: {:?}", model_node);
 
-        let update_query = query(
-            "MATCH (r:Response)
-             WHERE r.id IN $response_ids
-             SET r.cluster = $cluster_id
-             RETURN r"
-        )
-            .param("response_ids", BoltType::List(response_ids_list))
-            .param("cluster_id", BoltType::Integer(BoltInteger::new(cluster_id as i64)));
+    debug!("Response metrics: {:?}", response_metrics);
+    neo4j_client.extract_and_link_keywords(prompt, &question_node_id, "Question").await?;
+    neo4j_client.extract_and_link_keywords(response, &response_node_id, "Response").await?;
+    debug!("Response: {:?}", response);
+    neo4j_client.extract_and_link_themes(prompt, &question_node_id, "Question").await?;
+    debug!("Question: {:?}", question);
+    neo4j_client.extract_and_link_themes(response, &response_node_id, "Response").await?;
+    debug!("Response: {:?}", response);
 
-        neo4j_client.graph.run(update_query).await?;
-    }
+    let neo4j_client_clone = Arc::clone(&neo4j_client);
+
+    tokio::spawn(async move {
+        debug!("Updating similarity relationships...");
+        if let Err(e) = neo4j_client_clone.update_similarity_relationships().await {
+            debug!("Error updating similarity relationships: {:?}", e);
+        }
+    });
 
     Ok(())
 }
