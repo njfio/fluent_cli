@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::client::{handle_openai_assistant_response, resolve_env_var};
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{capture_llm_interaction, Neo4jClient};
+use crate::neo4j_client::{capture_llm_interaction, LlmProvider, Neo4jClient, Neo4jClientError};
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -347,6 +347,51 @@ pub async fn send_openai_request(
     Ok(openai_response)
 }
 
+pub async fn get_openai_embedding(
+    text: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<Vec<f32>, Neo4jClientError> {
+    let client = reqwest::Client::new();
+    let url = "https://api.openai.com/v1/embeddings";
+
+    let request_body = serde_json::json!({
+        "input": text,
+        "model": model
+    });
+
+    let response = client
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| Neo4jClientError::OpenAIError(Box::new(e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.map_err(|e| Neo4jClientError::OpenAIError(Box::new(e)))?;
+        debug!("Error response body: {}", error_text);
+        return Err(Neo4jClientError::OpenAIError(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Request failed with status: {}", status),
+        ))));
+    }
+
+    let embedding_response: serde_json::Value = response.json().await.map_err(|e| Neo4jClientError::OpenAIError(Box::new(e)))?;
+    let embedding = embedding_response["data"][0]["embedding"]
+        .as_array()
+        .ok_or_else(|| Neo4jClientError::OpenAIError(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Embedding not found in response",
+        ))))?
+        .iter()
+        .map(|v| v.as_f64().unwrap() as f32)
+        .collect();
+
+    Ok(embedding)
+}
 
 async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut file = TokioFile::open(image_path).await?;
@@ -445,7 +490,17 @@ pub async fn handle_openai_agent(
             if choice.finish_reason.as_deref() != Some("length") {
                 // If finish_reason is not "length", we have the complete response
                 debug!("connection to neo4j");
+                let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
 
+                capture_llm_interaction(
+                    neo4j_client.clone(),
+                    &flow_clone,
+                    &messages.last().unwrap().content,
+                    full_response.as_str(),
+                    &model,
+                    &openai_response.id.unwrap_or_default(),
+                    LlmProvider::OpenAI
+                ).await?;
                 debug!("captured_llm_interaction");
                 return Ok(full_response);
             }

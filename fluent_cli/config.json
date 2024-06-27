@@ -62,6 +62,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
     "overrideConfig": {
+      "embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "claude-3-opus-20240229",
@@ -142,6 +143,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "claude-3-5-sonnet-20240620",
@@ -182,6 +184,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "claude-3-haiku-20240307",
@@ -377,6 +380,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "llama3-70b-8192",
@@ -407,6 +412,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "llama3-8b-8192",
@@ -437,6 +444,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": " mixtral-8x7b-32768",
@@ -467,6 +476,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "gemma-7b-it",
@@ -498,6 +509,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "modelName": "llama-3-sonar-large-32k-online",
       "max_tokens": 0,
@@ -524,6 +537,8 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
       "max_iterations": 10,
       "modelName": "llama-3-sonar-small-32k-online",
       "max_tokens": 0,

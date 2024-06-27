@@ -1,13 +1,13 @@
 use neo4rs::{Graph, query, Node as Neo4jNode, Relation, BoltString, BoltType, ConfigBuilder, Query, BoltBoolean, BoltFloat, BoltInteger, BoltMap, BoltList, BoltNull, DeError};
 use chrono::{DateTime, Utc};
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, RwLock};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use ndarray::{Array1, Array2};
 use thiserror::Error;
 use tokio::task;
@@ -25,9 +25,16 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use rust_tokenizers::tokenizer::{Tokenizer};
 use rustlearn::prelude::*;
+use serde::de::StdError;
+use crate::openai_agent_client::get_openai_embedding;
 
 
-
+#[derive(Debug, Clone)]
+pub enum LlmProvider {
+    Anthropic,
+    OpenAI,
+    // Add other providers as needed
+}
 // Additional structs needed for the implementation
 #[derive(Debug, Clone)]
 pub struct Neo4jSession {
@@ -61,7 +68,7 @@ pub struct Neo4jQuestion {
 pub struct Neo4jResponse {
     pub id: String,
     pub content: String,
-    pub vector: Vec<f32>,
+    pub vector: BoltList,
     pub timestamp: DateTime<Utc>,
     pub confidence: f64,
     pub llm_specific_data: serde_json::Value,
@@ -132,6 +139,10 @@ pub enum Neo4jClientError {
 
     #[error("Other error: {0}")]
     OtherError(String),
+
+    #[error("OpenAI API error: {0}")]
+    OpenAIError(#[from] Box<dyn StdError + Send + Sync>),
+
 }
 
 
@@ -162,6 +173,7 @@ impl Neo4jClient {
         // Initialize tokenizer
         let vocab_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/vocab.json";
         let merges_path = "/Users/n/RustroverProjects/fluent_cli/fluent_cli/merges.txt";
+
         // let tokenizer = Arc::new(Self::create_tokenizer(vocab_path, merges_path)?);
 
         Ok(Neo4jClient {
@@ -171,7 +183,37 @@ impl Neo4jClient {
         })
     }
 
+    pub async fn find_similar_themes(&self, vector: &[f32], limit: usize) -> Result<Vec<(String, f32)>, Neo4jClientError> {
+        let query_str = r#"
+    MATCH (t:Theme)
+    WHERE t.vector IS NOT NULL
+    WITH t, gds.similarity.cosine(t.vector, $vector) AS similarity
+    ORDER BY similarity DESC
+    LIMIT $limit
+    RETURN t.value AS theme, similarity
+    "#;
 
+        let mut vector_list = BoltList::new();
+        for &value in vector {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+
+        let mut result = self.graph.execute(query(query_str)
+            .param("limit", BoltType::Integer(BoltInteger::new(limit as i64)))
+            .param("vector", BoltType::List(vector_list))
+        ).await?;
+
+        let mut themes = Vec::new();
+
+        while let Some(row) = result.next().await? {
+            themes.push((
+                row.get::<String>("theme")?,
+                row.get::<f64>("similarity")? as f32
+            ));
+        }
+
+        Ok(themes)
+    }
 
     pub async fn create_or_update_session(&self, session: &Neo4jSession) -> Result<String, Neo4jClientError> {
         let query_str = r#"
@@ -285,7 +327,14 @@ impl Neo4jClient {
 
     pub async fn create_response(&self, response: &Neo4jResponse, interaction_id: &str, model_id: &str) -> Result<String, Neo4jClientError> {
         let query_str = r#"
-    CREATE (r:Response $props)
+    CREATE (r:Response {
+        id: $id,
+        content: $content,
+        vector: $vector,
+        timestamp: $timestamp,
+        confidence: $confidence,
+        llm_specific_data: $llm_specific_data
+    })
     WITH r
     MATCH (i:Interaction {id: $interaction_id})
     MATCH (m:Model {id: $model_id})
@@ -294,37 +343,24 @@ impl Neo4jClient {
     RETURN r.id as response_id
     "#;
 
-        let mut props = BoltMap::new();
-        props.put(BoltString::from("id"), BoltType::String(BoltString::from(response.id.as_str())));
-        props.put(BoltString::from("content"), BoltType::String(BoltString::from(response.content.as_str())));
+        let query = query(query_str)
+            .param("id", response.id.clone())
+            .param("content", response.content.clone())
+            .param("vector", BoltType::List(response.vector.clone()))
+            .param("timestamp", response.timestamp.to_rfc3339())
+            .param("confidence", response.confidence)
+            .param("llm_specific_data", serde_json::to_string(&response.llm_specific_data)?)
+            .param("interaction_id", interaction_id)
+            .param("model_id", model_id);
 
-        // Create BoltList for the vector
-        let mut vector_list = BoltList::new();
-        for &value in &response.vector {
-            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
-        }
-        props.put(BoltString::from("vector"), BoltType::List(vector_list));
+        let mut result = self.graph.execute(query).await?;
 
-        props.put(BoltString::from("timestamp"), BoltType::String(BoltString::from(response.timestamp.to_rfc3339().as_str())));
-        props.put(BoltString::from("confidence"), BoltType::Float(BoltFloat::new(response.confidence)));
-
-        // Convert llm_specific_data to BoltType
-        let llm_data = self.json_to_bolt_type(&response.llm_specific_data)?;
-        props.put(BoltString::from("llm_specific_data"), llm_data);
-
-        let mut result = self.graph.execute(query(query_str)
-            .param("props", BoltType::Map(props))
-            .param("interaction_id", BoltType::String(BoltString::from(interaction_id)))
-            .param("model_id", BoltType::String(BoltString::from(model_id)))
-        ).await?;
-
-        let response_id = if let Some(row) = result.next().await? {
-            row.get::<String>("response_id").map_err(|e| Neo4jClientError::OtherError(e.to_string()))?
+        if let Some(row) = result.next().await? {
+            row.get::<String>("response_id")
+                .map_err(|e| Neo4jClientError::OtherError(format!("Failed to get response_id: {}", e)))
         } else {
-            return Err(Neo4jClientError::OtherError("Failed to create response node".to_string()));
-        };
-
-        Ok(response_id)
+            Err(Neo4jClientError::OtherError("No result returned when creating response node".to_string()))
+        }
     }
 
     // Helper function to convert JsonValue to BoltType
@@ -428,14 +464,25 @@ impl Neo4jClient {
     pub async fn create_or_get_theme(&self, theme: &str) -> Result<String, Neo4jClientError> {
         let query_str = r#"
     MERGE (t:Theme {value: $value})
-    ON CREATE SET t.id = $id
+    ON CREATE SET
+        t.id = $id,
+        t.vector = $vector
     RETURN t.id as theme_id
     "#;
 
         let id = Uuid::new_v4().to_string();
+        let api_key = std::env::var("FLUENT_OPENAI_API_KEY_01").expect("OPENAI_API_KEY not set");
+        let theme_embedding = get_openai_embedding(theme, api_key.as_str(), "text-embedding-ada-002").await?;
+
+        let mut vector_list = BoltList::new();
+        for &value in &theme_embedding {
+            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+        }
+
         let query = query(query_str)
             .param("value", theme)
-            .param("id", id.clone());
+            .param("id", id.clone())
+            .param("vector", BoltType::List(vector_list));
 
         debug!("Executing query for create_or_get_theme");
         debug!("Query: {}", query_str);
@@ -747,36 +794,8 @@ impl Neo4jClient {
     }
 
 
-    pub async fn extract_and_link_themes(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
+    pub async fn extract_and_link_themes(&self, content: &str, node_id: &str, node_type: &str, content_embedding: &[f32]) -> Result<(), Neo4jClientError> {
         debug!("Extracting themes from content: {}", content);
-
-        // Initialize stemmer
-        let en_stemmer = Stemmer::create(Algorithm::English);
-
-        // Tokenize and count words, keeping original and stemmed versions
-        let words: Vec<(String, String)> = content.split_whitespace()
-            .map(|s| (s.to_lowercase(), en_stemmer.stem(&s.to_lowercase()).to_string()))
-            .collect();
-        debug!("Tokenized words: {:?}", words);
-
-        let mut word_count: HashMap<String, usize> = HashMap::new();
-        let mut stem_to_word: HashMap<String, String> = HashMap::new();
-        for (word, stem) in &words {
-            *word_count.entry(stem.clone()).or_insert(0) += 1;
-            stem_to_word.entry(stem.clone()).or_insert_with(|| word.clone());
-        }
-        debug!("Word count: {:?}", word_count);
-
-        // Calculate TF-IDF
-        let total_words = words.len() as f32;
-        let mut tfidf: HashMap<String, f32> = HashMap::new();
-        for (stem, count) in word_count.iter() {
-            let tf = *count as f32 / total_words;
-            let idf = (1.0 + (total_words / (*count as f32))).ln();
-            tfidf.insert(stem.clone(), tf * idf);
-        }
-        debug!("TF-IDF scores: {:?}", tfidf);
-
 
         // Expanded list of themes
         let themes = vec![
@@ -859,34 +878,22 @@ impl Neo4jClient {
             "Existentialism", "Relativism", "Objectivism", "Pragmatism", "Humanism"
         ];
 
-        // Calculate theme vectors
-        let mut theme_vectors: HashMap<String, HashMap<String, f32>> = HashMap::new();
-        for theme in &themes {
-            let theme_words: Vec<String> = theme.split_whitespace()
-                .map(|s| en_stemmer.stem(&s.to_lowercase()).to_string())
-                .collect();
-            let theme_vector: HashMap<String, f32> = theme_words.into_iter()
-                .map(|word| (word, 1.0))
-                .collect();
-            theme_vectors.insert(theme.to_string(), theme_vector);
-        }
 
-        // Calculate cosine similarity between content and themes
-        let mut theme_scores: Vec<(String, f32)> = themes.iter().map(|theme| {
-            let theme_vector = theme_vectors.get(*theme).unwrap();
-            let similarity = cosine_similarity(&tfidf, theme_vector);
+        let theme_embeddings = self.get_theme_embeddings(&themes).await?;
+
+        let mut theme_scores: Vec<(String, f32)> = themes.iter().enumerate().map(|(i, &theme)| {
+            let similarity = cosine_similarity(content_embedding, &theme_embeddings[i]);
             (theme.to_string(), similarity)
         }).collect();
 
-        // Sort themes by score
         theme_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         debug!("Theme scores: {:?}", theme_scores);
 
-        // Take top 3 themes with non-zero scores
-        let top_themes: Vec<String> = theme_scores.into_iter()
-            .filter(|(_, score)| *score > 0.0)
-            .take(1)
-            .map(|(theme, _)| theme)
+        let threshold = -0.07; // Adjust based on your observed scores
+        let top_themes: Vec<String> = theme_scores.iter()
+            .filter(|(_, score)| *score > threshold)
+            .take(2)
+            .map(|(theme, _)| theme.clone())
             .collect();
         debug!("Top themes: {:?}", top_themes);
 
@@ -897,17 +904,25 @@ impl Neo4jClient {
                     let query_str = r#"
                 MATCH (n) WHERE n.id = $node_id
                 MATCH (t:Theme) WHERE t.id = $theme_id
-                MERGE (n)-[:HAS_THEME]->(t)
+                MERGE (n)-[r:HAS_THEME]->(t)
+                ON CREATE SET r.similarity = $similarity
+                ON MATCH SET r.similarity = $similarity
                 RETURN count(*) as linked
                 "#;
+                    let theme_id_clone = theme_id.clone();
+                    let similarity = theme_scores.iter()
+                        .find(|(t, _)| t == &theme)
+                        .map(|(_, s)| *s)
+                        .unwrap_or(0.0);
 
                     let query = query(query_str)
                         .param("node_id", node_id)
-                        .param("theme_id", theme_id.clone());
+                        .param("theme_id", theme_id)
+                        .param("similarity", similarity);
 
                     debug!("Executing query for linking theme");
                     debug!("Query: {}", query_str);
-                    debug!("Parameters: node_id={}, theme_id={}", node_id, theme_id);
+                    debug!("Parameters: node_id={}, theme_id={}, similarity={}", node_id, theme_id_clone, similarity);
 
                     let mut result = self.graph.execute(query).await?;
 
@@ -916,6 +931,7 @@ impl Neo4jClient {
                         if linked == 0 {
                             return Err(Neo4jClientError::OtherError(format!("Failed to link theme {} to node {}", theme, node_id)));
                         }
+                        debug!("Successfully linked theme {} to node {}", theme, node_id);
                     } else {
                         return Err(Neo4jClientError::OtherError(format!("No result returned when linking theme {} to node {}", theme, node_id)));
                     }
@@ -929,6 +945,24 @@ impl Neo4jClient {
 
         Ok(())
     }
+    // Helper function to get embeddings for themes
+    async fn get_theme_embeddings(&self, themes: &[&str]) -> Result<Vec<Vec<f32>>, Neo4jClientError> {
+        let api_key = std::env::var("FLUENT_OPENAI_API_KEY_01").expect("OPENAI_API_KEY not set");
+        let model = "text-embedding-ada-002";
+
+        // Join all themes into a single string, separated by newlines
+        let combined_themes = themes.join("\n");
+
+        // Get embeddings for all themes in a single API call
+        let embeddings = get_openai_embedding(&combined_themes, &api_key, model).await?;
+
+        // Split the embeddings back into individual theme embeddings
+        let embedding_size = embeddings.len() / themes.len();
+        let theme_embeddings = embeddings.chunks(embedding_size).map(|chunk| chunk.to_vec()).collect();
+
+        Ok(theme_embeddings)
+    }
+
 
 
 
@@ -950,6 +984,7 @@ impl Neo4jClient {
         let mut interactions = Vec::new();
 
         while let Some(row) = result.next().await? {
+            let empty_bolt_list = BoltList::new(); // Create an empty BoltList
             interactions.push(Neo4jInteraction {
                 id: row.get("interaction_id")?,
                 timestamp: row.get("timestamp")?,
@@ -958,16 +993,16 @@ impl Neo4jClient {
                 question: Some(Neo4jQuestion {
                     id: row.get("question_id")?,
                     content: row.get("question_content")?,
-                    vector: Vec::new(), // We're not fetching the vector here for efficiency
-                    timestamp: Utc::now(), // Using current time as a placeholder
+                    vector: Vec::new(), // Keep this as Vec<f32> for Neo4jQuestion
+                    timestamp: Utc::now(),
                 }),
                 response: Some(Neo4jResponse {
                     id: row.get("response_id")?,
                     content: row.get("response_content")?,
-                    vector: Vec::new(), // We're not fetching the vector here for efficiency
-                    timestamp: Utc::now(), // Using current time as a placeholder
-                    confidence: 0.0, // Using a placeholder value
-                    llm_specific_data: serde_json::Value::Null, // Using a placeholder value
+                    vector: empty_bolt_list, // Use the empty BoltList here
+                    timestamp: Utc::now(),
+                    confidence: 0.0,
+                    llm_specific_data: serde_json::Value::Null,
                 }),
             });
         }
@@ -1047,41 +1082,33 @@ impl Neo4jClient {
 
         Ok(distribution)
     }
+
+
+    pub async fn create_vector_indexes(&self) -> Result<(), Neo4jClientError> {
+        let queries = vec![
+            "CALL db.index.vector.createNodeIndex('question_vector_index', 'Question', 'vector', 1536, 'cosine')",
+            "CALL db.index.vector.createNodeIndex('response_vector_index', 'Response', 'vector', 1536, 'cosine')",
+        ];
+
+        for query_str in queries {
+            self.graph.execute(query(query_str)).await?;
+        }
+
+        Ok(())
+    }
 }
 
 
 // Helper function to create a vector index
-async fn create_vector_index(graph: &Graph, label: &str, property: &str) -> Result<(), Neo4jClientError> {
-    let query_str = format!(r#"
-    CALL db.index.vector.createNodeIndex('{0}_{1}_index', '{0}', '{1}', 768, 'cosine')
-    "#, label, property);
-
-    graph.execute(query(&query_str)).await?;
-    Ok(())
-}
 
 
-fn cosine_similarity(vec1: &HashMap<String, f32>, vec2: &HashMap<String, f32>) -> f32 {
-    let mut dot_product = 0.0;
-    let mut mag1 = 0.0;
-    let mut mag2 = 0.0;
 
-    for (word, val1) in vec1 {
-        mag1 += val1 * val1;
-        if let Some(val2) = vec2.get(word) {
-            dot_product += val1 * val2;
-        }
-    }
+fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
+    let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(&x, &y)| x * y).sum();
+    let magnitude1: f32 = vec1.iter().map(|&x| x * x).sum::<f32>().sqrt();
+    let magnitude2: f32 = vec2.iter().map(|&x| x * x).sum::<f32>().sqrt();
 
-    for val2 in vec2.values() {
-        mag2 += val2 * val2;
-    }
-
-    if mag1 == 0.0 || mag2 == 0.0 {
-        0.0
-    } else {
-        dot_product / (mag1.sqrt() * mag2.sqrt())
-    }
+    dot_product / (magnitude1 * magnitude2)
 }
 
 fn load_word_embeddings(path: &str) -> Result<HashMap<String, Vec<f32>>, Neo4jClientError> {
@@ -1104,17 +1131,33 @@ fn load_word_embeddings(path: &str) -> Result<HashMap<String, Vec<f32>>, Neo4jCl
     Ok(embeddings)
 }
 
+
+
 pub async fn capture_llm_interaction(
     neo4j_client: Arc<Neo4jClient>,
     _flow: &FlowConfig,
     prompt: &str,
     response: &str,
     model: &str,
+    full_response_json: &str,
+    provider: LlmProvider,
+
 ) -> Result<(), Neo4jClientError> {
     let session_id = std::env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
+
     debug!("Session ID: {}", session_id);
     let timestamp = Utc::now();
+
     debug!("Timestamp: {}", timestamp);
+    let api_key = std::env::var("FLUENT_OPENAI_API_KEY_01").expect("OPENAI_API_KEY not set");
+
+    let embedding_model = "text-embedding-ada-002";
+
+    debug!("Getting embedding for prompt...");
+    let prompt_embedding = get_openai_embedding(prompt, &api_key, embedding_model).await?;
+    let prompt_embedding_clone = prompt_embedding.clone();
+    debug!("Getting embedding for response...");
+    let response_embedding = get_openai_embedding(response, &api_key, embedding_model).await?;
 
     debug!("Creating session node...");
     let session = Neo4jSession {
@@ -1145,7 +1188,7 @@ pub async fn capture_llm_interaction(
     let question = Neo4jQuestion {
         id: Uuid::new_v4().to_string(),
         content: prompt.to_string(),
-        vector: Vec::new(),
+        vector: prompt_embedding,
         timestamp,
     };
     let question_node_id = neo4j_client.create_or_update_question(&question, &interaction_node_id).await?;
@@ -1163,52 +1206,59 @@ pub async fn capture_llm_interaction(
 
 
     debug!("Creating response node...");
+    let mut vector_list = BoltList::new();
+    for &value in &response_embedding {
+        vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
+    }
+
     let response_node = Neo4jResponse {
         id: Uuid::new_v4().to_string(),
         content: response.to_string(),
-        vector: Vec::new(), // You might want to implement vector representation
+        vector: vector_list,
         timestamp: Utc::now(),
-        confidence: 1.0, // You might want to pass this as a parameter
-        llm_specific_data: serde_json::Value::Null, // You might want to pass this as a parameter
+        confidence: 1.0,
+        llm_specific_data: serde_json::json!({}),  // Or any appropriate default
     };
-    let response_node_id = neo4j_client.create_response(&response_node, &interaction_node_id, &model_node_id).await?;
-    debug!("Response node created successfully with id: {}", response_node_id);
-
     debug!("Creating token usage node...");
-    let token_usage = Neo4jTokenUsage {
-        id: Uuid::new_v4().to_string(),
-        prompt_tokens: 100, // You would need to get these values from the LLM response
-        completion_tokens: 50,
-        total_tokens: 150,
-    };
-    let token_usage_node_id = match neo4j_client.create_token_usage(&token_usage, &interaction_node_id).await {
-        Ok(id) => {
-            debug!("Token usage node created successfully with id: {}", id);
-            id
+    let response_json: Result<Value, serde_json::Error> = serde_json::from_str(full_response_json);
+    let response_node_id = neo4j_client.create_response(&response_node, &interaction_node_id, &model_node_id).await?;
+
+
+    let token_usage_node_id = match response_json {
+        Ok(json_value) => {
+            match extract_token_usage(&json_value, &provider) {
+                Ok(token_usage) => {
+                    match neo4j_client.create_token_usage(&token_usage, &interaction_node_id).await {
+                        Ok(id) => {
+                            debug!("Token usage node created successfully with id: {}", id);
+                            Some(id)
+                        },
+                        Err(e) => {
+                            error!("Error creating token usage node: {:?}", e);
+                            None
+                        }
+                    }
+                },
+                Err(e) => {
+                    warn!("Error extracting token usage: {:?}. Continuing without token usage.", e);
+                    None
+                }
+            }
         },
         Err(e) => {
-            error!("Error creating token usage node: {:?}", e);
-            return Err(e);
+            warn!("Error parsing full response JSON: {:?}. Continuing without token usage.", e);
+            None
         }
     };
 
-    debug!("Creating response metrics node...");
-    let response_metrics = Neo4jResponseMetrics {
-        id: Uuid::new_v4().to_string(),
-        response_time: chrono::Duration::seconds(1), // You would need to measure this
-        token_count: 150,
-        confidence_score: 1.0, // You might want to pass this as a parameter
-    };
-    let response_metrics_node_id = match neo4j_client.create_response_metrics(&response_metrics, &response_node_id).await {
-        Ok(id) => {
-            debug!("Response metrics node created successfully with id: {}", id);
-            id
-        },
-        Err(e) => {
-            error!("Error creating response metrics node: {:?}", e);
-            return Err(e);
-        }
-    };
+    if let Some(id) = token_usage_node_id {
+        debug!("Token usage node ID: {}", id);
+    } else {
+        debug!("No token usage information available");
+    }
+
+
+
 
     debug!("Response: {:?}", response);
 
@@ -1216,20 +1266,18 @@ pub async fn capture_llm_interaction(
     debug!("Interaction: {:?}", interaction);
     debug!("Question node: {:?}", question_node_id);
     debug!("Response node: {:?}", response_node_id);
-    debug!("Token usage: {:?}", token_usage);
-    debug!("Token usage node: {:?}", token_usage_node_id);
-    debug!("Response metrics: {:?}", response_metrics);
-    debug!("Response metrics node: {:?}", response_metrics_node_id);
+    //debug!("Token usage: {:?}", token_usage);
+
     debug!("Model: {:?}", model_node);
 
-    debug!("Response metrics: {:?}", response_metrics);
+
     neo4j_client.extract_and_link_keywords(prompt, &question_node_id, "Question").await?;
     debug!("extracted keywords from prompt");
     neo4j_client.extract_and_link_keywords(response, &response_node_id, "Response").await?;
     debug!("extracted keywords from response");
-    neo4j_client.extract_and_link_themes(prompt, &question_node_id, "Question").await?;
+    neo4j_client.extract_and_link_themes(prompt, &question_node_id, "Question", &prompt_embedding_clone).await?;
     debug!("extracted themes from prompt");
-    neo4j_client.extract_and_link_themes(response, &response_node_id, "Response").await?;
+    neo4j_client.extract_and_link_themes(response, &response_node_id, "Response", &response_embedding).await?;
     debug!("extracted themes from response");
 
     let neo4j_client_clone = Arc::clone(&neo4j_client);
@@ -1242,4 +1290,71 @@ pub async fn capture_llm_interaction(
     });
 
     Ok(())
+}
+
+
+fn extract_response_metrics(full_response: &serde_json::Value, start_time: DateTime<Utc>) -> Result<Neo4jResponseMetrics, Neo4jClientError> {
+    let usage = full_response.get("usage")
+        .ok_or_else(|| Neo4jClientError::OtherError("No usage data found in response".to_string()))?;
+
+    let total_tokens = usage.get("total_tokens")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| Neo4jClientError::OtherError("No total_tokens found in usage data".to_string()))? as i32;
+
+    // Calculate response time
+    let end_time = Utc::now();
+    let response_time = end_time - start_time;
+
+    // Extract confidence score if available, otherwise use a default value
+    let confidence_score = full_response.get("confidence")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+
+    Ok(Neo4jResponseMetrics {
+        id: Uuid::new_v4().to_string(),
+        response_time,
+        token_count: total_tokens,
+        confidence_score,
+    })
+}
+fn extract_token_usage(full_response: &serde_json::Value, provider: &LlmProvider) -> Result<Neo4jTokenUsage, Neo4jClientError> {
+    let usage = full_response.get("usage")
+        .ok_or_else(|| Neo4jClientError::OtherError("No usage data found in response".to_string()))?;
+
+    let (prompt_tokens, completion_tokens, total_tokens) = match provider {
+        LlmProvider::Anthropic => {
+            let input_tokens = usage.get("input_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+
+            let output_tokens = usage.get("output_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+
+            (input_tokens, output_tokens, input_tokens + output_tokens)
+        },
+        LlmProvider::OpenAI => {
+            let prompt_tokens = usage.get("prompt_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+
+            let completion_tokens = usage.get("completion_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+
+            let total_tokens = usage.get("total_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or_else(|| (prompt_tokens + completion_tokens) as i64) as i32;
+
+            (prompt_tokens, completion_tokens, total_tokens)
+        },
+        // Add cases for other providers as needed
+    };
+
+    Ok(Neo4jTokenUsage {
+        id: Uuid::new_v4().to_string(),
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+    })
 }

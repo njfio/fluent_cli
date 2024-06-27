@@ -11,7 +11,7 @@ use log::debug;
 use uuid::Uuid;
 
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{capture_llm_interaction, Neo4jClient};
+use crate::neo4j_client::{capture_llm_interaction, LlmProvider, Neo4jClient};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AnthropicRequest {
@@ -161,14 +161,17 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
             }
         }
         let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
-
+        debug!("Anthropic response: {}", anthropic_response);
 // After getting a response from your LLM:
         capture_llm_interaction(
             Arc::clone(&neo4j_client),
             &flow_clone,
             &prompt,
             &full_response,
-            model
+            model,
+            &anthropic_response,
+            LlmProvider::Anthropic
+
         ).await?;
 
 
@@ -182,3 +185,5 @@ pub async fn handle_anthropic_agent(prompt: &str, flow: &FlowConfig, _matches: &
     debug!("Full response: {}", full_response);
     Ok(full_response)
 }
+
+
