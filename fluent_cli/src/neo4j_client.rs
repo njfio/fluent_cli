@@ -4,8 +4,11 @@ use serde_json::json;
 use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::sync::{Arc, RwLock};
-use log::debug;
+use log::{debug, error, info};
+use ndarray::{Array1, Array2};
 use thiserror::Error;
 use tokio::task;
 use crate::config::FlowConfig;
@@ -16,7 +19,14 @@ use stop_words::get;
 
 
 use rust_stemmers::{Algorithm, Stemmer};
+use rust_tokenizers::tokenizer::BaseTokenizer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+
+use rust_tokenizers::tokenizer::{Tokenizer};
+use rustlearn::prelude::*;
+
+
 
 // Additional structs needed for the implementation
 #[derive(Debug, Clone)]
@@ -186,7 +196,7 @@ impl Neo4jClient {
             .param("session_id", session.session_id.to_string())
             .param("user_id", session.user_id.to_string());
 
-        println!("Executing query for create_or_update_session");
+        debug!("Executing query for create_or_update_session");
 
         let mut result = self.graph.execute(query).await?;
 
@@ -216,9 +226,9 @@ impl Neo4jClient {
             .param("timestamp", interaction.timestamp.to_rfc3339())
             .param("order", interaction.order);
 
-        println!("Executing query for create_interaction");
-        println!("Query: {}", query_str);
-        println!("Parameters: id={}, session_id={}, timestamp={}, order={}",
+        debug!("Executing query for create_interaction");
+        debug!("Query: {}", query_str);
+        debug!("Parameters: id={}, session_id={}, timestamp={}, order={}",
                  interaction.id, interaction.session_id, interaction.timestamp, interaction.order);
 
         let mut result = self.graph.execute(query).await?;
@@ -365,9 +375,9 @@ impl Neo4jClient {
             .param("name", model.name.to_string())
             .param("version", model.version.to_string());
 
-        println!("Executing query for create_or_update_model");
-        println!("Query: {}", query_str);
-        println!("Parameters: id={}, name={}, version={}",
+        debug!("Executing query for create_or_update_model");
+        debug!("Query: {}", query_str);
+        debug!("Parameters: id={}, name={}, version={}",
                  model.id, model.name, model.version);
 
         let mut result = self.graph.execute(query).await?;
@@ -392,25 +402,25 @@ impl Neo4jClient {
             .param("value", keyword)
             .param("id", id.clone());
 
-        println!("Executing query for create_or_get_keyword");
-        println!("Query: {}", query_str);
-        println!("Parameters: value={}, id={}", keyword, id);
+        debug!("Executing query for create_or_get_keyword");
+        debug!("Query: {}", query_str);
+        debug!("Parameters: value={}, id={}", keyword, id);
 
         let mut result = self.graph.execute(query).await?;
 
         if let Some(row) = result.next().await? {
             match row.get::<String>("keyword_id") {
                 Ok(keyword_id) => {
-                    println!("Keyword created/retrieved successfully with id: {}", keyword_id);
+                    debug!("Keyword created/retrieved successfully with id: {}", keyword_id);
                     Ok(keyword_id)
                 },
                 Err(e) => {
-                    eprintln!("Error getting keyword_id from row: {:?}", e);
+                    error!("Error getting keyword_id from row: {:?}", e);
                     Err(Neo4jClientError::OtherError(format!("Failed to get keyword_id: {}", e)))
                 }
             }
         } else {
-            eprintln!("No result returned when creating/getting keyword");
+            error!("No result returned when creating/getting keyword");
             Err(Neo4jClientError::OtherError("No result returned".to_string()))
         }
     }
@@ -427,25 +437,25 @@ impl Neo4jClient {
             .param("value", theme)
             .param("id", id.clone());
 
-        println!("Executing query for create_or_get_theme");
-        println!("Query: {}", query_str);
-        println!("Parameters: value={}, id={}", theme, id);
+        debug!("Executing query for create_or_get_theme");
+        debug!("Query: {}", query_str);
+        debug!("Parameters: value={}, id={}", theme, id);
 
         let mut result = self.graph.execute(query).await?;
 
         if let Some(row) = result.next().await? {
             match row.get::<String>("theme_id") {
                 Ok(theme_id) => {
-                    println!("Theme created/retrieved successfully with id: {}", theme_id);
+                    debug!("Theme created/retrieved successfully with id: {}", theme_id);
                     Ok(theme_id)
                 },
                 Err(e) => {
-                    eprintln!("Error getting theme_id from row: {:?}", e);
+                    error!("Error getting theme_id from row: {:?}", e);
                     Err(Neo4jClientError::OtherError(format!("Failed to get theme_id: {}", e)))
                 }
             }
         } else {
-            eprintln!("No result returned when creating/getting theme");
+            error!("No result returned when creating/getting theme");
             Err(Neo4jClientError::OtherError("No result returned".to_string()))
         }
     }
@@ -501,9 +511,9 @@ impl Neo4jClient {
             .param("completion_tokens", usage.completion_tokens)
             .param("total_tokens", usage.total_tokens);
 
-        println!("Executing query for create_token_usage");
-        println!("Query: {}", query_str);
-        println!("Parameters: id={}, interaction_id={}, prompt_tokens={}, completion_tokens={}, total_tokens={}",
+        debug!("Executing query for create_token_usage");
+        debug!("Query: {}", query_str);
+        debug!("Parameters: id={}, interaction_id={}, prompt_tokens={}, completion_tokens={}, total_tokens={}",
                  usage.id, interaction_id, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
 
         let mut result = self.graph.execute(query).await?;
@@ -641,24 +651,32 @@ impl Neo4jClient {
 
 
 
-    pub async fn extract_and_link_keywords(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
-        println!("Extracting keywords from content: {}", content);
 
-        let stop_words_vec: Vec<String> = get(stop_words::LANGUAGE::English);
-        let stop_words: HashSet<_> = stop_words_vec.iter().collect();
+
+
+
+    pub async fn extract_and_link_keywords(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
+        debug!("Extracting keywords from content: {}", content);
+
+        let stop_words: HashSet<String> = get(stop_words::LANGUAGE::English).into_iter().collect();
         let en_stemmer = Stemmer::create(Algorithm::English);
 
-        // Tokenize and filter words
-        let words: Vec<String> = content.split_whitespace()
-            .map(|word| word.to_lowercase())
-            .filter(|word| word.len() > 3 && !stop_words.contains(word))
-            .map(|word| en_stemmer.stem(&word).to_string())
+        // Tokenize, clean, and filter words
+        let words: Vec<(String, String)> = content.split_whitespace()
+            .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()))
+            .filter(|word| !word.is_empty() && word.len() > 5 && !stop_words.contains(*word))
+            .map(|word| {
+                let cleaned = word.to_lowercase();
+                (cleaned.clone(), en_stemmer.stem(&cleaned).to_string())
+            })
             .collect();
 
         // Calculate term frequency
-        let mut term_freq = HashMap::new();
-        for word in &words {
-            *term_freq.entry(word.clone()).or_insert(0) += 1;
+        let mut term_freq: HashMap<String, (String, usize)> = HashMap::new();
+        for (original, stemmed) in &words {
+            term_freq.entry(stemmed.clone())
+                .and_modify(|(_, count)| *count += 1)
+                .or_insert((original.clone(), 1));
         }
 
         // Update document count and word document count
@@ -668,8 +686,8 @@ impl Neo4jClient {
         }
         {
             let mut word_doc_count = self.word_document_count.write().unwrap();
-            for word in term_freq.keys() {
-                *word_doc_count.entry(word.clone()).or_insert(0) += 1;
+            for stemmed in term_freq.keys() {
+                *word_doc_count.entry(stemmed.clone()).or_insert(0) += 1;
             }
         }
 
@@ -677,36 +695,35 @@ impl Neo4jClient {
         let doc_count = *self.document_count.read().unwrap();
         let word_doc_count = self.word_document_count.read().unwrap();
         let mut tfidf_scores: Vec<(String, f64)> = term_freq.iter()
-            .map(|(word, freq)| {
+            .map(|(stemmed, (original, freq))| {
                 let tf = *freq as f64 / words.len() as f64;
-                let idf = (doc_count as f64 / *word_doc_count.get(word).unwrap_or(&1) as f64).ln();
-                (word.clone(), tf * idf)
+                let idf = (doc_count as f64 / *word_doc_count.get(stemmed).unwrap_or(&1) as f64).ln();
+                (original.clone(), tf * idf)
             })
             .collect();
 
-        // Sort by TF-IDF score and take top 5 keywords
+        // Sort by TF-IDF score and take top 3 keywords
         tfidf_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let keywords: Vec<String> = tfidf_scores.into_iter().take(5).map(|(word, _)| word).collect();
-
+        let keywords: Vec<String> = tfidf_scores.into_iter().take(3).map(|(word, _)| word).collect();
 
         for keyword in keywords {
-            println!("Processing keyword: {}", keyword);
+            debug!("Processing keyword: {}", keyword);
             match self.create_or_get_keyword(&keyword).await {
                 Ok(keyword_id) => {
                     let query_str = r#"
-                    MATCH (n) WHERE n.id = $node_id
-                    MATCH (k:Keyword) WHERE k.id = $keyword_id
-                    MERGE (n)-[:HAS_KEYWORD]->(k)
-                    RETURN count(*) as linked
-                    "#;
+                MATCH (n) WHERE n.id = $node_id
+                MATCH (k:Keyword) WHERE k.id = $keyword_id
+                MERGE (n)-[:HAS_KEYWORD]->(k)
+                RETURN count(*) as linked
+                "#;
 
                     let query = query(query_str)
                         .param("node_id", node_id)
                         .param("keyword_id", keyword_id.clone());
 
-                    println!("Executing query for linking keyword");
-                    println!("Query: {}", query_str);
-                    println!("Parameters: node_id={}, keyword_id={}", node_id, keyword_id);
+                    debug!("Executing query for linking keyword");
+                    debug!("Query: {}", query_str);
+                    debug!("Parameters: node_id={}, keyword_id={}", node_id, keyword_id);
 
                     let mut result = self.graph.execute(query).await?;
 
@@ -720,7 +737,7 @@ impl Neo4jClient {
                     }
                 },
                 Err(e) => {
-                    eprintln!("Error creating or getting keyword '{}': {:?}", keyword, e);
+                    error!("Error creating or getting keyword '{}': {:?}", keyword, e);
                     return Err(e);
                 }
             }
@@ -731,12 +748,151 @@ impl Neo4jClient {
 
 
     pub async fn extract_and_link_themes(&self, content: &str, node_id: &str, node_type: &str) -> Result<(), Neo4jClientError> {
-        println!("Extracting themes from content: {}", content);
-        let themes = vec!["AI", "Machine Learning", "Natural Language Processing"];
+        debug!("Extracting themes from content: {}", content);
 
-        for theme in themes {
-            println!("Processing theme: {}", theme);
-            match self.create_or_get_theme(theme).await {
+        // Initialize stemmer
+        let en_stemmer = Stemmer::create(Algorithm::English);
+
+        // Tokenize and count words, keeping original and stemmed versions
+        let words: Vec<(String, String)> = content.split_whitespace()
+            .map(|s| (s.to_lowercase(), en_stemmer.stem(&s.to_lowercase()).to_string()))
+            .collect();
+        debug!("Tokenized words: {:?}", words);
+
+        let mut word_count: HashMap<String, usize> = HashMap::new();
+        let mut stem_to_word: HashMap<String, String> = HashMap::new();
+        for (word, stem) in &words {
+            *word_count.entry(stem.clone()).or_insert(0) += 1;
+            stem_to_word.entry(stem.clone()).or_insert_with(|| word.clone());
+        }
+        debug!("Word count: {:?}", word_count);
+
+        // Calculate TF-IDF
+        let total_words = words.len() as f32;
+        let mut tfidf: HashMap<String, f32> = HashMap::new();
+        for (stem, count) in word_count.iter() {
+            let tf = *count as f32 / total_words;
+            let idf = (1.0 + (total_words / (*count as f32))).ln();
+            tfidf.insert(stem.clone(), tf * idf);
+        }
+        debug!("TF-IDF scores: {:?}", tfidf);
+
+
+        // Expanded list of themes
+        let themes = vec![
+            "Time", "Nature", "Technology", "Emotions", "Philosophy",
+            "Science", "Art", "History", "Society", "Space",
+            "Life", "Death", "Love", "War", "Peace",
+            "Knowledge", "Mystery", "Adventure", "Family", "Work",
+            "Artificial Intelligence", "Machine Learning", "Deep Learning", "Neural Networks", "Natural Language Processing",
+            "Computer Vision", "Data Science", "Big Data", "Data Mining", "Data Analytics",
+            "Cybersecurity", "Cryptography", "Blockchain", "Quantum Computing", "Cloud Computing",
+            "Distributed Systems", "Internet of Things", "Edge Computing", "Virtual Reality", "Augmented Reality",
+            "3D Printing", "Biotechnology", "Nanotechnology", "Robotics", "Automation",
+            "Software Engineering", "Agile Methodologies", "DevOps", "Microservices", "Serverless Computing",
+            "APIs", "RESTful Services", "GraphQL", "Containerization", "Docker",
+            "Kubernetes", "CI/CD", "Version Control", "Git", "Networking",
+            "Protocols", "Web Development", "Frontend Technologies", "Backend Technologies", "Full Stack Development",
+            "Mobile Development", "Android Development", "iOS Development", "Cross-Platform Development", "Database Management",
+            "SQL", "NoSQL", "Graph Databases", "Real-Time Data Processing", "Stream Processing",
+            "High-Performance Computing", "Parallel Computing", "Distributed Computing", "Operating Systems", "Compilers",
+            "Programming Languages", "Functional Programming", "Object-Oriented Programming", "Procedural Programming", "Scripting Languages",
+            "Software Testing", "Unit Testing", "Integration Testing", "Test Automation", "Behavior-Driven Development",
+            "Software Architecture", "Design Patterns", "Refactoring", "Code Review", "Technical Debt",
+            "Scalability", "Performance Optimization", "Concurrency", "Multithreading", "Memory Management",
+            "Algorithms", "Data Structures", "Complexity Analysis", "Graph Theory", "Combinatorics",
+            "User Interface Design", "User Experience", "Accessibility", "Human-Computer Interaction", "Information Architecture",
+            "Virtualization", "Infrastructure as Code", "Configuration Management", "Network Security", "Application Security",
+            "Endpoint Security", "Incident Response", "Forensics", "Penetration Testing", "Vulnerability Management",
+            "Compliance", "Regulatory Requirements", "Privacy", "Data Protection", "Digital Forensics",
+            "Wireless Communication", "Mobile Networks", "5G", "Satellite Communication", "Optical Networks",
+            "Signal Processing", "Image Processing", "Voice Recognition", "Speech Synthesis", "Bioinformatics",
+            "Genomics", "Proteomics", "Health Informatics", "Telemedicine", "Wearable Technology",
+            "Energy Efficiency", "Green Computing", "Smart Grids", "Renewable Energy Technologies", "Smart Cities",
+            "Geospatial Technologies", "Remote Sensing", "Geographic Information Systems", "Environmental Monitoring", "Climate Modeling",
+            "Financial Technology", "Algorithmic Trading", "Digital Payments", "Insurtech", "Regtech",
+            "E-commerce", "Digital Marketing", "SEO", "Content Management Systems", "Digital Transformation",
+            "IT Governance", "Enterprise Architecture", "Business Process Management", "Project Management", "Product Management",
+            "Technical Documentation", "Knowledge Management", "Innovation Management", "Research and Development", "Intellectual Property",
+            "Ethical Hacking", "Digital Identity", "Biometrics", "Smart Contracts", "Tokenization",
+            "High Availability", "Fault Tolerance", "Disaster Recovery", "Backup and Restore", "Data Migration",
+            "Time", "Nature", "Technology", "Emotions", "Philosophy",
+            "Science", "Art", "History", "Society", "Space",
+            "Life", "Death", "Love", "War", "Peace",
+            "Knowledge", "Mystery", "Adventure", "Family", "Work",
+            "Friendship", "Betrayal", "Freedom", "Justice", "Power",
+            "Courage", "Fear", "Fantasy", "Reality", "Dreams",
+            "Mythology", "Religion", "Culture", "Identity", "Memory",
+            "Innovation", "Environment", "Politics", "Economics", "Health",
+            "Education", "Travel", "Exploration", "Creativity", "Imagination",
+            "Morality", "Ethics", "Tradition", "Progress", "Conflict",
+            "Harmony", "Survival", "Transformation", "Destiny", "Fate",
+            "Honor", "Glory", "Sacrifice", "Redemption", "Faith",
+            "Wisdom", "Innocence", "Corruption", "Isolation", "Community",
+            "Alienation", "Belonging", "Hope", "Despair", "Equality",
+            "Inequality", "Oppression", "Rebellion", "Revenge", "Forgiveness",
+            "Chaos", "Order", "Balance", "Duality", "Change",
+            "Stability", "Ambition", "Humility", "Vanity", "Charity",
+            "Greed", "Loyalty", "Deception", "Truth", "Lies",
+            "Beauty", "Ugliness", "Youth", "Aging", "Patience",
+            "Urgency", "Simplicity", "Complexity", "Silence", "Noise",
+            "Light", "Darkness", "Joy", "Sorrow", "Success",
+            "Failure", "Humor", "Melancholy", "Justice", "Injustice",
+            "Wealth", "Poverty", "Respect", "Disrespect", "Honor",
+            "Shame", "Pride", "Humiliation", "Safety", "Danger",
+            "Curiosity", "Apathy", "Generosity", "Selfishness", "Empathy",
+            "Apathy", "Resilience", "Fragility", "Heritage", "Innovation",
+            "Communication", "Miscommunication", "Humanity", "Divinity", "Passion",
+            "Indifference", "Surprise", "Predictability", "Empowerment", "Victimization",
+            "Time", "Nature", "Technology", "Emotions", "Philosophy",
+            "Science", "Art", "History", "Society", "Space",
+            "Life", "Death", "Love", "War", "Peace",
+            "Knowledge", "Mystery", "Adventure", "Family", "Work",
+            "Ethics", "Existence", "Reality", "Consciousness", "Metaphysics",
+            "Epistemology", "Logic", "Aesthetics", "Freedom", "Justice",
+            "Truth", "Virtue", "Happiness", "Suffering", "Identity",
+            "Mind", "Morality", "Wisdom", "Reason", "Meaning",
+            "Value", "Belief", "Perception", "Dualism", "Idealism",
+            "Materialism", "Nihilism", "Determinism", "Free Will", "Skepticism",
+            "Human Nature", "The Self", "The Good Life", "The Absurd", "Phenomenology",
+            "Ontology", "Deontology", "Consequentialism", "Utilitarianism", "Stoicism",
+            "Existentialism", "Relativism", "Objectivism", "Pragmatism", "Humanism"
+        ];
+
+        // Calculate theme vectors
+        let mut theme_vectors: HashMap<String, HashMap<String, f32>> = HashMap::new();
+        for theme in &themes {
+            let theme_words: Vec<String> = theme.split_whitespace()
+                .map(|s| en_stemmer.stem(&s.to_lowercase()).to_string())
+                .collect();
+            let theme_vector: HashMap<String, f32> = theme_words.into_iter()
+                .map(|word| (word, 1.0))
+                .collect();
+            theme_vectors.insert(theme.to_string(), theme_vector);
+        }
+
+        // Calculate cosine similarity between content and themes
+        let mut theme_scores: Vec<(String, f32)> = themes.iter().map(|theme| {
+            let theme_vector = theme_vectors.get(*theme).unwrap();
+            let similarity = cosine_similarity(&tfidf, theme_vector);
+            (theme.to_string(), similarity)
+        }).collect();
+
+        // Sort themes by score
+        theme_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        debug!("Theme scores: {:?}", theme_scores);
+
+        // Take top 3 themes with non-zero scores
+        let top_themes: Vec<String> = theme_scores.into_iter()
+            .filter(|(_, score)| *score > 0.0)
+            .take(1)
+            .map(|(theme, _)| theme)
+            .collect();
+        debug!("Top themes: {:?}", top_themes);
+
+        for theme in top_themes {
+            debug!("Processing theme: {}", theme);
+            match self.create_or_get_theme(&theme).await {
                 Ok(theme_id) => {
                     let query_str = r#"
                 MATCH (n) WHERE n.id = $node_id
@@ -749,9 +905,9 @@ impl Neo4jClient {
                         .param("node_id", node_id)
                         .param("theme_id", theme_id.clone());
 
-                    println!("Executing query for linking theme");
-                    println!("Query: {}", query_str);
-                    println!("Parameters: node_id={}, theme_id={}", node_id, theme_id);
+                    debug!("Executing query for linking theme");
+                    debug!("Query: {}", query_str);
+                    debug!("Parameters: node_id={}, theme_id={}", node_id, theme_id);
 
                     let mut result = self.graph.execute(query).await?;
 
@@ -765,7 +921,7 @@ impl Neo4jClient {
                     }
                 },
                 Err(e) => {
-                    eprintln!("Error creating or getting theme '{}': {:?}", theme, e);
+                    error!("Error creating or getting theme '{}': {:?}", theme, e);
                     return Err(e);
                 }
             }
@@ -773,6 +929,9 @@ impl Neo4jClient {
 
         Ok(())
     }
+
+
+
     pub async fn get_interaction_chain(&self, session_id: &str) -> Result<Vec<Neo4jInteraction>, Neo4jClientError> {
         let query = query(
             r#"
@@ -901,6 +1060,50 @@ async fn create_vector_index(graph: &Graph, label: &str, property: &str) -> Resu
     Ok(())
 }
 
+
+fn cosine_similarity(vec1: &HashMap<String, f32>, vec2: &HashMap<String, f32>) -> f32 {
+    let mut dot_product = 0.0;
+    let mut mag1 = 0.0;
+    let mut mag2 = 0.0;
+
+    for (word, val1) in vec1 {
+        mag1 += val1 * val1;
+        if let Some(val2) = vec2.get(word) {
+            dot_product += val1 * val2;
+        }
+    }
+
+    for val2 in vec2.values() {
+        mag2 += val2 * val2;
+    }
+
+    if mag1 == 0.0 || mag2 == 0.0 {
+        0.0
+    } else {
+        dot_product / (mag1.sqrt() * mag2.sqrt())
+    }
+}
+
+fn load_word_embeddings(path: &str) -> Result<HashMap<String, Vec<f32>>, Neo4jClientError> {
+    let file = File::open(path).map_err(|e| Neo4jClientError::OtherError(format!("File error: {}", e)))?;
+    let reader = BufReader::new(file);
+    let mut embeddings = HashMap::new();
+
+    for line in reader.lines() {
+        let line = line.map_err(|e| Neo4jClientError::OtherError(format!("Read error: {}", e)))?;
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() > 2 {
+            let word = parts[0].to_string();
+            let vector: Vec<f32> = parts[1..].iter()
+                .map(|&s| s.parse().unwrap_or(0.0))
+                .collect();
+            embeddings.insert(word, vector);
+        }
+    }
+
+    Ok(embeddings)
+}
+
 pub async fn capture_llm_interaction(
     neo4j_client: Arc<Neo4jClient>,
     _flow: &FlowConfig,
@@ -913,7 +1116,7 @@ pub async fn capture_llm_interaction(
     let timestamp = Utc::now();
     debug!("Timestamp: {}", timestamp);
 
-    println!("Creating session node...");
+    debug!("Creating session node...");
     let session = Neo4jSession {
         id: session_id.clone(),
         start_time: timestamp,
@@ -923,9 +1126,9 @@ pub async fn capture_llm_interaction(
         user_id: "".to_string(),
     };
     let session_node_id = neo4j_client.create_or_update_session(&session).await?;
-    println!("Session node created successfully with id: {}", session_node_id);
+    debug!("Session node created successfully with id: {}", session_node_id);
 
-    println!("Creating interaction node...");
+    debug!("Creating interaction node...");
     let interaction = Neo4jInteraction {
         id: Uuid::new_v4().to_string(),
         timestamp,
@@ -935,10 +1138,10 @@ pub async fn capture_llm_interaction(
         response: None,
     };
     let interaction_node_id = neo4j_client.create_interaction(&interaction).await?;
-    println!("Interaction node created successfully with id: {}", interaction_node_id);
+    debug!("Interaction node created successfully with id: {}", interaction_node_id);
 
 
-    println!("Creating question node...");
+    debug!("Creating question node...");
     let question = Neo4jQuestion {
         id: Uuid::new_v4().to_string(),
         content: prompt.to_string(),
@@ -946,20 +1149,20 @@ pub async fn capture_llm_interaction(
         timestamp,
     };
     let question_node_id = neo4j_client.create_or_update_question(&question, &interaction_node_id).await?;
-    println!("Question node created successfully with id: {}", question_node_id);
+    debug!("Question node created successfully with id: {}", question_node_id);
 
 
-    println!("Creating model node...");
+    debug!("Creating model node...");
     let model_node = Neo4jModel {
         id: Uuid::new_v4().to_string(),
         name: model.to_string(),
         version: "1.0".to_string(), // You might want to pass this as a parameter or get it from somewhere
     };
     let model_node_id = neo4j_client.create_or_update_model(&model_node).await?;
-    println!("Model node created successfully with id: {}", model_node_id);
+    debug!("Model node created successfully with id: {}", model_node_id);
 
 
-    println!("Creating response node...");
+    debug!("Creating response node...");
     let response_node = Neo4jResponse {
         id: Uuid::new_v4().to_string(),
         content: response.to_string(),
@@ -969,9 +1172,9 @@ pub async fn capture_llm_interaction(
         llm_specific_data: serde_json::Value::Null, // You might want to pass this as a parameter
     };
     let response_node_id = neo4j_client.create_response(&response_node, &interaction_node_id, &model_node_id).await?;
-    println!("Response node created successfully with id: {}", response_node_id);
+    debug!("Response node created successfully with id: {}", response_node_id);
 
-    println!("Creating token usage node...");
+    debug!("Creating token usage node...");
     let token_usage = Neo4jTokenUsage {
         id: Uuid::new_v4().to_string(),
         prompt_tokens: 100, // You would need to get these values from the LLM response
@@ -980,16 +1183,16 @@ pub async fn capture_llm_interaction(
     };
     let token_usage_node_id = match neo4j_client.create_token_usage(&token_usage, &interaction_node_id).await {
         Ok(id) => {
-            println!("Token usage node created successfully with id: {}", id);
+            debug!("Token usage node created successfully with id: {}", id);
             id
         },
         Err(e) => {
-            eprintln!("Error creating token usage node: {:?}", e);
+            error!("Error creating token usage node: {:?}", e);
             return Err(e);
         }
     };
 
-    println!("Creating response metrics node...");
+    debug!("Creating response metrics node...");
     let response_metrics = Neo4jResponseMetrics {
         id: Uuid::new_v4().to_string(),
         response_time: chrono::Duration::seconds(1), // You would need to measure this
@@ -998,14 +1201,17 @@ pub async fn capture_llm_interaction(
     };
     let response_metrics_node_id = match neo4j_client.create_response_metrics(&response_metrics, &response_node_id).await {
         Ok(id) => {
-            println!("Response metrics node created successfully with id: {}", id);
+            debug!("Response metrics node created successfully with id: {}", id);
             id
         },
         Err(e) => {
-            eprintln!("Error creating response metrics node: {:?}", e);
+            error!("Error creating response metrics node: {:?}", e);
             return Err(e);
         }
     };
+
+    debug!("Response: {:?}", response);
+
     debug!("Session: {:?}", session);
     debug!("Interaction: {:?}", interaction);
     debug!("Question node: {:?}", question_node_id);
@@ -1018,12 +1224,13 @@ pub async fn capture_llm_interaction(
 
     debug!("Response metrics: {:?}", response_metrics);
     neo4j_client.extract_and_link_keywords(prompt, &question_node_id, "Question").await?;
+    debug!("extracted keywords from prompt");
     neo4j_client.extract_and_link_keywords(response, &response_node_id, "Response").await?;
-    debug!("Response: {:?}", response);
+    debug!("extracted keywords from response");
     neo4j_client.extract_and_link_themes(prompt, &question_node_id, "Question").await?;
-    debug!("Question: {:?}", question);
+    debug!("extracted themes from prompt");
     neo4j_client.extract_and_link_themes(response, &response_node_id, "Response").await?;
-    debug!("Response: {:?}", response);
+    debug!("extracted themes from response");
 
     let neo4j_client_clone = Arc::clone(&neo4j_client);
 
