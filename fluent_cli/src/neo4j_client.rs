@@ -33,6 +33,8 @@ use crate::openai_agent_client::get_openai_embedding;
 pub enum LlmProvider {
     Anthropic,
     OpenAI,
+    Google,
+    Cohere,
     // Add other providers as needed
 }
 // Additional structs needed for the implementation
@@ -1010,6 +1012,7 @@ impl Neo4jClient {
         Ok(interactions)
     }
 
+
     pub async fn get_model_performance_metrics(&self, model_name: &str, start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> Result<Neo4jModelPerformanceMetrics, Neo4jClientError> {
         let query_str = r#"
     MATCH (m:Model {name: $model_name})<-[:GENERATED_BY]-(r:Response)<-[:HAS_RESPONSE]-(i:Interaction)
@@ -1096,6 +1099,56 @@ impl Neo4jClient {
 
         Ok(())
     }
+
+
+    pub async fn create_sentiment_node(&self, sentiment: f32, label: &str) -> Result<String, Neo4jClientError> {
+        let query_str = format!(
+            "CREATE (s:{} {{score: $score, id: $id}}) RETURN s.id as id",
+            label
+        );
+
+        let id = Uuid::new_v4().to_string();
+        let mut result = self.graph.execute(query(&query_str)
+            .param("score", sentiment)
+            .param("id", id.clone())
+        ).await?;
+
+        if let Some(row) = result.next().await? {
+            Ok(row.get("id")?)
+        } else {
+            Err(Neo4jClientError::OtherError("Failed to create sentiment node".to_string()))
+        }
+    }
+
+
+
+    pub async fn link_sentiment_to_interaction(&self, interaction_id: &str, sentiment_id: &str, relationship_type: &str) -> Result<(), Neo4jClientError> {
+        let query_str = format!(
+            "MATCH (i:Interaction {{id: $interaction_id}}), (s {{id: $sentiment_id}})
+             CREATE (i)-[:{relationship_type}]->(s)
+             RETURN count(*) as count"
+        );
+
+        let mut result = self.graph.execute(query(&query_str)
+            .param("interaction_id", interaction_id)
+            .param("sentiment_id", sentiment_id)
+        ).await?;
+
+        // Consume the result
+        if let Some(row) = result.next().await? {
+            let count: i64 = row.get("count")?;
+            if count == 0 {
+                return Err(Neo4jClientError::OtherError("Failed to create relationship".to_string()));
+            }
+        } else {
+            return Err(Neo4jClientError::OtherError("No result returned from query".to_string()));
+        }
+
+        Ok(())
+    }
+
+
+
 }
 
 
@@ -1132,6 +1185,18 @@ fn load_word_embeddings(path: &str) -> Result<HashMap<String, Vec<f32>>, Neo4jCl
 }
 
 
+fn calculate_sentiment(embedding: &[f32]) -> f32 {
+    // This is a simplified approach. You might want to fine-tune this based on your specific needs.
+    let embedding = Array1::from_vec(embedding.to_vec());
+    let positive_direction = Array1::from_vec(vec![1.0; embedding.len()]); // Simplified positive direction
+
+    // Calculate cosine similarity
+    let dot_product = embedding.dot(&positive_direction);
+    let magnitude_product = (embedding.dot(&embedding).sqrt()) * (positive_direction.dot(&positive_direction).sqrt());
+
+    dot_product / magnitude_product
+}
+
 
 pub async fn capture_llm_interaction(
     neo4j_client: Arc<Neo4jClient>,
@@ -1158,6 +1223,11 @@ pub async fn capture_llm_interaction(
     let prompt_embedding_clone = prompt_embedding.clone();
     debug!("Getting embedding for response...");
     let response_embedding = get_openai_embedding(response, &api_key, embedding_model).await?;
+
+    let prompt_sentiment = calculate_sentiment(&prompt_embedding);
+    let response_sentiment = calculate_sentiment(&response_embedding);
+    debug!("Prompt sentiment: {}", prompt_sentiment);
+    debug!("Response sentiment: {}", response_sentiment);
 
     debug!("Creating session node...");
     let session = Neo4jSession {
@@ -1273,12 +1343,23 @@ pub async fn capture_llm_interaction(
 
     neo4j_client.extract_and_link_keywords(prompt, &question_node_id, "Question").await?;
     debug!("extracted keywords from prompt");
+
     neo4j_client.extract_and_link_keywords(response, &response_node_id, "Response").await?;
     debug!("extracted keywords from response");
+
     neo4j_client.extract_and_link_themes(prompt, &question_node_id, "Question", &prompt_embedding_clone).await?;
     debug!("extracted themes from prompt");
+
     neo4j_client.extract_and_link_themes(response, &response_node_id, "Response", &response_embedding).await?;
     debug!("extracted themes from response");
+
+    let prompt_sentiment_id = neo4j_client.create_sentiment_node(prompt_sentiment, "PROMPT_SENTIMENT").await?;
+    let response_sentiment_id = neo4j_client.create_sentiment_node(response_sentiment, "RESPONSE_SENTIMENT").await?;
+
+    neo4j_client.link_sentiment_to_interaction(&interaction_node_id, &prompt_sentiment_id, "HAS_PROMPT_SENTIMENT").await?;
+    neo4j_client.link_sentiment_to_interaction(&interaction_node_id, &response_sentiment_id, "HAS_RESPONSE_SENTIMENT").await?;
+
+
 
     let neo4j_client_clone = Arc::clone(&neo4j_client);
 
@@ -1345,6 +1426,39 @@ fn extract_token_usage(full_response: &serde_json::Value, provider: &LlmProvider
             let total_tokens = usage.get("total_tokens")
                 .and_then(|v| v.as_i64())
                 .unwrap_or_else(|| (prompt_tokens + completion_tokens) as i64) as i32;
+
+            (prompt_tokens, completion_tokens, total_tokens)
+        },
+        LlmProvider::Google => {
+            let prompt_tokens = usage.get("prompt_tokens")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| Neo4jClientError::OtherError("No prompt_tokens found in usage data".to_string()))? as i32;
+
+            let completion_tokens = usage.get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| Neo4jClientError::OtherError("No completion_tokens found in usage data".to_string()))? as i32;
+
+            let total_tokens = usage.get("total_tokens")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| Neo4jClientError::OtherError("No total_tokens found in usage data".to_string()))? as i32;
+
+            (prompt_tokens, completion_tokens, total_tokens)
+        },
+        LlmProvider::Cohere => {
+            let prompt_tokens = usage.get("prompt_tokens")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
+
+            let completion_tokens = usage.get("completion_tokens")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
+
+            let total_tokens = usage.get("total_tokens")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
 
             (prompt_tokens, completion_tokens, total_tokens)
         },

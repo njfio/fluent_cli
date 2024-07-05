@@ -473,7 +473,7 @@ async fn main() -> Result<()> {
                         flowname.purple().italic(),
                         "Request: ".grey().italic(),
                         request.bright_blue().italic(),
-                        "Duration: ".grey().italic(),
+                        "Duration: ".grey().italic()
                         format!("{:.4}s", duration.as_secs_f32()).green().italic(),
                         client::print_full_width_bar("-")
                     ));
@@ -507,7 +507,8 @@ async fn main() -> Result<()> {
         }
         "gemini" => {
             // Handle Gemini output
-            match google_ai_client::handle_google_gemini_agent(&prompt, &flow, matches).await {
+            match
+            google_ai_client::handle_google_gemini_agent(&prompt, &flow, matches).await {
                 Ok(response) => {
                     let duration = start_time.elapsed(); // Capture the duration after the operation completes
 
@@ -557,9 +558,6 @@ async fn main() -> Result<()> {
     }.expect("TODO: panic message");
 
     eprint!("\n\n{}\n\n", print_full_width_bar("■"));
-
-
-
 
 
     Ok(())

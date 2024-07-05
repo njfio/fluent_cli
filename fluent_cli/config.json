@@ -15,6 +15,7 @@
 
     },
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "project_id": "497773813500",
       "max_iterations": 10,
       "stripNewLines": true,
@@ -38,6 +39,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "project_id": "497773813500",
       "max_iterations": 10,
       "stripNewLines": true,
@@ -566,6 +568,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_COHERE_API_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "modelName": "command-r",
       "prompt": "You are a helpful assistant.",
@@ -589,6 +592,7 @@
   "chat_id": "",
   "bearer_token": "AMBER_FLUENT_COHERE_API_KEY_01",
   "overrideConfig": {
+    "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
     "max_iterations": 10,
     "modelName": "command-nightly",
     "prompt": "You are a helpful assistant.",

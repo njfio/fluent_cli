@@ -9,7 +9,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use clap::ArgMatches;
-use log::debug;
+use log::{debug, error};
 use serde::de::StdError;
 use tokio::fs::File as TokioFile; // Alias to avoid confusion with std::fs::File
 use tokio::io::AsyncReadExt as TokioAsyncReadExt;
@@ -18,7 +18,8 @@ use uuid::Uuid;
 use crate::client::resolve_env_var;
 
 use crate::config::{FlowConfig, replace_with_env_var};
-use crate::neo4j_client::{Neo4jClient};
+use crate::neo4j_client::{Neo4jClient, LlmProvider, capture_llm_interaction};
+
 
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +62,7 @@ struct Part {
 #[derive(Debug, Deserialize)]
 struct GoogleAIResponse {
     candidates: Vec<Candidate>,
+    usageMetadata: UsageMetadata,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,10 +84,17 @@ struct CandidatePart {
     text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 struct SafetyRating {
     category: String,
     probability: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageMetadata {
+    promptTokenCount: u32,
+    candidatesTokenCount: u32,
+    totalTokenCount: u32,
 }
 
 async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
@@ -135,8 +144,6 @@ pub async fn send_google_ai_request(
 
 
 
-
-
 pub async fn handle_google_gemini_agent(
     prompt: &str,
     flow: &FlowConfig,
@@ -156,12 +163,11 @@ pub async fn handle_google_gemini_agent(
     );
 
     let mut prompt_message = prompt.to_string();
-    let model = flow.override_config["modelName"].as_str().unwrap_or("claude-3");
+    let model = flow.override_config["modelName"].as_str().unwrap_or("gemini-1.5-pro-latest");
     if let Some(file_path) = matches.get_one::<String>("upload-image-path") {
         let path = Path::new(file_path);
         let encoded_image = encode_image(path).await?;
 
-        // Modify the prompt to include the encoded image
         prompt_message = format!(
             "{}\n\n![Image](data:image/jpeg;base64,{})",
             prompt_message, encoded_image
@@ -170,22 +176,42 @@ pub async fn handle_google_gemini_agent(
 
     debug!("Prompt message: {}", prompt_message);
 
-
-    // Capture the session information
-    let session_id = env::var("FLUENT_SESSION_ID_01").expect("FLUENT_SESSION_ID_01 not set");
-    let chat_id = flow.session_id;
-    let chat_message_id = Uuid::new_v4().to_string(); // Replace with actual chat message ID if available
-
-
     let start_time = Instant::now();
     let google_response = send_google_ai_request(&prompt_message, &api_key, &url).await?;
-    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+    let duration = start_time.elapsed();
 
     debug!("Google AI response: {:?}", google_response);
     if let Some(generated_text) = google_response.candidates.first().and_then(|c| c.content.parts.first().map(|p| p.text.clone())) {
         debug!("Generated text: {}", generated_text);
 
+        // Prepare the full response JSON
+        let full_response_json = serde_json::json!({
+            "model": model,
+            "generated_text": generated_text,
+            "finish_reason": google_response.candidates.first().map(|c| c.finishReason.clone()),
+            "safety_ratings": google_response.candidates.first().map(|c| &c.safetyRatings),
+            "usage": {
+                "prompt_tokens": google_response.usageMetadata.promptTokenCount,
+                "completion_tokens": google_response.usageMetadata.candidatesTokenCount,
+                "total_tokens": google_response.usageMetadata.totalTokenCount
+            }
+        });
 
+        // Initialize Neo4jClient
+        let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
+
+        // Capture the LLM interaction in Neo4j
+        if let Err(e) = capture_llm_interaction(
+            neo4j_client,
+            &flow,
+            &prompt_message,
+            &generated_text,
+            model,
+            &serde_json::to_string(&full_response_json).unwrap(),
+            LlmProvider::Google,
+        ).await {
+            error!("Failed to capture LLM interaction: {:?}", e);
+        }
 
         Ok(generated_text)
     } else if let Some(error) = google_response.candidates.first().and_then(|c| c.safetyRatings.first()) {

@@ -181,6 +181,18 @@ pub async fn send_cohere_request(
     }
 }
 
+
+async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let mut file = TokioFile::open(image_path).await?;
+    let mut buffer = Vec::new();
+    TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;
+    Ok(STANDARD.encode(&buffer))
+}
+
+
+use std::sync::Arc;
+use crate::neo4j_client::{Neo4jClient, LlmProvider, capture_llm_interaction};
+
 pub async fn handle_cohere_agent(
     prompt: &str,
     flow: &FlowConfig,
@@ -189,7 +201,6 @@ pub async fn handle_cohere_agent(
     let mut flow = flow.clone();
     replace_with_env_var(&mut flow.override_config);
 
-    // Resolve the API key from the environment variable if it starts with "AMBER_"
     let api_key = resolve_env_var(&flow.bearer_token)?;
 
     debug!("Using Cohere API key: {}", api_key);
@@ -206,22 +217,8 @@ pub async fn handle_cohere_agent(
     if let Some(file_path) = matches.get_one::<String>("upload-image-path") {
         let path = Path::new(file_path);
         let encoded_image = encode_image(path).await?;
-
-        // Add image data as a base64 string
         chat_history.push(ChatHistory::new("USER", &format!("data:image/jpeg;base64,{}", encoded_image)));
     }
-
-    debug!("API key: {}", api_key);
-    debug!("Protocol: {}", flow.protocol);
-    debug!("Hostname: {}", flow.hostname);
-    debug!("Port: {}", flow.port);
-    debug!("Request path: {}", flow.request_path);
-    debug!("Prompt: {}", prompt);
-    debug!("Model: {}", model);
-    debug!("Temperature: {}", temperature);
-    debug!("Max iterations: {}", max_iterations);
-    debug!("Chat history: {:?}", chat_history);
-    debug!("URL: {}", url);
 
     let mut full_response = String::new();
     for _ in 0..max_iterations {
@@ -231,6 +228,34 @@ pub async fn handle_cohere_agent(
         if let Some(text) = cohere_response.text.clone() {
             full_response.push_str(&text);
             chat_history.push(ChatHistory::new("CHATBOT", &text));
+
+// Prepare the full response JSON
+            let full_response_json = serde_json::json!({
+                "model": model,
+                "generated_text": text,
+                "finish_reason": cohere_response.finish_reason,
+                "usage": {
+                    "prompt_tokens": cohere_response.meta.as_ref().map(|m| m.tokens.input_tokens),
+                    "completion_tokens": cohere_response.meta.as_ref().map(|m| m.tokens.output_tokens),
+                    "total_tokens": cohere_response.meta.as_ref().map(|m| m.tokens.input_tokens + m.tokens.output_tokens)
+                }
+            });
+
+            // Initialize Neo4jClient
+            let neo4j_client = Arc::new(Neo4jClient::initialize().await?);
+
+            // Capture the LLM interaction in Neo4j
+            if let Err(e) = capture_llm_interaction(
+                neo4j_client,
+                &flow,
+                prompt,
+                &text,
+                model,
+                &serde_json::to_string(&full_response_json).unwrap(),
+                LlmProvider::Cohere,
+            ).await {
+                error!("Failed to capture LLM interaction: {:?}", e);
+            }
         }
 
         if let Some(error) = cohere_response.error.clone() {
@@ -243,13 +268,6 @@ pub async fn handle_cohere_agent(
     }
 
     debug!("Full response: {}", full_response);
-    println!("{}", full_response); // Ensure the full response is printed out
+    println!("{}", full_response);
     Ok(full_response)
-}
-
-async fn encode_image(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let mut file = TokioFile::open(image_path).await?;
-    let mut buffer = Vec::new();
-    TokioAsyncReadExt::read_to_end(&mut file, &mut buffer).await?;
-    Ok(STANDARD.encode(&buffer))
 }
