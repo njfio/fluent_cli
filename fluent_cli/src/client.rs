@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+
 use log::{debug};
 use std::env;
 use reqwest::{Client};
@@ -12,6 +12,8 @@ use serde_json::Result;
 use tokio::fs::File;
 
 use tokio::io::AsyncReadExt;
+
+use std::{collections::HashMap, process::Command as ShellCommand};
 
 #[derive(Debug, Deserialize)]
 pub struct FluentCliOutput {
@@ -180,6 +182,52 @@ struct DalleRequest {
     model: Option<String>,
 }
 
+
+
+// Add this function to your code
+
+
+
+fn execute_shell_command(output: &str) {
+    let code_block_regex = Regex::new(r"```(?:sh|bash|pwsh|zsh|powershell)?\s*([\s\S]*?)\s*```").unwrap();
+    debug!("Code block regex: {:?}", code_block_regex);
+    let mut found_code_block = false;
+    debug!("Output: {}", output);
+
+    for cap in code_block_regex.captures_iter(output) {
+        found_code_block = true;
+        let command = cap[1].to_string();
+        debug!("Command: {}", command);
+        eprintln!("Executing shell command:\n{}", command);
+
+        // Split the command by `&&` to handle each part separately
+        let commands: Vec<&str> = command.split("&&").map(|s| s.trim()).collect();
+        for cmd in commands {
+            let command_output = ShellCommand::new("sh")
+                .arg("-c")
+                .arg(cmd)
+                .output()
+                .expect("Failed to execute shell command");
+            debug!("Command output: {:?}", command_output);
+            if !command_output.status.success() {
+                eprintln!("Shell command '{}' failed with status: {}", cmd, command_output.status);
+                eprintln!("Error output: {}", String::from_utf8_lossy(&command_output.stderr));
+            } else {
+                println!("{}", String::from_utf8_lossy(&command_output.stdout));
+            }
+        }
+    }
+
+    if !found_code_block {
+        eprintln!("No code block found to execute.");
+    }
+}
+
+
+
+
+
+
 pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMatches) -> Result<()> {
     debug!("LangFlow response body: {}", response_body);
     let result = serde_json::from_str::<LangFlowOutput>(response_body);
@@ -240,6 +288,12 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 println!("{}", response_text);  // Default output
                 return Ok(());
             }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
         },
         Err(e) => {
             eprintln!("Error parsing LangFlow response: {:?}", e);
@@ -247,9 +301,17 @@ pub async fn handle_langflow_response(response_body: &str, matches: &clap::ArgMa
                 let urls = extract_urls(response_body); // Fallback to raw response
                 download_media(urls, directory).await;
             }
-            println!("{}", response_body); // Print raw response if there is a parsing error
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            } else {
+                println!("{}", response_body); // Print raw response if there is a parsing error
+            }
         }
     }
+
 
     Ok(())
 }
@@ -266,6 +328,7 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
         Ok(parsed_output) => {
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
+
 
             // Extract text field if available
             if let Some(text) = parsed_output.get("text").and_then(Value::as_str) {
@@ -393,6 +456,12 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 }
                 return Ok(());
             }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
         },
         Err(e) => {
             // If there's an error parsing the JSON, print the error and the raw response body
@@ -406,6 +475,13 @@ pub async fn handle_response(response_body: &str, matches: &clap::ArgMatches) ->
                 debug!("Extracted URLs: {:?}", urls);
                 download_media(urls, directory).await;
             }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             debug!("Download Response body: {}", response_body);
             println!("{}", response_body);
         }
@@ -534,6 +610,8 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
             // If parsing is successful, use the parsed data
             debug!("Parsed Output: {:?}", parsed_output);
 
+
+
             // Extract choices field if available
             if let Some(choices) = parsed_output.get("choices").and_then(Value::as_array) {
                 for choice in choices {
@@ -573,6 +651,12 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
                 println!("{}", response_body);
             }
 
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             // Handle download-media
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
@@ -582,6 +666,8 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
         Err(_) => {
             // If parsing fails, handle as plain text
             debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+
+
             // Handle markdown-output
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
@@ -612,6 +698,12 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
                 println!("{}", response_body);
             }
 
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             // Handle download-media
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
@@ -624,6 +716,124 @@ pub async fn handle_openai_response(response_body: &str, matches: &ArgMatches) -
 }
 
 
+pub async fn handle_gemini_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
+    debug!("Response body: {}", response_body);
+
+    // Attempt to parse the response body as JSON
+    let result: Result<Value> = serde_json::from_str(response_body);
+    debug!("Result: {:?}", result);
+
+    match result {
+        Ok(parsed_output) => {
+            // If parsing is successful, use the parsed data
+            debug!("Parsed Output: {:?}", parsed_output);
+
+
+            // Extract candidates field if available
+            if let Some(candidates) = parsed_output.get("candidates").and_then(Value::as_array) {
+                for candidate in candidates {
+                    if let Some(parts) = candidate.get("content").and_then(|content| content.get("parts")).and_then(Value::as_array) {
+                        for part in parts {
+                            if let Some(text) = part.get("text").and_then(Value::as_str) {
+                                debug!("Parsed part text: {}", text);
+
+                                // Handle markdown-output
+                                if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                                    !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                                    !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                                    pretty_format_markdown(text);
+                                }
+
+                                // Handle parse-code-output
+                                if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                                    matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                                    !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                                    let code_blocks = extract_code_blocks(text);
+                                    for block in code_blocks {
+                                        println!("{}", block);
+                                    }
+                                }
+
+                                // Default output
+                                if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                                    !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                                    !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                                    println!("{}", text);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        },
+        Err(_) => {
+            // If parsing fails, handle as plain text
+            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            // Handle markdown-output
+
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                pretty_format_markdown(response_body);
+            }
+
+            // Handle parse-code-output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(response_body);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            }
+
+            // Default output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                println!("{}", response_body);
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+    };
+
+    Ok(())
+}
 
 pub async fn handle_openai_assistant_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
     // Try to parse the JSON string into a serde_json::Value
@@ -673,6 +883,12 @@ pub async fn handle_openai_assistant_response(response_body: &str, matches: &Arg
                 println!("{}", parsed_output.to_string());
             }
 
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             // Handle download-media
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(&parsed_output.to_string()); // Assume extract_urls can handle any text
@@ -712,6 +928,12 @@ pub async fn handle_openai_assistant_response(response_body: &str, matches: &Arg
                 println!("{}", response_body);
             }
 
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             // Handle download-media
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
@@ -724,6 +946,119 @@ pub async fn handle_openai_assistant_response(response_body: &str, matches: &Arg
 }
 
 
+
+pub async fn handle_cohere_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
+    debug!("Response body: {}", response_body);
+
+    // Attempt to parse the response body as JSON
+    let result: Result<Value> = serde_json::from_str(response_body);
+    debug!("Result: {:?}", result);
+
+    match result {
+        Ok(parsed_output) => {
+            // If parsing is successful, use the parsed data
+            debug!("Parsed Output: {:?}", parsed_output);
+
+            // Extract choices field if available
+            if let Some(choices) = parsed_output.get("choices").and_then(Value::as_array) {
+                for choice in choices {
+                    if let Some(text) = choice.get("message").and_then(|msg| msg.get("content")).and_then(Value::as_str) {
+                        debug!("Parsed choice text: {}", text);
+
+                        // Handle markdown-output
+                        if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            pretty_format_markdown(text);
+                        }
+
+                        // Handle parse-code-output
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            let code_blocks = extract_code_blocks(text);
+                            for block in code_blocks {
+                                println!("{}", block);
+                            }
+                        }
+
+                        // Default output
+                        if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                            !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                            println!("{}", text);
+                        }
+                    }
+                }
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        },
+        Err(_) => {
+            // If parsing fails, handle as plain text
+            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            // Handle markdown-output
+            if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                pretty_format_markdown(response_body);
+            }
+
+            // Handle parse-code-output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                let code_blocks = extract_code_blocks(response_body);
+                for block in code_blocks {
+                    println!("{}", block);
+                }
+            }
+
+            // Default output
+            if !matches.get_one::<bool>("markdown-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
+                !matches.get_one::<bool>("full-output").map_or(false, |&v| v) {
+                println!("{}", response_body);
+            }
+
+            // Handle full-output
+            if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
+                debug!("full output");
+                println!("{}", response_body);
+            }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
+            // Handle download-media
+            if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
+                let urls = extract_urls(response_body); // Assume extract_urls can handle any text
+                download_media(urls, directory).await;
+            }
+        }
+    };
+
+    Ok(())
+}
 
 
 pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches) -> Result<()> {
@@ -770,6 +1105,12 @@ pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches
                 println!("{}", response_body);
             }
 
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
+            }
+
             if let Some(directory) = matches.get_one::<String>("download-media").map(|s| s.as_str()) {
                 let urls = extract_urls(response_body); // Assume extract_urls can handle any text
                 download_media(urls, directory).await;
@@ -777,7 +1118,10 @@ pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches
         },
         Err(_) => {
             // If parsing fails, handle as plain text
-            debug!("Failed to parse JSON, this might be normal if it's a webhook request: {}", response_body);
+            debug!("Raw Response Body: {}", response_body);
+            debug!("Markdown Output: {}", matches.get_one::<bool>("markdown-output").map_or(true, |&v| v));
+            debug!("Parse Code Output: {}", matches.get_one::<bool>("parse-code-output").map_or(true, |&v| v));
+            debug!("Full Output: {}", matches.get_one::<bool>("full-output").map_or(true, |&v| v));
             // Handle markdown-output
             if matches.get_one::<bool>("markdown-output").map_or(true, |&v| v) &&
                 !matches.get_one::<bool>("parse-code-output").map_or(false, |&v| v) &&
@@ -806,6 +1150,12 @@ pub async fn handle_anthropic_response(response_body: &str, matches: &ArgMatches
             if matches.get_one::<bool>("full-output").map_or(true, |&v| v) {
                 debug!("full output");
                 println!("{}", response_body);
+            }
+
+            if matches.get_flag("execute") {
+                debug!("Executing shell command");
+                debug!("Raw Command: {}", response_body);
+                execute_shell_command(response_body);
             }
 
             // Handle download-media
@@ -1053,6 +1403,7 @@ use termimad::{MadSkin};
 use termimad::crossterm::style::Stylize;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+
 use crate::openai_agent_client::Message;
 
 pub async fn prepare_payload(
@@ -1212,5 +1563,15 @@ pub async fn prepare_payload(
 }
 
 
-
+pub fn resolve_env_var(key: &str) -> std::result::Result<String, Box<dyn StdError + Send + Sync>> {
+    if key.starts_with("AMBER_") {
+        let env_key = &key[6..]; // Remove the "AMBER_" prefix
+        match std::env::var(env_key) {
+            Ok(value) => Ok(value),
+            Err(e) => Err(Box::new(e)),
+        }
+    } else {
+        Ok(key.to_string())
+    }
+}
 

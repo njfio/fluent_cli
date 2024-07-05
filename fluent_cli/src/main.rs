@@ -2,9 +2,13 @@ mod client;
 mod config;
 mod openai_agent_client;
 mod anthropic_agent_client;
+mod google_ai_client;
+mod cohere_client;
+
+mod neo4j_client;
 
 
-use std::io;
+use std::{env, io};
 
 use clap::{Arg, ArgAction, ColorChoice, Command};
 
@@ -14,7 +18,7 @@ use tokio::fs::File;
 
 use tokio::io::{AsyncReadExt};
 
-use crate::client::{handle_dalle_flow, handle_response, print_full_width_bar};
+use crate::client::{handle_cohere_response, handle_dalle_flow, handle_response, print_full_width_bar};
 
 use crate::config::{EnvVarGuard, replace_with_env_var};
 
@@ -29,6 +33,14 @@ use std::time::Duration;
 
 use clap_complete::generate;
 
+
+use std::{collections::HashMap, process::Command as ShellCommand};
+
+
+use clap::ArgMatches;
+
+use tokio;
+use chrono::Utc;
 
 
 fn print_status(spinner: &ProgressBar, flowname: &str, request: &str, new_question: &str) {
@@ -52,6 +64,10 @@ use tokio::time::Instant;
 
 // use env_logger; // Uncomment this when you are using it to initialize logs
 use serde_json::{Value};
+use uuid::Uuid;
+use crate::neo4j_client::{Neo4jClient, Neo4jClientError};
+use std::sync::Arc;
+
 
 fn update_value(existing_value: &mut Value, new_value: &str) {
     match existing_value {
@@ -65,16 +81,6 @@ fn update_value(existing_value: &mut Value, new_value: &str) {
         }
     }
 }
-
-
-
-
-use std::collections::HashMap;
-
-
-use clap::ArgMatches;
-
-
 
 
 #[tokio::main]
@@ -138,19 +144,6 @@ async fn main() -> Result<()> {
             .help("Uploads a file to the specified endpoint")
             .action(ArgAction::Set)
             .required(false))
-        .arg(Arg::new("system-prompt-override-inline")
-            .long("system-prompt-override-inline")
-            .short('i')
-            .help("Overrides the system message with an inline string")
-            .action(ArgAction::Set)
-            .required(false))
-        .arg(Arg::new("system-prompt-override-file")
-            .long("system-prompt-override-file")
-            .short('f')
-            .value_hint(clap::ValueHint::FilePath)
-            .help("Overrides the system message from a specified file")
-            .action(ArgAction::Set)
-            .required(false))
         .arg(Arg::new("markdown-output")
             .long("markdown-output")
             .short('m')
@@ -177,16 +170,6 @@ async fn main() -> Result<()> {
             .help("Outputs all response data in JSON format")
             .conflicts_with_all(["parse-code-output", "markdown-output"])
             .action(ArgAction::SetTrue))
-        .arg(Arg::new("generate-autocomplete")
-            .long("generate-autocomplete")
-            .help("Generates a bash autocomplete script")
-            .action(ArgAction::SetTrue)
-            .exclusive(true))
-        .arg(Arg::new("generate-fig-autocomplete")
-            .long("generate-fig-autocomplete")
-            .help("Generates a fig autocomplete script")
-            .exclusive(true)
-            .action(ArgAction::SetTrue))
         .arg(Arg::new("override")
             .long("override")
             .short('o')
@@ -194,12 +177,15 @@ async fn main() -> Result<()> {
             .num_args(1..)
             .help("Overrides any entry in the config with the specified key-value pair")
             .action(ArgAction::Append)
-            .required(false));
+            .required(false))
+        .arg(Arg::new("execute")
+            .long("execute")
+            .short('x')
+            .help("Parses the output of the language model and executes it as a shell command")
+            .action(ArgAction::SetTrue));;
 
-    if std::env::args().any(|arg| arg == "--generate-fig-autocomplete") {
-        generate(Fig, &mut command, "fluent", &mut io::stdout());
-        return Ok(());
-    }
+    let mut configs_clone = configs.clone();
+    let command = command.clone();
 
     let matches = &command.get_matches();
 
@@ -220,31 +206,6 @@ async fn main() -> Result<()> {
     debug!("Additional context: {:?}", additional_context);
     let final_context = context.or(if !additional_context.is_empty() { Some(&additional_context) } else { None });
     debug!("Context: {:?}", final_context);
-
-    // Load override value from CLI if specified for system prompt override, file will always win
-    let system_prompt_inline = matches.get_one::<String>("system-prompt-override-inline").map(|s| s.as_str());
-    let system_prompt_file = matches.get_one::<String>("system-prompt-override-file").map(|s| s.as_str());
-    // Load override value from file if specified
-    let system_message_override = if let Some(file_path) = system_prompt_file {
-        let mut file = File::open(file_path).await?; // Corrected async file opening
-        let mut contents = String::new();
-        file.read_to_string(&mut contents).await?; // Read file content asynchronously
-        Some(contents)
-    } else {
-        system_prompt_inline.map(|s| s.to_string())
-    };
-
-    // Update the configuration with the override if it exists
-    if let Some(override_value) = system_message_override {
-        if let Some(obj) = flow.override_config.as_object_mut() {
-            if obj.contains_key("systemMessage") {
-                obj.insert("systemMessage".to_string(), serde_json::Value::String(override_value.to_string()));
-            }
-            if obj.contains_key("systemMessagePrompt") {
-                obj.insert("systemMessagePrompt".to_string(), serde_json::Value::String(override_value.to_string()));
-            }
-        }
-    }
 
     let file_path = matches.get_one::<String>("upload-image-path").map(|s| s.as_str());
     let _file_path_clone = matches.get_one::<String>("upload-image-path").map(|s| s.as_str());
@@ -383,11 +344,11 @@ async fn main() -> Result<()> {
     spinner.set_style(
         ProgressStyle::default_spinner()
             .tick_strings(&[
-                "",
-                "⫸ ",
-                "⫸⫸ ",
-                "⫸⫸⫸ ",
-                "⫸⫸⫸⫸ ",
+                "         ",
+                "⫸        ",
+                "⫸⫸      ",
+                "⫸⫸⫸     ",
+                "⫸⫸⫸⫸   ",
                 "💛⫸⫸⫸⫸ ",
                 "⫸💛⫸⫸⫸ ",
                 "⫸⫸💛⫸⫸ ",
@@ -397,11 +358,11 @@ async fn main() -> Result<()> {
                 "⫸⫸💛⫷⫷ ",
                 "⫸💛⫷⫷⫷ ",
                 "💛⫷⫷⫷⫷ ",
-                "⫷⫷⫷⫷ ",
-                "⫷⫷⫷ ",
-                "⫷⫷ ",
-                "⫷ ",
-                " ",
+                "⫷⫷⫷⫷   ",
+                "⫷⫷⫷    ",
+                "⫷⫷      ",
+                "⫷        ",
+                "          ",
             ])
             .template("{spinner:.yellow}{msg}{spinner:.yellow}")
             .expect("Failed to set progress style"),
@@ -413,11 +374,11 @@ async fn main() -> Result<()> {
 
     print_status(&spinner, flowname, request, actual_final_context_clone2.as_ref().unwrap_or(&new_question).as_str());
     spinner.tick();
-    let prompt = format!("{} {}", request, &actual_final_context_clone2.as_ref().unwrap_or(&new_question));
+    let prompt = format!("{}", new_question);
 
     debug!("Handling Response");
 
-    let _output = match engine_type.as_str() {
+    let output = match engine_type.as_str() {
         "flowise" | "webhook" => {
             // Handle Flowise output
             let payload = crate::client::prepare_payload(flow, request, file_path, actual_final_context_clone2, &cli_args, &file_contents_clone).await?;
@@ -500,7 +461,6 @@ async fn main() -> Result<()> {
             };
             Ok(())
         }
-        // Add other engines as needed
         "anthropic" => {
             match anthropic_agent_client::handle_anthropic_agent(&prompt, &flow, matches).await {
                 Ok(response) => {
@@ -513,7 +473,7 @@ async fn main() -> Result<()> {
                         flowname.purple().italic(),
                         "Request: ".grey().italic(),
                         request.bright_blue().italic(),
-                        "Duration: ".grey().italic(),
+                        "Duration: ".grey().italic()
                         format!("{:.4}s", duration.as_secs_f32()).green().italic(),
                         client::print_full_width_bar("-")
                     ));
@@ -545,15 +505,64 @@ async fn main() -> Result<()> {
             };
             Ok(())
         }
+        "gemini" => {
+            // Handle Gemini output
+            match
+            google_ai_client::handle_google_gemini_agent(&prompt, &flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    client::handle_gemini_response(&response, &matches).await?;
+                },
+                Err(e) => eprintln!("Error handling Gemini AI response: {}", e),
+            };
+            Ok(())
+        },
+        "cohere" => {
+            match cohere_client::handle_cohere_agent(&prompt, flow, matches).await {
+                Ok(response) => {
+                    let duration = start_time.elapsed(); // Capture the duration after the operation completes
+
+                    spinner.finish_with_message(format!(
+                        "\n{}\n\n\t{}    	{}\n\t{} 	{}\n\t{}	{}\n\n{}\n",
+                        client::print_full_width_bar("■"),
+                        "Flow: ".grey().italic(),
+                        flowname.purple().italic(),
+                        "Request: ".grey().italic(),
+                        request.bright_blue().italic(),
+                        "Duration: ".grey().italic(),
+                        format!("{:.4}s", duration.as_secs_f32()).green().italic(), // Apply bright yellow color to duration
+                        client::print_full_width_bar("-")
+                    ));
+                    handle_cohere_response(&response, &matches).await?;
+                },
+                Err(e) => eprintln!("Error handling Cohere response: {}", e),
+            };
+            Ok(())
+        }
         _ => {
             // Handle default output
             return Err(Error::from(serde_json::Error::custom("Unsupported engine type")));
         }
     }.expect("TODO: panic message");
+
     eprint!("\n\n{}\n\n", print_full_width_bar("■"));
+
 
     Ok(())
 }
+
 
 
 fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {

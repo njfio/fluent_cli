@@ -44,7 +44,8 @@ pub fn replace_with_env_var(value: &mut Value) {
             debug!("Looking up environment variable: {}", env_key);
             match env::var(env_key) {
                 Ok(env_value) => {
-                    debug!("Environment value found: {}", env_value);
+                    //debug!("Environment value found: {}", env_value);
+                    ("Environment value found for: {}", env_key);
                     *s = env_value; // Successfully replace the string with the environment variable value.
                 },
                 Err(e) => {
@@ -106,17 +107,17 @@ impl EnvVarGuard {
         if let Value::Object(obj) = value {
             debug!("Decrypting object: {:?}", obj);
             for (key, val) in obj.iter_mut() {
-                debug!("Decrypting key: {}, value: {:?}", key, val);
+                //debug!("Decrypting key: {}, value: {:?}", key, val);
                 if let Some(str_val) = val.as_str() {
-                    debug!("Decrypting str_val: {}", str_val);
+                     //debug!("Decrypting str_val: {}", str_val);
                     if let Some(str_val)= str_val.strip_prefix("AMBER_") {
-                        debug!("Decrypting str_val: {}", str_val);
+                        //debug!("Decrypting str_val: {}", str_val);
                         self.set_env_var_from_amber(key, str_val)?;
-                        debug!("Decrypted key: {}, value: {:?}", key, val);
+                        //debug!("Decrypted key: {}, value: {:?}", key, val);
                     }
                 } else {
                     self.decrypt_amber_keys_in_value(val)?;
-                    debug!("Decrypted value: {:?}", val);
+                    //debug!("Decrypted value: {:?}", val);
                 }
             }
         }
@@ -147,11 +148,12 @@ impl EnvVarGuard {
 
         // Use the amber_key as the environment variable name directly
         env::set_var(amber_key, value);  // Here, use amber_key instead of env_key
-        debug!("Set environment variable {} with value {}", amber_key, value);
+        //debug!("Set environment variable {} with value {}", amber_key, value);
+        debug!("Set environment variable {}", amber_key);
         self.keys.push(amber_key.to_owned());  // Store amber_key to track what has been set
         info!("Set environment variable {} with decrypted value.", amber_key);
         debug!("Keys: {:?}", self.keys);
-        debug!("Environment variables: {:?}", env::vars());
+        //debug!("Environment variables: {:?}", env::vars());
 
         Ok(())
     }

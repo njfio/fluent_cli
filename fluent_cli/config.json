@@ -1,6 +1,59 @@
 [
 
   {
+    "name": "GeminiPro",
+    "engine": "gemini",
+    "protocol": "https",
+    "hostname": "ai.google.dev",
+    "port": 443,
+    "request_path": "api/python/google/generativeai/GenerativeModel",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
+    "neo4j": {
+      "logged_session_user": "fluent"
+
+    },
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "project_id": "497773813500",
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "gemini-1.5-pro-latest",
+      "max_tokens": -1,
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "GeminiFlash",
+    "engine": "gemini",
+    "protocol": "https",
+    "hostname": "ai.google.dev",
+    "port": 443,
+    "request_path": "api/python/google/generativeai/GenerativeModel",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "project_id": "497773813500",
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "gemini-1.5-flash",
+      "max_tokens": -1,
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+
+  {
     "name": "Opus",
     "engine": "anthropic",
     "protocol": "https",
@@ -11,6 +64,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
     "overrideConfig": {
+      "embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "claude-3-opus-20240229",
@@ -81,6 +135,47 @@
     "timeout_ms": 50000
   },
   {
+    "name": "Sonnet3.5",
+    "engine": "anthropic",
+    "protocol": "https",
+    "hostname": "api.anthropic.com",
+    "port": 443,
+    "request_path": "/v1/messages",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "claude-3-5-sonnet-20240620",
+      "max_tokens": 4000,
+      "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "stop_sequences": ["finish\n\n"],
+      "stream": false,
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ticker": {
+                "type": "string",
+                "description": "The stock ticker symbol, e.g. AAPL for Apple Inc."
+              }
+            },
+            "required": ["ticker"]
+          }
+        }
+      ]
+    },
+    "tweaks": {},
+    "timeout_ms": 50000
+  },
+  {
     "name": "Haiku",
     "engine": "anthropic",
     "protocol": "https",
@@ -91,6 +186,7 @@
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
     "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "max_iterations": 10,
       "stripNewLines": true,
       "modelName": "claude-3-haiku-20240307",
@@ -120,6 +216,7 @@
     "tweaks": {},
     "timeout_ms": 50000
   },
+
   {
     "name": "Dalle",
     "engine": "dalle",
@@ -191,20 +288,21 @@
     "tweaks": {},
     "timeout_ms": 5000000
   },
+
   {
     "name": "Omni",
     "engine": "openai",
     "protocol": "https",
     "hostname": "api.openai.com",
     "port": 443,
-    "request_path": "/v1/chat/completions",
+    "request_path": "v1/chat/completions",
     "sessionId": "AMBER_FLUENT_SESSION_ID_01",
     "chat_id": "",
     "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
     "overrideConfig": {
       "max_iterations": 10,
       "stripNewLines": true,
-      "modelName": "gpt-4",
+      "modelName": "gpt-4o",
       "max_tokens": 4000,
       "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
       "temperature": 0.7,
@@ -272,6 +370,241 @@
     "tweaks": {},
     "timeout_ms": 5000000
   },
+
+  {
+    "name": "GroqLlama370b",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.groq.com",
+    "port": 443,
+    "request_path": "/openai/v1/chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "llama3-70b-8192",
+      "max_tokens": 4000,
+      "openAIApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1,
+      "frequency_penalty": 0,
+      "presence_penalty": 0,
+      "stop": ["\n\nFinished", "User:"],
+      "n": 1,
+      "logprobs": null,
+      "echo": false,
+      "user": "example-user-id"
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "GroqLlama38b",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.groq.com",
+    "port": 443,
+    "request_path": "/openai/v1/chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "llama3-8b-8192",
+      "max_tokens": 4000,
+      "openAIApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1,
+      "frequency_penalty": 0,
+      "presence_penalty": 0,
+      "stop": ["\n\nFinished", "User:"],
+      "n": 1,
+      "logprobs": null,
+      "echo": false,
+      "user": "example-user-id"
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "Groq-Mixstral",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.groq.com",
+    "port": 443,
+    "request_path": "/openai/v1/chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": " mixtral-8x7b-32768",
+      "max_tokens": 4000,
+      "openAIApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1,
+      "frequency_penalty": 0,
+      "presence_penalty": 0,
+      "stop": ["\n\nFinished", "User:"],
+      "n": 1,
+      "logprobs": null,
+      "echo": false,
+      "user": "example-user-id"
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "Groq-Gemma",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.groq.com",
+    "port": 443,
+    "request_path": "/openai/v1/chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "stripNewLines": true,
+      "modelName": "gemma-7b-it",
+      "max_tokens": 4000,
+      "openAIApiKey": "AMBER_FLUENT_GROQ_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 1,
+      "frequency_penalty": 0,
+      "presence_penalty": 0,
+      "stop": ["\n\nFinished", "User:"],
+      "n": 1,
+      "logprobs": null,
+      "echo": false,
+      "user": "example-user-id"
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+
+  {
+    "name": "SonarLarge",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.perplexity.ai",
+    "port": 443,
+    "request_path": "chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "modelName": "llama-3-sonar-large-32k-online",
+      "max_tokens": 0,
+      "stream": false,
+      "return_citations": true,
+      "openAIApiKey": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 0.8,
+      "frequency_penalty": 0,
+      "presence_penalty": 1
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+    "name": "SonarSmall",
+    "engine": "openai",
+    "protocol": "https",
+    "hostname": "api.perplexity.ai",
+    "port": 443,
+    "request_path": "chat/completions",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+
+      "max_iterations": 10,
+      "modelName": "llama-3-sonar-small-32k-online",
+      "max_tokens": 0,
+      "stream": false,
+      "return_citations": true,
+      "openAIApiKey": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+      "temperature": 0.7,
+      "systemMessage": "You are a helpful assistant.",
+      "top_p": 0.8,
+      "frequency_penalty": 0,
+      "presence_penalty": 1
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+
+  {
+    "name": "CommandR",
+    "engine": "cohere",
+    "protocol": "https",
+    "hostname": "api.cohere.com",
+    "port": 443,
+    "request_path": "v1/chat",
+    "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+    "chat_id": "",
+    "bearer_token": "AMBER_FLUENT_COHERE_API_KEY_01",
+    "overrideConfig": {
+      "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+      "max_iterations": 10,
+      "modelName": "command-r",
+      "prompt": "You are a helpful assistant.",
+      "max_tokens": -1,
+      "stream": false,
+      "chatHistory": [],
+      "temperature": 0.7,
+      "connectors": [{"id":"web-search"}]
+    },
+    "tweaks": {},
+    "timeout_ms": 5000000
+  },
+  {
+  "name": "CommandRNightly",
+  "engine": "cohere",
+  "protocol": "https",
+  "hostname": "api.cohere.com",
+  "port": 443,
+  "request_path": "v1/chat",
+  "sessionId": "AMBER_FLUENT_SESSION_ID_01",
+  "chat_id": "",
+  "bearer_token": "AMBER_FLUENT_COHERE_API_KEY_01",
+  "overrideConfig": {
+    "fluent_embeddings_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+    "max_iterations": 10,
+    "modelName": "command-nightly",
+    "prompt": "You are a helpful assistant.",
+    "max_tokens": -1,
+    "stream": false,
+    "chatHistory": [],
+    "temperature": 0.7,
+    "connectors": [{"id":"web-search"}]
+  },
+  "tweaks": {},
+  "timeout_ms": 5000000
+},
 
 
 
@@ -1608,10 +1941,10 @@
     "sessionId": "",
     "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
     "overrideConfig": {
-      "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
-      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+      "modelID": "AMBER_FLUENT_LEONARDO_AI_PHOENIX_MODEL_ID",
+      "negative_prompt": "words, letters, symbols, hands, deformities, low-quality, signatures, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry",
       "alchemy": true,
-      "photoReal": true,
+      "photoReal": false,
       "photoRealVersion":"v2",
       "presetStyle": "",
       "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
