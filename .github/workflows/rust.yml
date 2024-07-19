@@ -88,10 +88,6 @@ jobs:
           else
             cargo build --release --verbose --target $TARGET --manifest-path Cargo.toml
           fi
-      - name: List contents of the repository
-        run: ls -lh fluent_cli/target
-      - name: List fluent_cli/target
-        run: find fluent_cli/target
       - name: Compress
         run: |
           mkdir -p ./artifacts
@@ -108,8 +104,8 @@ jobs:
           if [[ $TARGET == "wasm32-unknown-unknown" ]]; then
             tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz -C ./artifacts .
           else
-            mv fluent_cli/target/$TARGET/release/$EXEC ./$EXEC
-            tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC fluent_cli/config.json amber.yaml amber-x86_64-apple-darwin amber-x86_64-pc-windows-gnu.exe amber-x86_64-unknown-linux-musl fluent_cli/fluent_cli_autocomplete.ps1 fluent_cli/fluent_cli_autocomplete.sh fluent_cli/windows-amber-key-setup.bat
+            mv /target/$TARGET/release/$EXEC ./$EXEC
+            tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC default_config_test.json amber.yaml amber-x86_64-apple-darwin amber-x86_64-pc-windows-gnu.exe amber-x86_64-unknown-linux-musl fluent_cli_autocomplete.ps1 fluent_cli_autocomplete.sh
           fi
       - name: Archive artifact
         uses: actions/upload-artifact@v2
