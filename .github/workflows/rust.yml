@@ -83,10 +83,10 @@ jobs:
       - name: Run build
         run: |
           if [[ $TARGET == "wasm32-unknown-unknown" ]]; then
-            cargo build --release --target $TARGET --manifest-path fluent_cli/Cargo.toml
-            wasm-bindgen --out-dir ./artifacts --target web fluent_cli/target/$TARGET/release/fluent.wasm
+            cargo build --release --target $TARGET --manifest-path Cargo.toml
+            wasm-bindgen --out-dir ./artifacts --target web /target/$TARGET/release/fluent.wasm
           else
-            cargo build --release --verbose --target $TARGET --manifest-path fluent_cli/Cargo.toml
+            cargo build --release --verbose --target $TARGET --manifest-path Cargo.toml
           fi
       - name: List contents of the repository
         run: ls -lh fluent_cli/target
