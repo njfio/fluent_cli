@@ -80,17 +80,6 @@ jobs:
           EOF
       - name: Install rust target
         run: rustup target add $TARGET
-      - name: List contents of the repository
-        run: ls -la
-      - name: Print current working directory
-        run: pwd
-      - name: change path
-        run: cd fluent_cli/
-      - name: List contents of the repository
-        run: ls -la
-      - name: Install wasm-bindgen-cli
-        if: matrix.TARGET == 'wasm32-unknown-unknown'
-        run: cargo install wasm-bindgen-cli
       - name: Run build
         run: |
           if [[ $TARGET == "wasm32-unknown-unknown" ]]; then
