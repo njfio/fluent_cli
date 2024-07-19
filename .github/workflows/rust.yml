@@ -104,8 +104,8 @@ jobs:
           if [[ $TARGET == "wasm32-unknown-unknown" ]]; then
             tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz -C ./artifacts .
           else
-            mv /target/$TARGET/release/$EXEC ./$EXEC
-            tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC default_config_test.json amber.yaml amber-x86_64-apple-darwin amber-x86_64-pc-windows-gnu.exe amber-x86_64-unknown-linux-musl fluent_cli_autocomplete.ps1 fluent_cli_autocomplete.sh
+            mv /target/$TARGET/release/$EXEC $EXEC
+            tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC default_config_test.json amber.yaml amber-x86_64-apple-darwin amber-x86_64-pc-windows-gnu.exe amber-x86_64-unknown-linux-musl fluent_autocomplete.ps1 fluent_autocomplete.sh
           fi
       - name: Archive artifact
         uses: actions/upload-artifact@v2
