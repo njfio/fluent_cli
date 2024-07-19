@@ -84,9 +84,10 @@ jobs:
         run: |
           if [[ $TARGET == "wasm32-unknown-unknown" ]]; then
             cargo build --release --target $TARGET --manifest-path Cargo.toml
-            wasm-bindgen --out-dir ./artifacts --target web /target/$TARGET/release/fluent.wasm
+            wasm-bindgen --out-dir ./artifacts --target web ./target/$TARGET/release/fluent.wasm
           else
             cargo build --release --verbose --target $TARGET --manifest-path Cargo.toml
+          fi
       - name: Check built files
         run: find ./target/$TARGET/release/
       - name: Compress
