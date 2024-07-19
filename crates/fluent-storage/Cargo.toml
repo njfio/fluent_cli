@@ -1,0 +1,11 @@
+# crates/fluent-storage/Cargo.toml
+[package]
+name = "fluent-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fluent-core = { path = "../fluent-core" }
+neo4rs = "0.7.1"
+rusqlite = "0.31.0"
+anyhow = "1.0.86"

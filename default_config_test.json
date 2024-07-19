@@ -1,0 +1,693 @@
+{
+  "engines": [
+    {
+      "name": "openai",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+          "sessionID": "NJF1234567DEFAULT",
+          "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+          "modelName": "gpt-4o",
+          "max_tokens": -1,
+          "temperature": 1.0,
+          "top_p": 1,
+          "n": 1,
+          "stream": false,
+          "presence_penalty": 0,
+          "frequency_penalty": 0
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "openai-mini",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+          "sessionID": "NJF1234567DEFAULT",
+          "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+          "modelName": "gpt-4o-mini",
+          "max_tokens": -1,
+          "temperature": 1.0,
+          "top_p": 1,
+          "n": 1,
+          "stream": false,
+          "presence_penalty": 0,
+          "frequency_penalty": 0
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+
+    {
+      "name": "sonnet3.5",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+        "max_tokens": 4096,
+        "modelName": "claude-3-5-sonnet-20240620",
+        "temperature": 0.7,
+        "system": "You are a helpful AI assistant."
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "gemini",
+      "engine": "google_gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/{model}:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
+        "modelName": "gemini-1.5-pro-latest",
+        "temperature": 0.7,
+        "top_k": 40,
+        "top_p": 0.95,
+        "max_tokens": 4096,
+        "sessionId": ""
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "cohere",
+      "engine": "cohere",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.cohere.ai",
+        "port": 443,
+        "request_path": "/v1/chat"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_COHERE_API_KEY_01",
+        "modelName": "command-nightly",
+        "stream": false,
+        "preamble": "You are a helpful AI assistant.",
+        "chat_history": [],
+        "conversation_id": "unique-conversation-id",
+        "prompt_truncation": "AUTO",
+        "connectors": [
+          {"id": "web-search"}
+        ],
+        "citation_quality": "accurate",
+        "temperature": 0.3,
+        "max_tokens": 1000,
+        "k": 0,
+        "p": 0.75,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0,
+        "sessionID": "unique-session-id"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "llama3-groq",
+      "engine": "groq_lpu",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.groq.com",
+        "port": 443,
+        "request_path": "/openai/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+        "model": "llama3-groq-70b-8192-tool-use-preview",
+        "temperature": 0.7,
+        "max_tokens": 1024,
+        "top_p": 1.0,
+        "stream": false,
+        "sessionId": ""
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "gemma-groq",
+      "engine": "groq_lpu",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.groq.com",
+        "port": 443,
+        "request_path": "/openai/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
+        "model": "gemma2-9b-it",
+        "temperature": 0.7,
+        "max_tokens": 1024,
+        "top_p": 1.0,
+        "stream": false,
+        "sessionId": ""
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "mistral-nemo",
+      "engine": "mistral",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.mistral.ai",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "model": "open-mistral-nemo-2407",
+        "bearer_token": "AMBER_FLUENT_MISTRAL_KEY_01"
+
+      }
+    },
+    {
+      "name": "perplexity",
+      "engine": "perplexity",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.perplexity.ai",
+        "port": 443,
+        "request_path": "/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
+        "model": "llama-3-sonar-large-32k-online",
+        "temperature": 0.7,
+        "max_tokens": 1024,
+        "top_p": 1.0,
+        "stream": false,
+        "sessionId": ""
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "sonnet3.5_chain",
+      "engine": "flowise_chain",
+      "connection": {
+        "protocol": "https",
+        "hostname": "flowise.fluentcli.com",
+        "port": 443,
+        "request_path": "/api/v1/prediction/e1d50e5f-bacf-4b84-ac22-3ad4c9ca4d57"
+      },
+      "parameters": {
+        "anthropicApiKey": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+        "modelName": "claude-3-opus-20240229",
+        "temperature": 0.7,
+        "maxTokensToSample": 1000,
+        "sessionID": "UNIQUE_SESSION_ID_HERE"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "OmniAgentWithSearchAndBrowsing",
+      "engine": "flowise_chain",
+      "connection": {
+        "protocol": "https",
+        "hostname": "flowise.fluentcli.com",
+        "port": 443,
+        "request_path": "/api/v1/prediction/154f3d8c-ec10-4828-b62b-153834f48dac"
+    },
+      "parameters": {
+        "bufferWindowMemory": {
+          "k": 10,
+          "sessionId": "UNIQUE_SESSION_ID_HERE",
+          "memoryKey": "chat_history"
+        },
+        "openAIApiKey": {
+          "chatOpenAI_0": "AMBER_FLUENT_OPENAI_API_KEY_01",
+          "chatOpenAI_1": "AMBER_FLUENT_OPENAI_API_KEY_01",
+          "openAIEmbeddings_0": "AMBER_FLUENT_OPENAI_API_KEY_01"
+        },
+        "chatOpenAI": [
+          {
+            "modelName": "gpt-4",
+            "temperature": 0.7,
+            "maxTokens": 1000,
+            "topP": 1,
+            "frequencyPenalty": 0,
+            "presencePenalty": 0,
+            "timeout": 600,
+            "basePath": "",
+            "baseOptions": {},
+            "allowImageUploads": true,
+            "imageResolution": "auto"
+          },
+          {
+            "modelName": "gpt-3.5-turbo",
+            "temperature": 0.9,
+            "maxTokens": 2000,
+            "topP": 0.95,
+            "frequencyPenalty": 0.5,
+            "presencePenalty": 0.5,
+            "timeout": 300,
+            "basePath": "",
+            "baseOptions": {},
+            "allowImageUploads": true,
+            "imageResolution": "high"
+          }
+        ],
+        "openAIEmbeddings": {
+          "modelName": "text-embedding-3-small",
+          "stripNewLines": true,
+          "batchSize": 512,
+          "timeout": 60,
+          "basePath": ""
+        },
+        "openAIToolAgent": {
+          "systemMessage": "You are a helpful AI assistant. Answer the user's questions to the best of your ability."
+        },
+        "searchAPI": {
+          "searchApiKey": "AMBER_FLUENT_SEARCHAPI_KEY_ID_01"
+        }
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "Omni_Chain",
+      "engine": "flowise_chain",
+      "connection": {
+        "protocol": "https",
+        "hostname": "flowise.fluentcli.com",
+        "port": 443,
+        "request_path": "/api/v1/prediction/974e8273-3494-4c88-8dac-06c4c2ed6454"
+    },
+      "parameters": {
+        "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "modelName": "gpt-4o",
+        "temperature": 0.7,
+        "maxTokens": 1000,
+        "topP": 1,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "timeout": 60,
+        "allowImageUploads": true,
+        "imageResolution": "auto",
+        "systemMessage": "You are a helpful AI assistant.",
+        "memoryKey": "chat_history",
+        "sessionId": "default_session"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "Omni_Chain2",
+      "engine": "flowise_chain",
+      "connection": {
+        "protocol": "https",
+        "hostname": "flowise.fluentcli.com",
+        "port": 443,
+        "request_path": "/api/v1/prediction/974e8273-3494-4c88-8dac-06c4c2ed6454"
+    },
+      "parameters": {
+        "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "modelName": "gpt-4o",
+        "temperature": 0.7,
+        "maxTokens": 1000,
+        "topP": 1,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "timeout": 60,
+        "allowImageUploads": true,
+        "imageResolution": "auto",
+        "systemMessage": "You are a helpful AI assistant.",
+        "memoryKey": "chat_history",
+        "sessionId": "default_session"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "langflow_test",
+      "engine": "langflow_chain",
+      "connection": {
+        "protocol": "https",
+        "hostname": "4hguoo55.rcsrv.net",
+        "port": 443,
+        "request_path": "/api/v1/run/a49001d2-1c53-4c82-b81c-00bf7d4cb7a0"
+      },
+      "parameters": {
+        "OpenAIModel-LZl88": {
+          "input_value": "",
+          "max_tokens": 256,
+          "model_kwargs": {},
+          "model_name": "gpt-4o",
+          "openai_api_base": "",
+          "openai_api_key": "AMBER_FLUENT_OPENAI_API_KEY_01",
+          "output_schema": {},
+          "seed": 1,
+          "stream": true,
+          "system_message": "",
+          "temperature": 0.1
+        },
+        "ChatInput-ZH5Yy": {
+          "files": "",
+          "input_value": "hi",
+          "sender": "User",
+          "sender_name": "User",
+          "session_id": ""
+        },
+        "ChatOutput-BohkI": {
+          "data_template": "{text}",
+          "input_value": "",
+          "sender": "Machine",
+          "sender_name": "AI",
+          "session_id": ""
+        }
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "makeLeonardoImagePostRawOutput",
+      "engine": "webhook",
+      "connection": {
+        "protocol": "https",
+        "hostname": "hook.us1.make.com",
+        "port": 443,
+        "request_path": "/19riyltebstlvc3q1tvei7s7jduld8xa"
+      },
+      "parameters": {
+        "chat_id": "19riyltebstlvc3q1tvei7s7jduld8xa",
+        "sessionId": "",
+        "bearer_token": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+        "overrideConfig": {
+          "modelID": "AMBER_LEONARDO_AI_KINO_XL_MODEL_ID",
+          "negative_prompt": "words, letters, symbols, hands, deformities, low-quality,",
+          "alchemy": true,
+          "photoReal": true,
+          "photoRealVersion": "v2",
+          "presetStyle": "",
+          "makeAuthentication": "AMBER_MAKE_LEONARDO_IMAGE_POST",
+          "seed": ""
+        },
+        "tweaks": {},
+        "timeout_ms": 5000000
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "stabilityUltraVertical",
+      "engine": "stabilityai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.stability.ai",
+        "port": 443,
+        "request_path": "/v2beta/stable-image/generate/ultra"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_STABILITYAI_KEY_01",
+        "steps": 60,
+        "cfg_scale": 10,
+        "width": 896,
+        "height": 1152,
+        "samples": 1,
+        "seed": 0,
+        "style_preset": "cinematic",
+        "aspect_ratio": "9:16",
+        "output_format": "png",
+        "sampler": ""
+      },
+      "neo4j": {
+        "uri": "neo4j://localhost:7687",
+        "user": "neo4j",
+        "password": "system2024!",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "YOUR_VOYAGE_AI_API_KEY",
+          "model": "voyage-1536-v1"
+        },
+        "query_llm": "openai-gpt4"
+      }
+    },
+    {
+      "name": "leonardoVertical",
+      "engine": "leonardo_ai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "cloud.leonardo.ai",
+        "port": 443,
+        "request_path": "/api/rest/v1/generations"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_LEONARDO_API_KEY",
+        "sessionID": "LDO1234567DEFAULT",
+        "modelId": "b24e16ff-06e3-43eb-8d33-4416c2d75876",
+        "width": 832,
+        "height": 1472,
+        "promptMagic": true,
+        "num_images": 1,
+        "nsfw": true,
+        "public": false,
+        "negative_prompt": "",
+        "guidance_scale": 7,
+        "promptMagicVersion": "v3",
+        "promptMagicStrength": 0.5,
+        "presetStyle": "LEONARDO",
+        "highResolution": true,
+        "highContrast": true,
+        "alchemy": true,
+        "photoReal": false,
+        "tiling": false,
+        "weighting": 1,
+        "sd_version": "v2"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "dalleVertical",
+      "engine": "dalle",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/images/generations"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "sessionID": "NJF1234567DEFAULT",
+        "modelName": "dall-e-3",
+        "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "n": 1,
+        "logprobs": null,
+        "echo": false,
+        "user": "example-user-id",
+        "size": "1024x1792",
+        "style": "vivid",
+        "quality": "hd"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "dalleHorizontal",
+      "engine": "dalle",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/images/generations"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "sessionID": "NJF1234567DEFAULT",
+        "modelName": "dall-e-3",
+        "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "n": 1,
+        "logprobs": null,
+        "echo": false,
+        "user": "example-user-id",
+        "size": "1792x1024",
+        "style": "vivid",
+        "quality": "hd"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
+      "name": "neo4j",
+      "engine": "neo4j",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "sessionID": "NJF1234567DEFAULT"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        },
+        "query_llm": "anthropic",
+        "parameters": {
+
+        }
+      }
+    }
+  ]
+}
