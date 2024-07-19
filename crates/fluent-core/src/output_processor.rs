@@ -1,4 +1,5 @@
-use anyhow::{Result, anyhow};
+use std::env;
+use anyhow::{Result, anyhow, Context};
 use regex::Regex;
 use std::path::PathBuf;
 use crossterm::style::Color;
@@ -125,16 +126,41 @@ impl OutputProcessor {
     }
 
     async fn execute_script(script: &str) -> Result<String> {
-        let temp_file = format!("/tmp/script_{}.sh", Uuid::new_v4());
-        fs::write(&temp_file, script).await?;
-        fs::set_permissions(&temp_file, std::os::unix::fs::PermissionsExt::from_mode(0o755)).await?;
+        // Use a platform-agnostic way to get the temp directory
+        let temp_dir = env::temp_dir();
+        let file_name = format!("script_{}.{}", Uuid::new_v4(), if cfg!(windows) { "bat" } else { "sh" });
+        let temp_file = temp_dir.join(file_name);
 
-        let result = Command::new(&temp_file)
-            .output()
-            .await?;
+        // Write the script to the temporary file
+        fs::write(&temp_file, script).await.context("Failed to write script to temporary file")?;
 
-        fs::remove_file(&temp_file).await?;
+        // Set executable permissions on Unix-like systems
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&temp_file).await?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&temp_file, perms).await.context("Failed to set file permissions")?;
+        }
 
+        // Execute the script
+        let result = if cfg!(windows) {
+            Command::new("cmd")
+                .arg("/C")
+                .arg(&temp_file)
+                .output()
+                .await
+        } else {
+            Command::new("sh")
+                .arg(&temp_file)
+                .output()
+                .await
+        }.context("Failed to execute script")?;
+
+        // Remove the temporary file
+        fs::remove_file(&temp_file).await.context("Failed to remove temporary file")?;
+
+        // Collect and format the output
         let stdout = String::from_utf8_lossy(&result.stdout);
         let stderr = String::from_utf8_lossy(&result.stderr);
 
