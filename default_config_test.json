@@ -29,6 +29,10 @@
         "voyage_ai": {
           "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
           "model": "voyage-large-2"
+        },
+        "query_llm": "anthropic",
+        "parameters": {
+
         }
       }
     },
@@ -683,7 +687,7 @@
           "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
           "model": "voyage-large-2"
         },
-        "query_llm": "anthropic",
+        "query_llm": "sonnet3.5",
         "parameters": {
 
         }

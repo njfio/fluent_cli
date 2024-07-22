@@ -24,3 +24,5 @@ fluent_cli/functional_tests/available_fields_cache.json
 /fluent_cli/lib
 /fluent_cli/lib
 fluent_cli/glove.6B.300d.txt
+/.idea
+/.idea
