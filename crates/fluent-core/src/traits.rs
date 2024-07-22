@@ -1,3 +1,4 @@
+
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
@@ -5,6 +6,8 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use serde_json::{json, Value};
 use log::debug;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use crate::config::EngineConfig;
 use crate::neo4j_client::Neo4jClient;
 use crate::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
@@ -133,5 +136,43 @@ impl EngineConfigProcessor for OpenAIConfigProcessor {
 
         debug!("OpenAI Payload: {:#?}", payload);
         Ok(payload)
+    }
+}
+
+
+
+pub struct TextProcessor;
+pub struct PdfProcessor;
+pub struct DocxProcessor;
+#[async_trait]
+pub trait DocumentProcessor {
+    async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)>;
+}
+
+#[async_trait]
+impl DocumentProcessor for TextProcessor {
+    async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
+        let mut file = File::open(file_path).await?;
+        let mut content = String::new();
+        file.read_to_string(&mut content).await?;
+        Ok((content, vec![]))
+    }
+}
+
+#[async_trait]
+impl DocumentProcessor for PdfProcessor {
+    async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
+        // Implement PDF processing logic here
+        // You might want to use a library like pdf-extract or lopdf
+        unimplemented!("PDF processing not implemented yet")
+    }
+}
+
+#[async_trait]
+impl DocumentProcessor for DocxProcessor {
+    async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
+        // Implement DOCX processing logic here
+        // You might want to use a library like docx-rs
+        unimplemented!("DOCX processing not implemented yet")
     }
 }

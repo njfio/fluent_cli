@@ -650,7 +650,6 @@ async fn generate_and_execute_cypher(
     //info!("Sending request to LLM engine: {:?}", cypher_request);
     let cypher_response = Pin::from(llm_engine.execute(&cypher_request)).await?;
     let cypher_query = extract_cypher_query(&cypher_response.content)?;
-    info!("Cypher query: {}", cypher_query);
 
     // Execute the Cypher query
     let cypher_result = neo4j_client.execute_cypher(&cypher_query).await?;

@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use log::{debug, error, info, warn};
 use std::sync::{Arc, RwLock};
 
@@ -20,6 +21,7 @@ use crate::types::DocumentStatistics;
 use crate::utils::chunking::chunk_document;
 use crate::voyageai_client::{EMBEDDING_DIMENSION, get_voyage_embedding};
 use stop_words::{get, LANGUAGE};
+use crate::traits::{DocumentProcessor, DocxProcessor, PdfProcessor, TextProcessor};
 
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -72,6 +74,8 @@ pub struct EnrichmentStatus {
     pub last_clustering_update: Option<DateTime<Utc>>,
     pub last_sentiment_update: Option<DateTime<Utc>>,
 }
+
+
 
 
 
@@ -1283,6 +1287,23 @@ impl Neo4jClient {
         let schema_str = serde_json::to_string_pretty(&result)?;
 
         Ok(schema_str)
+    }
+
+
+    async fn process_document(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
+        let extension = file_path.extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or_else(|| anyhow!("Unable to determine file type"))?;
+
+        let processor: Box<dyn DocumentProcessor> = match extension.to_lowercase().as_str() {
+            "txt" => Box::new(TextProcessor),
+            "pdf" => Box::new(PdfProcessor),
+            "docx" => Box::new(DocxProcessor),
+            // Add more file types as needed
+            _ => return Err(anyhow!("Unsupported file type: {}", extension)),
+        };
+
+        processor.process(file_path).await
     }
 
 }
