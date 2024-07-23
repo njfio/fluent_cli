@@ -48,6 +48,10 @@ jobs:
       TARGET: ${{ matrix.TARGET }}
       OS: ${{ matrix.OS }}
     steps:
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
       - uses: actions/checkout@v2
       - name: Cargo cache
         uses: actions/cache@v2
