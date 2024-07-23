@@ -14,3 +14,4 @@ pub mod perplexity;
 pub mod leonardoai;
 pub mod mistral;
 pub mod stabilityai;
+pub mod imagepro;

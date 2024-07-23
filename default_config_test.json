@@ -558,6 +558,33 @@
       }
     },
     {
+      "name": "imaginepro",
+      "engine": "imagine_pro",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.imaginepro.ai",
+        "port": 443,
+        "request_path": "/api/v1/midjourney/imagine"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_IMAGEPRO_KEY_01",
+        "ref": "optional-reference-id",
+        "mode": "default",
+        "webhookOverride": "https://your-webhook-url.com/endpoint"
+      },
+      "neo4j": {
+        "uri": "neo4j://localhost:7687",
+        "user": "neo4j",
+        "password": "system2024!",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "YOUR_VOYAGE_AI_API_KEY",
+          "model": "voyage-1536-v1"
+        },
+        "query_llm": "openai-gpt4"
+      }
+    },
+    {
       "name": "leonardoVertical",
       "engine": "leonardo_ai",
       "connection": {

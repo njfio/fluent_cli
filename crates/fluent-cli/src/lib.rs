@@ -52,6 +52,7 @@ pub mod cli {
     use fluent_engines::flowise_chain::FlowiseChainEngine;
     use fluent_engines::google_gemini::GoogleGeminiEngine;
     use fluent_engines::groqlpu::GroqLPUEngine;
+    use fluent_engines::imagepro::ImagineProEngine;
     use fluent_engines::langflow::LangflowEngine;
     use fluent_engines::perplexity::PerplexityEngine;
     use fluent_engines::webhook::WebhookEngine;
@@ -389,6 +390,7 @@ pub mod cli {
             debug!("Upsert mode enabled");
             handle_upsert(engine_config, &matches).await?;
         } else {
+            debug!("No mode specified, defaulting to interactive mode");
             let request = matches.get_one::<String>("request").unwrap();
 
             let engine: Box<dyn Engine> = match engine_config.engine.as_str() {
@@ -411,6 +413,13 @@ pub mod cli {
                     engine
                 },
                 "leonardo_ai" => Box::new(LeonardoAIEngine::new(engine_config.clone()).await?),
+                "imagine_pro" => {
+                    let mut engine = Box::new(ImagineProEngine::new(engine_config.clone()).await?);
+                    if let Some(download_dir) = matches.get_one::<String>("download-media") {
+                        engine.set_download_dir(download_dir.to_string());
+                    }
+                    engine
+                }
                 _ => return Err(anyhow!("Unsupported engine: {}", engine_config.engine)),
             };
 
