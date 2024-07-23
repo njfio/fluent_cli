@@ -436,6 +436,11 @@ impl Neo4jClient {
                 file.read_to_string(&mut content).await?;
                 Ok(content)
             },
+            "docx" => {
+                let processor = DocxProcessor;
+                let (content, _metadata) = processor.process(file_path).await?;
+                Ok(content)
+            },
             // Add more file types here as needed
             _ => Err(anyhow!("Unsupported file type: {}", extension)),
         }

@@ -1,9 +1,10 @@
 
 use std::future::Future;
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 use async_trait::async_trait;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, Context};
 use serde_json::{json, Value};
 use log::debug;
 use pdf_extract::extract_text;
@@ -200,11 +201,49 @@ impl DocumentProcessor for PdfProcessor {
     }
 }
 
+
+use docx;
+use docx::{Docx, DocxFile};
+
 #[async_trait]
 impl DocumentProcessor for DocxProcessor {
     async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
-        // Implement DOCX processing logic here
-        // You might want to use a library like docx-rs
-        unimplemented!("DOCX processing not implemented yet")
+        let mut file = File::open(file_path).await?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await?;
+
+        let file_path = file_path.to_owned();
+        let file_path_clone = file_path.clone();
+        let content = tokio::task::spawn_blocking(move || -> Result<String> {
+            let docx_file = DocxFile::from_file(&file_path)
+                .map_err(|e| anyhow::anyhow!("Failed to open DOCX file: {:?}", e))?;
+            let docx = docx_file.parse()
+                .map_err(|e| anyhow::anyhow!("Failed to parse DOCX file: {:?}", e))?;
+
+            let mut content = String::new();
+            for paragraph in &docx.document.body.content {
+                if let docx::document::BodyContent::Paragraph(p) = paragraph {
+                    for run in &p.content {
+                        if let docx::document::ParagraphContent::Run(r) = run {
+                            for text in &r.content {
+                                if let docx::document::RunContent::Text(t) = text {
+                                    content.push_str(&t.text);
+                                }
+                            }
+                        }
+                    }
+                    content.push('\n');
+                }
+            }
+
+            Ok(content)
+        }).await??;
+
+        let metadata = vec![
+            format!("filename:{}", file_path_clone.file_name().unwrap().to_string_lossy()),
+            format!("filesize:{}", buffer.len()),
+        ];
+
+        Ok((content, metadata))
     }
 }
