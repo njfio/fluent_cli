@@ -93,7 +93,8 @@
         "voyage_ai": {
           "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
           "model": "voyage-large-2"
-        }
+        },
+        "query_llm": "sonnet3.5"
       }
     },
     {
@@ -176,9 +177,9 @@
       },
       "parameters": {
         "bearer_token": "AMBER_FLUENT_GROQ_API_KEY_01",
-        "model": "llama3-groq-70b-8192-tool-use-preview",
+        "model": "llama-3.1-70b-versatile",
         "temperature": 0.7,
-        "max_tokens": 1024,
+        "max_tokens": 4000,
         "top_p": 1.0,
         "stream": false,
         "sessionId": ""
@@ -191,7 +192,8 @@
         "voyage_ai": {
           "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
           "model": "voyage-large-2"
-        }
+        },
+        "query_llm": "sonnet3.5"
       }
     },
     {
@@ -291,7 +293,8 @@
         "voyage_ai": {
           "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
           "model": "voyage-large-2"
-        }
+        },
+        "query_llm": "sonnet3.5"
       }
     },
     {
