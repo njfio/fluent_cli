@@ -21,18 +21,22 @@ Fluent CLI is a command-line interface (CLI) tool designed to simplify interacti
 ## Features
 
 - **Multi-Engine Support:**  Interact with FlowiseAI, Langflow, and Webhook workflows seamlessly.
-- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, Anthropic, GroqLPU, Cohere, Google Studio, and Perplexity models.
+- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, StabilieyAI, LeonardoAI, Anthropic, GroqLPU, Cohere, Google Studio, Cohere, and Perplexity models.
 - **Simplified Request Handling:** Send requests to your workflows with a simple command structure.
 - **Context Management:** Provide additional context via stdin or files for richer interactions.
-- **Configuration Management:** Load and modify workflow configurations from a centralized JSON file.
+- **Configuration Management:** Load and modify workflow configurations from a centralized JSON file.  Override inline. 
 - **Environment Variable Integration:** Securely store sensitive information like API keys in environment variables and reference them in your configurations.
-- **System Prompt Override:**  Easily override system messages for greater control over your workflows.
+- **Override Inline:**  Easily override configuration parameters inline.
 - **File Upload:**  Upload images and other files to your workflows.
 - **Upsert Functionality:**  Send JSON payloads and upload files to endpoints for data management.
 - **Output Customization:** Control output format, including stylized markdown, parsed code blocks, and full JSON responses.
 - **Media Download:** Download media files linked in responses directly from the CLI.
 - **Autocomplete Generation:** Generate Bash and Fig autocomplete scripts for enhanced usability.
 - **Amber Integration:** Securely decrypt and manage sensitive keys using the Amber secrets management tool.
+  
+- **Neo4J Integration:** Seamless integration with Neo4j for efficient graph based data storage and retrieval.
+- **Neo4j Natural Language Cypher Creation:** Let AI write your cyphers for you based on natural language input.
+- **Neo4j Upserts:** Supporting Docx, PDF, Txt files and whole folders processed inline with embeddings created from VoyageAI to create nodes for similarity, sentiment, keywords, themes, clusters.
 
 ## FluentCLI Utility Ecosystem
 - [Rust Fluent Code Utility Repository](https://github.com/njfio/rfcu)
