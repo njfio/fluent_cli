@@ -32,3 +32,8 @@ indicatif = "0.17.8"
 owo-colors = "3.5.0"
 pdf-extract = "0.7.7"
 docx = "1.1.2"
+jetscii = "0.5.1"
+
+
+[patch.crates-io]
+jetscii = "0.5.1"
