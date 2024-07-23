@@ -204,117 +204,46 @@ impl DocumentProcessor for PdfProcessor {
 
 use docx;
 use docx::{Docx, DocxFile};
-use docx::document::{BodyContent, ParaContent, RunContent};
 
 #[async_trait]
 impl DocumentProcessor for DocxProcessor {
     async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
-        let file_path = file_path.to_owned();
-        let file_path_clone = file_path.clone();
-
-        // Read file contents asynchronously
-        let mut file = tokio::fs::File::open(&file_path).await?;
+        let mut file = File::open(file_path).await?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).await?;
 
+        let file_path = file_path.to_owned();
+        let file_path_clone = file_path.clone();
         let content = tokio::task::spawn_blocking(move || -> Result<String> {
-            // Verify file size
-            let file_size = buffer.len();
-            if file_size == 0 {
-                return Err(anyhow::anyhow!("DOCX file is empty"));
-            }
-
-            // Check ZIP signature
-            if buffer.len() < 4 || &buffer[0..4] != b"PK\x03\x04" {
-                return Err(anyhow::anyhow!("File does not have a valid ZIP signature"));
-            }
-
-            // Create a Cursor from our buffer
-            let cursor = Cursor::new(buffer);
-
-            let docx_file = DocxFile::from_reader(cursor)
+            let docx_file = DocxFile::from_file(&file_path)
                 .map_err(|e| anyhow::anyhow!("Failed to open DOCX file: {:?}", e))?;
-
-            // Use a more lenient parsing method
-            let docx = match docx_file.parse() {
-                Ok(doc) => doc,
-                Err(e) => {
-                    eprintln!("Warning: Failed to fully parse DOCX file: {:?}", e);
-                    eprintln!("Attempting to extract available text...");
-                    docx_file.parse()
-                        .map_err(|e| anyhow::anyhow!("Failed to parse DOCX XML: {:?}", e))?
-                }
-            };
+            let docx = docx_file.parse()
+                .map_err(|e| anyhow::anyhow!("Failed to parse DOCX file: {:?}", e))?;
 
             let mut content = String::new();
-            DocxProcessor::extract_text_from_docx(&docx, &mut content);
+            for paragraph in &docx.document.body.content {
+                if let docx::document::BodyContent::Paragraph(p) = paragraph {
+                    for run in &p.content {
+                        if let docx::document::ParagraphContent::Run(r) = run {
+                            for text in &r.content {
+                                if let docx::document::RunContent::Text(t) = text {
+                                    content.push_str(&t.text);
+                                }
+                            }
+                        }
+                    }
+                    content.push('\n');
+                }
+            }
 
             Ok(content)
         }).await??;
 
         let metadata = vec![
             format!("filename:{}", file_path_clone.file_name().unwrap().to_string_lossy()),
-            format!("filesize:{}", std::fs::metadata(&file_path_clone)?.len()),
+            format!("filesize:{}", buffer.len()),
         ];
 
         Ok((content, metadata))
-    }
-    }
-
-impl DocxProcessor {
-    fn extract_text_from_docx(docx: &Docx, content: &mut String) {
-        if let Err(e) = Self::try_extract_text_from_docx(docx, content) {
-            eprintln!("Warning: Error while extracting text: {:?}", e);
-        }
-    }
-
-    fn try_extract_text_from_docx(docx: &Docx, content: &mut String) -> Result<()> {
-        for child in &docx.document.body.content {
-            match child {
-                BodyContent::Para(paragraph) => {
-                    for para_content in &paragraph.content {
-                        match para_content {
-                            ParaContent::Run(run) => {
-                                for run_content in &run.content {
-                                    if let RunContent::Text(text) = run_content {
-                                        content.push_str(&text.text);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    content.push('\n');
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
-
-    fn extract_text_from_document(document: &docx::document::Document, content: &mut String) {
-        for child in &document.body.content {
-            if let BodyContent::Para(paragraph) = child {
-                Self::extract_text_from_paragraph(paragraph, content);
-                content.push('\n');
-            }
-        }
-    }
-
-    fn extract_text_from_paragraph(paragraph: &docx::document::Para, content: &mut String) {
-        for child in &paragraph.content {
-            if let ParaContent::Run(run) = child {
-                Self::extract_text_from_run(run, content);
-            }
-        }
-    }
-
-    fn extract_text_from_run(run: &docx::document::Run, content: &mut String) {
-        for child in &run.content {
-            if let RunContent::Text(text) = child {
-                content.push_str(&text.text);
-            }
-        }
     }
 }
