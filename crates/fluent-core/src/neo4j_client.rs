@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use log::{debug, error, info, warn};
 use std::sync::{Arc, RwLock};
+use pdf_extract::extract_text;
 
 
 use rust_stemmers::{Algorithm, Stemmer};
@@ -21,6 +22,8 @@ use crate::types::DocumentStatistics;
 use crate::utils::chunking::chunk_document;
 use crate::voyageai_client::{EMBEDDING_DIMENSION, get_voyage_embedding};
 use stop_words::{get, LANGUAGE};
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use crate::traits::{DocumentProcessor, DocxProcessor, PdfProcessor, TextProcessor};
 
 
@@ -373,8 +376,11 @@ impl Neo4jClient {
     }
 
 
-    pub async fn upsert_document(&self, content: &str, metadata: &[String]) -> Result<String> {
-        debug!("Upserting document with content:");
+    pub async fn upsert_document(&self, file_path: &Path, metadata: &[String]) -> Result<String> {
+        debug!("Upserting document from file: {:?}", file_path);
+
+        let content = self.extract_content(file_path).await?;
+
         let document_id = Uuid::new_v4().to_string();
         let query = query("
         MERGE (d:Document {content: $content})
@@ -388,7 +394,7 @@ impl Neo4jClient {
         RETURN d.id as document_id
         ")
             .param("id", document_id.clone())
-            .param("content", content)
+            .param("content", content.clone())  // Clone here
             .param("metadata", metadata)
             .param("new_metadata", metadata);
 
@@ -406,10 +412,33 @@ impl Neo4jClient {
             sentiment_interval: ChronoDuration::hours(1),
         };
 
-        let chunks = chunk_document(content);
+        let chunks = chunk_document(&content);  // Now we can use content here
         self.create_chunks_and_embeddings(&document_id, &chunks).await?;
         self.enrich_document_incrementally(&document_id, "Document", &config).await?;
         Ok(document_id)
+    }
+
+    async fn extract_content(&self, file_path: &Path) -> Result<String> {
+        let extension = file_path.extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or_else(|| anyhow!("Unable to determine file type"))?;
+
+        match extension.to_lowercase().as_str() {
+            "pdf" => {
+                let path_buf = file_path.to_path_buf();
+                Ok(tokio::task::spawn_blocking(move || {
+                    extract_text(&path_buf)
+                }).await??)
+            },
+            "txt" => {
+                let mut file = File::open(file_path).await?;
+                let mut content = String::new();
+                file.read_to_string(&mut content).await?;
+                Ok(content)
+            },
+            // Add more file types here as needed
+            _ => Err(anyhow!("Unsupported file type: {}", extension)),
+        }
     }
     async fn create_chunks_and_embeddings(&self, document_id: &str, chunks: &[String]) -> Result<()> {
         debug!("Creating chunks and embeddings for document {}", document_id);
@@ -1156,7 +1185,7 @@ impl Neo4jClient {
             text.split_whitespace()
                 .map(|word| word.to_lowercase())
                 .filter(|word| {
-                    word.len() > 3 && // Filter out very short words
+                    word.len() > 5 && // Filter out very short words
                         !stop_words.contains(word) && // Filter out stop words
                         word.chars().any(|c| c.is_alphabetic()) // Ensure at least one alphabetic character
                 })

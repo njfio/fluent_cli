@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use serde_json::{json, Value};
 use log::debug;
+use pdf_extract::extract_text;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use crate::config::EngineConfig;
@@ -162,9 +163,40 @@ impl DocumentProcessor for TextProcessor {
 #[async_trait]
 impl DocumentProcessor for PdfProcessor {
     async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
-        // Implement PDF processing logic here
-        // You might want to use a library like pdf-extract or lopdf
-        unimplemented!("PDF processing not implemented yet")
+        // Clone the PathBuf to move it into the closure
+        debug!("PdfProcessor::process");
+        let path_buf = file_path.to_path_buf();
+
+        // Extract text from PDF
+        let text = tokio::task::spawn_blocking(move || {
+            debug!("PdfProcessor::process: Extracting text from PDF");
+            extract_text(&path_buf)
+        }).await??;
+
+        // Extract metadata (you can expand this based on your needs)
+        let mut metadata = Vec::new();
+        debug!("PdfProcessor::process: Extracting metadata from PDF");
+
+        // Add file name to metadata
+        if let Some(file_name) = file_path.file_name() {
+            if let Some(file_name_str) = file_name.to_str() {
+                metadata.push(format!("filename:{}", file_name_str));
+            }
+        }
+        debug!("PdfProcessor::process: Metadata: {:#?}", metadata);
+        // Add file size to metadata
+        let file_size = tokio::fs::metadata(file_path).await?.len();
+
+        debug!("PdfProcessor::process: File size: {}", file_size);
+        metadata.push(format!("file_size:{}", file_size));
+
+        // You can add more metadata extraction here, such as:
+        // - Number of pages
+        // - Author
+        // - Creation date
+        // - etc.
+
+        Ok((text, metadata))
     }
 }
 

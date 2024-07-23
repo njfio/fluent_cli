@@ -442,11 +442,6 @@ pub mod cli {
             let combined_request = combined_request_parts.join("\n\n----\n\n");
             debug!("Combined Request:\n{}", combined_request);
 
-
-
-
-
-
             let request = Request {
                 flowname: engine_name.to_string(),
                 payload: combined_request,
@@ -553,8 +548,7 @@ pub mod cli {
 
             let input_path = Path::new(input);
             if input_path.is_file() {
-                let content = fs::read_to_string(input_path)?;
-                let document_id = neo4j_client.upsert_document(&content, &metadata).await?;
+                let document_id = neo4j_client.upsert_document(input_path, &metadata).await?;
                 eprintln!("Uploaded document with ID: {}. Embeddings and chunks created.", document_id);
             } else if input_path.is_dir() {
                 let mut uploaded_count = 0;
@@ -562,8 +556,7 @@ pub mod cli {
                     let entry = entry?;
                     let path = entry.path();
                     if path.is_file() {
-                        let content = fs::read_to_string(&path)?;
-                        let document_id = neo4j_client.upsert_document(&content, &metadata).await?;
+                        let document_id = neo4j_client.upsert_document(&path, &metadata).await?;
                         eprintln!("Uploaded document {} with ID: {}. Embeddings and chunks created.", path.display(), document_id);
                         uploaded_count += 1;
                     }
@@ -586,6 +579,7 @@ pub mod cli {
 
         Ok(())
     }
+
 
     async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result<String> {
         // Use the configured LLM to generate a Cypher query
