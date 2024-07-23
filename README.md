@@ -16,7 +16,7 @@
 
 [![fluent](https://github.com/njfio/fluent_cli/actions/workflows/rust.yml/badge.svg)](https://github.com/njfio/fluent_cli/actions/workflows/rust.yml)
 
-Fluent CLI is a command-line interface (CLI) tool designed to simplify interaction with various workflow engines, including FlowiseAI, Langflow, and custom webhooks. It provides a streamlined way to send requests, manage configurations, and handle responses, making it easier to integrate AI workflows into your projects.
+Fluent CLI is a command-line interface (CLI) tool designed to simplify and empower interaction with various AI LLMs and workflow engines including: OpenAI, Anthropic, Perplexity, Gemini, Groq, Cohere, FlowiseAI, and Langflow.  There is native API integration with StabilityAI, Dalle, LeonardoAI, and custom webhooks.  FluentCLI provides a streamlined way to send requests, manage configurations, handle responses, and chain commands in amazing new ways.
 
 ## Features
 
