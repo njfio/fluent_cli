@@ -15,3 +15,5 @@ pub mod leonardoai;
 pub mod mistral;
 pub mod stabilityai;
 pub mod imagepro;
+
+pub mod pipeline_executor;

@@ -1,0 +1,48 @@
+name: my_pipeline
+steps:
+  - !Command
+      name: create_story
+      command: fluent openai 'tell me a story'
+      save_output: raw_data
+  - !ShellCommand
+      name: extract_theme
+      command: |
+        fluent openai 'give me up to 5 words describing the theme of this text, output as a comma-separated list: ' <<EOF
+        ${raw_data}
+        EOF
+      save_output: theme_data
+  - !ShellCommand
+      name: extract_theme
+      command: |
+        fluent openai 'summarize the sentiment of this text in one or two words.  Only output the words. ' <<EOF
+        ${raw_data}
+        EOF
+      save_output: sentiment_data
+  - !ShellCommand
+      name: extract_theme
+      command: |
+        fluent openai 'summarize the semantic meaning of this text in less than 5 words.  Only output the words. ' <<EOF
+        ${raw_data}
+        EOF
+      save_output: semantic_data
+  - !ShellCommand
+      name: debug_variables
+      command: |
+        echo "raw_data: ${raw_data}"
+        echo "theme_data: ${theme_data}"
+      save_output: debug_output
+  - !ShellCommand
+      name: count_words
+      command: |
+        wc -w <<< "${theme_data}" | awk '{print $1}'
+      save_output: word_count
+  - !Condition
+      name: validate_data
+      condition: "[ ${word_count} -le 5 ]"
+      if_true: |
+        echo "Theme data is correct"
+      if_false: |
+        echo "Theme data is not correct"
+  - !PrintOutput
+      name: print_final_output
+      value: "Raw data:\n${raw_data}\nTheme data:\n${theme_data}\nSentiment data:\n${sentiment_data}\nSemantic data:\n${semantic_data}\n"

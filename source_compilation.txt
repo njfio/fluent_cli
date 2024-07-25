@@ -81,11 +81,14 @@ serde_json = "1.0.120"
 indicatif = "0.17.8"
 owo-colors = "3.5.0"
 regex = "1.10.5"
+serde_yaml = "0.9.34+deprecated"
 #### END OF FILE: crates/fluent-cli/Cargo.toml ####
 
 #### START OF FILE: crates/fluent-cli/src/lib.rs ####
+use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Arc;
 use anyhow::{anyhow, Error};
 use clap::ArgMatches;
 use tokio::fs;
@@ -96,7 +99,7 @@ use log::{debug, info, warn};
 use regex::Regex;
 use serde_json::{json, Value};
 use fluent_core::spinner_configuration::SpinnerConfig;
-use fluent_core::traits::Engine;
+use fluent_core::traits::{Engine};
 use fluent_core::types::Request;
 use fluent_engines::anthropic::AnthropicEngine;
 use fluent_engines::cohere::CohereEngine;
@@ -144,6 +147,7 @@ pub mod cli {
     use fluent_engines::webhook::WebhookEngine;
     use fluent_engines::leonardoai::LeonardoAIEngine;
     use fluent_engines::mistral::MistralEngine;
+    use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor};
     use fluent_engines::stabilityai::StabilityAIEngine;
     use crate::{create_engine, create_llm_engine, generate_and_execute_cypher};
 
@@ -303,6 +307,18 @@ pub mod cli {
                 .help("Generate and execute a Cypher query based on the given string")
                 .action(ArgAction::Set)
                 .required(false))
+            .subcommand(Command::new("pipeline")
+                .about("Execute a pipeline")
+                .arg(Arg::new("file")
+                    .short('f')
+                    .long("file")
+                    .help("The YAML file containing the pipeline definition")
+                    .required(true))
+                .arg(Arg::new("input")
+                    .short('i')
+                    .long("input")
+                    .help("The input for the pipeline")
+                    .required(true)))
     }
 
     fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -321,6 +337,22 @@ pub mod cli {
 
     pub async fn run() -> Result<()> {
         let matches = build_cli().get_matches();
+
+        match matches.subcommand() {
+            Some(("pipeline", sub_matches)) => {
+                let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
+                let input = sub_matches.get_one::<String>("input").unwrap();
+
+                let pipeline: Pipeline = serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
+                let state_store = FileStateStore { directory: std::path::PathBuf::from("./pipeline_states") };
+                let mut executor = PipelineExecutor::new(state_store);
+                let output = executor.execute(&pipeline, input).await?;
+
+                println!("Pipeline execution result: {}", output);
+            },
+            // ... other commands ...
+            _ => {}
+        }
 
         let config_path = matches.get_one::<String>("config")
             .map(|s| s.to_string())
@@ -348,6 +380,8 @@ pub mod cli {
         pb.set_message(format!("Processing {} request...", engine_name));
         pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
         pb.set_length(100);
+
+
 
         if let Some(cypher_query) = matches.get_one::<String>("generate-cypher") {
             let neo4j_config = engine_config.neo4j.as_ref()
@@ -803,6 +837,8 @@ async fn create_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, 
 async fn create_llm_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, Error> {
     create_engine(engine_config).await
 }
+
+
 
 #### END OF FILE: crates/fluent-cli/src/lib.rs ####
 
@@ -1503,6 +1539,9 @@ pub mod neo4j_client;
 mod voyageai_client;
 pub mod output_processor;
 pub mod spinner_configuration;
+
+
+
 
 #### END OF FILE: crates/fluent-core/src/lib.rs ####
 
@@ -2888,6 +2927,7 @@ impl Neo4jClient {
         processor.process(file_path).await
     }
 
+
 }
 
 // Define the necessary structs
@@ -2954,7 +2994,7 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 use async_trait::async_trait;
-use anyhow::{Result, anyhow, Context};
+use anyhow::{Result, anyhow, Context, Error};
 use serde_json::{json, Value};
 use log::debug;
 use pdf_extract::extract_text;
@@ -3183,6 +3223,10 @@ impl DocumentProcessor for DocxProcessor {
         Ok((content, metadata))
     }
 }
+
+
+
+
 #### END OF FILE: crates/fluent-core/src/traits.rs ####
 
 #### START OF FILE: crates/fluent-core/src/utils.rs ####
@@ -3243,6 +3287,7 @@ serde = { version = "1.0.204", features = ["derive"] }
 indicatif = "0.17.8"
 uuid = "1.9.1"
 clap = "4.5.8"
+futures-util = "0.3.30"
 #### END OF FILE: crates/fluent-engines/Cargo.toml ####
 
 #### START OF FILE: crates/fluent-engines/src/perplexity.rs ####
@@ -4011,6 +4056,8 @@ pub mod mistral;
 pub mod stabilityai;
 pub mod imagepro;
 
+pub mod pipeline_executor;
+
 #### END OF FILE: crates/fluent-engines/src/lib.rs ####
 
 #### START OF FILE: crates/fluent-engines/src/leonardoai.rs ####
@@ -4629,6 +4676,294 @@ impl Engine for FlowiseChainEngine {
     }
 }
 #### END OF FILE: crates/fluent-engines/src/flowise_chain.rs ####
+
+#### START OF FILE: crates/fluent-engines/src/pipeline_executor.rs ####
+use std::cell::RefCell;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt::Pointer;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+use tokio::sync::{Mutex, MutexGuard};
+use tokio::process::Command as TokioCommand;
+use tokio::sync::Mutex as TokioMutex;
+
+
+use std::sync::{Arc};
+use anyhow::anyhow;
+use tokio::process::Command;
+use log::{info, error, warn, debug};
+use async_trait::async_trait;
+use tokio::io::stdout;
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Pipeline {
+    pub name: String,
+    pub steps: Vec<PipelineStep>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum PipelineStep {
+    Command { name: String, command: String, save_output: Option<String>, retry: Option<RetryConfig> },
+    ShellCommand { name: String, command: String, save_output: Option<String>, retry: Option<RetryConfig> },
+    Condition { name: String, condition: String, if_true: String, if_false: String },
+    Loop { name: String, steps: Vec<PipelineStep>, condition: String },
+    Map { name: String, iterable: String, steps: Vec<PipelineStep> },
+    SubPipeline { name: String, pipeline: String, with: HashMap<String, String> },
+    HumanInput { name: String, prompt: String, save_output: String },
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RetryConfig {
+    max_attempts: u32,
+    delay_ms: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PipelineState {
+    pub current_step: usize,
+    pub data: HashMap<String, String>,
+}
+
+#[async_trait]
+pub trait StateStore {
+    async fn save_state(&self, pipeline_name: &str, state: &PipelineState) -> anyhow::Result<()>;
+    async fn load_state(&self, pipeline_name: &str) -> anyhow::Result<Option<PipelineState>>;
+}
+
+pub struct PipelineExecutor<S: StateStore> {
+    // Change state to Arc<Mutex<...>>
+    state: Arc<Mutex<PipelineState>>,
+    state_store: S,
+}
+
+impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExecutor<S> {
+    pub fn new(state_store: S) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(PipelineState {
+                current_step: 0,
+                data: HashMap::new(),
+            })),
+            state_store,
+        }
+    }
+
+    pub async fn execute(&self, pipeline: &Pipeline, initial_input: &str) -> anyhow::Result<String> {
+        {
+            debug!("Executing pipeline {}", pipeline.name);
+            let mut state = self.state.lock().await;
+            info!("Starting pipeline execution from step {}", state.current_step);
+            state.data.insert("input".to_string(), initial_input.to_string());
+        }
+
+        if let Some(saved_state) = self.state_store.load_state(&pipeline.name).await? {
+            info!("Resuming pipeline execution from step {}", saved_state.current_step);
+            *self.state.lock().await = saved_state;
+            info!("Resumed pipeline execution from step {}", self.state.lock().await.current_step);
+        }
+
+        for (index, step) in pipeline.steps.iter().enumerate().skip(self.state.lock().await.current_step) {
+            {
+                debug!("Executing step {}", step.name());
+                let mut state = self.state.lock().await;
+                state.data.insert("step".to_string(), step.name().to_string());
+                state.current_step = index;
+            }
+
+            // Await the future returned by execute_step
+            if let Err(e) = self.execute_step(step).await.await {
+                error!("Error executing step {}: {:?}", step.name(), e);
+                return Err(e);
+            } else {
+                info!("Step {} completed successfully", step.name());
+                self.state_store.save_state(&pipeline.name, &*self.state.lock().await).await?;
+            }
+        }
+
+        Ok(self.state.lock().await.data.get("output").cloned().unwrap_or_default())
+    }
+
+
+    async fn execute_step<'a>(
+        &'a self,
+        step: &'a PipelineStep,
+    ) -> Pin<Box<dyn Future<Output=anyhow::Result<()>> + Send + 'a>> {
+        // Clone the Arc to share access to the mutex
+        let state = Arc::clone(&self.state);
+        let state_store = self.state_store.clone();
+
+        // Box the future returned by the async block
+        Box::pin(async move {
+            // Call the helper function to execute the step
+            Self::execute_step_helper(state, state_store, step).await
+        })
+    }
+
+    async fn execute_with_retry<F, Fut>(
+        &self,
+        config: &Option<RetryConfig>,
+        f: F,
+    ) -> anyhow::Result<()>
+        where
+            F: Fn() -> Fut,
+            Fut: std::future::Future<Output=anyhow::Result<()>> + Send,
+    {
+        let config = config.clone().unwrap_or(RetryConfig {
+            max_attempts: 1,
+            delay_ms: 0,
+        });
+        let mut attempts = 0;
+
+        loop {
+            // Box the future returned by f()
+            match Box::pin(f()).await {
+                Ok(_) => return Ok(()),
+                Err(e) if attempts < config.max_attempts => {
+                    attempts += 1;
+                    warn!("Attempt {} failed: {:?}. Retrying...", attempts, e);
+                    tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+
+    // Helper function to execute a single step
+// Helper function to execute a single step
+    async fn execute_step_helper(
+        state: Arc<Mutex<PipelineState>>,
+        state_store: S,
+        step: &PipelineStep,
+    ) -> anyhow::Result<()> {
+        // ... (Your logging statements remain unchanged) ...
+
+        match step {
+            PipelineStep::Command { name: _, command, save_output, retry } => {
+                info!("Executing command: {}", command);
+                let executor = PipelineExecutor {
+                    state: Arc::clone(&state),
+                    state_store: state_store.clone(),
+                };
+
+                executor.execute_with_retry(retry, move || async move { // Add async move here
+                    let command = command.clone();
+                    let save_output = save_output.clone();
+                    let state = Arc::clone(&state);
+
+                    // ... (Your Command execution logic) ...
+                }).await?;
+            }
+            PipelineStep::ShellCommand { name: _, command, save_output, retry } => {
+                let executor = PipelineExecutor {
+                    state: Arc::clone(&state),
+                    state_store: state_store.clone(),
+                };
+
+                executor.execute_with_retry(retry, move || async move { // Add async move here
+                    let command = command.clone();
+                    let save_output = save_output.clone();
+                    let state = Arc::clone(&state);
+
+                    // ... (Your ShellCommand execution logic) ...
+                }).await?;
+            }
+            PipelineStep::Condition { name: _, condition, if_true, if_false } => {
+                let condition_result = {
+                    let state = state.lock().await;
+                    evaluate_condition(condition, &state.data)
+                };
+                if condition_result {
+                    execute_command(state, if_true.to_string()).await?;
+                } else {
+                    execute_command(state, if_false.to_string()).await?;
+                }
+            }
+            PipelineStep::Loop { name: _, steps, condition } => {
+                while {
+                    let state = state.lock().await;
+                    evaluate_condition(condition, &state.data)
+                } {
+                    for step in steps.clone() {
+                        // Recursive call through the helper function
+                        Self::execute_step_helper(Arc::clone(&state), state_store.clone(), &step).await?;
+                    }
+                }
+            }
+            PipelineStep::SubPipeline { name, pipeline, with } => {
+                // Load and execute sub-pipeline
+                // This is a simplified version; you'd need to implement proper sub-pipeline loading and execution
+                unimplemented!()
+            }
+            PipelineStep::HumanInput { name, prompt, save_output } => {
+                unimplemented!()
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+}
+
+
+async fn execute_command(state: Arc<Mutex<PipelineState>>, command: String) -> anyhow::Result<()> {
+    let output = TokioCommand::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()
+        .await?;
+    let stdout = String::from_utf8(output.stdout)?;
+    println!("Command output: {}", stdout);
+    Ok(())
+}
+
+fn evaluate_condition(condition: &str, state: &HashMap<String, String>) -> bool {
+    // Implement condition evaluation
+    // This could be a simple string contains check, or something more complex
+    unimplemented!()
+}
+impl PipelineStep {
+    fn name(&self) -> &str {
+        match self {
+            PipelineStep::Command { name, .. } => name,
+            PipelineStep::ShellCommand { name, .. } => name,
+            PipelineStep::Condition { name, .. } => name,
+            PipelineStep::Loop { name, .. } => name,
+            PipelineStep::Map { name, .. } => name,
+            PipelineStep::SubPipeline { name, .. } => name,
+            PipelineStep::HumanInput { name, .. } => name,
+        }
+    }
+}
+
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FileStateStore {
+    pub directory: std::path::PathBuf,
+}
+
+#[async_trait]
+impl StateStore for FileStateStore {
+    async fn save_state(&self, pipeline_name: &str, state: &PipelineState) -> anyhow::Result<()> {
+        let file_path = self.directory.join(format!("{}.json", pipeline_name));
+        let json = serde_json::to_string(state)?;
+        tokio::fs::write(file_path, json).await?;
+        Ok(())
+    }
+
+    async fn load_state(&self, pipeline_name: &str) -> anyhow::Result<Option<PipelineState>> {
+        let file_path = self.directory.join(format!("{}.json", pipeline_name));
+        if file_path.exists() {
+            let json = tokio::fs::read_to_string(file_path).await?;
+            let state: PipelineState = serde_json::from_str(&json)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+}
+#### END OF FILE: crates/fluent-engines/src/pipeline_executor.rs ####
 
 #### START OF FILE: crates/fluent-engines/src/langflow.rs ####
 use std::future::Future;

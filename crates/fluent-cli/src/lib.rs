@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Arc;
 use anyhow::{anyhow, Error};
 use clap::ArgMatches;
 use tokio::fs;
@@ -10,7 +12,7 @@ use log::{debug, info, warn};
 use regex::Regex;
 use serde_json::{json, Value};
 use fluent_core::spinner_configuration::SpinnerConfig;
-use fluent_core::traits::Engine;
+use fluent_core::traits::{Engine};
 use fluent_core::types::Request;
 use fluent_engines::anthropic::AnthropicEngine;
 use fluent_engines::cohere::CohereEngine;
@@ -31,7 +33,7 @@ pub mod cli {
     use fluent_engines::anthropic::AnthropicEngine;
     use fluent_core::traits::Engine;
     use fluent_core::types::{Request, Response, UpsertRequest};
-    use anyhow::{Result, anyhow};
+    use anyhow::{Result, anyhow, Error};
     use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     use std::time::Duration;
@@ -43,6 +45,7 @@ pub mod cli {
     use log::{debug, error, info};
     use serde_json::Value;
     use tokio::io::AsyncReadExt;
+    use tokio::process;
     use tokio::time::Instant;
     use uuid::Uuid;
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
@@ -58,6 +61,7 @@ pub mod cli {
     use fluent_engines::webhook::WebhookEngine;
     use fluent_engines::leonardoai::LeonardoAIEngine;
     use fluent_engines::mistral::MistralEngine;
+    use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor};
     use fluent_engines::stabilityai::StabilityAIEngine;
     use crate::{create_engine, create_llm_engine, generate_and_execute_cypher};
 
@@ -217,6 +221,18 @@ pub mod cli {
                 .help("Generate and execute a Cypher query based on the given string")
                 .action(ArgAction::Set)
                 .required(false))
+            .subcommand(Command::new("pipeline")
+                .about("Execute a pipeline")
+                .arg(Arg::new("file")
+                    .short('f')
+                    .long("file")
+                    .help("The YAML file containing the pipeline definition")
+                    .required(true))
+                .arg(Arg::new("input")
+                    .short('i')
+                    .long("input")
+                    .help("The input for the pipeline")
+                    .required(true)))
     }
 
     fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -235,6 +251,27 @@ pub mod cli {
 
     pub async fn run() -> Result<()> {
         let matches = build_cli().get_matches();
+
+        let _: Result<(), Error> = match matches.subcommand() {
+            Some(("pipeline", sub_matches)) => {
+                let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
+                let input = sub_matches.get_one::<String>("input").unwrap();
+
+                let pipeline: Pipeline = serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
+                let state_store_dir = PathBuf::from("./pipeline_states");
+                tokio::fs::create_dir_all(&state_store_dir).await?;
+                let state_store = FileStateStore { directory: state_store_dir };
+                debug!("Pipeline state store directory: ");
+                let executor = PipelineExecutor::new(state_store);
+                debug!("Executing pipeline {}", pipeline_file);
+                executor.execute(&pipeline, input).await?;
+
+                eprintln!("Pipeline executed successfully");
+                std::process::exit(0); // Exit immediately after successful pipeline execution
+            },
+            // ... other commands ...
+            _ => Ok(()), // Default case, do nothing
+        };
 
         let config_path = matches.get_one::<String>("config")
             .map(|s| s.to_string())
@@ -262,6 +299,8 @@ pub mod cli {
         pb.set_message(format!("Processing {} request...", engine_name));
         pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
         pb.set_length(100);
+
+
 
         if let Some(cypher_query) = matches.get_one::<String>("generate-cypher") {
             let neo4j_config = engine_config.neo4j.as_ref()
@@ -717,3 +756,5 @@ async fn create_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, 
 async fn create_llm_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, Error> {
     create_engine(engine_config).await
 }
+
+
