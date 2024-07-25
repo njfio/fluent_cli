@@ -3,14 +3,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Pointer;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex as TokioMutex;
+use std::io::Write;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tempfile::{NamedTempFile, tempdir};
 
 use std::sync::{Arc};
 use anyhow::{anyhow, Error};
@@ -80,28 +82,30 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
     }
 
 
-    pub async fn execute(&self, pipeline: &Pipeline, initial_input: &str, force_fresh: bool) -> Result<String, Error> {
-        let start_time = Instant::now();
-        let state_key = &pipeline.name;
-        debug!("Executing pipeline {}", pipeline.name);
+    pub async fn execute(&self, pipeline: &Pipeline, initial_input: &str, force_fresh: bool, provided_run_id: Option<String>) -> Result<String, Error> {
+        let run_id = provided_run_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let state_key = format!("{}-{}", pipeline.name, run_id);
+        debug!("Executing pipeline {} with run_id {}", pipeline.name, run_id);
 
         let mut state = if force_fresh {
             debug!("Forcing fresh state");
             PipelineState {
                 current_step: 0,
                 data: HashMap::new(),
-                run_id: Uuid::new_v4().to_string(),
-                start_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+                run_id: run_id.clone(),
+                // ... initialize other fields
+                start_time: 0,
             }
         } else {
             debug!("Checking for saved state");
-            self.state_store.load_state(state_key).await?.unwrap_or_else(|| {
+            self.state_store.load_state(&state_key).await?.unwrap_or_else(|| {
                 debug!("No saved state found, starting fresh");
                 PipelineState {
                     current_step: 0,
                     data: HashMap::new(),
-                    run_id: Uuid::new_v4().to_string(),
-                    start_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                    run_id: run_id.clone(),
+                    // ... initialize other fields
+                    start_time: 0,
                 }
             })
         };
@@ -119,7 +123,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 Ok(step_result) => {
                     info!("Step {} completed successfully", step.name());
                     state.data.extend(step_result);
-                    self.state_store.save_state(state_key, &state).await?;
+                    self.state_store.save_state(state_key.as_str(), &state).await?;
                 }
                 Err(e) => {
                     error!("Error executing step {}: {:?}", step.name(), e);
@@ -279,11 +283,66 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
     }
 
 
+
+
+
     async fn execute_shell_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<HashMap<String, String>, Error> {
-        // Similar to execute_command, but with any shell-specific logic
         debug!("Executing shell command: {}", command);
-        self.execute_command(command, save_output, retry).await
+
+        // Create a temporary file
+        let mut temp_file = NamedTempFile::new()?;
+        writeln!(temp_file.as_file_mut(), "{}", command)?;
+
+        let retry_config = retry.clone().unwrap_or(RetryConfig { max_attempts: 1, delay_ms: 0 });
+        let mut attempts = 0;
+
+        loop {
+            debug!("Attempt {} to execute shell command", attempts + 1);
+            match self.run_shell_command(temp_file.path(), save_output).await {
+                Ok(output) => {
+                    debug!("Shell command executed successfully");
+                    return Ok(output);
+                }
+                Err(e) if attempts < retry_config.max_attempts => {
+                    attempts += 1;
+                    warn!("Attempt {} failed: {:?}. Retrying...", attempts, e);
+                    tokio::time::sleep(std::time::Duration::from_millis(retry_config.delay_ms)).await;
+                }
+                Err(e) => {
+                    error!("Shell command execution failed after {} attempts: {:?}", attempts + 1, e);
+                    return Err(e);
+                }
+            }
+        }
     }
+
+    async fn run_shell_command(&self, script_path: &Path, save_output: &Option<String>) -> Result<HashMap<String, String>, Error> {
+        debug!("Running shell command from file: {:?}", script_path);
+        let output = TokioCommand::new("bash")
+            .arg(script_path)
+            .output()
+            .await
+            .map_err(|e| anyhow!("Failed to execute shell command: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Shell command failed with exit code {:?}. Stderr: {}", output.status.code(), stderr));
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| anyhow!("Failed to parse command output: {}", e))?;
+
+        debug!("Shell command output: {}", stdout);
+
+        let mut result = HashMap::new();
+        if let Some(save_key) = save_output {
+            result.insert(save_key.clone(), stdout.trim().to_string());
+            debug!("Saved output to key: {}", save_key);
+        }
+
+        Ok(result)
+    }
+
 
 
     async fn evaluate_condition(&self, condition: &str) -> Result<bool, Error> {
@@ -338,32 +397,20 @@ pub struct FileStateStore {
 
 #[async_trait]
 impl StateStore for FileStateStore {
-    async fn save_state(&self, pipeline_name: &str, state: &PipelineState) -> anyhow::Result<()> {
-        let file_path = self.directory.join(format!("{}.json", pipeline_name));
-        debug!("Attempting to save state to file: {:?}", file_path);
-
-        // Ensure the directory exists
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-
+    async fn save_state(&self, state_key: &str, state: &PipelineState) -> Result<(), Error> {
+        let file_path = self.directory.join(format!("{}.json", state_key));
         let json = serde_json::to_string(state)?;
-        fs::write(&file_path, json).await?;
-        debug!("State saved successfully to {:?}", file_path);
+        tokio::fs::write(&file_path, json).await?;
         Ok(())
     }
 
-    async fn load_state(&self, pipeline_name: &str) -> anyhow::Result<Option<PipelineState>> {
-        let file_path = self.directory.join(format!("{}.json", pipeline_name));
-        debug!("Attempting to load state from file: {:?}", file_path);
-
+    async fn load_state(&self, state_key: &str) -> Result<Option<PipelineState>, Error> {
+        let file_path = self.directory.join(format!("{}.json", state_key));
         if file_path.exists() {
-            let json = fs::read_to_string(&file_path).await?;
+            let json = tokio::fs::read_to_string(&file_path).await?;
             let state: PipelineState = serde_json::from_str(&json)?;
-            debug!("State loaded successfully from {:?}", file_path);
             Ok(Some(state))
         } else {
-            debug!("No existing state file found at {:?}", file_path);
             Ok(None)
         }
     }

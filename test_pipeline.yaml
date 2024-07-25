@@ -2,37 +2,47 @@ name: my_pipeline
 steps:
   - !Command
       name: create_story
-      command: fluent openai 'tell me a story about ${input}.  Only use double quotes'
+      command: fluent openai 'tell me a story about ${input}.'
       save_output: raw_data
-  - !Command
-        name: create_image_prompt
-        command: |
-          fluent openai-mini 'create a dalle image prompt that captures the essence of this text, only use double quotes:' <<EOF
-          ${raw_data}
-          EOF
-        save_output: image_prompt_data
+  - !ShellCommand
+      name: create_image_prompt
+      command: |
+        fluent openai-mini 'create a dalle image prompt that captures the essence of this text' <<'EOF'
+        ${raw_data}
+        EOF
+      save_output: image_prompt_data
   - !ShellCommand
       name: extract_theme
       command: |
-        fluent openai 'give me up to 5 words describing the theme of this text, output as a comma-separated list: ' <<EOF
+        fluent openai 'give me up to 5 words describing the theme of this text, output as a comma-separated list:' <<'EOF'
         ${raw_data}
         EOF
       save_output: theme_data
   - !ShellCommand
-      name: generate_image
-      command: fluent dalleVertical '${image_prompt_data}' --download-media ~/Downloads
+      name: generate_dalle_image
+      command: |
+        fluent dalleVertical '' --download-media ~/Downloads <<'EOF'
+        ${image_prompt_data}
+        EOF
+      save_output: generated_image
+  - !ShellCommand
+      name: generate_leonardo_image
+      command: |
+        fluent leonardoVertical '' --download-media ~/Downloads <<'EOF'
+        ${image_prompt_data}
+        EOF
       save_output: generated_image
   - !ShellCommand
       name: extract_summary
       command: |
-        fluent openai-mini 'summarize the sentiment of this text in less than 3 words.  Only output the words. ' <<EOF
+        fluent openai-mini 'summarize the sentiment of this text in less than 3 words.  Only output the words.' <<'EOF'
         ${raw_data}
         EOF
       save_output: sentiment_data
   - !ShellCommand
       name: extract_semantics
       command: |
-        fluent openai-mini 'summarize the semantic meaning of this text in less than 5 words.  Only output the words. ' <<EOF
+        fluent openai-mini "summarize the semantic meaning of this text in less than 5 words.  Only output the words." <<'EOF'
         ${raw_data}
         EOF
       save_output: semantic_data

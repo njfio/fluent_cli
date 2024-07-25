@@ -236,7 +236,11 @@ pub mod cli {
                 .arg(Arg::new("force_fresh")
                     .long("force-fresh")
                     .help("Force a fresh execution of the pipeline")
-                    .action(ArgAction::SetTrue)))
+                    .action(ArgAction::SetTrue))
+                .arg(Arg::new("run_id")
+                    .long("run-id")
+                    .help("Specify a run ID for the pipeline")
+                    .value_name("run_id")))
     }
 
     fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -261,20 +265,19 @@ pub mod cli {
                 let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
                 let input = sub_matches.get_one::<String>("input").unwrap();
                 let force_fresh = sub_matches.get_flag("force_fresh");
-                debug!("Force fresh: {}", force_fresh);
+                let run_id = sub_matches.get_one::<String>("run_id").cloned();
 
                 let pipeline: Pipeline = serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
                 let state_store_dir = PathBuf::from("./pipeline_states");
                 tokio::fs::create_dir_all(&state_store_dir).await?;
-
                 let state_store = FileStateStore { directory: state_store_dir };
                 let executor = PipelineExecutor::new(state_store);
 
-                let output = executor.execute(&pipeline, input, force_fresh).await?;
-                eprintln!("Pipeline execution result:\n");
-                println!("{}", output);
+                let output = executor.execute(&pipeline, input, force_fresh, run_id).await?;
+                info!("Pipeline finished");
+                println!("\n{}", output);
 
-                std::process::exit(0);// Exit immediately after successful pipeline execution
+                std::process::exit(0);
             },
             // ... other commands ...
             _ => Ok(()), // Default case, do nothing
