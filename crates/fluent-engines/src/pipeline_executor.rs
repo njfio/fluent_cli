@@ -10,6 +10,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex as TokioMutex;
 
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use std::sync::{Arc};
 use anyhow::{anyhow, Error};
@@ -18,6 +19,7 @@ use log::{info, error, warn, debug};
 use async_trait::async_trait;
 use tokio::fs;
 use tokio::io::stdout;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Pipeline {
@@ -44,10 +46,12 @@ pub struct RetryConfig {
     delay_ms: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PipelineState {
     pub current_step: usize,
     pub data: HashMap<String, String>,
+    pub run_id: String,
+    pub start_time: u64,
 }
 
 #[async_trait]
@@ -68,51 +72,54 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
             state: Arc::new(Mutex::new(PipelineState {
                 current_step: 0,
                 data: HashMap::new(),
+                run_id: "".to_string(),
+                start_time: 0,
             })),
             state_store,
         }
     }
 
-    pub async fn execute(&self, pipeline: &Pipeline, initial_input: &str) -> Result<String, Error> {
-        {
-            debug!("Executing pipeline {}", pipeline.name);
-            let mut state = self.state.lock().await;
-            info!("Starting pipeline execution from step {}", state.current_step);
-            state.data.insert("input".to_string(), initial_input.to_string());
-        }
 
-        debug!("Checking for saved state");
-        if let Some(saved_state) = self.state_store.load_state(&pipeline.name).await? {
-            debug!("Loaded saved state: {:?}", saved_state);
-            *self.state.lock().await = saved_state;
+    pub async fn execute(&self, pipeline: &Pipeline, initial_input: &str, force_fresh: bool) -> Result<String, Error> {
+        let start_time = Instant::now();
+        let state_key = &pipeline.name;
+        debug!("Executing pipeline {}", pipeline.name);
+
+        let mut state = if force_fresh {
+            debug!("Forcing fresh state");
+            PipelineState {
+                current_step: 0,
+                data: HashMap::new(),
+                run_id: Uuid::new_v4().to_string(),
+                start_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            }
         } else {
-            debug!("No saved state found, initializing with default state");
-            let mut state = self.state.lock().await;
-            state.current_step = 0;
-            state.data.insert("input".to_string(), initial_input.to_string());
-        }
-
-        let current_step = {
-            let state = self.state.lock().await;
-            state.current_step
+            debug!("Checking for saved state");
+            self.state_store.load_state(state_key).await?.unwrap_or_else(|| {
+                debug!("No saved state found, starting fresh");
+                PipelineState {
+                    current_step: 0,
+                    data: HashMap::new(),
+                    run_id: Uuid::new_v4().to_string(),
+                    start_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                }
+            })
         };
 
-        for (index, step) in pipeline.steps.iter().enumerate().skip(current_step) {
+        state.data.insert("input".to_string(), initial_input.to_string());
+
+        for (index, step) in pipeline.steps.iter().enumerate().skip(state.current_step) {
             debug!("Processing step {} (index {})", step.name(), index);
 
-            {
-                let mut state = self.state.lock().await;
-                debug!("Updating state for step {}", step.name());
-                state.data.insert("step".to_string(), step.name().to_string());
-                state.current_step = index;
-            }
-
+            state.data.insert("step".to_string(), step.name().to_string());
+            state.current_step = index;
 
             debug!("Calling execute_step for {}", step.name());
-            match self.execute_step(step).await {
-                Ok(_) => {
+            match self.execute_step(step, &state).await {
+                Ok(step_result) => {
                     info!("Step {} completed successfully", step.name());
-                    self.state_store.save_state(&pipeline.name, &*self.state.lock().await).await?;
+                    state.data.extend(step_result);
+                    self.state_store.save_state(state_key, &state).await?;
                 }
                 Err(e) => {
                     error!("Error executing step {}: {:?}", step.name(), e);
@@ -121,52 +128,68 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
             }
         }
 
-        // Determine what to return as the final output
-        let final_state = self.state.lock().await;
-        Ok(serde_json::to_string_pretty(&*final_state)?)
+        let end_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        let runtime = end_time - state.start_time;
 
+        let output = serde_json::json!({
+            "pipeline_name": pipeline.name,
+            "run_id": state.run_id,
+            "current_step": state.current_step,
+            "start_time": state.start_time,
+            "end_time": end_time,
+            "runtime_seconds": runtime,
+            "data": state.data,
+        });
+
+        Ok(serde_json::to_string_pretty(&output)?)
     }
 
 
 
 
-    async fn execute_step(&self, step: &PipelineStep) -> Result<(), Error> {
+    async fn execute_step(&self, step: &PipelineStep, state: &PipelineState) -> Result<HashMap<String, String>, Error> {
         debug!("Starting execution of step: {:?}", step);
 
         let result = match step {
             PipelineStep::Command { name, command, save_output, retry } => {
                 debug!("Executing Command step: {}", name);
-                let expanded_command = self.expand_variables(command).await?;
-                self.execute_command(&expanded_command, save_output, retry).await
+                let expanded_command = self.expand_variables(command, &state.data).await?;
+                let output = self.execute_command(&expanded_command, save_output, retry).await?;
+                Ok(output)
             }
             PipelineStep::ShellCommand { name, command, save_output, retry } => {
                 debug!("Executing ShellCommand step: {}", name);
-                let expanded_command = self.expand_variables(command).await?;
-                self.execute_shell_command(&expanded_command, save_output, retry).await
+                let expanded_command = self.expand_variables(command, &state.data).await?;
+                let output = self.execute_shell_command(&expanded_command, save_output, retry).await?;
+                Ok(output)
             }
             PipelineStep::Condition { name, condition, if_true, if_false } => {
                 debug!("Evaluating Condition step: {}", name);
-                if self.evaluate_condition(condition).await? {
+                let expanded_condition = self.expand_variables(condition, &state.data).await?;
+                if self.evaluate_condition(&expanded_condition).await? {
                     debug!("Condition is true, executing: {}", if_true);
-                    let expanded_command = self.expand_variables(if_true).await?;
-                    self.execute_shell_command(&expanded_command, &None, &None).await
+                    let expanded_command = self.expand_variables(if_true, &state.data).await?;
+                    let output = self.execute_shell_command(&expanded_command, &None, &None).await?;
+                    Ok(output)
                 } else {
                     debug!("Condition is false, executing: {}", if_false);
-                    let expanded_command = self.expand_variables(if_false).await?;
-                    self.execute_shell_command(&expanded_command, &None, &None).await
+                    let expanded_command = self.expand_variables(if_false, &state.data).await?;
+                    let output = self.execute_shell_command(&expanded_command, &None, &None).await?;
+                    Ok(output)
                 }
             }
             PipelineStep::PrintOutput { name, value } => {
                 debug!("Executing PrintOutput step: {}", name);
-                let expanded_value = self.expand_variables(value).await?;
+                let expanded_value = self.expand_variables(value, &state.data).await?;
                 println!("{}", expanded_value);
-                Ok(())
+                Ok(HashMap::new())  // Return an empty HashMap for PrintOutput
             }
             _ => {
                 debug!("Unhandled step type: {:?}", step);
                 Err(anyhow!("Unhandled step type"))
             }
         };
+
         debug!("Finished execution of step: {:?}, result: {:?}", step, result.is_ok());
         result
     }
@@ -202,7 +225,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         }
     }
 
-    async fn execute_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<(), Error> {
+    async fn execute_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<HashMap<String, String>, Error> {
         debug!("Executing command: {}", command);
         let retry_config = retry.clone().unwrap_or(RetryConfig { max_attempts: 1, delay_ms: 0 });
         let mut attempts = 0;
@@ -210,9 +233,9 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         loop {
             debug!("Attempt {} to execute command", attempts + 1);
             match self.run_command(command, save_output).await {
-                Ok(_) => {
+                Ok(output) => {
                     debug!("Command executed successfully");
-                    return Ok(());
+                    return Ok(output);
                 }
                 Err(e) if attempts < retry_config.max_attempts => {
                     attempts += 1;
@@ -227,7 +250,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         }
     }
 
-    async fn run_command(&self, command: &str, save_output: &Option<String>) -> Result<(), Error> {
+    async fn run_command(&self, command: &str, save_output: &Option<String>) -> Result<HashMap<String, String>, Error> {
         debug!("Running command: {}", command);
         let output = TokioCommand::new("sh")
             .arg("-c")
@@ -246,17 +269,17 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
         debug!("Command output: {}", stdout);
 
+        let mut result = HashMap::new();
         if let Some(save_key) = save_output {
-            let mut state = self.state.lock().await;
-            state.data.insert(save_key.clone(), stdout);
+            result.insert(save_key.clone(), stdout.trim().to_string());
             debug!("Saved output to key: {}", save_key);
         }
 
-        Ok(())
+        Ok(result)
     }
 
 
-    async fn execute_shell_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<(), Error> {
+    async fn execute_shell_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<HashMap<String, String>, Error> {
         // Similar to execute_command, but with any shell-specific logic
         debug!("Executing shell command: {}", command);
         self.execute_command(command, save_output, retry).await
@@ -264,7 +287,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
 
     async fn evaluate_condition(&self, condition: &str) -> Result<bool, Error> {
-        let expanded_condition = self.expand_variables(condition).await?;
+        let expanded_condition = self.expand_variables(condition, &Default::default()).await?;
         debug!("Evaluating expanded condition: {}", expanded_condition);
 
         let output = TokioCommand::new("bash")
@@ -276,11 +299,10 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         Ok(output.status.success())
     }
 
-    async fn expand_variables(&self, input: &str) -> Result<String, Error> {
+    async fn expand_variables(&self, input: &str, state_data: &HashMap<String, String>) -> Result<String, Error> {
         debug!("Expanding variables in input: {}", input);
-        let state = self.state.lock().await;
         let mut result = input.to_string();
-        for (key, value) in &state.data {
+        for (key, value) in state_data {
             result = result.replace(&format!("${{{}}}", key), value);
         }
         Ok(result)

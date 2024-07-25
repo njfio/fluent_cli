@@ -2,8 +2,15 @@ name: my_pipeline
 steps:
   - !Command
       name: create_story
-      command: fluent openai 'tell me a story'
+      command: fluent openai 'tell me a story about ${input}.  Only use double quotes'
       save_output: raw_data
+  - !Command
+        name: create_image_prompt
+        command: |
+          fluent openai-mini 'create a dalle image prompt that captures the essence of this text, only use double quotes:' <<EOF
+          ${raw_data}
+          EOF
+        save_output: image_prompt_data
   - !ShellCommand
       name: extract_theme
       command: |
@@ -12,16 +19,20 @@ steps:
         EOF
       save_output: theme_data
   - !ShellCommand
-      name: extract_theme
+      name: generate_image
+      command: fluent dalleVertical '${image_prompt_data}' --download-media ~/Downloads
+      save_output: generated_image
+  - !ShellCommand
+      name: extract_summary
       command: |
-        fluent openai 'summarize the sentiment of this text in one or two words.  Only output the words. ' <<EOF
+        fluent openai-mini 'summarize the sentiment of this text in less than 3 words.  Only output the words. ' <<EOF
         ${raw_data}
         EOF
       save_output: sentiment_data
   - !ShellCommand
-      name: extract_theme
+      name: extract_semantics
       command: |
-        fluent openai 'summarize the semantic meaning of this text in less than 5 words.  Only output the words. ' <<EOF
+        fluent openai-mini 'summarize the semantic meaning of this text in less than 5 words.  Only output the words. ' <<EOF
         ${raw_data}
         EOF
       save_output: semantic_data
@@ -43,6 +54,3 @@ steps:
         echo "Theme data is correct"
       if_false: |
         echo "Theme data is not correct"
-  - !PrintOutput
-      name: print_final_output
-      value: "Raw data:\n${raw_data}\nTheme data:\n${theme_data}\nSentiment data:\n${sentiment_data}\nSemantic data:\n${semantic_data}\n"

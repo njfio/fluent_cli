@@ -232,7 +232,11 @@ pub mod cli {
                     .short('i')
                     .long("input")
                     .help("The input for the pipeline")
-                    .required(true)))
+                    .required(true))
+                .arg(Arg::new("force_fresh")
+                    .long("force-fresh")
+                    .help("Force a fresh execution of the pipeline")
+                    .action(ArgAction::SetTrue)))
     }
 
     fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -256,18 +260,21 @@ pub mod cli {
             Some(("pipeline", sub_matches)) => {
                 let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
                 let input = sub_matches.get_one::<String>("input").unwrap();
+                let force_fresh = sub_matches.get_flag("force_fresh");
+                debug!("Force fresh: {}", force_fresh);
 
                 let pipeline: Pipeline = serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
                 let state_store_dir = PathBuf::from("./pipeline_states");
                 tokio::fs::create_dir_all(&state_store_dir).await?;
-                let state_store = FileStateStore { directory: state_store_dir };
-                debug!("Pipeline state store directory: ");
-                let executor = PipelineExecutor::new(state_store);
-                debug!("Executing pipeline {}", pipeline_file);
-                executor.execute(&pipeline, input).await?;
 
-                eprintln!("Pipeline executed successfully");
-                std::process::exit(0); // Exit immediately after successful pipeline execution
+                let state_store = FileStateStore { directory: state_store_dir };
+                let executor = PipelineExecutor::new(state_store);
+
+                let output = executor.execute(&pipeline, input, force_fresh).await?;
+                eprintln!("Pipeline execution result:\n");
+                println!("{}", output);
+
+                std::process::exit(0);// Exit immediately after successful pipeline execution
             },
             // ... other commands ...
             _ => Ok(()), // Default case, do nothing
