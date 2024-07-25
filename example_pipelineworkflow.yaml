@@ -1,0 +1,68 @@
+name: ai_enhanced_content_pipeline
+steps:
+  - !Command
+    name: generate_story
+    command: |
+      fluent openai '' <<'EOF'
+      'Write a short story about a robot learning to ${input}}.'
+      EOF
+    save_output: raw_story
+
+  - !PrintOutput
+    name: display_raw_story
+    value: "Generated Story: ${raw_story}"
+
+  - !ShellCommand
+    name: extract_theme
+    command: |
+      fluent openai-mini '' <<'EOF'
+      'Extract the main theme from this story in 5 words or less: ${raw_story}'
+      EOF
+    save_output: theme
+
+  - !Map
+    name: generate_illustrations
+    input: "introduction,climax,conclusion"
+    command: |
+      fluent dalleVertical '' --download-media ~/Downloads <<'EOF'
+      'Create an image for the ${ITEM} of a story about ${theme}'
+      EOF
+    save_output: illustrations
+
+  - !HumanInTheLoop
+    name: get_user_feedback
+    prompt: "Rate the story and illustrations from 1-10:"
+    save_output: user_rating
+
+  - !Condition
+    name: check_rating
+    condition: "[ ${user_rating} -ge 8 ]"
+    if_true: fluent openai 'The story was well-received. Suggest three ways to expand it into a longer narrative.'
+    if_false: fluent openai 'The story needs improvement. Provide three specific suggestions to enhance it.'
+
+  - !RepeatUntil
+    name: refine_story
+    steps:
+      - !ShellCommand
+        name: improve_story
+        command: |
+          fluent openai '' <<'EOF'
+          Rewrite this story, making it more engaging: ${raw_story}
+          EOF
+        save_output: raw_story
+      - !ShellCommand
+        name: get_new_rating
+        command: |
+          fluent openai-mini '' <<'EOF'
+          'Rate this story out of 10: ${raw_story}, only output a number.'
+          EOF
+        save_output: user_rating
+    condition: "[ ${user_rating} -ge 8 ]"
+
+  - !PrintOutput
+    name: final_output
+    value: |
+      Final Story: ${raw_story}
+      Theme: ${theme}
+      User Rating: ${user_rating}
+      Illustrations: ${illustrations}
