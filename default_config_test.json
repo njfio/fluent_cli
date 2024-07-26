@@ -241,6 +241,21 @@
       }
     },
     {
+      "name": "mistral-large2",
+      "engine": "mistral",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.mistral.ai",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "model": "mistral-large-latest",
+        "bearer_token": "AMBER_FLUENT_MISTRAL_KEY_01"
+
+      }
+    },
+    {
       "name": "perplexity",
       "engine": "perplexity",
       "connection": {

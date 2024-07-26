@@ -1,0 +1,33 @@
+name: parallel_and_timeout_example
+steps:
+  - !Parallel
+    name: concurrent_operations
+    steps:
+      - !ShellCommand
+        name: task1
+        command: sleep 2 && echo "Task 1 completed"
+        save_output: task1_result
+      - !ShellCommand
+        name: task2
+        command: sleep 1 && echo "Task 2 completed"
+        save_output: task2_result
+      - !Timeout
+        name: timed_task
+        duration: 3
+        step:
+          !ShellCommand
+          name: long_task
+          command: sleep 5 && echo "This should time out"
+          save_output: long_task_result
+
+  - !PrintOutput
+    name: final_output
+    value: |
+      Parallel Execution Results:
+        Task 1: ${task1_result}
+        Task 2: ${task2_result}
+        Timed Task: ${long_task_result}
+      Errors (if any):
+        ${error_0}
+        ${error_1}
+        ${error_2}

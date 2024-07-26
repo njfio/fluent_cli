@@ -1,0 +1,110 @@
+name: chain_of_thought_workflow
+steps:
+  - !Command
+    name: set_problem
+    command: echo "${input}"
+    save_output: problem
+
+  - !ShellCommand
+    name: break_down_steps
+    command: |
+      fluent openai '' <<'EOF'
+      Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
+      
+      Problem: ${problem}
+      
+      Output the steps in a numbered list.
+      EOF
+    save_output: steps
+
+  - !PrintOutput
+    name: display_steps
+    value: "Problem Breakdown:\n${steps}"
+
+  - !ShellCommand
+    name: initialize_solutions
+    command: echo ""
+    save_output: solutions
+
+  - !Map
+    name: solve_steps
+    input: "1,2,3,4,5"
+    command: |
+      fluent sonnet3.5 '' <<'EOF' 
+      Solve the following step of our problem. Provide a concise answer (max 75 words).
+
+      Overall Problem: ${problem}
+
+      All Steps:
+      ${steps}
+
+      Solve Step ${ITEM}. Use relevant data or estimates where necessary. If you make any assumptions, state them clearly.
+
+      Your solution for Step ${ITEM}:
+      EOF
+    save_output: step_solutions
+
+  - !ShellCommand
+    name: combine_solutions
+    command: |
+      echo "${solutions}
+
+      Step-by-step solutions:
+      ${step_solutions}"
+    save_output: detailed_solution
+
+  - !ShellCommand
+    name: generate_final_answer
+    command: |
+      fluent cohere '' <<'EOF'
+      Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
+
+      Original Problem: ${problem}
+
+      Detailed Solutions:
+      ${detailed_solution}
+
+      Final Answer:
+      EOF
+    save_output: final_answer
+
+  - !PrintOutput
+    name: display_final_answer
+    value: |
+      Chain of Thought Analysis Complete
+      
+      Original Problem:
+      ${problem}
+      
+      Step-by-Step Breakdown and Solutions:
+      ${detailed_solution}
+      
+      Final Answer:
+      ${final_answer}
+
+  - !ShellCommand
+    name: generate_confidence_score
+    command: |
+      fluent perplexity '' <<'EOF'
+      Based on the problem, step-by-step solutions, and final answer, provide a confidence score (0-100) for the final answer. Explain your reasoning briefly.
+
+      Original Problem: ${problem}
+
+      Detailed Solutions:
+      ${detailed_solution}
+
+      Final Answer:
+      ${final_answer}
+
+      Confidence Score (0-100) and brief explanation:
+      EOF
+    save_output: confidence_assessment
+
+  - !PrintOutput
+    name: display_confidence
+    value: |
+      Final Answer:
+      ${final_answer}
+      
+      Confidence Assessment:
+      ${confidence_assessment}

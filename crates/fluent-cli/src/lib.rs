@@ -61,7 +61,7 @@ pub mod cli {
     use fluent_engines::webhook::WebhookEngine;
     use fluent_engines::leonardoai::LeonardoAIEngine;
     use fluent_engines::mistral::MistralEngine;
-    use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor};
+    use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor, StateStore};
     use fluent_engines::stabilityai::StabilityAIEngine;
     use crate::{create_engine, create_llm_engine, generate_and_execute_cypher};
 
@@ -239,8 +239,11 @@ pub mod cli {
                     .action(ArgAction::SetTrue))
                 .arg(Arg::new("run_id")
                     .long("run-id")
-                    .help("Specify a run ID for the pipeline")
-                    .value_name("run_id")))
+                    .help("Specify a run ID for the pipeline"))
+                .arg(Arg::new("json_output")
+                    .long("json-output")
+                    .help("Output only the JSON result, suppressing PrintOutput steps")
+                    .action(ArgAction::SetTrue)))
     }
 
     fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -266,16 +269,26 @@ pub mod cli {
                 let input = sub_matches.get_one::<String>("input").unwrap();
                 let force_fresh = sub_matches.get_flag("force_fresh");
                 let run_id = sub_matches.get_one::<String>("run_id").cloned();
+                let json_output = sub_matches.get_flag("json_output");
 
                 let pipeline: Pipeline = serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
                 let state_store_dir = PathBuf::from("./pipeline_states");
                 tokio::fs::create_dir_all(&state_store_dir).await?;
                 let state_store = FileStateStore { directory: state_store_dir };
-                let executor = PipelineExecutor::new(state_store);
+                let executor = PipelineExecutor::new(state_store.clone(), json_output);
 
-                let output = executor.execute(&pipeline, input, force_fresh, run_id).await?;
-                info!("Pipeline finished");
-                println!("\n{}", output);
+                executor.execute(&pipeline, input, force_fresh, run_id.clone()).await?;
+
+                if json_output {
+                    // Read the state file and print its contents to stdout
+                    let state_key = format!("{}-{}", pipeline.name, run_id.unwrap_or_else(|| "unknown".to_string()));
+                    if let Some(state) = state_store.load_state(&state_key).await? {
+                        println!("{}", serde_json::to_string_pretty(&state)?);
+                    } else {
+                        eprintln!("No state file found for the given run ID.");
+                        std::process::exit(1);
+                    }
+                }
 
                 std::process::exit(0);
             },

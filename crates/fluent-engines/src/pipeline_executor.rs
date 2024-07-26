@@ -11,7 +11,7 @@ use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex as TokioMutex;
 use std::io::Write;
 
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tempfile::{NamedTempFile, tempdir};
 
 use std::sync::{Arc};
@@ -19,8 +19,11 @@ use anyhow::{anyhow, Error};
 use tokio::process::Command;
 use log::{info, error, warn, debug};
 use async_trait::async_trait;
-use tokio::fs;
-use tokio::io::stdout;
+use futures_util::future::join_all;
+use tokio::{fs, io};
+use tokio::io::{AsyncWriteExt, stdout};
+use tokio::task::JoinSet;
+use tokio::time::timeout;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -40,6 +43,10 @@ pub enum PipelineStep {
     HumanInTheLoop { name: String, prompt: String, save_output: String },
     RepeatUntil { name: String, steps: Vec<PipelineStep>, condition: String },
     PrintOutput { name: String, value: String },
+    ForEach { name: String, items: String, steps: Vec<PipelineStep> },
+    TryCatch { name: String, try_steps: Vec<PipelineStep>, catch_steps: Vec<PipelineStep>, finally_steps: Vec<PipelineStep> },
+    Parallel { name: String, steps: Vec<PipelineStep> },
+    Timeout { name: String, duration: u64, step: Box<PipelineStep> },
 
 }
 
@@ -67,10 +74,11 @@ pub struct PipelineExecutor<S: StateStore> {
     // Change state to Arc<Mutex<...>>
     state: Arc<Mutex<PipelineState>>,
     state_store: S,
+    json_output: bool,
 }
 
 impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExecutor<S> {
-    pub fn new(state_store: S) -> Self {
+    pub fn new(state_store: S, json_output: bool) -> Self {
         Self {
             state: Arc::new(Mutex::new(PipelineState {
                 current_step: 0,
@@ -79,6 +87,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 start_time: 0,
             })),
             state_store,
+            json_output: false,
         }
     }
 
@@ -142,15 +151,14 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         let runtime = end_time - state.start_time;
 
         let output = serde_json::json!({
-        "pipeline_name": pipeline.name,
-        "run_id": run_id,
-        "current_step": state.current_step,
-        "start_time": state.start_time,
-        "end_time": end_time,
-        "runtime_seconds": runtime,
-        "data": state.data,
-    });
-
+            "pipeline_name": pipeline.name,
+            "run_id": run_id,
+            "current_step": state.current_step,
+            "start_time": state.start_time,
+            "end_time": end_time,
+            "runtime_seconds": runtime,
+            "data": state.data,
+        });
 
         Ok(serde_json::to_string_pretty(&output)?)
     }
@@ -161,16 +169,19 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
     fn execute_step<'a>(&'a self, step: &'a PipelineStep, state: &'a mut PipelineState) -> Pin<Box<dyn Future<Output = Result<HashMap<String, String>, Error>> + Send + 'a>> {
         Box::pin(async move {
             match step {
+
                 PipelineStep::Command { name, command, save_output, retry } => {
                     debug!("Executing Command step: {}", name);
                     let expanded_command = self.expand_variables(command, &state.data).await?;
                     self.execute_command(&expanded_command, save_output, retry).await
                 }
+
                 PipelineStep::ShellCommand { name, command, save_output, retry } => {
                     debug!("Executing ShellCommand step: {}", name);
                     let expanded_command = self.expand_variables(command, &state.data).await?;
                     self.execute_shell_command(&expanded_command, save_output, retry).await
                 }
+
                 PipelineStep::Condition { name, condition, if_true, if_false } => {
                     debug!("Evaluating Condition step: {}", name);
                     let expanded_condition = self.expand_variables(condition, &state.data).await?;
@@ -184,12 +195,16 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                         self.execute_shell_command(&expanded_command, &None, &None).await
                     }
                 }
+
                 PipelineStep::PrintOutput { name, value } => {
                     debug!("Executing PrintOutput step: {}", name);
                     let expanded_value = self.expand_variables(value, &state.data).await?;
-                    println!("{}", expanded_value);
+                    if !self.json_output {
+                        eprintln!("{}", expanded_value);  // Print to stderr instead of stdout
+                    }
                     Ok(HashMap::new())
                 }
+
                 PipelineStep::Map { name, input, command, save_output } => {
                     debug!("Executing Map step: {}", name);
                     let input_data = self.expand_variables(input, &state.data).await?;
@@ -219,6 +234,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     debug!("Map step result: {}", output);
                     Ok([(save_output.clone(), output)].into_iter().collect())
                 }
+
                 PipelineStep::HumanInTheLoop { name, prompt, save_output } => {
                     debug!("Executing HumanInTheLoop step: {}", name);
                     let expanded_prompt = self.expand_variables(prompt, &state.data).await?;
@@ -229,6 +245,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                     Ok([(save_output.clone(), input.trim().to_string())].into_iter().collect())
                 }
+
                 PipelineStep::RepeatUntil { name, steps, condition } => {
                     debug!("Executing RepeatUntil step: {}", name);
                     loop {
@@ -244,6 +261,116 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     }
                     Ok(HashMap::new())
                 }
+
+                PipelineStep::ForEach { name, items, steps } => {
+                    debug!("Executing ForEach step: {}", name);
+                    let items_list = self.expand_variables(items, &state.data).await?;
+                    let mut results = Vec::new();
+
+                    for item in items_list.split(',') {
+                        let item = item.trim();
+                        state.data.insert("ITEM".to_string(), item.to_string());
+
+                        for sub_step in steps {
+                            let step_result = self.execute_step(sub_step, state).await?;
+                            state.data.extend(step_result);
+                        }
+
+                        results.push(state.data.get("ITEM").unwrap_or(&item.to_string()).clone());
+                    }
+
+                    state.data.remove("ITEM");
+                    Ok(HashMap::from([(name.clone(), results.join(", "))]))
+                }
+
+                PipelineStep::TryCatch { name, try_steps, catch_steps, finally_steps } => {
+                    debug!("Executing TryCatch step: {}", name);
+                    let mut result = HashMap::new();
+                    let try_result = async {
+                        for sub_step in try_steps {
+                            let step_result = self.execute_step(sub_step, state).await?;
+                            state.data.extend(step_result);
+                        }
+                        Ok(()) as Result<(), Error>
+                    }.await;
+
+                    match try_result {
+                        Ok(_) => {
+                            result.insert("try_result".to_string(), "success".to_string());
+                        }
+                        Err(e) => {
+                            result.insert("try_result".to_string(), "failure".to_string());
+                            result.insert("error".to_string(), e.to_string());
+                            for sub_step in catch_steps {
+                                let step_result = self.execute_step(sub_step, state).await?;
+                                state.data.extend(step_result);
+                            }
+                        }
+                    }
+
+                    for sub_step in finally_steps {
+                        let step_result = self.execute_step(sub_step, state).await?;
+                        state.data.extend(step_result);
+                    }
+
+                    Ok(result)
+                }
+
+                PipelineStep::Parallel { name, steps } => {
+                    debug!("Executing Parallel step: {}", name);
+                    let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
+                    let mut set = JoinSet::new();
+
+                    for sub_step in steps {
+                        let sub_step = sub_step.clone();
+                        let state_clone = Arc::clone(&state_arc);
+
+                        set.spawn(async move {
+                            let mut state_guard = state_clone.lock().await;
+                            Self::execute_single_step(&sub_step, &mut state_guard).await
+                        });
+                    }
+
+                    let mut combined_results = HashMap::new();
+                    while let Some(result) = set.join_next().await {
+                        match result {
+                            Ok(Ok(step_result)) => {
+                                combined_results.extend(step_result);
+                            }
+                            Ok(Err(e)) => {
+                                combined_results.insert(format!("error_{}", combined_results.len()), e.to_string());
+                            }
+                            Err(e) => {
+                                combined_results.insert(format!("join_error_{}", combined_results.len()), e.to_string());
+                            }
+                        }
+                    }
+
+                    // Merge the results back into the main state
+                    let mut state_guard = state_arc.lock().await;
+                    state.data.extend(state_guard.data.clone());
+                    state.data.extend(combined_results);
+
+                    Ok(HashMap::from([(name.clone(), "Parallel execution completed".to_string())]))
+                }
+
+                PipelineStep::Timeout { name, duration, step } => {
+                    debug!("Executing Timeout step: {}", name);
+                    let duration = Duration::from_secs(*duration);
+
+                    let timeout_result = timeout(duration, self.execute_step(step, state)).await;
+
+                    match timeout_result {
+                        Ok(step_result) => {
+                            let result = step_result?;
+                            Ok(result)
+                        }
+                        Err(_) => {
+                            Err(anyhow!("Step timed out after {} seconds", duration.as_secs()))
+                        }
+                    }
+                }
+
                 _ => {
                     Ok(HashMap::new())
                 }
@@ -263,8 +390,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
     {
         debug!("Executing with retry");
         let config = config.clone().unwrap_or(RetryConfig {
-            max_attempts: 1,
-            delay_ms: 0,
+            max_attempts: 2,
+            delay_ms: 10000,
         });
         let mut attempts = 0;
 
@@ -280,6 +407,152 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 Err(e) => return Err(e),
             }
         }
+    }
+
+    fn execute_single_step<'a>(
+        step: &'a PipelineStep,
+        state: &'a mut PipelineState,
+    ) -> Pin<Box<dyn Future<Output = Result<HashMap<String, String>, Error>> + Send + 'a>> {
+        Box::pin(async move {
+            match step {
+                PipelineStep::Command { name, command, save_output, retry } => {
+                    let output = Command::new("sh")
+                        .arg("-c")
+                        .arg(command)
+                        .output()
+                        .await?;
+
+                    let stdout = String::from_utf8(output.stdout)?;
+                    let mut result = HashMap::new();
+                    if let Some(key) = save_output {
+                        result.insert(key.clone(), stdout.trim().to_string());
+                    }
+                    Ok(result)
+                }
+                PipelineStep::ShellCommand { name, command, save_output, retry } => {
+                    let output = Command::new("sh")
+                        .arg("-c")
+                        .arg(command)
+                        .output()
+                        .await?;
+
+                    let stdout = String::from_utf8(output.stdout)?;
+                    let mut result = HashMap::new();
+                    if let Some(key) = save_output {
+                        result.insert(key.clone(), stdout.trim().to_string());
+                    }
+                    Ok(result)
+                }
+                PipelineStep::Condition { name, condition, if_true, if_false } => {
+                    let condition_result = Command::new("sh")
+                        .arg("-c")
+                        .arg(condition)
+                        .status()
+                        .await?
+                        .success();
+
+                    let command_to_run = if condition_result { if_true } else { if_false };
+                    let output = Command::new("sh")
+                        .arg("-c")
+                        .arg(command_to_run)
+                        .output()
+                        .await?;
+
+                    let stdout = String::from_utf8(output.stdout)?;
+                    Ok(HashMap::from([(name.clone(), stdout.trim().to_string())]))
+                }
+                PipelineStep::PrintOutput { name, value } => {
+                    println!("{}", value);
+                    Ok(HashMap::new())
+                }
+                PipelineStep::RepeatUntil { name, steps, condition } => {
+                    let mut result = HashMap::new();
+                    loop {
+                        for sub_step in steps {
+                            let step_result = Self::execute_single_step(sub_step, state).await?;
+                            state.data.extend(step_result);
+                        }
+
+                        let condition_result = Command::new("sh")
+                            .arg("-c")
+                            .arg(condition)
+                            .status()
+                            .await?
+                            .success();
+
+                        if condition_result {
+                            break;
+                        }
+                    }
+                    Ok(result)
+                }
+                PipelineStep::ForEach { name, items, steps } => {
+                    let mut result = Vec::new();
+                    for item in items.split(',') {
+                        state.data.insert("ITEM".to_string(), item.trim().to_string());
+                        for sub_step in steps {
+                            let step_result = Self::execute_single_step(sub_step, state).await?;
+                            state.data.extend(step_result);
+                        }
+                        result.push(state.data.get("ITEM").unwrap_or(&item.to_string()).clone());
+                    }
+                    state.data.remove("ITEM");
+                    Ok(HashMap::from([(name.clone(), result.join(", "))]))
+                }
+                PipelineStep::TryCatch { name, try_steps, catch_steps, finally_steps } => {
+                    let mut result = HashMap::new();
+                    let try_result = async {
+                        for sub_step in try_steps {
+                            let step_result = Self::execute_single_step(sub_step, state).await?;
+                            state.data.extend(step_result);
+                        }
+                        Ok(()) as Result<(), Error>
+                    }.await;
+
+                    match try_result {
+                        Ok(_) => {
+                            result.insert("try_result".to_string(), "success".to_string());
+                        }
+                        Err(e) => {
+                            result.insert("try_result".to_string(), "failure".to_string());
+                            result.insert("error".to_string(), e.to_string());
+                            for sub_step in catch_steps {
+                                let step_result = Self::execute_single_step(sub_step, state).await?;
+                                state.data.extend(step_result);
+                            }
+                        }
+                    }
+
+                    for sub_step in finally_steps {
+                        let step_result = Self::execute_single_step(sub_step, state).await?;
+                        state.data.extend(step_result);
+                    }
+
+                    Ok(result)
+                }
+                PipelineStep::Timeout { name, duration, step } => {
+                    let duration = Duration::from_secs(*duration);
+                    let timeout_result = timeout(duration, Self::execute_single_step(step, state)).await;
+
+                    match timeout_result {
+                        Ok(step_result) => step_result,
+                        Err(_) => Err(anyhow!("Step timed out after {} seconds", duration.as_secs())),
+                    }
+                }
+                PipelineStep::Parallel { name, steps } => {
+                    // For simplicity, we'll execute parallel steps sequentially in this context
+                    let mut result = HashMap::new();
+                    for sub_step in steps {
+                        let step_result = Self::execute_single_step(sub_step, state).await?;
+                        result.extend(step_result);
+                    }
+                    Ok(result)
+                }
+                _ => {
+                    Err(anyhow!("Unknown step type"))
+                }
+            }
+        })
     }
 
     async fn execute_command(&self, command: &str, save_output: &Option<String>, retry: &Option<RetryConfig>) -> Result<HashMap<String, String>, Error> {
@@ -441,6 +714,10 @@ impl PipelineStep {
             PipelineStep::HumanInTheLoop { name, .. } => name,
             PipelineStep::RepeatUntil { name, .. } => name,
             PipelineStep::PrintOutput { name, .. } => name,
+            PipelineStep::ForEach { name, .. } => name,
+            PipelineStep::TryCatch {name, .. } => name,
+            PipelineStep::Parallel { name, .. } => name,
+            PipelineStep::Timeout { name, .. } => name,
         }
     }
 }
