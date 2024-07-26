@@ -31,17 +31,50 @@ Fluent CLI is a command-line interface (CLI) tool designed to simplify and empow
 - **Upsert Functionality:**  Send JSON payloads and upload files to endpoints for data management.
 - **Output Customization:** Control output format, including stylized markdown, parsed code blocks, and full JSON responses.
 - **Media Download:** Download media files linked in responses directly from the CLI.
-- **Autocomplete Generation:** Generate Bash and Fig autocomplete scripts for enhanced usability.
+- **Autocomplete Generation:** Comes with Macos, Linux, and Powershell compatible autocomplete scripts for enhanced usability.
 - **Amber Integration:** Securely decrypt and manage sensitive keys using the Amber secrets management tool.
   
 - **Neo4J Integration:** Seamless integration with Neo4j for efficient graph based data storage and retrieval.
 - **Neo4j Natural Language Cypher Creation:** Let AI write your cyphers for you based on natural language input.
-- **Neo4j Upserts:** Supporting Docx, PDF, Txt files and whole folders processed inline with embeddings created from VoyageAI to create nodes for similarity, sentiment, keywords, themes, clusters.
+- **Neo4j Upserts:** Supporting PDF, Txt files and whole folders processed inline with embeddings created from VoyageAI to create nodes for similarity, sentiment, keywords, themes, clusters.
+
+## Native Pipelines
+
+The FluentCLU native pipeline framework is a Rust-based system designed to execute a series of steps in a configurable and extensible manner. It provides a robust way to manage complex workflows, handle errors, and integrate with various systems.
+
+### Features
+  - **Modular Architecture:** The pipeline system is built around a modular architecture, allowing users to define custom pipeline steps and integrate them seamlessly into the workflow.
+  - **State Management:** The pipeline system features a robust state management system, which enables pipelines to resume from where they left off in case of failures or interruptions.
+  - **Parallel Execution:** The pipeline system supports parallel execution of pipeline steps, enabling users to take advantage of multi-core processors and improve overall performance.
+  - **Conditional Logic:** The pipeline system provides conditional logic constructs, such as if-else statements and loops, to enable dynamic decision-making within pipelines.
+  - **Human-in-the-Loop:** The pipeline system supports human-in-the-loop interactions, allowing users to pause pipeline execution and prompt for manual input or validation.
+  - **Extensive Logging:** The pipeline system provides extensive logging capabilities, enabling users to track pipeline execution, errors, and output.
+
+
+### Pipeline Step Types
+
+The framework supports a variety of pipeline step types, including:
+  - **Command:** Execute a shell command or a custom command.
+  - **ShellCommand:** Execute a shell command with support for environment variables and output capture.
+  - **Condition:** Evaluate a conditional statement and execute a corresponding branch.
+  - **Loop:** Execute a loop with support for iteration and conditional termination.
+  - **SubPipeline:** Execute a nested pipeline with its own set of steps.
+  - **Map:** Execute a mapping operation with support for input and output processing.
+  - **HumanInTheLoop:** Pause pipeline execution and prompt for manual input or validation.
+  - **RepeatUntil:** Execute a loop until a conditional statement is met.
+  - **ForEach:** Execute a loop over a collection of items.
+  - **TryCatch:** Execute a try-catch block with support for error handling and recovery.
+  - **Parallel:** Execute multiple pipeline steps in parallel.
+  - **Timeout:** Execute a pipeline step with a timeout constraint.
+  
+---
 
 ## FluentCLI Utility Ecosystem
 - [Rust Fluent Code Utility Repository](https://github.com/njfio/rfcu)
 - [Rust Airtable Utility Repository](https://github.com/njfio/rau)
 - [Rust Logseq Utility Repository](https://github.com/njfio/rlu)
+
+---
 
 ## Installation
 
