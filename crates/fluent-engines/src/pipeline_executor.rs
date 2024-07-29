@@ -172,18 +172,21 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::Command { name, command, save_output, retry } => {
                     debug!("Executing Command step: {}", name);
+                    debug!("Command: {}", command);
                     let expanded_command = self.expand_variables(command, &state.data).await?;
                     self.execute_command(&expanded_command, save_output, retry).await
                 }
 
                 PipelineStep::ShellCommand { name, command, save_output, retry } => {
                     debug!("Executing ShellCommand step: {}", name);
+                    debug!("Command: {}", command);
                     let expanded_command = self.expand_variables(command, &state.data).await?;
                     self.execute_shell_command(&expanded_command, save_output, retry).await
                 }
 
                 PipelineStep::Condition { name, condition, if_true, if_false } => {
                     debug!("Evaluating Condition step: {}", name);
+                    debug!("Condition: {}", condition);
                     let expanded_condition = self.expand_variables(condition, &state.data).await?;
                     if self.evaluate_condition(&expanded_condition).await? {
                         debug!("Condition is true, executing: {}", if_true);
@@ -207,6 +210,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::Map { name, input, command, save_output } => {
                     debug!("Executing Map step: {}", name);
+                    debug!("Input: {}", input);
+                    debug!("Command: {}", command);
                     let input_data = self.expand_variables(input, &state.data).await?;
                     debug!("Expanded input data: {}", input_data);
                     let mut results = Vec::new();
@@ -237,6 +242,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::HumanInTheLoop { name, prompt, save_output } => {
                     debug!("Executing HumanInTheLoop step: {}", name);
+                    debug!("Prompt: {}", prompt);
                     let expanded_prompt = self.expand_variables(prompt, &state.data).await?;
                     println!("{}", expanded_prompt);
 
@@ -248,6 +254,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::RepeatUntil { name, steps, condition } => {
                     debug!("Executing RepeatUntil step: {}", name);
+                    debug!("Steps: {:?}", steps);
+                    debug!("Condition: {}", condition);
                     loop {
                         for sub_step in steps {
                             let step_result = self.execute_step(sub_step, state).await?;
@@ -264,6 +272,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::ForEach { name, items, steps } => {
                     debug!("Executing ForEach step: {}", name);
+                    debug!("Items: {}", items);
+                    debug!("Steps: {:?}", steps);
                     let items_list = self.expand_variables(items, &state.data).await?;
                     let mut results = Vec::new();
 
@@ -285,6 +295,9 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                 PipelineStep::TryCatch { name, try_steps, catch_steps, finally_steps } => {
                     debug!("Executing TryCatch step: {}", name);
+                    debug!("Try Steps: {:?}", try_steps);
+                    debug!("Catch Steps: {:?}", catch_steps);
+                    debug!("Finally Steps: {:?}", finally_steps);
                     let mut result = HashMap::new();
                     let try_result = async {
                         for sub_step in try_steps {
@@ -317,45 +330,13 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 }
 
                 PipelineStep::Parallel { name, steps } => {
-                    debug!("Executing Parallel step: {}", name);
-                    let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
-                    let mut set = JoinSet::new();
-
-                    for sub_step in steps {
-                        let sub_step = sub_step.clone();
-                        let state_clone = Arc::clone(&state_arc);
-
-                        set.spawn(async move {
-                            let mut state_guard = state_clone.lock().await;
-                            Self::execute_single_step(&sub_step, &mut state_guard).await
-                        });
-                    }
-
-                    let mut combined_results = HashMap::new();
-                    while let Some(result) = set.join_next().await {
-                        match result {
-                            Ok(Ok(step_result)) => {
-                                combined_results.extend(step_result);
-                            }
-                            Ok(Err(e)) => {
-                                combined_results.insert(format!("error_{}", combined_results.len()), e.to_string());
-                            }
-                            Err(e) => {
-                                combined_results.insert(format!("join_error_{}", combined_results.len()), e.to_string());
-                            }
-                        }
-                    }
-
-                    // Merge the results back into the main state
-                    let mut state_guard = state_arc.lock().await;
-                    state.data.extend(state_guard.data.clone());
-                    state.data.extend(combined_results);
-
-                    Ok(HashMap::from([(name.clone(), "Parallel execution completed".to_string())]))
-                }
+                    self.execute_parallel_steps(name, steps, state).await
+                },
 
                 PipelineStep::Timeout { name, duration, step } => {
                     debug!("Executing Timeout step: {}", name);
+                    debug!("Duration: {}", duration);
+                    debug!("Step: {:?}", step);
                     let duration = Duration::from_secs(*duration);
 
                     let timeout_result = timeout(duration, self.execute_step(step, state)).await;
@@ -378,12 +359,77 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         })
     }
 
+    async fn execute_parallel_steps(&self, name: &str, steps: &[PipelineStep], state: &mut PipelineState) -> Result<HashMap<String, String>, Error> {
+        debug!("Executing Parallel step: {}", name);
+        debug!("Steps: {:?}", steps);
 
-    async fn execute_with_retry<F, Fut>(
-        &self,
-        config: &Option<RetryConfig>,
-        f: F,
-    ) -> anyhow::Result<()>
+        // Pre-expand variables for all steps
+        let expanded_steps: Vec<PipelineStep> = futures::future::try_join_all(
+            steps.iter().map(|step| self.expand_variables_in_step(step, &state.data))
+        ).await?;
+
+        let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
+        let mut set = JoinSet::new();
+
+        for sub_step in expanded_steps {
+            let state_clone = Arc::clone(&state_arc);
+
+            set.spawn(async move {
+                let mut state_guard = state_clone.lock().await;
+                Self::execute_single_step(&sub_step, &mut state_guard).await
+            });
+        }
+
+        let mut combined_results = HashMap::new();
+        while let Some(result) = set.join_next().await {
+            match result {
+                Ok(Ok(step_result)) => {
+                    combined_results.extend(step_result);
+                }
+                Ok(Err(e)) => {
+                    combined_results.insert(format!("error_{}", combined_results.len()), e.to_string());
+                }
+                Err(e) => {
+                    combined_results.insert(format!("join_error_{}", combined_results.len()), e.to_string());
+                }
+            }
+        }
+
+        // Merge the results back into the main state
+        let mut state_guard = state_arc.lock().await;
+        state.data.extend(state_guard.data.clone());
+        state.data.extend(combined_results);
+
+        Ok(HashMap::from([(name.to_string(), "Parallel execution completed".to_string())]))
+    }
+
+    async fn expand_variables_in_step(&self, step: &PipelineStep, state_data: &HashMap<String, String>) -> Result<PipelineStep, Error> {
+        match step {
+            PipelineStep::Command { name, command, save_output, retry } => {
+                let expanded_command = self.expand_variables(command, state_data).await?;
+                Ok(PipelineStep::Command {
+                    name: name.clone(),
+                    command: expanded_command,
+                    save_output: save_output.clone(),
+                    retry: retry.clone(),
+                })
+            },
+            PipelineStep::ShellCommand { name, command, save_output, retry } => {
+                let expanded_command = self.expand_variables(command, state_data).await?;
+                Ok(PipelineStep::ShellCommand {
+                    name: name.clone(),
+                    command: expanded_command,
+                    save_output: save_output.clone(),
+                    retry: retry.clone(),
+                })
+            },
+            // For other step types, we can simply clone them as they are
+            _ => Ok(step.clone()),
+        }
+    }
+
+
+    async fn execute_with_retry<F, Fut>(&self, config: &Option<RetryConfig>, f: F, ) -> anyhow::Result<()>
         where
             F: Fn() -> Fut,
             Fut: std::future::Future<Output = anyhow::Result<()>> + Send,

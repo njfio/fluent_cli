@@ -8,13 +8,13 @@ steps:
   - !ShellCommand
     name: break_down_steps
     command: |
-      fluent openai '' <<'EOF'
-      Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
-      
-      Problem: ${problem}
-      
-      Output the steps in a numbered list.
-      EOF
+      fluent cohere '' <<"""EOT"""
+        Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
+        
+        Problem: ${problem}
+        
+        Output the steps in a numbered list.
+      EOT
     save_output: steps
 
   - !PrintOutput
@@ -30,42 +30,44 @@ steps:
     name: solve_steps
     input: "1,2,3,4,5"
     command: |
-      fluent sonnet3.5 '' <<'EOF' 
-      Solve the following step of our problem. Provide a concise answer (max 75 words).
-
-      Overall Problem: ${problem}
-
-      All Steps:
-      ${steps}
-
-      Solve Step ${ITEM}. Use relevant data or estimates where necessary. If you make any assumptions, state them clearly.
-
-      Your solution for Step ${ITEM}:
-      EOF
+      fluent  cohere '' <<"""EOT"""
+        Solve the following step of our problem. Provide a concise answer (max 75 words).
+  
+        Overall Problem: ${problem}
+  
+        All Steps:
+        ${steps}
+  
+        Solve Step ${ITEM}. Use relevant data or estimates where necessary. If you make any assumptions, state them clearly.
+  
+        Your solution for Step ${ITEM}:
+      EOT
     save_output: step_solutions
 
   - !ShellCommand
     name: combine_solutions
     command: |
-      echo "${solutions}
-
-      Step-by-step solutions:
-      ${step_solutions}"
+      echo <<"""EOT"""
+        ${solutions}
+  
+        Step-by-step solutions:
+        ${step_solutions}
+      EOT
     save_output: detailed_solution
 
   - !ShellCommand
     name: generate_final_answer
     command: |
-      fluent cohere '' <<'EOF'
-      Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
-
-      Original Problem: ${problem}
-
-      Detailed Solutions:
-      ${detailed_solution}
-
-      Final Answer:
-      EOF
+      fluent mistral-large2 '' <<"""EOT"""
+        Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
+  
+        Original Problem: ${problem}
+  
+        Detailed Solutions:
+        ${detailed_solution}
+  
+        Final Answer:
+      EOT
     save_output: final_answer
 
   - !PrintOutput
@@ -77,34 +79,36 @@ steps:
       ${problem}
       
       Step-by-Step Breakdown and Solutions:
-      ${detailed_solution}
+      ${step_solutions}
       
       Final Answer:
       ${final_answer}
+      
+      ==================================
+      Chain of Thought Analysis Complete
 
   - !ShellCommand
     name: generate_confidence_score
     command: |
-      fluent perplexity '' <<'EOF'
-      Based on the problem, step-by-step solutions, and final answer, provide a confidence score (0-100) for the final answer. Explain your reasoning briefly.
-
-      Original Problem: ${problem}
-
-      Detailed Solutions:
-      ${detailed_solution}
-
-      Final Answer:
-      ${final_answer}
-
-      Confidence Score (0-100) and brief explanation:
-      EOF
+      fluent perplexity '' <<"""EOT"""
+        Based on the problem, step-by-step solutions, and final answer, provide a confidence score (0-100) for the final answer. Explain your reasoning briefly.
+  
+        Original Problem: ${problem}
+  
+        Detailed Solutions:
+        ${detailed_solution}
+  
+        Final Answer:
+        ${final_answer}
+  
+        Confidence Score (0-100) and brief explanation:
+      EOT
     save_output: confidence_assessment
 
   - !PrintOutput
     name: display_confidence
     value: |
-      Final Answer:
-      ${final_answer}
       
       Confidence Assessment:
+      =====================
       ${confidence_assessment}
