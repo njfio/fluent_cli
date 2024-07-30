@@ -732,6 +732,7 @@
           "model": "voyage-large-2"
         },
         "query_llm": "sonnet3.5",
+        "triples_llm": "sonnet3.5",
         "parameters": {
 
         }
