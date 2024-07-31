@@ -1,13 +1,5 @@
 ![fluent_logo](https://github.com/njfio/fluent_cli/assets/7220/7ac05cb2-db37-4173-9dc4-35085ae2696b)
 
-> This project is under very active development.
-> 
-> The documentation is *not* as up-to-date as I would like but it will be soon.
->
-> I wanted to focus on the refinement of document generation at this stage.
->
-> Please reach out directly if you have any questions.
-> Docs will be updated soon covering all new functionality.  
 
 - [FluentCLI Gitbook](https://njf.gitbook.io/fluent_cli_gitbook)
 - [FluentCLI Website](https://fluentcli.com)
@@ -16,249 +8,217 @@
 
 [![fluent](https://github.com/njfio/fluent_cli/actions/workflows/rust.yml/badge.svg)](https://github.com/njfio/fluent_cli/actions/workflows/rust.yml)
 
-Fluent CLI is a command-line interface (CLI) tool designed to simplify and empower interaction with various AI LLMs and workflow engines including: OpenAI, Anthropic, Perplexity, Gemini, Groq, Cohere, FlowiseAI, and Langflow.  There is native API integration with StabilityAI, Dalle, LeonardoAI, and custom webhooks.  FluentCLI provides a streamlined way to send requests, manage configurations, handle responses, and chain commands in amazing new ways.
+## Fluent CLI
 
-## Features
+Fluent CLI is a powerful command-line interface for interacting with various AI engines. It provides a unified way to send requests, receive responses, and manage interactions with different AI services.
 
-- **Multi-Engine Support:**  Interact with FlowiseAI, Langflow, and Webhook workflows seamlessly.
-- **Native API Support:** OpenAI Assistants, OpenAI Agents, Dall-e, StabilieyAI, LeonardoAI, Anthropic, GroqLPU, Cohere, Google Studio, Cohere, Mistral, and Perplexity models.
-- **Simplified Request Handling:** Send requests to your workflows with a simple command structure.
-- **Context Management:** Provide additional context via stdin or files for richer interactions.
-- **Configuration Management:** Load and modify workflow configurations from a centralized JSON file.  Override inline. 
-- **Environment Variable Integration:** Securely store sensitive information like API keys in environment variables and reference them in your configurations.
-- **Override Inline:**  Easily override configuration parameters inline.
-- **File Upload:**  Upload images and other files to your workflows.
-- **Upsert Functionality:**  Send JSON payloads and upload files to endpoints for data management.
-- **Output Customization:** Control output format, including stylized markdown, parsed code blocks, and full JSON responses.
-- **Media Download:** Download media files linked in responses directly from the CLI.
-- **Autocomplete Generation:** Comes with Macos, Linux, and Powershell compatible autocomplete scripts for enhanced usability.
-- **Amber Integration:** Securely decrypt and manage sensitive keys using the Amber secrets management tool.
-  
-- **Neo4J Integration:** Seamless integration with Neo4j for efficient graph based data storage and retrieval.
-- **Neo4j Natural Language Cypher Creation:** Let AI write your cyphers for you based on natural language input.
-- **Neo4j Upserts:** Supporting PDF, Txt files and whole folders processed inline with embeddings created from VoyageAI to create nodes for similarity, sentiment, keywords, themes, clusters.
+### Installation
 
-## Native Pipelines
+Fluent CLI requires Rust and Cargo to be installed on your system. You can install them using the instructions on the [Rust website](https://www.rust-lang.org/tools/install).
 
-The FluentCLU native pipeline framework is a Rust-based system designed to execute a series of steps in a configurable and extensible manner. It provides a robust way to manage complex workflows, handle errors, and integrate with various systems.
+Once Rust and Cargo are installed, you can install Fluent CLI using Cargo:
 
-### Features
-  - **Modular Architecture:** The pipeline system is built around a modular architecture, allowing users to define custom pipeline steps and integrate them seamlessly into the workflow.
-  - **State Management:** The pipeline system features a robust state management system, which enables pipelines to resume from where they left off in case of failures or interruptions.
-  - **Parallel Execution:** The pipeline system supports parallel execution of pipeline steps, enabling users to take advantage of multi-core processors and improve overall performance.
-  - **Conditional Logic:** The pipeline system provides conditional logic constructs, such as if-else statements and loops, to enable dynamic decision-making within pipelines.
-  - **Human-in-the-Loop:** The pipeline system supports human-in-the-loop interactions, allowing users to pause pipeline execution and prompt for manual input or validation.
-  - **Extensive Logging:** The pipeline system provides extensive logging capabilities, enabling users to track pipeline execution, errors, and output.
+```bash
+cargo install fluent-cli
+```
 
+### Configuration
 
-### Pipeline Step Types
+Fluent CLI uses a JSON configuration file to define the connection settings and parameters for each AI engine. You can create a configuration file named `fluent.json` in your home directory, or specify a custom path using the `-c` or `--config` flag.
 
-The framework supports a variety of pipeline step types, including:
-  - **Command:** Execute a shell command or a custom command.
-  - **ShellCommand:** Execute a shell command with support for environment variables and output capture.
-  - **Condition:** Evaluate a conditional statement and execute a corresponding branch.
-  - **Loop:** Execute a loop with support for iteration and conditional termination.
-  - **SubPipeline:** Execute a nested pipeline with its own set of steps.
-  - **Map:** Execute a mapping operation with support for input and output processing.
-  - **HumanInTheLoop:** Pause pipeline execution and prompt for manual input or validation.
-  - **RepeatUntil:** Execute a loop until a conditional statement is met.
-  - **ForEach:** Execute a loop over a collection of items.
-  - **TryCatch:** Execute a try-catch block with support for error handling and recovery.
-  - **Parallel:** Execute multiple pipeline steps in parallel.
-  - **Timeout:** Execute a pipeline step with a timeout constraint.
-  
----
-
-## FluentCLI Utility Ecosystem
-- [Rust Fluent Code Utility Repository](https://github.com/njfio/rfcu)
-- [Rust Airtable Utility Repository](https://github.com/njfio/rau)
-- [Rust Logseq Utility Repository](https://github.com/njfio/rlu)
-
----
-
-## Installation
-
-### From Source
-
-1. Ensure you have Rust and Cargo installed.
-2. Clone this repository: `git clone https://github.com/njfio/fluent_cli.git`
-3. Navigate to the project directory: `cd fluent_cli`
-4. Build the project: `cargo build --release`
-5. The executable will be located in `target/release/fluent`.
-
-### Pre-built Binaries
-
-Pre-built binaries for various platforms are available in the [Releases](https://github.com/njfio/fluent_cli/releases) section of this repository.
-
-## Configuration
-
-Fluent CLI uses a `config.json` file to store workflow configurations. A sample configuration file is provided in the repository. You can customize this file to include your own workflows and settings.
-
-### Structure
+Here is an example `fluent.json` file:
 
 ```json
-[
-  {
-    "name": "FlowName",
-    "engine": "flowise|langflow|webhook",
-    "protocol": "http|https",
-    "hostname": "your-hostname",
-    "port": 80|443,
-    "chat_id": "your-chat-id",
-    "request_path": "/api/v1/prediction/",
-    "upsert_path": "/api/v1/vector/upsert/", // Optional, for upsert functionality
-    "sessionId": "your-session-id",
-    "bearer_token": "your-bearer-token",
-    "overrideConfig": {}, // Workflow-specific overrides
-    "tweaks": {}, // Workflow-specific tweaks
-    "timeout_ms": 50000 
-  },
-  // ... more workflows
-]
+{
+  "engines": [
+    {
+      "name": "openai",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "modelName": "gpt-3.5-turbo",
+        "bearer_token": "YOUR_OPENAI_API_KEY"
+      }
+    },
+    {
+      "name": "anthropic",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/complete"
+      },
+      "parameters": {
+        "modelName": "claude-2",
+        "bearer_token": "YOUR_ANTHROPIC_API_KEY"
+      }
+    },
+    {
+      "name": "neo4j",
+      "engine": "neo4j",
+      "connection": {
+        "protocol": "bolt",
+        "hostname": "localhost",
+        "port": 7687,
+        "request_path": ""
+      },
+      "parameters": {
+        "database": "neo4j"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "YOUR_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "YOUR_VOYAGE_AI_API_KEY",
+          "model": "text-embedding-ada-002"
+        }
+      }
+    }
+  ]
+}
 ```
 
-**Explanation:**
+**Replace the placeholders with your actual API keys and connection information.**
 
-- **name:** A unique name for your workflow.
-- **engine:** The type of workflow engine (flowise, langflow, webhook).
-- **protocol, hostname, port, chat_id, request_path:**  Connection details for your workflow.
-- **upsert_path:** (Optional) The path for upsert requests.
-- **sessionId:** The session ID for your workflow (if applicable).
-- **bearer_token:** The authentication token for your workflow.
-- **overrideConfig:** A JSON object containing workflow-specific configuration overrides.
-- **tweaks:** A JSON object containing workflow-specific tweaks.
-- **timeout_ms:** The request timeout in milliseconds.
+**Note:** You can use the `AMBER_` prefix for sensitive values in your configuration file. This will automatically load them from the `amber` CLI tool, which can be used to store and manage secrets.
 
-**Notes:**
-
-- You can use environment variables in your configuration by prefixing the variable name with `AMBER_`. For example, to use the environment variable `MY_API_KEY` in your bearer token, set `bearer_token` to `AMBER_MY_API_KEY`.
-- Fluent CLI will automatically attempt to decrypt keys starting with `AMBER_` using the Amber secrets management tool.
-
-## Usage
-
-### Basic Requests
-
-To send a request to a workflow, use the following command:
+### Usage
 
 ```bash
-fluent <flowname> "<request>"
+fluent <engine> [options] [request]
 ```
 
-**Example:**
+**Required arguments:**
+
+* `<engine>`: The name of the engine to use (e.g., `openai`, `anthropic`, `cohere`, `google_gemini`, `mistral`, `groq_lpu`, `perplexity`, `webhook`, `flowise_chain`, `langflow_chain`, `dalle`, `stabilityai`, `leonardo_ai`, `imagine_pro`).
+
+**Optional arguments:**
+
+* `-c <config>` or `--config <config>`: Path to a custom configuration file.
+* `-o <key=value>` or `--override <key=value>`: Override configuration values. Can be used multiple times to override multiple values.
+* `-a <file>` or `--additional-context-file <file>`: Path to a file containing additional request context.
+* `-i <file/dir>` or `--input <file/dir>`: Path to an input file or directory for upsert mode.
+* `-t <terms>` or `--metadata <terms>`: Comma-separated list of metadata terms for upsert mode.
+* `-l <file>` or `--upload_image_file <file>`: Upload a media file.
+* `-d <dir>` or `--download-media <dir>`: Download media files from the output.
+* `-p` or `--parse-code`: Parse and display code blocks from the output.
+* `-x` or `--execute-output`: Execute code blocks from the output.
+* `-m` or `--markdown`: Format output as markdown.
+* `--generate-cypher <query>`: Generate and execute a Cypher query based on the given string.
+
+**Interactive mode:**
+
+If you don't provide a `request` argument, Fluent CLI will enter interactive mode, prompting you for requests.
+
+**Upsert mode:**
+
+To use upsert mode, use the `--upsert` flag and specify an input file or directory using the `-i` or `--input` flag. The CLI will upload the documents, create chunks, and generate embeddings.
+
+**Cypher query generation:**
+
+Use the `--generate-cypher` flag to generate and execute a Cypher query based on the given string. This feature requires a Neo4j engine to be configured with a query LLM.
+
+### Examples
+
+**Send a request to OpenAI's GPT-3.5-turbo model:**
 
 ```bash
-fluent MyFlow "What is the weather like today?"
+fluent openai "What is the meaning of life?"
 ```
 
-### Context
-
-You can provide additional context to your request through stdin or a file:
-
-**Stdin:**
+**Send a request to Anthropic's Claude-2 model with a custom temperature:**
 
 ```bash
-echo "Here is some context." | fluent MyFlow "What is the weather like today?"
+fluent anthropic -o temperature=0.8 "Write a poem about the ocean."
 ```
 
-**File:**
+**Upload a document and create embeddings:**
 
 ```bash
-fluent MyFlow "What is the weather like today?" --context "context.txt"
+fluent neo4j --upsert -i my_document.pdf -t "topic,author"
 ```
 
-### System Prompt Override
-
-To override the system message of a Flowise workflow, use the following options:
-
-**Inline:**
+**Generate and execute a Cypher query:**
 
 ```bash
-fluent MyFlow "What is the weather like today?" --system-prompt-override-inline "You are a helpful weather bot."
+fluent neo4j --generate-cypher "Find all users who have visited the website in the last week."
 ```
 
-**File:**
+**Use a file containing additional context:**
 
 ```bash
-fluent MyFlow "What is the weather like today?" --system-prompt-override-file "system_prompt.txt"
+fluent openai "What is the capital of France?" -a additional_context.txt
 ```
 
-### File Upload
-
-To upload an image to a workflow, use the `--upload-image-path` option:
+**Upload an image and get a response from OpenAI's GPT-4-vision model:**
 
 ```bash
-fluent MyFlow "Describe this image." --upload-image-path "image.png"
+fluent openai "Describe this image." -l my_image.jpg
 ```
 
-### Upsert
+### Supported Engines
 
-**With Upload:**
+Fluent CLI supports the following AI engines:
 
-```bash
-fluent MyFlow --upsert-with-upload "file1.txt,file2.csv"
-```
+* **OpenAI:** [https://platform.openai.com/](https://platform.openai.com/)
+* **Anthropic:** [https://www.anthropic.com/](https://www.anthropic.com/)
+* **Cohere:** [https://cohere.ai/](https://cohere.ai/)
+* **Google Gemini:** [https://cloud.google.com/vertex-ai/docs/generative-ai/](https://cloud.google.com/vertex-ai/docs/generative-ai/)
+* **Mistral:** [https://www.mistral.ai/](https://www.mistral.ai/)
+* **GroqLPU:** [https://groq.com/](https://groq.com/)
+* **Perplexity:** [https://www.perplexity.ai/](https://www.perplexity.ai/)
+* **Webhook:** A generic engine for interacting with custom webhooks.
+* **Flowise Chain:** [https://flowise.ai/](https://flowise.ai/)
+* **Langflow Chain:** [https://langflow.com/](https://langflow.com/)
+* **DALL-E:** [https://openai.com/dall-e-2](https://openai.com/dall-e-2)
+* **Stability AI:** [https://stability.ai/](https://stability.ai/)
+* **Leonardo AI:** [https://leonardo.ai/](https://leonardo.ai/)
+* **ImaginePro:** [https://imaginepro.ai/](https://imaginepro.ai/)
 
-**Without Upload:**
+### Contributing
 
-```bash
-fluent MyFlow --upsert-no-upload
-```
+Contributions to Fluent CLI are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/your-username/fluent-cli).
 
-### Output Customization
+### License
 
-**Markdown:**
+Fluent CLI is licensed under the [MIT License](LICENSE).
 
-```bash
-fluent MyFlow "What is the weather like today?" --markdown-output
-```
+### Acknowledgements
 
-**Parsed Code Blocks:**
+Fluent CLI is built on top of several excellent open-source libraries:
 
-```bash
-fluent MyFlow "Generate some Python code." --parse-code-output
-```
-
-**Full JSON Output:**
-
-```bash
-fluent MyFlow "What is the weather like today?" --full-output
-```
-
-### Media Download
-
-```bash
-fluent MyFlow "Find me some images of cats." --download-media "/path/to/directory"
-```
-
-### Autocomplete Generation
-
-**Bash:**
-
-```bash
-fluent --generate-autocomplete > fluent_autocomplete.sh
-source fluent_autocomplete.sh
-```
-
-**Fig:**
-
-```bash
-fluent --generate-fig-autocomplete > fluent.ts
-```
-
-### Override Configuration Values
-
-```bash
-fluent MyFlow "What is the weather like today?" --override modelName="gpt-4" --override tweaks.Prompt-PbKIE.template="You are a helpful pirate."
-```
-
-## Contributing
-
-Contributions to Fluent CLI are welcome! Please open an issue or submit a pull request if you have any suggestions, bug reports, or feature requests.
-
-## License
-
-Fluent CLI is licensed under the MIT License.
-
+* **clap:** [https://crates.io/crates/clap](https://crates.io/crates/clap)
+* **reqwest:** [https://crates.io/crates/reqwest](https://crates.io/crates/reqwest)
+* **serde:** [https://crates.io/crates/serde](https://crates.io/crates/serde)
+* **async-trait:** [https://crates.io/crates/async-trait](https://crates.io/crates/async-trait)
+* **log:** [https://crates.io/crates/log](https://crates.io/crates/log)
+* **tokio:** [https://crates.io/crates/tokio](https://crates.io/crates/tokio)
+* **neo4rs:** [https://crates.io/crates/neo4rs](https://crates.io/crates/neo4rs)
+* **indicatif:** [https://crates.io/crates/indicatif](https://crates.io/crates/indicatif)
+* **owo-colors:** [https://crates.io/crates/owo-colors](https://crates.io/crates/owo-colors)
+* **base64:** [https://crates.io/crates/base64](https://crates.io/crates/base64)
+* **mime-guess:** [https://crates.io/crates/mime-guess](https://crates.io/crates/mime-guess)
+* **tempfile:** [https://crates.io/crates/tempfile](https://crates.io/crates/tempfile)
+* **futures:** [https://crates.io/crates/futures](https://crates.io/crates/futures)
+* **futures-util:** [https://crates.io/crates/futures-util](https://crates.io/crates/futures-util)
+* **uuid:** [https://crates.io/crates/uuid](https://crates.io/crates/uuid)
+* **clap-complete:** [https://crates.io/crates/clap-complete](https://crates.io/crates/clap-complete)
+* **serde_json:** [https://crates.io/crates/serde_json](https://crates.io/crates/serde_json)
+* **pdf-extract:** [https://crates.io/crates/pdf-extract](https://crates.io/crates/pdf-extract)
+* **rust-stemmers:** [https://crates.io/crates/rust-stemmers](https://crates.io/crates/rust-stemmers)
+* **stop-words:** [https://crates.io/crates/stop-words](https://crates.io/crates/stop-words)
+* **termimad:** [https://crates.io/crates/termimad](https://crates.io/crates/termimad)
+* **crossterm:** [https://crates.io/crates/crossterm](https://crates.io/crates/crossterm)
+* **syntect:** [https://crates.io/crates/syntect](https://crates.io/crates/syntect)
+* **unicode-segmentation:** [https://crates.io/crates/unicode-segmentation](https://crates.io/crates/unicode-segmentation)
 
 
 Nicholas Ferguson - nick@njf.io
