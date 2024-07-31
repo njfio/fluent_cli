@@ -113,6 +113,7 @@ fluent <engine> [options] [request]
 * `-x` or `--execute-output`: Execute code blocks from the output.
 * `-m` or `--markdown`: Format output as markdown.
 * `--generate-cypher <query>`: Generate and execute a Cypher query based on the given string.
+* `--upsert`: Upsert PDF, text files or entire folders to Neo4j.
 
 **Interactive mode:**
 
@@ -221,8 +222,5 @@ Fluent CLI is built on top of several excellent open-source libraries:
 * **unicode-segmentation:** [https://crates.io/crates/unicode-segmentation](https://crates.io/crates/unicode-segmentation)
 
 
-Nicholas Ferguson - nick@njf.io
-
-Project Link: [https://github.com/njfio/fluent-cli](https://github.com/njfio/fluent-cli)
 
 
