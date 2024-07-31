@@ -184,6 +184,103 @@ Fluent CLI supports the following AI engines:
 * **Leonardo AI:** [https://leonardo.ai/](https://leonardo.ai/)
 * **ImaginePro:** [https://imaginepro.ai/](https://imaginepro.ai/)
 
+
+### Fluent Pipeline Concepts
+
+* **Pipelines:** Pipelines define a sequence of steps to be executed in a specific order. They provide a structured way to automate complex AI workflows.
+* **Steps:** Each step in a pipeline represents a specific action or operation. Fluent CLI supports various step types, including:
+    * **Command:** Executes a shell command.
+    * **ShellCommand:** Executes a shell command with more control over the shell environment.
+    * **Condition:** Evaluates a condition and executes different steps based on the result.
+    * **Loop:** Repeats a set of steps until a condition is met.
+    * **SubPipeline:** Executes a nested pipeline.
+    * **Map:** Applies a command to each item in a list.
+    * **HumanInTheLoop:** Pauses the pipeline and prompts the user for input.
+    * **RepeatUntil:** Repeats a set of steps until a condition is met.
+    * **PrintOutput:** Prints the value of a variable.
+    * **ForEach:** Iterates over a list of items and executes a set of steps for each item.
+    * **TryCatch:** Executes a block of steps and handles potential errors.
+    * **Parallel:** Executes a set of steps concurrently.
+    * **Timeout:** Sets a time limit for a specific step.
+* **State:** The pipeline's state stores information about the current step, data variables, and other relevant metadata. This allows for resuming pipelines and persisting results.
+* **State Store:** The state store is responsible for saving and loading the pipeline's state. Fluent CLI provides a file-based state store implementation.
+
+### Pipeline Definition
+
+Pipelines are defined using YAML files. The following is an example of a simple pipeline:
+
+```yaml
+name: my_pipeline
+steps:
+  - Command:
+      name: echo_input
+      command: echo "${input}"
+      save_output: output
+  - Condition:
+      name: check_output
+      condition: "${output}" == "hello world"
+      if_true: echo "Output is correct!"
+      if_false: echo "Output is incorrect!"
+```
+
+### Execution
+
+You can execute a pipeline using the `fluent pipeline` command:
+
+```bash
+fluent pipeline -f my_pipeline.yaml -i "hello world"
+```
+
+This will execute the `my_pipeline` pipeline with the initial input "hello world".
+
+### Features
+
+* **Variable Substitution:** Pipeline steps can use variables defined in the state using `${variable_name}` syntax.
+* **Retry Mechanism:** Steps can be configured with a retry mechanism to handle transient errors.
+* **State Persistence:** Pipeline state is automatically saved and loaded, allowing for seamless resumption.
+* **Parallel Execution:** The `Parallel` step allows for concurrent execution of steps.
+* **Timeout Mechanism:** The `Timeout` step allows for setting a time limit for a specific step.
+
+### Example Pipeline
+
+```yaml
+name: my_complex_pipeline
+steps:
+  - Command:
+      name: download_file
+      command: curl -o downloaded_file.txt https://www.example.com/data.txt
+      save_output: downloaded_file_path
+  - ShellCommand:
+      name: process_file
+      command: python3 process_data.py "${downloaded_file_path}"
+      save_output: processed_data
+  - Loop:
+      name: analyze_data
+      steps:
+        - Command:
+            name: analyze_chunk
+            command: python3 analyze_chunk.py "${processed_data}"
+            save_output: analysis_result
+        - PrintOutput:
+            name: print_analysis
+            value: "${analysis_result}"
+      condition: "${processed_data}" != ""
+  - Parallel:
+      name: generate_summaries
+      steps:
+        - Command:
+            name: generate_summary_1
+            command: python3 generate_summary.py "${processed_data}" --model "model_a"
+            save_output: summary_1
+        - Command:
+            name: generate_summary_2
+            command: python3 generate_summary.py "${processed_data}" --model "model_b"
+            save_output: summary_2
+  - PrintOutput:
+      name: final_results
+      value: "Summary 1: ${summary_1}\nSummary 2: ${summary_2}"
+```
+
 ### Contributing
 
 Contributions to Fluent CLI are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/your-username/fluent-cli).
