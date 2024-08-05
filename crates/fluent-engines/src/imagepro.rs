@@ -15,6 +15,8 @@ use fluent_core::config::EngineConfig;
 use log::{debug, info};
 use reqwest::Client;
 use uuid::Uuid;
+use base64::Engine as Base64Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
 
 pub struct ImagineProEngine {
     config: EngineConfig,
@@ -103,7 +105,7 @@ impl ImagineProEngine {
         let mut file = File::open(file_path).await.context("Failed to open file")?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-        let base64_image = base64::encode(&buffer);
+        let base64_image = Base64.encode(&buffer);
         let mime_type = mime_guess::from_path(file_path).first_or_octet_stream().to_string();
         Ok(format!("data:{};base64,{}", mime_type, base64_image))
     }

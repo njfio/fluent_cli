@@ -14,7 +14,6 @@ use tokio::fs;
 use tokio::process::Command;
 use url::Url;
 use uuid::Uuid;
-use termimad::crossterm::style::Stylize;
 use termimad::{MadSkin, StyledChar};
 
 pub struct OutputProcessor;
@@ -268,7 +267,7 @@ impl MarkdownFormatter {
 
         let mut output = String::new();
         for line in LinesWithEndings::from(code) {
-            let ranges: Vec<(Style, &str)> = highlighter.highlight(line, &self.syntax_set);
+            let ranges: Vec<(Style, &str)> = highlighter.highlight_line(line, &self.syntax_set)?;
             let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
             output.push_str(&escaped);
         }

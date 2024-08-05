@@ -1,15 +1,15 @@
-use anyhow::{Result, Context, anyhow, Error};
-use neo4rs::{Graph, query, ConfigBuilder, BoltMap, BoltList, BoltString, BoltType, BoltInteger, BoltFloat, Database, BoltNull, Query, Row, BoltNode, BoltRelation, BoltPath};
+use anyhow::{Result, anyhow, Error};
+use neo4rs::{Graph, query, ConfigBuilder, BoltMap, BoltList, BoltString, BoltType, BoltInteger, BoltFloat, Database, BoltNull, Row };
 
 use chrono::Duration as ChronoDuration;
 
 use chrono::{DateTime, Utc};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use log::{debug, error, info, warn};
-use std::sync::{Arc, RwLock};
+use std::sync::{ RwLock};
 use pdf_extract::extract_text;
 
 
@@ -21,10 +21,9 @@ use crate::config::Neo4jConfig;
 use crate::types::DocumentStatistics;
 use crate::utils::chunking::chunk_document;
 use crate::voyageai_client::{EMBEDDING_DIMENSION, get_voyage_embedding};
-use stop_words::{get, LANGUAGE};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use crate::traits::{DocumentProcessor, DocxProcessor, PdfProcessor, TextProcessor};
+use crate::traits::{DocumentProcessor, DocxProcessor};
 
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -57,11 +56,6 @@ pub struct Embedding {
     pub model: String,
 }
 
-struct Document {
-    id: String,
-    content: String,
-    metadata: Vec<String>,
-}
 
 
 #[derive(Debug)]
@@ -120,7 +114,8 @@ impl Neo4jClient {
 
         for query_str in index_queries {
             debug!("Executing index creation query: {}", query_str);
-            self.graph.execute(query(query_str)).await?;
+            let _ = self.graph.execute(query(query_str)).await?;
+
         }
 
 
@@ -727,31 +722,6 @@ impl Neo4jClient {
         }
     }
 
-    async fn get_node_embedding(&self, node_id: &str, node_type: &str) -> Result<Vec<f32>> {
-        debug!("Getting embedding for {} {}", node_type, node_id);
-        let query = match node_type {
-            "Document" => query("
-            MATCH (d:Document {id: $node_id})-[:HAS_CHUNK]->(c:Chunk)-[:HAS_EMBEDDING]->(e:Embedding)
-            RETURN e.vector AS embedding
-            LIMIT 1
-        "),
-            "Question" | "Response" => query("
-            MATCH (n)
-            WHERE (n:Question OR n:Response) AND n.id = $node_id
-            MATCH (n)-[:HAS_EMBEDDING]->(e:Embedding)
-            RETURN e.vector AS embedding
-        "),
-            _ => return Err(anyhow!("Unsupported node type: {}", node_type)),
-        }
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            Ok(row.get("embedding")?)
-        } else {
-            Err(anyhow!("No embedding found for {} {}", node_type, node_id))
-        }
-    }
 
     async fn update_enrichment_status(&self, node_id: &str, node_type: &str, now: &DateTime<Utc>) -> Result<()> {
         debug!("Updating enrichment status for {} {}", node_type, node_id);
@@ -765,7 +735,7 @@ impl Neo4jClient {
             .param("node_id", BoltType::String(BoltString::from(node_id)))
             .param("now", BoltType::String(BoltString::from(now.to_rfc3339())));
 
-        self.graph.execute(query).await?;
+        let _ = self.graph.execute(query).await?;
         Ok(())
     }
 
@@ -786,42 +756,6 @@ impl Neo4jClient {
         }
     }
 
-    async fn get_document_embedding(&self, document_id: &str) -> Result<Vec<f32>> {
-        debug!("Getting embedding for document {}", document_id);
-        let query = query("
-    MATCH (d:Document {id: $document_id})-[:HAS_CHUNK]->(c:Chunk)-[:HAS_EMBEDDING]->(e:Embedding)
-    RETURN e.vector AS embedding
-    LIMIT 1
-    ")
-            .param("document_id", BoltType::String(BoltString::from(document_id)));
-
-        let mut result = self.graph.execute(query).await?;
-
-        if let Some(row) = result.next().await? {
-            let embedding: Vec<f32> = row.get("embedding")?;
-            Ok(embedding)
-        } else {
-            Err(anyhow!("No embedding found for document"))
-        }
-    }
-
-
-    async fn create_sentiment_node(&self, node_id: &str, node_type: &str, sentiment: f32) -> Result<()> {
-        debug!("Creating sentiment node for {} {}", node_type, node_id);
-        let query = query("
-    MATCH (n)
-    WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
-    MERGE (s:Sentiment {value: $sentiment})
-    MERGE (n)-[:HAS_SENTIMENT]->(s)
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("sentiment", BoltType::Float(BoltFloat::new(sentiment as f64)));
-        debug!("node_id {}, sentiment {}", node_id, sentiment);
-        self.graph.execute(query).await?;
-        debug!("Created sentiment node for {} {}", node_type, node_id);
-
-        Ok(())
-    }
 
     async fn create_theme_and_keyword_nodes(&self, node_id: &str, node_type: &str, themes: &[String], keywords: &[String]) -> Result<()> {
         debug!("Creating theme and keyword nodes for {} {}", node_type, node_id);
@@ -1014,37 +948,7 @@ impl Neo4jClient {
         Ok(())
     }
 
-    async fn assign_to_cluster(&self, node_id: &str, node_type: &str, cluster: &str) -> Result<()> {
-        debug!("Assigning to cluster for {} {}", node_type, node_id);
-        let query = query("
-    MATCH (n)
-    WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
-    MERGE (c:Cluster {name: $cluster})
-    MERGE (n)-[:BELONGS_TO]->(c)
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("cluster", BoltType::String(BoltString::from(cluster)));
-        debug!("node_id: {} cluster: {}", node_id, cluster);
-        self.graph.execute(query).await?;
-        debug!("Assigned to cluster for {} {}", node_type, node_id);
-        Ok(())
-    }
 
-    async fn node_exists(&self, node_id: &str) -> Result<bool> {
-        let query = query("
-        MATCH (n {id: $node_id})
-        RETURN count(n) as count
-        ")
-            .param("node_id", node_id);
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            let count: i64 = row.get("count")?;
-            Ok(count > 0)
-        } else {
-            Ok(false)
-        }
-    }
 
     pub async fn create_or_update_question(&self, question: &Neo4jQuestion, interaction_id: &str) -> Result<String> {
         let query_str = r#"
@@ -1122,7 +1026,7 @@ impl Neo4jClient {
     }
 
 
-    async fn extract_themes_and_keywords(&self, content: &str, config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
+    async fn extract_themes_and_keywords(&self, content: &str, _config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
         debug!("Extracting themes and keywords");
         debug!("content: {}", content);
         let stemmer = Stemmer::create(Algorithm::English);
@@ -1166,18 +1070,6 @@ impl Neo4jClient {
         Ok((themes, keywords))
     }
 
-
-    async fn perform_clustering(&self, embedding: &[f32]) -> Result<String> {
-        debug!("Performing Clustering:");
-        // This is a simplified clustering method.
-        // In a real-world scenario, you'd want to implement a more sophisticated clustering algorithm.
-        let sum: f32 = embedding.iter().sum();
-        let avg = sum / embedding.len() as f32;
-
-        let cluster = if avg > 0.0 { "positive" } else { "negative" };
-
-        Ok(cluster.to_string())
-    }
 
 
     async fn extract_clusters(&self, content: &str, all_documents: &[String]) -> Result<Vec<String>> {
@@ -1246,44 +1138,6 @@ impl Neo4jClient {
     }
 
 
-    async fn analyze_sentiment(&self, embedding: &[f32]) -> Result<f32> {
-        debug!("Analyzing Sentiment:");
-        // This is a very simplified sentiment analysis based on the embedding.
-        // In a real-world scenario, you'd want to use a more sophisticated method.
-        let sum: f32 = embedding.iter().sum();
-        let avg = sum / embedding.len() as f32;
-
-        // Normalize to range [-1, 1]
-        let sentiment = avg.max(-1.0).min(1.0);
-
-        Ok(sentiment)
-    }
-
-    async fn get_sentence_embedding(&self, content: &str, config: &VoyageAIConfig) -> Result<Vec<f32>> {
-        debug!("Getting Sentence Embedding:");
-        get_voyage_embedding(content, config).await
-    }
-
-    async fn get_document(&self, document_id: &str) -> Result<Document> {
-        debug!("Getting Document:");
-        let query = query("
-    MATCH (d:Document {id: $document_id})
-    RETURN d.content as content, d.metadata as metadata
-    ")
-            .param("document_id", BoltType::String(BoltString::from(document_id)));
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            Ok(Document {
-                id: document_id.to_string(),
-                content: row.get("content")?,
-                metadata: row.get("metadata")?,
-            })
-        } else {
-            Err(anyhow!("Document not found"))
-        }
-    }
-
     pub async fn execute_cypher(&self, cypher_query: &str) -> Result<Value> {
         info!("Executing Cypher query: {}", cypher_query);
 
@@ -1323,22 +1177,6 @@ impl Neo4jClient {
         Ok(schema_str)
     }
 
-
-    async fn process_document(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
-        let extension = file_path.extension()
-            .and_then(|ext| ext.to_str())
-            .ok_or_else(|| anyhow!("Unable to determine file type"))?;
-
-        let processor: Box<dyn DocumentProcessor> = match extension.to_lowercase().as_str() {
-            "txt" | "json" | "csv" | "tsv" | "md" | "html" | "xml" | "yml" | "yaml" | "json5" | "py" | "rb" | "rs" | "js" | "ts" | "php" | "java" | "c" | "cpp" | "go" | "sh" | "bat" | "ps1" | "psm1" | "psd1" | "ps1xml" | "psc1" | "pssc" | "pss1" | "psh"  => Box::new(TextProcessor),
-            "pdf" => Box::new(PdfProcessor),
-            "docx" => Box::new(DocxProcessor),
-            // Add more file types as needed
-            _ => return Err(anyhow!("Unsupported file type: {}", extension)),
-        };
-
-        processor.process(file_path).await
-    }
 
 
 }

@@ -1,27 +1,25 @@
-use std::cell::RefCell;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Pointer;
+
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::rc::Rc;
-use tokio::sync::{Mutex, MutexGuard};
+
+use tokio::sync::{Mutex};
 use tokio::process::Command as TokioCommand;
-use tokio::sync::Mutex as TokioMutex;
 use std::io::Write;
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tempfile::{NamedTempFile, tempdir};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tempfile;
 
 use std::sync::{Arc};
 use anyhow::{anyhow, Error};
 use tokio::process::Command;
 use log::{info, error, warn, debug};
 use async_trait::async_trait;
-use futures_util::future::join_all;
-use tokio::{fs, io};
-use tokio::io::{AsyncWriteExt, stdout};
+
+
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -78,7 +76,7 @@ pub struct PipelineExecutor<S: StateStore> {
 }
 
 impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExecutor<S> {
-    pub fn new(state_store: S, json_output: bool) -> Self {
+    pub fn new(state_store: S, _json_output: bool) -> Self {
         Self {
             state: Arc::new(Mutex::new(PipelineState {
                 current_step: 0,
@@ -396,7 +394,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         }
 
         // Merge the results back into the main state
-        let mut state_guard = state_arc.lock().await;
+        let state_guard = state_arc.lock().await;
         state.data.extend(state_guard.data.clone());
         state.data.extend(combined_results);
 
@@ -429,39 +427,13 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
     }
 
 
-    async fn execute_with_retry<F, Fut>(&self, config: &Option<RetryConfig>, f: F, ) -> anyhow::Result<()>
-        where
-            F: Fn() -> Fut,
-            Fut: std::future::Future<Output = anyhow::Result<()>> + Send,
-    {
-        debug!("Executing with retry");
-        let config = config.clone().unwrap_or(RetryConfig {
-            max_attempts: 2,
-            delay_ms: 10000,
-        });
-        let mut attempts = 0;
-
-        loop {
-            // Box the future returned by f()
-            match Box::pin(f()).await {
-                Ok(_) => return Ok(()),
-                Err(e) if attempts < config.max_attempts => {
-                    attempts += 1;
-                    warn!("Attempt {} failed: {:?}. Retrying...", attempts, e);
-                    tokio::time::sleep(std::time::Duration::from_millis(config.delay_ms)).await;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-    }
-
     fn execute_single_step<'a>(
         step: &'a PipelineStep,
         state: &'a mut PipelineState,
     ) -> Pin<Box<dyn Future<Output = Result<HashMap<String, String>, Error>> + Send + 'a>> {
         Box::pin(async move {
             match step {
-                PipelineStep::Command { name, command, save_output, retry } => {
+                PipelineStep::Command { name: _, command, save_output, retry: _ } => {
                     let output = Command::new("sh")
                         .arg("-c")
                         .arg(command)
@@ -475,7 +447,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     }
                     Ok(result)
                 }
-                PipelineStep::ShellCommand { name, command, save_output, retry } => {
+                PipelineStep::ShellCommand { name: _, command, save_output, retry: _ } => {
                     let output = Command::new("sh")
                         .arg("-c")
                         .arg(command)
@@ -507,12 +479,12 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     let stdout = String::from_utf8(output.stdout)?;
                     Ok(HashMap::from([(name.clone(), stdout.trim().to_string())]))
                 }
-                PipelineStep::PrintOutput { name, value } => {
+                PipelineStep::PrintOutput { name: _, value } => {
                     println!("{}", value);
                     Ok(HashMap::new())
                 }
-                PipelineStep::RepeatUntil { name, steps, condition } => {
-                    let mut result = HashMap::new();
+                PipelineStep::RepeatUntil { name: _, steps, condition } => {
+                    let result = HashMap::new();
                     loop {
                         for sub_step in steps {
                             let step_result = Self::execute_single_step(sub_step, state).await?;
@@ -545,7 +517,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     state.data.remove("ITEM");
                     Ok(HashMap::from([(name.clone(), result.join(", "))]))
                 }
-                PipelineStep::TryCatch { name, try_steps, catch_steps, finally_steps } => {
+                PipelineStep::TryCatch { name:  _, try_steps, catch_steps, finally_steps } => {
                     let mut result = HashMap::new();
                     let try_result = async {
                         for sub_step in try_steps {
@@ -576,7 +548,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
                     Ok(result)
                 }
-                PipelineStep::Timeout { name, duration, step } => {
+                PipelineStep::Timeout { name: _, duration, step } => {
                     let duration = Duration::from_secs(*duration);
                     let timeout_result = timeout(duration, Self::execute_single_step(step, state)).await;
 
@@ -585,7 +557,7 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                         Err(_) => Err(anyhow!("Step timed out after {} seconds", duration.as_secs())),
                     }
                 }
-                PipelineStep::Parallel { name, steps } => {
+                PipelineStep::Parallel { name: _, steps } => {
                     // For simplicity, we'll execute parallel steps sequentially in this context
                     let mut result = HashMap::new();
                     for sub_step in steps {
@@ -743,11 +715,6 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 }
 
 
-fn evaluate_condition(condition: &str, state: &HashMap<String, String>) -> bool {
-    // Implement condition evaluation
-    // This could be a simple string contains check, or something more complex
-    unimplemented!()
-}
 impl PipelineStep {
     fn name(&self) -> &str {
         match self {

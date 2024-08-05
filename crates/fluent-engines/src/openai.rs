@@ -3,19 +3,20 @@ use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use std::future::Future;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
 use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::{Engine, EngineConfigProcessor, FileUpload, OpenAIConfigProcessor};
+use fluent_core::traits::{Engine, EngineConfigProcessor, OpenAIConfigProcessor};
 use fluent_core::config::EngineConfig;
 use anyhow::{Result, anyhow, Context};
 use reqwest::Client;
-use async_trait::async_trait;
 use serde_json::{json, Value};
 use log::debug;
 use reqwest::multipart::{Form, Part};
 use tokio::io::AsyncReadExt;
+use base64::Engine as Base64Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
+
 
 
 pub struct OpenAIEngine {
@@ -49,7 +50,7 @@ impl Engine for OpenAIEngine {
         self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
     }
 
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output=Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output=Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             // Implement OpenAI-specific upsert logic here
             // For now, we'll just return a placeholder response
@@ -183,7 +184,8 @@ impl Engine for OpenAIEngine {
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-            let base64_image = base64::encode(&buffer);
+            let base64_image = Base64.encode(&buffer);
+
 
             let client = reqwest::Client::new();
             let url = format!("{}://{}:{}{}",

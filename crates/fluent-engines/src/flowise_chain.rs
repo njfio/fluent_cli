@@ -14,6 +14,9 @@ use mime_guess::from_path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use base64::Engine as Base64Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
+
+
 
 pub struct FlowiseChainEngine {
     config: EngineConfig,
@@ -41,7 +44,7 @@ impl FlowiseChainEngine {
         let mut file = File::open(file_path).await.context("Failed to open file")?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-        let base64_image = base64::encode(&buffer);
+        let base64_image = Base64.encode(&buffer);
 
         let mime_type = from_path(file_path)
             .first_or_octet_stream()
@@ -124,7 +127,7 @@ impl Engine for FlowiseChainEngine {
         if content.main_content.is_empty() { None } else { Some(content) }
     }
 
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             // Implement FlowiseAI-specific upsert logic here if needed
             Ok(UpsertResponse {

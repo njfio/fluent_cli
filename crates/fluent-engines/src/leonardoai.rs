@@ -90,12 +90,6 @@ impl LeonardoAIEngine {
         remove_null_values(payload_value)
     }
 
-    fn get_bearer_token(&self) -> Result<String, anyhow::Error> {
-        self.config.parameters.get("bearer_token")
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .ok_or_else(|| anyhow::anyhow!("Bearer token not found in configuration"))
-    }
 }
 
 fn remove_null_values(value: Value) -> Value {
@@ -252,7 +246,7 @@ impl Engine for LeonardoAIEngine {
 
     fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let image_id = self.upload_file_internal(file_path).await?;
+            let _image_id = self.upload_file_internal(file_path).await?;
 
             let url = format!("{}://{}:{}{}",
                               self.config.connection.protocol,

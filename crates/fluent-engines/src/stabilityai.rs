@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
@@ -14,6 +13,8 @@ use fluent_core::config::EngineConfig;
 use log::debug;
 use reqwest::Client;
 use reqwest::multipart::{Form, Part};
+use base64::Engine as Base64Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
 
 
 pub struct StabilityAIEngine {
@@ -101,14 +102,13 @@ impl Engine for StabilityAIEngine {
                 return Err(anyhow!("Stability AI API request failed: {}", response.status()));
             }
 
-            // Handle response based on Accept header
             let response_content = if accept_header == "application/json" {
                 // Parse JSON response and extract base64 image data
                 let json_response: Value = response.json().await?;
                 let base64_image = json_response["artifacts"][0]["base64"]
                     .as_str()
                     .ok_or_else(|| anyhow!("Failed to extract base64 image data from JSON response"))?;
-                base64::decode(base64_image).context("Failed to decode base64 image data")?
+                Base64.encode(base64_image).into_bytes()
             } else {
                 // Get image bytes directly
                 response.bytes().await?.to_vec()
@@ -188,7 +188,7 @@ impl Engine for StabilityAIEngine {
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-            let base64_image = STANDARD.encode(&buffer);
+            let base64_image = Base64.encode(&buffer);
             Ok(base64_image)
         })
     }
@@ -198,7 +198,7 @@ impl Engine for StabilityAIEngine {
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-            let base64_image = base64::encode(&buffer);
+            let base64_image = Base64.encode(&buffer);
             let url = format!("{}://{}:{}{}",
                               self.config.connection.protocol,
                               self.config.connection.hostname,

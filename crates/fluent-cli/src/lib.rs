@@ -1,17 +1,15 @@
-use std::collections::HashMap;
-use std::path::Path;
+
+
 use std::pin::Pin;
-use std::sync::Arc;
+
 use anyhow::{anyhow, Error};
-use clap::ArgMatches;
-use tokio::fs;
-use fluent_core::config::{Config, EngineConfig, Neo4jConfig};
+
+
+use fluent_core::config::{ EngineConfig, Neo4jConfig};
 use fluent_core::neo4j_client::Neo4jClient;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, warn};
+use log::{debug};
 use regex::Regex;
-use serde_json::{json, Value};
-use fluent_core::spinner_configuration::SpinnerConfig;
+use serde_json::{ Value};
 use fluent_core::traits::{Engine};
 use fluent_core::types::Request;
 use fluent_engines::anthropic::AnthropicEngine;
@@ -23,21 +21,18 @@ use fluent_engines::perplexity::PerplexityEngine;
 
 pub mod cli {
     use std::pin::Pin;
-    use std::io::{self, Read};
     use std::fs;
     use std::env;
-    use clap::{Command, Arg, ArgAction, ArgMatches, CommandFactory, ValueEnum, ValueHint, value_parser};
-    use clap_complete::{generate, Generator, Shell};
+    use clap::{Command, Arg, ArgAction, ArgMatches};
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_engines::openai::OpenAIEngine;
     use fluent_engines::anthropic::AnthropicEngine;
     use fluent_core::traits::Engine;
-    use fluent_core::types::{Request, Response, UpsertRequest};
+    use fluent_core::types::{Request, Response};
     use anyhow::{Result, anyhow, Error};
     use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     use std::time::Duration;
-    use clap::builder::{PossibleValue, PossibleValuesParser};
     use owo_colors::OwoColorize;
     use std::io::IsTerminal;
     use indicatif::{ProgressBar, ProgressStyle};
@@ -45,11 +40,11 @@ pub mod cli {
     use log::{debug, error, info};
     use serde_json::Value;
     use tokio::io::AsyncReadExt;
-    use tokio::process;
+
     use tokio::time::Instant;
     use uuid::Uuid;
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
-    use fluent_core::output_processor::{format_markdown, MarkdownFormatter, OutputProcessor};
+    use fluent_core::output_processor::{ OutputProcessor};
     use fluent_engines::cohere::CohereEngine;
     use fluent_engines::dalle::DalleEngine;
     use fluent_engines::flowise_chain::FlowiseChainEngine;
@@ -80,7 +75,7 @@ pub mod cli {
         pub parameters: Vec<String>,
     }
 
-    fn read_config_file(path: &str) -> Result<(Vec<String>, HashSet<String>)> {
+    pub fn read_config_file(path: &str) -> Result<(Vec<String>, HashSet<String>)> {
         let config_str = fs::read_to_string(path)?;
         let config: Value = serde_json::from_str(&config_str)?;
 
@@ -103,7 +98,7 @@ pub mod cli {
         Ok((engines, parameters))
     }
 
-    async fn process_request_with_file(engine: &dyn Engine, request_content: &str, file_path: &str) -> Result<Response> {
+    pub async fn process_request_with_file(engine: &dyn Engine, request_content: &str, file_path: &str) -> Result<Response> {
         let file_id = Pin::from(engine.upload_file(Path::new(file_path))).await?;
         println!("File uploaded successfully. File ID: {}", file_id);
 
@@ -116,7 +111,7 @@ pub mod cli {
     }
 
 
-    async fn process_request(engine: &dyn Engine, request_content: &str) -> Result<Response> {
+    pub async fn process_request(engine: &dyn Engine, request_content: &str) -> Result<Response> {
         let request = Request {
             flowname: "default".to_string(),
             payload: request_content.to_string(),
@@ -124,7 +119,7 @@ pub mod cli {
 
         Pin::from(engine.execute(&request)).await    }
 
-    fn print_response(response: &Response, response_time: f64) {
+    pub fn print_response(response: &Response, response_time: f64) {
         println!("Response: {}", response.content);
         println!("Model: {}", response.model);
         println!("Usage:");
@@ -246,12 +241,7 @@ pub mod cli {
                     .action(ArgAction::SetTrue)))
     }
 
-    fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
-        debug!("Printing completions for {}", cmd.get_name());
-        generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
-    }
-
-    async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &EngineConfig)> {
+    pub async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &EngineConfig)> {
         let neo4j_config = config.engines.iter().find(|e| e.engine == "neo4j")?;
         let query_llm = neo4j_config.neo4j.as_ref()?.query_llm.as_ref()?;
         let llm_config = config.engines.iter().find(|e| e.name == query_llm.to_string())?;
@@ -652,7 +642,7 @@ pub mod cli {
     }
 
 
-    async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result<String> {
+    pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result<String> {
         // Use the configured LLM to generate a Cypher query
         let llm_request = Request {
             flowname: "cypher_generation".to_string(),
@@ -676,22 +666,9 @@ pub mod cli {
 }
 
 
-async fn get_neo4j_query_llm(config: &Config) -> Option<Box<dyn Engine>> {
-    let neo4j_config = config.engines.iter().find(|e| e.engine == "neo4j")?;
-
-    // Extract the query_llm from the neo4j configuration
-    let query_llm = neo4j_config.neo4j.as_ref()?.query_llm.as_ref()?;
-
-    // Find the engine configuration for the specified query_llm
-    let llm_config = config.engines.iter().find(|e| e.name.as_str() == query_llm)?;
-
-    // Create and return the LLM engine
-    create_llm_engine(llm_config).await.ok()
-}
-
 async fn generate_and_execute_cypher(
     neo4j_config: &Neo4jConfig,
-    llm_config: &EngineConfig,
+    _llm_config: &EngineConfig,
     query_string: &str,
     llm_engine: &dyn Engine
 ) -> Result<String, Error> {

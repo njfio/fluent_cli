@@ -1,10 +1,9 @@
 
 use std::future::Future;
-use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 use async_trait::async_trait;
-use anyhow::{Result, anyhow, Context, Error};
+use anyhow::{Result, anyhow};
 use serde_json::{json, Value};
 use log::debug;
 use pdf_extract::extract_text;
