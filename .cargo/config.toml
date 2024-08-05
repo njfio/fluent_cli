@@ -1,0 +1,8 @@
+[profile.rust-analyzer]
+inherits = "dev"
+debug-assertions = true
+
+[profile.dev]
+debug = true
+debug-assertions = false
+incremental = true
