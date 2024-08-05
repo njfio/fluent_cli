@@ -430,7 +430,7 @@ impl Neo4jClient {
                     extract_text(&path_buf)
                 }).await??)
             },
-            "txt" => {
+            "txt" | "json" | "csv" | "tsv" | "md" | "html" | "xml" | "yml" | "yaml" | "json5" | "py" | "rb" | "rs" | "js" | "ts" | "php" | "java" | "c" | "cpp" | "go" | "sh" | "bat" | "ps1" | "psm1" | "psd1" | "ps1xml" | "psc1" | "pssc" | "pss1" | "psh"  => {
                 let mut file = File::open(file_path).await?;
                 let mut content = String::new();
                 file.read_to_string(&mut content).await?;
@@ -1330,7 +1330,7 @@ impl Neo4jClient {
             .ok_or_else(|| anyhow!("Unable to determine file type"))?;
 
         let processor: Box<dyn DocumentProcessor> = match extension.to_lowercase().as_str() {
-            "txt" => Box::new(TextProcessor),
+            "txt" | "json" | "csv" | "tsv" | "md" | "html" | "xml" | "yml" | "yaml" | "json5" | "py" | "rb" | "rs" | "js" | "ts" | "php" | "java" | "c" | "cpp" | "go" | "sh" | "bat" | "ps1" | "psm1" | "psd1" | "ps1xml" | "psc1" | "pssc" | "pss1" | "psh"  => Box::new(TextProcessor),
             "pdf" => Box::new(PdfProcessor),
             "docx" => Box::new(DocxProcessor),
             // Add more file types as needed

@@ -2,14 +2,14 @@ name: my_pipeline
 steps:
   - !Command
     name: create_story
-    command: fluent cohere  "'${input}'" -o temperature=1
+    command: fluent perplexity  "'${input}'" -o temperature=1
     save_output: problem
 
 
   - !ShellCommand
     name: break_down_steps
     command: |
-      fluent cohere '' <<"""EOT"""
+      fluent perplexity '' <<"""EOT"""
         Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
       
         Problem: ${problem}
@@ -34,7 +34,7 @@ steps:
     name: solve_steps
     input: "1,2,3,4,5"
     command: |
-      fluent  cohere '' <<"""EOT"""
+      fluent  perplexity '' <<"""EOT"""
         Solve the following step of our problem. Provide a concise answer (max 75 words).
       
         Overall Problem: ${problem}
