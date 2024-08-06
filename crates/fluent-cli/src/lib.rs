@@ -27,12 +27,12 @@ pub mod cli {
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
     use std::collections::{HashMap, HashSet};
-    use std::env;
     use std::fs;
     use std::io::IsTerminal;
     use std::path::{Path, PathBuf};
     use std::pin::Pin;
     use std::time::Duration;
+    use std::{env, io};
 
     use log::{debug, error, info};
     use serde_json::Value;
@@ -587,7 +587,7 @@ pub mod cli {
 
             // Read context from stdin if available
             let mut context = String::new();
-            if !atty::is(atty::Stream::Stdin) {
+            if io::stdin().is_terminal() {
                 tokio::io::stdin().read_to_string(&mut context).await?;
             }
 

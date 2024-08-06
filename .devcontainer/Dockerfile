@@ -39,7 +39,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && ~/.cargo/bin/cargo install just \
     && ~/.cargo/bin/cargo install --git https://github.com/fpco/amber \
     && ~/.cargo/bin/cargo install pqrs \
-    && ~/.cargo/bin/cargo install --git  https://github.com/helix-editor/helix helix-term --locked
+    && ~/.cargo/bin/cargo install --git  https://github.com/helix-editor/helix helix-term --locked \
+    && ~/.cargo/bin/rustup install nightly \
+    && ~/.cargo/bin/rustup target add x86_64-unknown-linux-musl \
+    && ~/.cargo/bin/cargo install cargo-udeps
 
 # Set environment variables
 ENV PATH="/home/$USERNAME/.cargo/bin:${PATH}"

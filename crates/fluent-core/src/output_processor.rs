@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use crossterm::style::Color;
 use log::{debug, info};
 use regex::Regex;
 use reqwest::Client;
@@ -10,6 +9,7 @@ use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
+use termimad::crossterm::style::Color;
 use termimad::{MadSkin, StyledChar};
 use tokio::fs;
 use tokio::process::Command;
