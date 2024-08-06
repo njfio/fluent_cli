@@ -76,6 +76,11 @@ jobs:
             sudo apt-get update
             sudo apt-get install -qq crossbuild-essential-arm64 crossbuild-essential-armhf
           fi
+      
+      - name: Add musl target
+        if: ${{ matrix.TARGET == 'x86_64-unknown-linux-musl' }}
+        run: rustup target add x86_64-unknown-linux-musl          
+
       - name: Run build
         run: cargo build --release --verbose --target $TARGET
       - name: Run tests
