@@ -587,9 +587,15 @@ pub mod cli {
 
             // Read context from stdin if available
             let mut context = String::new();
-            if io::stdin().is_terminal() {
-                tokio::io::stdin().read_to_string(&mut context).await?;
-            }
+            let context = if !io::stdin().is_terminal() {
+                // In CLI context, read from stdin
+                let mut input = String::new();
+                tokio::io::stdin().read_to_string(&mut input).await?;
+                input
+            } else {
+                // In API context, leave context empty
+                String::new()
+            };
 
             // Read additional context from file if provided
             let mut file_contents = String::new();
