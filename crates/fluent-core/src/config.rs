@@ -1,14 +1,13 @@
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::{env, fs};
-use log::{debug, info};
-use serde_json::Value;
-use std::process::Command;
-use std::sync::Arc;
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
-
+use anyhow::{anyhow, Result};
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::process::Command;
+use std::sync::Arc;
+use std::{env, fs};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
@@ -16,10 +15,9 @@ pub struct EngineConfig {
     pub engine: String,
     pub connection: ConnectionConfig,
     pub parameters: HashMap<String, serde_json::Value>,
-    pub session_id: Option<String>,  // New field for sessionID
+    pub session_id: Option<String>, // New field for sessionID
     pub neo4j: Option<Neo4jConfig>,
     pub spinner: Option<SpinnerConfig>,
-
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -33,7 +31,6 @@ pub struct Neo4jConfig {
     pub parameters: Option<HashMap<String, serde_json::Value>>,
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectionConfig {
     pub protocol: String,
@@ -42,7 +39,7 @@ pub struct ConnectionConfig {
     pub request_path: String,
 }
 
-#[derive(  Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub engines: Vec<EngineConfig>,
     _env_guard: Arc<AmberEnvVarGuard>, // This keeps the guard alive
@@ -56,7 +53,11 @@ impl Config {
         }
     }
 }
-pub fn load_config(config_path: &str, engine_name: &str, overrides: &HashMap<String, String>) -> Result<Config> {
+pub fn load_config(
+    config_path: &str,
+    engine_name: &str,
+    overrides: &HashMap<String, String>,
+) -> Result<Config> {
     let config_content = fs::read_to_string(config_path)?;
     let mut config: Value = serde_json::from_str(&config_content)?;
 
@@ -80,14 +81,19 @@ pub fn load_config(config_path: &str, engine_name: &str, overrides: &HashMap<Str
         for (key, value) in overrides {
             // Parse the override value to the correct type
             let parsed_value: Value = match parameters[key] {
-                Value::Number(_) => value.parse::<f64>().map(Value::from).unwrap_or(Value::String(value.clone())),
-                Value::Bool(_) => value.parse::<bool>().map(Value::from).unwrap_or(Value::String(value.clone())),
+                Value::Number(_) => value
+                    .parse::<f64>()
+                    .map(Value::from)
+                    .unwrap_or(Value::String(value.clone())),
+                Value::Bool(_) => value
+                    .parse::<bool>()
+                    .map(Value::from)
+                    .unwrap_or(Value::String(value.clone())),
                 _ => Value::String(value.clone()),
             };
             parameters.insert(key.clone(), parsed_value);
         }
     }
-
 
     debug!("Loaded and processed config for engine: {}", engine_name);
 
@@ -113,17 +119,15 @@ pub fn apply_overrides(config: &mut EngineConfig, overrides: &[(String, String)]
     Ok(())
 }
 
+#[derive(Default)]
 pub struct AmberEnvVarGuard {
     keys: Vec<String>,
 }
 
 impl AmberEnvVarGuard {
     pub fn new() -> Self {
-        AmberEnvVarGuard {
-            keys: Vec::new(),
-        }
+        AmberEnvVarGuard::default()
     }
-
 
     fn decrypt_amber_keys_in_value(&mut self, value: &mut Value) -> Result<()> {
         match value {
@@ -132,20 +136,20 @@ impl AmberEnvVarGuard {
                 self.set_env_var_from_amber(s, &decrypted)?;
                 *s = decrypted;
                 Ok(())
-            },
+            }
             Value::Object(map) => {
                 for (_, v) in map.iter_mut() {
                     self.decrypt_amber_keys_in_value(v)?;
                 }
                 Ok(())
-            },
+            }
             Value::Array(arr) => {
                 for item in arr.iter_mut() {
                     self.decrypt_amber_keys_in_value(item)?;
                 }
                 Ok(())
-            },
-            _ => Ok(())
+            }
+            _ => Ok(()),
         }
     }
 
@@ -156,11 +160,8 @@ impl AmberEnvVarGuard {
         Ok(())
     }
 
-
     fn get_amber_value(&self, key: &str) -> Result<String> {
-        let output = Command::new("amber")
-            .arg("print")
-            .output()?;
+        let output = Command::new("amber").arg("print").output()?;
 
         if !output.status.success() {
             return Err(anyhow!("Failed to run amber print command"));
@@ -202,24 +203,22 @@ pub fn replace_with_env_var(value: &mut Value) {
                 Ok(env_value) => {
                     debug!("Environment value found for: {}", env_key);
                     *s = env_value;
-                },
+                }
                 Err(e) => {
                     debug!("Failed to find environment variable '{}': {}", env_key, e);
                 }
             }
-        },
+        }
         Value::Object(map) => {
             for (_, v) in map.iter_mut() {
                 replace_with_env_var(v);
             }
-        },
+        }
         Value::Array(arr) => {
             for item in arr.iter_mut() {
                 replace_with_env_var(item);
             }
-        },
+        }
         _ => {}
     }
 }
-
-

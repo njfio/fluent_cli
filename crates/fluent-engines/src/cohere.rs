@@ -1,19 +1,21 @@
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
+use reqwest::Client;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
-use serde_json::{json, Value};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
-use log::debug;
-use reqwest::Client;
 
 pub struct CohereEngine {
     config: EngineConfig,
@@ -39,13 +41,17 @@ impl CohereEngine {
 
 #[async_trait]
 impl Engine for CohereEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = json!({
@@ -71,11 +77,16 @@ impl Engine for CohereEngine {
 
             debug!("Cohere Payload: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -96,22 +107,31 @@ impl Engine for CohereEngine {
                 .to_string();
 
             let usage = Usage {
-                prompt_tokens: response.get("meta")
+                prompt_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
                     .and_then(|billed_units| billed_units.get("input_tokens"))
                     .and_then(|input_tokens| input_tokens.as_u64())
                     .unwrap_or(0) as u32,
-                completion_tokens: response.get("meta")
+                completion_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
                     .and_then(|billed_units| billed_units.get("output_tokens"))
                     .and_then(|output_tokens| output_tokens.as_u64())
                     .unwrap_or(0) as u32,
-                total_tokens: response.get("meta")
+                total_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
-                    .and_then(|billed_units| {
-                        let input = billed_units.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
-                        let output = billed_units.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
-                        Some(input + output)
+                    .map(|billed_units| {
+                        let input = billed_units
+                            .get("input_tokens")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        let output = billed_units
+                            .get("output_tokens")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        input + output
                     })
                     .unwrap_or(0) as u32,
             };
@@ -128,7 +148,10 @@ impl Engine for CohereEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             // Cohere doesn't have a direct upsert functionality, so we return an empty response
             Ok(UpsertResponse {
@@ -143,11 +166,16 @@ impl Engine for CohereEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
-        value.get("text")
+        value
+            .get("text")
             .and_then(|text| text.as_str())
             .map(|content| ExtractedContent {
                 main_content: content.to_string(),
@@ -158,26 +186,36 @@ impl Engine for CohereEngine {
             })
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
             // Cohere doesn't have a direct file upload API, so we'll read the file and return its content as a base64 string
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+            file.read_to_end(&mut buffer)
+                .await
+                .context("Failed to read file")?;
             let base64_content = STANDARD.encode(&buffer);
             Ok(base64_content)
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let base64_content = Pin::from(self.upload_file(file_path)).await?;
 
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = json!({
@@ -192,11 +230,16 @@ impl Engine for CohereEngine {
 
             debug!("Cohere Payload with file: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -217,22 +260,31 @@ impl Engine for CohereEngine {
                 .to_string();
 
             let usage = Usage {
-                prompt_tokens: response.get("meta")
+                prompt_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
                     .and_then(|billed_units| billed_units.get("input_tokens"))
                     .and_then(|input_tokens| input_tokens.as_u64())
                     .unwrap_or(0) as u32,
-                completion_tokens: response.get("meta")
+                completion_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
                     .and_then(|billed_units| billed_units.get("output_tokens"))
                     .and_then(|output_tokens| output_tokens.as_u64())
                     .unwrap_or(0) as u32,
-                total_tokens: response.get("meta")
+                total_tokens: response
+                    .get("meta")
                     .and_then(|meta| meta.get("billed_units"))
-                    .and_then(|billed_units| {
-                        let input = billed_units.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
-                        let output = billed_units.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
-                        Some(input + output)
+                    .map(|billed_units| {
+                        let input = billed_units
+                            .get("input_tokens")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        let output = billed_units
+                            .get("output_tokens")
+                            .and_then(|t| t.as_u64())
+                            .unwrap_or(0);
+                        input + output
                     })
                     .unwrap_or(0) as u32,
             };

@@ -1,0 +1,18 @@
+[profile.rust-analyzer]
+inherits = "dev"
+debug-assertions = true
+
+[profile.dev]
+debug = true
+debug-assertions = false
+incremental = true
+
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce codegen units to increase optimization
+strip = "debuginfo" # Strip debug information
