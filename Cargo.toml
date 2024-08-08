@@ -1,9 +1,6 @@
-[package]
-name = "fluent"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
+resolver = "2"
+
 members = [
     "crates/fluent-cli",
     "crates/fluent-core",
@@ -11,19 +8,6 @@ members = [
     "crates/fluent-storage",
     "crates/fluent-lambda",
 ]
-
-[dependencies]
-fluent-cli = { path = "crates/fluent-cli" }
-fluent-core = { path = "crates/fluent-core" }
-fluent-engines = { path = "crates/fluent-engines" }
-fluent-storage = { path = "crates/fluent-storage" }
-tokio = { version = "1", features = ["full"] }
-clap = { version = "4.5.8", features = ["derive"] }
-anyhow = "1.0"
-env_logger = "0.11.3"
-neo4rs = "0.8.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.3", features = ["v4", "serde"] }
 
 [workspace.dependencies]
 fluent-cli = { path = "crates/fluent-cli" }

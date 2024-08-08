@@ -67,40 +67,55 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum Template {
     #[strum(ascii_case_insensitive, to_string = "openai")]
+    #[serde(alias = "openai")]
     OpenAI,
+
     #[strum(ascii_case_insensitive, to_string = "anthropic")]
+    #[serde(alias = "anthropic")]
     Anthropic,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "sonnet35",
         to_string = "sonnet3.5"
     )]
+    #[serde(alias = "sonnet3.5", alias = "sonnet35")]
     Sonnet35,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "geminiflash",
         to_string = "gemini-flash"
     )]
+    #[serde(alias = "gemini-flash", alias = "geminiflash")]
     GeminiFlash,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "geminipro",
         to_string = "gemini-pro"
     )]
+    #[serde(alias = "gemini-pro", alias = "geminipro")]
     GeminiPro,
+
     #[strum(ascii_case_insensitive, to_string = "cohere")]
+    #[serde(alias = "cohere")]
     Cohere,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "llama3groq",
         to_string = "llama3-groq"
     )]
+    #[serde(alias = "llama3-groq", alias = "llama3groq")]
     Llama3Groq,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "gemmagroq",
         to_string = "gemma-groq"
     )]
+    #[serde(alias = "gemma-groq", alias = "gemmagroq")]
     GemmaGroq,
     #[strum(
         ascii_case_insensitive,
@@ -113,45 +128,63 @@ pub enum Template {
         serialize = "mistrallarge2",
         to_string = "mistral-large2"
     )]
+    #[serde(alias = "mistral-large2", alias = "mistrallarge2")]
     MistralLarge2,
+
     #[strum(ascii_case_insensitive, to_string = "perplexity")]
+    #[serde(alias = "perplexity")]
     Perplexity,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "sonnet35chain",
         to_string = "sonnet3.5_chain"
     )]
+    #[serde(alias = "sonnet3.5_chain", alias = "sonnet35chain")]
     Sonnet35Chain,
+
     #[strum(ascii_case_insensitive)]
     OmniAgentWithSearchAndBrowsing,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "omnichain",
         to_string = "Omni_Chain"
     )]
+    #[serde(alias = "Omni_Chain", alias = "omnichain")]
     OmniChain,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "omnichain2",
         to_string = "Omni_Chain2"
     )]
+    #[serde(alias = "Omni_Chain2", alias = "omnichain2")]
     OmniChain2,
+
     #[strum(
         ascii_case_insensitive,
         serialize = "langflowtest",
         to_string = "langflow_test"
     )]
+    #[serde(alias = "langflow_test", alias = "langflowtest")]
     LangFlowTest,
+
     #[strum(ascii_case_insensitive)]
     MakeLeonardoImagePostRawOutput,
+
     #[strum(ascii_case_insensitive)]
     StabilityUltraVertical,
+
     #[strum(ascii_case_insensitive)]
     ImaginePro,
+
     #[strum(ascii_case_insensitive)]
     LeonardoVertical,
+
     #[strum(ascii_case_insensitive)]
     DalleVertical,
+
     #[strum(ascii_case_insensitive)]
     DalleHorizontal,
 }
