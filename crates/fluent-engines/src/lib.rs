@@ -36,23 +36,6 @@ pub mod pipeline_executor;
 pub mod stabilityai;
 pub mod webhook;
 
-/*
-     "engine": "openai",
-     "engine": "anthropic",
-     "engine": "google_gemini",
-     "engine": "cohere",
-     "engine": "groq_lpu",
-     "engine": "mistral",
-     "engine": "perplexity",
-     "engine": "flowise_chain",
-     "engine": "langflow_chain",
-     "engine": "webhook",
-     "engine": "stabilityai",
-     "engine": "imagine_pro",
-     "engine": "leonardo_ai",
-     "engine": "dalle",
-*/
-
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
     #[strum(ascii_case_insensitive, to_string = "openai")]
@@ -106,20 +89,6 @@ pub enum EngineType {
 }
 
 pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<dyn Engine>> {
-    /*
-           "openai" => Ok(Box::new(OpenAIEngine::new(engine_config.clone()).await?)),
-       "anthropic" => Ok(Box::new(AnthropicEngine::new(engine_config.clone()).await?)),
-       "cohere" => Ok(Box::new(CohereEngine::new(engine_config.clone()).await?)),
-       "google_gemini" => Ok(Box::new(
-           GoogleGeminiEngine::new(engine_config.clone()).await?,
-       )),
-       "perplexity" => Ok(Box::new(
-           PerplexityEngine::new(engine_config.clone()).await?,
-       )),
-       "groq_lpu" => Ok(Box::new(GroqLPUEngine::new(engine_config.clone()).await?)),
-       _ => Err(anyhow!("Unsupported engine: {}", engine_config.engine)),
-
-    */
     let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str())? {
         EngineType::OpenAI => Box::new(OpenAIEngine::new(engine_config.clone()).await?),
         EngineType::Anthropic => Box::new(AnthropicEngine::new(engine_config.clone()).await?),
