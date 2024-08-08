@@ -1,3 +1,5 @@
+pub mod args;
+
 use std::pin::Pin;
 
 use anyhow::{anyhow, Error};
@@ -6,12 +8,7 @@ use fluent_core::config::{EngineConfig, Neo4jConfig};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
-use fluent_engines::anthropic::AnthropicEngine;
-use fluent_engines::cohere::CohereEngine;
-use fluent_engines::google_gemini::GoogleGeminiEngine;
-use fluent_engines::groqlpu::GroqLPUEngine;
-use fluent_engines::openai::OpenAIEngine;
-use fluent_engines::perplexity::PerplexityEngine;
+use fluent_engines::create_engine;
 use log::debug;
 use regex::Regex;
 use serde_json::Value;
@@ -23,6 +20,7 @@ pub mod cli {
     use fluent_core::traits::Engine;
     use fluent_core::types::{Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
+    use fluent_engines::create_engine;
     use fluent_engines::openai::OpenAIEngine;
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
@@ -38,7 +36,7 @@ pub mod cli {
     use serde_json::Value;
     use tokio::io::AsyncReadExt;
 
-    use crate::{create_engine, create_llm_engine, generate_and_execute_cypher};
+    use crate::{create_llm_engine, generate_and_execute_cypher};
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
     use fluent_core::output_processor::OutputProcessor;
     use fluent_engines::cohere::CohereEngine;
@@ -586,7 +584,6 @@ pub mod cli {
             };
 
             // Read context from stdin if available
-            let mut context = String::new();
             let context = if !io::stdin().is_terminal() {
                 // In CLI context, read from stdin
                 let mut input = String::new();
@@ -922,22 +919,6 @@ fn format_as_csv(result: &Value) -> String {
     // Implement CSV formatting here
     // For now, we'll just return the JSON as a string
     result.to_string()
-}
-
-async fn create_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, Error> {
-    match engine_config.engine.as_str() {
-        "openai" => Ok(Box::new(OpenAIEngine::new(engine_config.clone()).await?)),
-        "anthropic" => Ok(Box::new(AnthropicEngine::new(engine_config.clone()).await?)),
-        "cohere" => Ok(Box::new(CohereEngine::new(engine_config.clone()).await?)),
-        "google_gemini" => Ok(Box::new(
-            GoogleGeminiEngine::new(engine_config.clone()).await?,
-        )),
-        "perplexity" => Ok(Box::new(
-            PerplexityEngine::new(engine_config.clone()).await?,
-        )),
-        "groq_lpu" => Ok(Box::new(GroqLPUEngine::new(engine_config.clone()).await?)),
-        _ => Err(anyhow!("Unsupported engine: {}", engine_config.engine)),
-    }
 }
 
 async fn create_llm_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, Error> {

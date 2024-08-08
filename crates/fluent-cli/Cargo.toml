@@ -15,7 +15,7 @@ serde_json = "1.0.120"
 indicatif = "0.17.8"
 owo-colors = "4.0.0"
 regex = "1.10.5"
-serde_yaml = "0.9.34+deprecated"
+serde_yaml = "0.9.34"
 #fluent-storage = { path = "../fluent-storage" }  # is not used
 #clap_complete = "4.5.1"  #is not used
 #atty = "0.2.14" "use standard std::io::IsTerminal"
