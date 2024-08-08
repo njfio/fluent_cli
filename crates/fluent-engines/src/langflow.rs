@@ -77,7 +77,7 @@ impl Engine for LangflowEngine {
         self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
     }
 
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             // Implement Langflow-specific upsert logic here if needed
             Ok(UpsertResponse {

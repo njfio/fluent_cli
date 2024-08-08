@@ -1,0 +1,49 @@
+name: foreach_and_trycatch_example
+steps:
+  - !Command
+    name: set_items
+    command: echo "item1,item2,item3"
+    save_output: item_list
+
+  - !ForEach
+    name: process_items
+    items: "${item_list}"
+    steps:
+      - !ShellCommand
+        name: process_item
+        command: echo "Processing ${ITEM}"
+        save_output: item_result
+
+  - !TryCatch
+    name: risky_operation
+    try_steps:
+      - !ShellCommand
+        name: risky_command
+        command: |
+          if [ "$RANDOM" -gt 16384 ]; then
+            echo "Success"
+          else
+            exit 1
+          fi
+        save_output: risky_result
+    catch_steps:
+      - !ShellCommand
+        name: error_handling
+        command: |
+          echo "An error occurred: ${error}"
+        save_output: error_message
+    finally_steps:
+      - !ShellCommand
+        name: cleanup
+        command: echo "Cleanup operation"
+        save_output: cleanup_result
+
+  - !PrintOutput
+    name: final_output
+    value: |
+      ForEach Results: ${process_items}
+      TryCatch Results:
+        Try Result: ${try_result}
+        Risky Operation Output: ${risky_result}
+        Error (if any): ${error_message}
+        Cleanup: ${cleanup_result}

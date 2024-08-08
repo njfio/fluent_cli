@@ -1,26 +1,30 @@
-use anyhow::{Result, Context, anyhow, Error};
-use neo4rs::{Graph, query, ConfigBuilder, BoltMap, BoltList, BoltString, BoltType, BoltInteger, BoltFloat, Database, BoltNull, Query, Row, BoltNode, BoltRelation, BoltPath};
+use anyhow::{anyhow, Error, Result};
+use neo4rs::{
+    query, BoltFloat, BoltInteger, BoltList, BoltMap, BoltNull, BoltString, BoltType,
+    ConfigBuilder, Database, Graph, Row,
+};
 
 use chrono::Duration as ChronoDuration;
 
 use chrono::{DateTime, Utc};
-use serde_json::{json, Map, Value};
-use uuid::Uuid;
-use std::collections::{HashMap, HashSet};
 use log::{debug, error, info, warn};
-use std::sync::{Arc, RwLock};
-
+use pdf_extract::extract_text;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::sync::RwLock;
+use uuid::Uuid;
 
 use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 
-
 use crate::config::Neo4jConfig;
+use crate::traits::{DocumentProcessor, DocxProcessor};
 use crate::types::DocumentStatistics;
 use crate::utils::chunking::chunk_document;
-use crate::voyageai_client::{EMBEDDING_DIMENSION, get_voyage_embedding};
-use stop_words::{get, LANGUAGE};
-
+use crate::voyageai_client::{get_voyage_embedding, EMBEDDING_DIMENSION};
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VoyageAIConfig {
@@ -35,13 +39,29 @@ pub struct Neo4jClient {
     voyage_ai_config: Option<VoyageAIConfig>,
     query_llm: Option<String>,
 }
+impl Neo4jClient {
+    pub fn get_document_count(&self) -> usize {
+        *self.document_count.read().unwrap()
+    }
+    pub fn get_word_document_count_for_word(&self, word: &str) -> usize {
+        *self
+            .word_document_count
+            .read()
+            .unwrap()
+            .get(word)
+            .unwrap_or(&0)
+    }
+    pub fn get_query_llm(&self) -> Option<&String> {
+        self.query_llm.as_ref()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct InteractionStats {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
-    pub response_time: f64,  // in seconds
+    pub response_time: f64, // in seconds
     pub finish_reason: String,
 }
 
@@ -51,13 +71,6 @@ pub struct Embedding {
     pub vector: Vec<f32>,
     pub model: String,
 }
-
-struct Document {
-    id: String,
-    content: String,
-    metadata: Vec<String>,
-}
-
 
 #[derive(Debug)]
 pub struct EnrichmentConfig {
@@ -73,16 +86,13 @@ pub struct EnrichmentStatus {
     pub last_sentiment_update: Option<DateTime<Utc>>,
 }
 
-
-
-
 impl Neo4jClient {
     pub async fn new(config: &Neo4jConfig) -> Result<Self> {
         let graph_config = ConfigBuilder::default()
             .uri(&config.uri)
             .user(&config.user)
             .password(&config.password)
-            .db(Database::from(config.database.as_str()))  // Convert string to Database instance
+            .db(Database::from(config.database.as_str())) // Convert string to Database instance
             .build()?;
 
         let graph = Graph::connect(graph_config).await?;
@@ -95,7 +105,6 @@ impl Neo4jClient {
             query_llm: config.query_llm.clone(),
         })
     }
-
 
     pub async fn ensure_indexes(&self) -> Result<()> {
         let index_queries = vec![
@@ -113,9 +122,8 @@ impl Neo4jClient {
 
         for query_str in index_queries {
             debug!("Executing index creation query: {}", query_str);
-            self.graph.execute(query(query_str)).await?;
+            let _ = self.graph.execute(query(query_str)).await?;
         }
-
 
         // Create a vector index for embeddings
         let vector_index_query = format!(
@@ -133,7 +141,6 @@ impl Neo4jClient {
             Ok(_) => debug!("Vector index created successfully for Document Embedding nodes"),
             Err(e) => warn!("Failed to create vector index for Document Embedding nodes: {}. This might be normal if the index already exists.", e),
         }
-
 
         // Optionally, we can also create full-text indexes for content fields if needed
         let fulltext_index_queries = vec![
@@ -168,14 +175,18 @@ impl Neo4jClient {
         RETURN s.id as session_id
         "#;
 
-        let mut result = self.graph.execute(query(query_str)
-            .param("id", session.id.to_string())
-            .param("start_time", session.start_time.to_rfc3339())
-            .param("end_time", session.end_time.to_rfc3339())
-            .param("context", session.context.to_string())
-            .param("session_id", session.session_id.to_string())
-            .param("user_id", session.user_id.to_string())
-        ).await?;
+        let mut result = self
+            .graph
+            .execute(
+                query(query_str)
+                    .param("id", session.id.to_string())
+                    .param("start_time", session.start_time.to_rfc3339())
+                    .param("end_time", session.end_time.to_rfc3339())
+                    .param("context", session.context.to_string())
+                    .param("session_id", session.session_id.to_string())
+                    .param("user_id", session.user_id.to_string()),
+            )
+            .await?;
 
         if let Some(row) = result.next().await? {
             Ok(row.get("session_id")?)
@@ -184,14 +195,13 @@ impl Neo4jClient {
         }
     }
 
-
     pub async fn create_interaction(
         &self,
         session_id: &str,
         request: &str,
         response: &str,
         model: &str,
-        stats: &InteractionStats
+        stats: &InteractionStats,
     ) -> Result<String> {
         let query_str = r#"
         MERGE (s:Session {id: $session_id})
@@ -239,22 +249,56 @@ impl Neo4jClient {
         let stats_id = Uuid::new_v4().to_string();
         let timestamp = Utc::now();
 
-        let mut result = self.graph.execute(query(query_str)
-            .param("session_id", BoltType::String(BoltString::from(session_id)))
-            .param("id", BoltType::String(BoltString::from(interaction_id.as_str())))
-            .param("question_id", BoltType::String(BoltString::from(question_id.as_str())))
-            .param("response_id", BoltType::String(BoltString::from(response_id.as_str())))
-            .param("stats_id", BoltType::String(BoltString::from(stats_id.as_str())))
-            .param("timestamp", BoltType::String(BoltString::from(timestamp.to_rfc3339().as_str())))
-            .param("request", BoltType::String(BoltString::from(request)))
-            .param("response", BoltType::String(BoltString::from(response)))
-            .param("model", BoltType::String(BoltString::from(model)))
-            .param("prompt_tokens", BoltType::Integer(BoltInteger::new(stats.prompt_tokens as i64)))
-            .param("completion_tokens", BoltType::Integer(BoltInteger::new(stats.completion_tokens as i64)))
-            .param("total_tokens", BoltType::Integer(BoltInteger::new(stats.total_tokens as i64)))
-            .param("response_time", BoltType::Float(BoltFloat::new(stats.response_time)))
-            .param("finish_reason", BoltType::String(BoltString::from(stats.finish_reason.as_str())))
-        ).await?;
+        let mut result = self
+            .graph
+            .execute(
+                query(query_str)
+                    .param("session_id", BoltType::String(BoltString::from(session_id)))
+                    .param(
+                        "id",
+                        BoltType::String(BoltString::from(interaction_id.as_str())),
+                    )
+                    .param(
+                        "question_id",
+                        BoltType::String(BoltString::from(question_id.as_str())),
+                    )
+                    .param(
+                        "response_id",
+                        BoltType::String(BoltString::from(response_id.as_str())),
+                    )
+                    .param(
+                        "stats_id",
+                        BoltType::String(BoltString::from(stats_id.as_str())),
+                    )
+                    .param(
+                        "timestamp",
+                        BoltType::String(BoltString::from(timestamp.to_rfc3339().as_str())),
+                    )
+                    .param("request", BoltType::String(BoltString::from(request)))
+                    .param("response", BoltType::String(BoltString::from(response)))
+                    .param("model", BoltType::String(BoltString::from(model)))
+                    .param(
+                        "prompt_tokens",
+                        BoltType::Integer(BoltInteger::new(stats.prompt_tokens as i64)),
+                    )
+                    .param(
+                        "completion_tokens",
+                        BoltType::Integer(BoltInteger::new(stats.completion_tokens as i64)),
+                    )
+                    .param(
+                        "total_tokens",
+                        BoltType::Integer(BoltInteger::new(stats.total_tokens as i64)),
+                    )
+                    .param(
+                        "response_time",
+                        BoltType::Float(BoltFloat::new(stats.response_time)),
+                    )
+                    .param(
+                        "finish_reason",
+                        BoltType::String(BoltString::from(stats.finish_reason.as_str())),
+                    ),
+            )
+            .await?;
 
         if let Some(row) = result.next().await? {
             let interaction_id: String = row.get("interaction_id")?;
@@ -270,9 +314,15 @@ impl Neo4jClient {
 
             if let Some(voyage_config) = &self.voyage_ai_config {
                 debug!("Voyage AI config found, creating embeddings");
-                match self.create_embeddings(request, response, &question_id, &response_id, voyage_config).await {
+                match self
+                    .create_embeddings(request, response, &question_id, &response_id, voyage_config)
+                    .await
+                {
                     Ok(_) => debug!("Created embeddings for interaction {}", interaction_id),
-                    Err(e) => warn!("Failed to create embeddings for interaction {}: {:?}", interaction_id, e),
+                    Err(e) => warn!(
+                        "Failed to create embeddings for interaction {}: {:?}",
+                        interaction_id, e
+                    ),
                 }
 
                 // Call enrich_document_incrementally for both question and response
@@ -282,12 +332,18 @@ impl Neo4jClient {
                     sentiment_interval: ChronoDuration::hours(1),
                 };
 
-                match self.enrich_document_incrementally(&question_id, "Question", &enrichment_config).await {
+                match self
+                    .enrich_document_incrementally(&question_id, "Question", &enrichment_config)
+                    .await
+                {
                     Ok(_) => debug!("Enriched question {}", question_id),
                     Err(e) => warn!("Failed to enrich question {}: {:?}", question_id, e),
                 }
 
-                match self.enrich_document_incrementally(&response_id, "Response", &enrichment_config).await {
+                match self
+                    .enrich_document_incrementally(&response_id, "Response", &enrichment_config)
+                    .await
+                {
                     Ok(_) => debug!("Enriched response {}", response_id),
                     Err(e) => warn!("Failed to enrich response {}: {:?}", response_id, e),
                 }
@@ -301,14 +357,13 @@ impl Neo4jClient {
         }
     }
 
-
     async fn create_embeddings(
         &self,
         request: &str,
         response: &str,
         question_id: &str,
         response_id: &str,
-        voyage_config: &VoyageAIConfig
+        voyage_config: &VoyageAIConfig,
     ) -> Result<()> {
         let question_embedding = get_voyage_embedding(request, voyage_config).await?;
         let response_embedding = get_voyage_embedding(response, voyage_config).await?;
@@ -325,14 +380,20 @@ impl Neo4jClient {
             model: voyage_config.model.clone(),
         };
 
-        self.create_embedding(&question_embedding_node, question_id, "Question").await?;
-        self.create_embedding(&response_embedding_node, response_id, "Response").await?;
+        self.create_embedding(&question_embedding_node, question_id, "Question")
+            .await?;
+        self.create_embedding(&response_embedding_node, response_id, "Response")
+            .await?;
 
         Ok(())
     }
 
-
-    pub async fn create_embedding(&self, embedding: &Embedding, parent_id: &str, parent_type: &str) -> Result<String> {
+    pub async fn create_embedding(
+        &self,
+        embedding: &Embedding,
+        parent_id: &str,
+        parent_type: &str,
+    ) -> Result<String> {
         let query_str = r#"
         MATCH (parent {id: $parent_id})
         WHERE labels(parent)[0] = $parent_type
@@ -353,13 +414,26 @@ impl Neo4jClient {
             vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
         }
 
-        let mut result = self.graph.execute(query(query_str)
-            .param("parent_id", BoltType::String(BoltString::from(parent_id)))
-            .param("parent_type", BoltType::String(BoltString::from(parent_type)))
-            .param("id", BoltType::String(BoltString::from(embedding.id.as_str())))
-            .param("vector", BoltType::List(vector_list))
-            .param("model", BoltType::String(BoltString::from(embedding.model.as_str())))
-        ).await?;
+        let mut result = self
+            .graph
+            .execute(
+                query(query_str)
+                    .param("parent_id", BoltType::String(BoltString::from(parent_id)))
+                    .param(
+                        "parent_type",
+                        BoltType::String(BoltString::from(parent_type)),
+                    )
+                    .param(
+                        "id",
+                        BoltType::String(BoltString::from(embedding.id.as_str())),
+                    )
+                    .param("vector", BoltType::List(vector_list))
+                    .param(
+                        "model",
+                        BoltType::String(BoltString::from(embedding.model.as_str())),
+                    ),
+            )
+            .await?;
 
         if let Some(row) = result.next().await? {
             Ok(row.get("embedding_id")?)
@@ -368,11 +442,14 @@ impl Neo4jClient {
         }
     }
 
+    pub async fn upsert_document(&self, file_path: &Path, metadata: &[String]) -> Result<String> {
+        debug!("Upserting document from file: {:?}", file_path);
 
-    pub async fn upsert_document(&self, content: &str, metadata: &[String]) -> Result<String> {
-        debug!("Upserting document with content:");
+        let content = self.extract_content(file_path).await?;
+
         let document_id = Uuid::new_v4().to_string();
-        let query = query("
+        let query = query(
+            "
         MERGE (d:Document {content: $content})
         ON CREATE SET
             d.id = $id,
@@ -382,11 +459,12 @@ impl Neo4jClient {
             d.metadata = d.metadata + $new_metadata,
             d.updated_at = datetime()
         RETURN d.id as document_id
-        ")
-            .param("id", document_id.clone())
-            .param("content", content)
-            .param("metadata", metadata)
-            .param("new_metadata", metadata);
+        ",
+        )
+        .param("id", document_id.clone())
+        .param("content", content.clone()) // Clone here
+        .param("metadata", metadata)
+        .param("new_metadata", metadata);
 
         let mut result = self.graph.execute(query).await?;
 
@@ -402,13 +480,51 @@ impl Neo4jClient {
             sentiment_interval: ChronoDuration::hours(1),
         };
 
-        let chunks = chunk_document(content);
-        self.create_chunks_and_embeddings(&document_id, &chunks).await?;
-        self.enrich_document_incrementally(&document_id, "Document", &config).await?;
+        let chunks = chunk_document(&content); // Now we can use content here
+        self.create_chunks_and_embeddings(&document_id, &chunks)
+            .await?;
+        self.enrich_document_incrementally(&document_id, "Document", &config)
+            .await?;
         Ok(document_id)
     }
-    async fn create_chunks_and_embeddings(&self, document_id: &str, chunks: &[String]) -> Result<()> {
-        debug!("Creating chunks and embeddings for document {}", document_id);
+
+    async fn extract_content(&self, file_path: &Path) -> Result<String> {
+        let extension = file_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or_else(|| anyhow!("Unable to determine file type"))?;
+
+        match extension.to_lowercase().as_str() {
+            "pdf" => {
+                let path_buf = file_path.to_path_buf();
+                Ok(tokio::task::spawn_blocking(move || extract_text(&path_buf)).await??)
+            }
+            "txt" | "json" | "csv" | "tsv" | "md" | "html" | "xml" | "yml" | "yaml" | "json5"
+            | "py" | "rb" | "rs" | "js" | "ts" | "php" | "java" | "c" | "cpp" | "go" | "sh"
+            | "bat" | "ps1" | "psm1" | "psd1" | "ps1xml" | "psc1" | "pssc" | "pss1" | "psh" => {
+                let mut file = File::open(file_path).await?;
+                let mut content = String::new();
+                file.read_to_string(&mut content).await?;
+                Ok(content)
+            }
+            "docx" => {
+                let processor = DocxProcessor;
+                let (content, _metadata) = processor.process(file_path).await?;
+                Ok(content)
+            }
+            // Add more file types here as needed
+            _ => Err(anyhow!("Unsupported file type: {}", extension)),
+        }
+    }
+    async fn create_chunks_and_embeddings(
+        &self,
+        document_id: &str,
+        chunks: &[String],
+    ) -> Result<()> {
+        debug!(
+            "Creating chunks and embeddings for document {}",
+            document_id
+        );
         if let Some(voyage_config) = &self.voyage_ai_config {
             for (i, chunk) in chunks.iter().enumerate() {
                 let embedding = get_voyage_embedding(chunk, voyage_config).await?;
@@ -417,7 +533,8 @@ impl Neo4jClient {
                     return Err(anyhow!("Embedding dimension mismatch"));
                 }
 
-                let query = query("
+                let query = query(
+                    "
             MATCH (d:Document {id: $document_id})
             MERGE (c:Chunk {content: $content})
             ON CREATE SET
@@ -434,18 +551,34 @@ impl Neo4jClient {
                 MERGE (prev)-[:NEXT]->(c)
             )
             RETURN c.id as chunk_id, e.id as embedding_id
-            ")
-                    .param("document_id", BoltType::String(BoltString::from(document_id)))
-                    .param("chunk_id", BoltType::String(BoltString::from(Uuid::new_v4().to_string())))
-                    .param("content", BoltType::String(BoltString::from(chunk.as_str())))
-                    .param("index", BoltType::Integer(BoltInteger::new(i as i64)))
-                    .param("embedding_id", BoltType::String(BoltString::from(Uuid::new_v4().to_string())))
-                    .param("vector", embedding)
-                    .param("prev_chunk_id", if i > 0 {
+            ",
+                )
+                .param(
+                    "document_id",
+                    BoltType::String(BoltString::from(document_id)),
+                )
+                .param(
+                    "chunk_id",
+                    BoltType::String(BoltString::from(Uuid::new_v4().to_string())),
+                )
+                .param(
+                    "content",
+                    BoltType::String(BoltString::from(chunk.as_str())),
+                )
+                .param("index", BoltType::Integer(BoltInteger::new(i as i64)))
+                .param(
+                    "embedding_id",
+                    BoltType::String(BoltString::from(Uuid::new_v4().to_string())),
+                )
+                .param("vector", embedding)
+                .param(
+                    "prev_chunk_id",
+                    if i > 0 {
                         BoltType::String(BoltString::from(chunks[i - 1].as_str()))
                     } else {
-                        BoltType::Null(BoltNull::default())
-                    });
+                        BoltType::Null(BoltNull)
+                    },
+                );
 
                 let mut result = self.graph.execute(query).await?;
 
@@ -460,7 +593,8 @@ impl Neo4jClient {
     }
 
     pub async fn get_document_statistics(&self) -> Result<DocumentStatistics> {
-        let query = query("
+        let query = query(
+            "
         MATCH (d:Document)
         OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c)
         OPTIONAL MATCH (c)-[:HAS_EMBEDDING]->(e)
@@ -469,7 +603,8 @@ impl Neo4jClient {
             avg(size(d.content)) as avg_content_length,
             count(DISTINCT c) as chunk_count,
             count(DISTINCT e) as embedding_count
-        ");
+        ",
+        );
 
         let mut result = self.graph.execute(query).await?;
 
@@ -485,41 +620,63 @@ impl Neo4jClient {
         }
     }
 
-    pub async fn enrich_document_incrementally(&self, node_id: &str, node_type: &str, config: &EnrichmentConfig) -> Result<()> {
+    pub async fn enrich_document_incrementally(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        config: &EnrichmentConfig,
+    ) -> Result<()> {
         debug!("Enriching {} {}", node_type, node_id);
         let status = self.get_enrichment_status(node_id, node_type).await?;
         let now = Utc::now();
 
         if let Some(voyage_config) = &self.voyage_ai_config {
-            if status.last_themes_keywords_update.map_or(true, |last| now - last > config.themes_keywords_interval) {
-                self.update_themes_and_keywords(node_id, node_type, voyage_config).await?;
+            if status
+                .last_themes_keywords_update
+                .map_or(true, |last| now - last > config.themes_keywords_interval)
+            {
+                self.update_themes_and_keywords(node_id, node_type, voyage_config)
+                    .await?;
             }
 
-            if status.last_clustering_update.map_or(true, |last| now - last > config.clustering_interval) {
+            if status
+                .last_clustering_update
+                .map_or(true, |last| now - last > config.clustering_interval)
+            {
                 self.update_clustering(node_id, node_type).await?;
             }
 
-            if status.last_sentiment_update.map_or(true, |last| now - last > config.sentiment_interval) {
+            if status
+                .last_sentiment_update
+                .map_or(true, |last| now - last > config.sentiment_interval)
+            {
                 self.update_sentiment(node_id, node_type).await?;
             }
 
-            self.update_enrichment_status(node_id, node_type, &now).await?;
+            self.update_enrichment_status(node_id, node_type, &now)
+                .await?;
             Ok(())
         } else {
             Err(anyhow!("VoyageAI configuration not found"))
         }
     }
 
-    async fn get_enrichment_status(&self, node_id: &str, node_type: &str) -> Result<EnrichmentStatus> {
+    async fn get_enrichment_status(
+        &self,
+        node_id: &str,
+        node_type: &str,
+    ) -> Result<EnrichmentStatus> {
         debug!("Getting enrichment status for {} {}", node_type, node_id);
-        let query = query("
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
     RETURN n.last_themes_keywords_update AS themes_keywords,
            n.last_clustering_update AS clustering,
            n.last_sentiment_update AS sentiment
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let mut result = self.graph.execute(query).await?;
         if let Some(row) = result.next().await? {
@@ -537,34 +694,61 @@ impl Neo4jClient {
         }
     }
 
-
-    async fn update_themes_and_keywords(&self, node_id: &str, node_type: &str, voyage_config: &VoyageAIConfig) -> Result<()> {
+    async fn update_themes_and_keywords(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        voyage_config: &VoyageAIConfig,
+    ) -> Result<()> {
         debug!("Updating themes and keywords for {} {}", node_type, node_id);
         let content = self.get_node_content(node_id, node_type).await?;
-        let (themes, keywords) = self.extract_themes_and_keywords(&content, voyage_config).await?;
-        self.create_theme_and_keyword_nodes(node_id, node_type, &themes, &keywords).await?;
+        let (themes, keywords) = self
+            .extract_themes_and_keywords(&content, voyage_config)
+            .await?;
+        self.create_theme_and_keyword_nodes(node_id, node_type, &themes, &keywords)
+            .await?;
         Ok(())
     }
-
-
 
     async fn extract_sentiment(&self, content: &str) -> Result<f32> {
         // Define a simple sentiment lexicon
         let lexicon: HashMap<&str, f32> = [
-            ("good", 1.0), ("great", 1.5), ("excellent", 2.0), ("amazing", 2.0), ("wonderful", 1.5),
-            ("bad", -1.0), ("terrible", -1.5), ("awful", -2.0), ("horrible", -2.0), ("poor", -1.0),
-            ("like", 0.5), ("love", 1.0), ("hate", -1.0), ("dislike", -0.5),
-            ("happy", 1.0), ("sad", -1.0), ("angry", -1.0), ("joyful", 1.5),
-            ("interesting", 0.5), ("boring", -0.5), ("exciting", 1.0), ("dull", -0.5)
-        ].iter().cloned().collect();
+            ("good", 1.0),
+            ("great", 1.5),
+            ("excellent", 2.0),
+            ("amazing", 2.0),
+            ("wonderful", 1.5),
+            ("bad", -1.0),
+            ("terrible", -1.5),
+            ("awful", -2.0),
+            ("horrible", -2.0),
+            ("poor", -1.0),
+            ("like", 0.5),
+            ("love", 1.0),
+            ("hate", -1.0),
+            ("dislike", -0.5),
+            ("happy", 1.0),
+            ("sad", -1.0),
+            ("angry", -1.0),
+            ("joyful", 1.5),
+            ("interesting", 0.5),
+            ("boring", -0.5),
+            ("exciting", 1.0),
+            ("dull", -0.5),
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
-        let words: Vec<String> = content.to_lowercase()
+        let words: Vec<String> = content
+            .to_lowercase()
             .split_whitespace()
             .map(String::from)
             .collect();
         let total_words = words.len() as f32;
 
-        let sentiment_sum: f32 = words.iter()
+        let sentiment_sum: f32 = words
+            .iter()
             .filter_map(|word| lexicon.get(word.as_str()))
             .sum();
 
@@ -575,17 +759,30 @@ impl Neo4jClient {
         Ok(sentiment.clamp(-1.0, 1.0))
     }
 
-    async fn create_and_assign_sentiment(&self, node_id: &str, node_type: &str, sentiment: f32) -> Result<()> {
-        debug!("Creating and assigning sentiment node for {} {}", node_type, node_id);
-        let query = query("
+    async fn create_and_assign_sentiment(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        sentiment: f32,
+    ) -> Result<()> {
+        debug!(
+            "Creating and assigning sentiment node for {} {}",
+            node_type, node_id
+        );
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
     MERGE (s:Sentiment {value: $sentiment})
     MERGE (n)-[:HAS_SENTIMENT]->(s)
     RETURN count(s) AS sentiment_count, s.value AS sentiment_value, n.id AS node_id
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("sentiment", BoltType::Float(BoltFloat::new(sentiment as f64)));
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)))
+        .param(
+            "sentiment",
+            BoltType::Float(BoltFloat::new(sentiment as f64)),
+        );
 
         debug!("Executing query with sentiment: {}", sentiment);
 
@@ -596,20 +793,42 @@ impl Neo4jClient {
                     let sentiment_count: i64 = row.get("sentiment_count")?;
                     let sentiment_value: f64 = row.get("sentiment_value")?;
                     let db_node_id: String = row.get("node_id")?;
-                    debug!("Created and assigned {} sentiment node with value {} for {} {}",
-                       sentiment_count, sentiment_value, node_type, db_node_id);
+                    debug!(
+                        "Created and assigned {} sentiment node with value {} for {} {}",
+                        sentiment_count, sentiment_value, node_type, db_node_id
+                    );
                     if sentiment_count == 0 {
-                        warn!("No sentiment was created or assigned for {} {}", node_type, node_id);
-                        return Err(anyhow!("Failed to create or assign sentiment for {} {}", node_type, node_id));
+                        warn!(
+                            "No sentiment was created or assigned for {} {}",
+                            node_type, node_id
+                        );
+                        return Err(anyhow!(
+                            "Failed to create or assign sentiment for {} {}",
+                            node_type,
+                            node_id
+                        ));
                     }
                 } else {
-                    warn!("No result returned from sentiment creation and assignment query for {} {}", node_type, node_id);
-                    return Err(anyhow!("No result returned from sentiment creation query for {} {}", node_type, node_id));
+                    warn!(
+                        "No result returned from sentiment creation and assignment query for {} {}",
+                        node_type, node_id
+                    );
+                    return Err(anyhow!(
+                        "No result returned from sentiment creation query for {} {}",
+                        node_type,
+                        node_id
+                    ));
                 }
-            },
+            }
             Err(e) => {
-                error!("Error executing sentiment creation and assignment query for {} {}: {:?}", node_type, node_id, e);
-                return Err(anyhow!("Failed to create and assign sentiment node: {:?}", e));
+                error!(
+                    "Error executing sentiment creation and assignment query for {} {}: {:?}",
+                    node_type, node_id, e
+                );
+                return Err(anyhow!(
+                    "Failed to create and assign sentiment node: {:?}",
+                    e
+                ));
             }
         }
 
@@ -620,11 +839,13 @@ impl Neo4jClient {
     }
 
     async fn verify_sentiment(&self, node_id: &str, expected_sentiment: f32) -> Result<()> {
-        let query = query("
+        let query = query(
+            "
         MATCH (n {id: $node_id})-[:HAS_SENTIMENT]->(s:Sentiment)
         RETURN n.id as node_id, s.value as sentiment
-        ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
+        ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let mut result = self.graph.execute(query).await?;
         if let Some(row) = result.next().await? {
@@ -635,7 +856,10 @@ impl Neo4jClient {
             debug!("Sentiment in DB: {}", db_sentiment);
 
             if (db_sentiment as f32 - expected_sentiment).abs() > 1e-6 {
-                warn!("Sentiment mismatch for node {}: expected {}, found {}", db_node_id, expected_sentiment, db_sentiment);
+                warn!(
+                    "Sentiment mismatch for node {}: expected {}, found {}",
+                    db_node_id, expected_sentiment, db_sentiment
+                );
                 return Err(anyhow!("Sentiment mismatch for node {}", db_node_id));
             } else {
                 debug!("Sentiment verified successfully for node {}", db_node_id);
@@ -647,14 +871,14 @@ impl Neo4jClient {
         Ok(())
     }
 
-
-
     async fn get_all_documents(&self) -> Result<Vec<String>> {
-        let query = query("
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response)
     RETURN n.content AS content
-    ");
+    ",
+        );
 
         let mut result = self.graph.execute(query).await?;
         let mut documents = Vec::new();
@@ -677,68 +901,60 @@ impl Neo4jClient {
         let sentiment = self.extract_sentiment(&content).await?;
 
         // Create and assign sentiment to the node
-        match self.create_and_assign_sentiment(node_id, node_type, sentiment).await {
+        match self
+            .create_and_assign_sentiment(node_id, node_type, sentiment)
+            .await
+        {
             Ok(_) => {
-                debug!("Successfully created and assigned sentiment for {} {}", node_type, node_id);
+                debug!(
+                    "Successfully created and assigned sentiment for {} {}",
+                    node_type, node_id
+                );
                 Ok(())
-            },
+            }
             Err(e) => {
-                error!("Failed to create and assign sentiment for {} {}: {:?}", node_type, node_id, e);
+                error!(
+                    "Failed to create and assign sentiment for {} {}: {:?}",
+                    node_type, node_id, e
+                );
                 Err(e)
             }
         }
     }
 
-    async fn get_node_embedding(&self, node_id: &str, node_type: &str) -> Result<Vec<f32>> {
-        debug!("Getting embedding for {} {}", node_type, node_id);
-        let query = match node_type {
-            "Document" => query("
-            MATCH (d:Document {id: $node_id})-[:HAS_CHUNK]->(c:Chunk)-[:HAS_EMBEDDING]->(e:Embedding)
-            RETURN e.vector AS embedding
-            LIMIT 1
-        "),
-            "Question" | "Response" => query("
-            MATCH (n)
-            WHERE (n:Question OR n:Response) AND n.id = $node_id
-            MATCH (n)-[:HAS_EMBEDDING]->(e:Embedding)
-            RETURN e.vector AS embedding
-        "),
-            _ => return Err(anyhow!("Unsupported node type: {}", node_type)),
-        }
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            Ok(row.get("embedding")?)
-        } else {
-            Err(anyhow!("No embedding found for {} {}", node_type, node_id))
-        }
-    }
-
-    async fn update_enrichment_status(&self, node_id: &str, node_type: &str, now: &DateTime<Utc>) -> Result<()> {
+    async fn update_enrichment_status(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        now: &DateTime<Utc>,
+    ) -> Result<()> {
         debug!("Updating enrichment status for {} {}", node_type, node_id);
-        let query = query("
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
     SET n.last_themes_keywords_update = $now,
         n.last_clustering_update = $now,
         n.last_sentiment_update = $now
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("now", BoltType::String(BoltString::from(now.to_rfc3339())));
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)))
+        .param("now", BoltType::String(BoltString::from(now.to_rfc3339())));
 
-        self.graph.execute(query).await?;
+        let _ = self.graph.execute(query).await?;
         Ok(())
     }
 
     async fn get_node_content(&self, node_id: &str, node_type: &str) -> Result<String> {
         debug!("Getting content for {} {}", node_type, node_type);
-        let query = query("
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
     RETURN n.content AS content
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let mut result = self.graph.execute(query).await?;
         if let Some(row) = result.next().await? {
@@ -748,46 +964,19 @@ impl Neo4jClient {
         }
     }
 
-    async fn get_document_embedding(&self, document_id: &str) -> Result<Vec<f32>> {
-        debug!("Getting embedding for document {}", document_id);
-        let query = query("
-    MATCH (d:Document {id: $document_id})-[:HAS_CHUNK]->(c:Chunk)-[:HAS_EMBEDDING]->(e:Embedding)
-    RETURN e.vector AS embedding
-    LIMIT 1
-    ")
-            .param("document_id", BoltType::String(BoltString::from(document_id)));
-
-        let mut result = self.graph.execute(query).await?;
-
-        if let Some(row) = result.next().await? {
-            let embedding: Vec<f32> = row.get("embedding")?;
-            Ok(embedding)
-        } else {
-            Err(anyhow!("No embedding found for document"))
-        }
-    }
-
-
-    async fn create_sentiment_node(&self, node_id: &str, node_type: &str, sentiment: f32) -> Result<()> {
-        debug!("Creating sentiment node for {} {}", node_type, node_id);
-        let query = query("
-    MATCH (n)
-    WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
-    MERGE (s:Sentiment {value: $sentiment})
-    MERGE (n)-[:HAS_SENTIMENT]->(s)
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("sentiment", BoltType::Float(BoltFloat::new(sentiment as f64)));
-        debug!("node_id {}, sentiment {}", node_id, sentiment);
-        self.graph.execute(query).await?;
-        debug!("Created sentiment node for {} {}", node_type, node_id);
-
-        Ok(())
-    }
-
-    async fn create_theme_and_keyword_nodes(&self, node_id: &str, node_type: &str, themes: &[String], keywords: &[String]) -> Result<()> {
-        debug!("Creating theme and keyword nodes for {} {}", node_type, node_id);
-        let query = query("
+    async fn create_theme_and_keyword_nodes(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        themes: &[String],
+        keywords: &[String],
+    ) -> Result<()> {
+        debug!(
+            "Creating theme and keyword nodes for {} {}",
+            node_type, node_id
+        );
+        let query = query(
+            "
     MATCH (n)
     WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
     WITH n
@@ -800,40 +989,63 @@ impl Neo4jClient {
     MERGE (n)-[:HAS_KEYWORD]->(k)
     WITH n, themes, collect(k) AS keywords
     RETURN size(themes) + size(keywords) AS total_count
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("themes", themes)
-            .param("keywords", keywords);
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)))
+        .param("themes", themes)
+        .param("keywords", keywords);
 
-        debug!("Executing query with themes: {:?} and keywords: {:?}", themes, keywords);
+        debug!(
+            "Executing query with themes: {:?} and keywords: {:?}",
+            themes, keywords
+        );
 
         let result = self.graph.execute(query).await;
         match result {
             Ok(mut stream) => {
                 if let Some(row) = stream.next().await? {
                     let total_count: i64 = row.get("total_count")?;
-                    debug!("Created {} theme and keyword nodes for {} {}", total_count, node_type, node_id);
+                    debug!(
+                        "Created {} theme and keyword nodes for {} {}",
+                        total_count, node_type, node_id
+                    );
                     if total_count == 0 {
-                        warn!("No themes or keywords were created for {} {}", node_type, node_id);
+                        warn!(
+                            "No themes or keywords were created for {} {}",
+                            node_type, node_id
+                        );
                     }
                 } else {
-                    warn!("No result returned from theme and keyword creation query for {} {}", node_type, node_id);
+                    warn!(
+                        "No result returned from theme and keyword creation query for {} {}",
+                        node_type, node_id
+                    );
                 }
-            },
+            }
             Err(e) => {
-                error!("Error executing theme and keyword creation query for {} {}: {:?}", node_type, node_id, e);
+                error!(
+                    "Error executing theme and keyword creation query for {} {}: {:?}",
+                    node_type, node_id, e
+                );
                 return Err(anyhow!("Failed to create theme and keyword nodes: {:?}", e));
             }
         }
 
         // Verification step
-        self.verify_themes_and_keywords(node_id, themes, keywords).await?;
+        self.verify_themes_and_keywords(node_id, themes, keywords)
+            .await?;
 
         Ok(())
     }
 
-    async fn verify_themes_and_keywords(&self, node_id: &str, themes: &[String], keywords: &[String]) -> Result<()> {
-        let query = query("
+    async fn verify_themes_and_keywords(
+        &self,
+        node_id: &str,
+        themes: &[String],
+        keywords: &[String],
+    ) -> Result<()> {
+        let query = query(
+            "
     MATCH (n {id: $node_id})
     OPTIONAL MATCH (n)-[:HAS_THEME]->(t:Theme)
     OPTIONAL MATCH (n)-[:HAS_KEYWORD]->(k:Keyword)
@@ -843,8 +1055,9 @@ impl Neo4jClient {
         collect(distinct k.name) as keywords,
         count(distinct t) as theme_count,
         count(distinct k) as keyword_count
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
+    ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let mut result = self.graph.execute(query).await?;
         if let Some(row) = result.next().await? {
@@ -856,22 +1069,59 @@ impl Neo4jClient {
 
             debug!("Verification for node {}", db_node_id);
             debug!("Themes in DB: {:?} (count: {})", db_themes, theme_count);
-            debug!("Keywords in DB: {:?} (count: {})", db_keywords, keyword_count);
+            debug!(
+                "Keywords in DB: {:?} (count: {})",
+                db_keywords, keyword_count
+            );
 
-            let missing_themes: Vec<_> = themes.iter().filter(|t| !db_themes.contains(t)).cloned().collect();
-            let extra_themes: Vec<_> = db_themes.iter().filter(|t| !themes.contains(t)).cloned().collect();
-            let missing_keywords: Vec<_> = keywords.iter().filter(|k| !db_keywords.contains(k)).cloned().collect();
-            let extra_keywords: Vec<_> = db_keywords.iter().filter(|k| !keywords.contains(k)).cloned().collect();
+            let missing_themes: Vec<_> = themes
+                .iter()
+                .filter(|t| !db_themes.contains(t))
+                .cloned()
+                .collect();
+            let extra_themes: Vec<_> = db_themes
+                .iter()
+                .filter(|t| !themes.contains(t))
+                .cloned()
+                .collect();
+            let missing_keywords: Vec<_> = keywords
+                .iter()
+                .filter(|k| !db_keywords.contains(k))
+                .cloned()
+                .collect();
+            let extra_keywords: Vec<_> = db_keywords
+                .iter()
+                .filter(|k| !keywords.contains(k))
+                .cloned()
+                .collect();
 
-            if !missing_themes.is_empty() || !missing_keywords.is_empty() || !extra_themes.is_empty() || !extra_keywords.is_empty() {
+            if !missing_themes.is_empty()
+                || !missing_keywords.is_empty()
+                || !extra_themes.is_empty()
+                || !extra_keywords.is_empty()
+            {
                 warn!("Discrepancies found for node {}:", db_node_id);
-                if !missing_themes.is_empty() { warn!("Missing themes: {:?}", missing_themes); }
-                if !extra_themes.is_empty() { warn!("Extra themes in DB: {:?}", extra_themes); }
-                if !missing_keywords.is_empty() { warn!("Missing keywords: {:?}", missing_keywords); }
-                if !extra_keywords.is_empty() { warn!("Extra keywords in DB: {:?}", extra_keywords); }
-                return Err(anyhow!("Discrepancies found in themes or keywords for node {}", db_node_id));
+                if !missing_themes.is_empty() {
+                    warn!("Missing themes: {:?}", missing_themes);
+                }
+                if !extra_themes.is_empty() {
+                    warn!("Extra themes in DB: {:?}", extra_themes);
+                }
+                if !missing_keywords.is_empty() {
+                    warn!("Missing keywords: {:?}", missing_keywords);
+                }
+                if !extra_keywords.is_empty() {
+                    warn!("Extra keywords in DB: {:?}", extra_keywords);
+                }
+                return Err(anyhow!(
+                    "Discrepancies found in themes or keywords for node {}",
+                    db_node_id
+                ));
             } else {
-                debug!("All themes and keywords verified successfully for node {}", db_node_id);
+                debug!(
+                    "All themes and keywords verified successfully for node {}",
+                    db_node_id
+                );
             }
         } else {
             warn!("No node found with ID: {}", node_id);
@@ -892,14 +1142,24 @@ impl Neo4jClient {
         let clusters = self.extract_clusters(&content, &all_documents).await?;
 
         // Create and assign clusters to the node
-        self.create_and_assign_clusters(node_id, node_type, &clusters).await?;
+        self.create_and_assign_clusters(node_id, node_type, &clusters)
+            .await?;
 
         Ok(())
     }
 
-    async fn create_and_assign_clusters(&self, node_id: &str, node_type: &str, clusters: &[String]) -> Result<()> {
-        debug!("Creating and assigning cluster nodes for {} {}", node_type, node_id);
-        let query = query("
+    async fn create_and_assign_clusters(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        clusters: &[String],
+    ) -> Result<()> {
+        debug!(
+            "Creating and assigning cluster nodes for {} {}",
+            node_type, node_id
+        );
+        let query = query(
+            "
         MATCH (n)
         WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
         WITH n
@@ -908,9 +1168,10 @@ impl Neo4jClient {
         MERGE (n)-[:BELONGS_TO]->(c)
         WITH n, collect(c) AS clusters
         RETURN size(clusters) AS total_count
-        ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("clusters", clusters);
+        ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)))
+        .param("clusters", clusters);
 
         debug!("Executing query with clusters: {:?}", clusters);
 
@@ -919,17 +1180,32 @@ impl Neo4jClient {
             Ok(mut stream) => {
                 if let Some(row) = stream.next().await? {
                     let total_count: i64 = row.get("total_count")?;
-                    debug!("Created and assigned {} cluster nodes for {} {}", total_count, node_type, node_id);
+                    debug!(
+                        "Created and assigned {} cluster nodes for {} {}",
+                        total_count, node_type, node_id
+                    );
                     if total_count == 0 {
-                        warn!("No clusters were created or assigned for {} {}", node_type, node_id);
+                        warn!(
+                            "No clusters were created or assigned for {} {}",
+                            node_type, node_id
+                        );
                     }
                 } else {
-                    warn!("No result returned from cluster creation and assignment query for {} {}", node_type, node_id);
+                    warn!(
+                        "No result returned from cluster creation and assignment query for {} {}",
+                        node_type, node_id
+                    );
                 }
-            },
+            }
             Err(e) => {
-                error!("Error executing cluster creation and assignment query for {} {}: {:?}", node_type, node_id, e);
-                return Err(anyhow!("Failed to create and assign cluster nodes: {:?}", e));
+                error!(
+                    "Error executing cluster creation and assignment query for {} {}: {:?}",
+                    node_type, node_id, e
+                );
+                return Err(anyhow!(
+                    "Failed to create and assign cluster nodes: {:?}",
+                    e
+                ));
             }
         }
 
@@ -940,15 +1216,17 @@ impl Neo4jClient {
     }
 
     async fn verify_clusters(&self, node_id: &str, expected_clusters: &[String]) -> Result<()> {
-        let query = query("
+        let query = query(
+            "
         MATCH (n {id: $node_id})
         OPTIONAL MATCH (n)-[:BELONGS_TO]->(c:Cluster)
         RETURN
             n.id as node_id,
             collect(distinct c.name) as clusters,
             count(distinct c) as cluster_count
-        ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)));
+        ",
+        )
+        .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let mut result = self.graph.execute(query).await?;
         if let Some(row) = result.next().await? {
@@ -957,16 +1235,34 @@ impl Neo4jClient {
             let cluster_count: i64 = row.get("cluster_count")?;
 
             debug!("Verification for node {}", db_node_id);
-            debug!("Clusters in DB: {:?} (count: {})", db_clusters, cluster_count);
+            debug!(
+                "Clusters in DB: {:?} (count: {})",
+                db_clusters, cluster_count
+            );
 
-            let missing_clusters: Vec<_> = expected_clusters.iter().filter(|c| !db_clusters.contains(c)).cloned().collect();
-            let extra_clusters: Vec<_> = db_clusters.iter().filter(|c| !expected_clusters.contains(c)).cloned().collect();
+            let missing_clusters: Vec<_> = expected_clusters
+                .iter()
+                .filter(|c| !db_clusters.contains(c))
+                .cloned()
+                .collect();
+            let extra_clusters: Vec<_> = db_clusters
+                .iter()
+                .filter(|c| !expected_clusters.contains(c))
+                .cloned()
+                .collect();
 
             if !missing_clusters.is_empty() || !extra_clusters.is_empty() {
                 warn!("Discrepancies found for node {}:", db_node_id);
-                if !missing_clusters.is_empty() { warn!("Missing clusters: {:?}", missing_clusters); }
-                if !extra_clusters.is_empty() { warn!("Extra clusters in DB: {:?}", extra_clusters); }
-                return Err(anyhow!("Discrepancies found in clusters for node {}", db_node_id));
+                if !missing_clusters.is_empty() {
+                    warn!("Missing clusters: {:?}", missing_clusters);
+                }
+                if !extra_clusters.is_empty() {
+                    warn!("Extra clusters in DB: {:?}", extra_clusters);
+                }
+                return Err(anyhow!(
+                    "Discrepancies found in clusters for node {}",
+                    db_node_id
+                ));
             } else {
                 debug!("All clusters verified successfully for node {}", db_node_id);
             }
@@ -976,39 +1272,11 @@ impl Neo4jClient {
         Ok(())
     }
 
-    async fn assign_to_cluster(&self, node_id: &str, node_type: &str, cluster: &str) -> Result<()> {
-        debug!("Assigning to cluster for {} {}", node_type, node_id);
-        let query = query("
-    MATCH (n)
-    WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
-    MERGE (c:Cluster {name: $cluster})
-    MERGE (n)-[:BELONGS_TO]->(c)
-    ")
-            .param("node_id", BoltType::String(BoltString::from(node_id)))
-            .param("cluster", BoltType::String(BoltString::from(cluster)));
-        debug!("node_id: {} cluster: {}", node_id, cluster);
-        self.graph.execute(query).await?;
-        debug!("Assigned to cluster for {} {}", node_type, node_id);
-        Ok(())
-    }
-
-    async fn node_exists(&self, node_id: &str) -> Result<bool> {
-        let query = query("
-        MATCH (n {id: $node_id})
-        RETURN count(n) as count
-        ")
-            .param("node_id", node_id);
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            let count: i64 = row.get("count")?;
-            Ok(count > 0)
-        } else {
-            Ok(false)
-        }
-    }
-
-    pub async fn create_or_update_question(&self, question: &Neo4jQuestion, interaction_id: &str) -> Result<String> {
+    pub async fn create_or_update_question(
+        &self,
+        question: &Neo4jQuestion,
+        interaction_id: &str,
+    ) -> Result<String> {
         let query_str = r#"
         MERGE (q:Question {content: $content})
         ON CREATE SET
@@ -1023,8 +1291,14 @@ impl Neo4jClient {
         "#;
 
         let mut props = BoltMap::new();
-        props.put(BoltString::from("id"), BoltType::String(BoltString::from(question.id.as_str())));
-        props.put(BoltString::from("content"), BoltType::String(BoltString::from(question.content.as_str())));
+        props.put(
+            BoltString::from("id"),
+            BoltType::String(BoltString::from(question.id.as_str())),
+        );
+        props.put(
+            BoltString::from("content"),
+            BoltType::String(BoltString::from(question.content.as_str())),
+        );
 
         let mut vector_list = BoltList::new();
         for &value in &question.vector {
@@ -1032,13 +1306,20 @@ impl Neo4jClient {
         }
         props.put(BoltString::from("vector"), BoltType::List(vector_list));
 
-        props.put(BoltString::from("timestamp"), BoltType::String(BoltString::from(question.timestamp.to_rfc3339().as_str())));
+        props.put(
+            BoltString::from("timestamp"),
+            BoltType::String(BoltString::from(question.timestamp.to_rfc3339().as_str())),
+        );
 
-        let mut result = self.graph.execute(query(query_str)
-            .param("content", question.content.as_str())
-            .param("props", BoltType::Map(props))
-            .param("interaction_id", interaction_id)
-        ).await?;
+        let mut result = self
+            .graph
+            .execute(
+                query(query_str)
+                    .param("content", question.content.as_str())
+                    .param("props", BoltType::Map(props))
+                    .param("interaction_id", interaction_id),
+            )
+            .await?;
 
         if let Some(row) = result.next().await? {
             Ok(row.get("question_id")?)
@@ -1047,7 +1328,12 @@ impl Neo4jClient {
         }
     }
 
-    pub async fn create_response(&self, response: &Neo4jResponse, interaction_id: &str, model_id: &str) -> Result<String> {
+    pub async fn create_response(
+        &self,
+        response: &Neo4jResponse,
+        interaction_id: &str,
+        model_id: &str,
+    ) -> Result<String> {
         let query_str = r#"
         CREATE (r:Response {
             id: $id,
@@ -1065,16 +1351,23 @@ impl Neo4jClient {
         RETURN r.id as response_id
         "#;
 
-        let mut result = self.graph.execute(query(query_str)
-            .param("id", response.id.clone())
-            .param("content", response.content.clone())
-            .param("vector", BoltType::List(response.vector.clone()))
-            .param("timestamp", response.timestamp.to_rfc3339())
-            .param("confidence", response.confidence)
-            .param("llm_specific_data", serde_json::to_string(&response.llm_specific_data)?)
-            .param("interaction_id", interaction_id)
-            .param("model_id", model_id)
-        ).await?;
+        let mut result = self
+            .graph
+            .execute(
+                query(query_str)
+                    .param("id", response.id.clone())
+                    .param("content", response.content.clone())
+                    .param("vector", BoltType::List(response.vector.clone()))
+                    .param("timestamp", response.timestamp.to_rfc3339())
+                    .param("confidence", response.confidence)
+                    .param(
+                        "llm_specific_data",
+                        serde_json::to_string(&response.llm_specific_data)?,
+                    )
+                    .param("interaction_id", interaction_id)
+                    .param("model_id", model_id),
+            )
+            .await?;
 
         if let Some(row) = result.next().await? {
             Ok(row.get("response_id")?)
@@ -1083,8 +1376,11 @@ impl Neo4jClient {
         }
     }
 
-
-    async fn extract_themes_and_keywords(&self, content: &str, config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
+    async fn extract_themes_and_keywords(
+        &self,
+        content: &str,
+        _config: &VoyageAIConfig,
+    ) -> Result<(Vec<String>, Vec<String>)> {
         debug!("Extracting themes and keywords");
         debug!("content: {}", content);
         let stemmer = Stemmer::create(Algorithm::English);
@@ -1111,14 +1407,16 @@ impl Neo4jClient {
         let mut sorted_words: Vec<_> = word_freq.into_iter().collect();
         sorted_words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
-        let themes: Vec<String> = sorted_words.iter()
-            .take(3)  // Extract top 5 as themes
+        let themes: Vec<String> = sorted_words
+            .iter()
+            .take(3) // Extract top 5 as themes
             .map(|(word, count)| format!("{}:{}", word, count))
             .collect();
 
-        let keywords: Vec<String> = sorted_words.iter()
+        let keywords: Vec<String> = sorted_words
+            .iter()
             .skip(5)
-            .take(3)  // Extract next 10 as keywords
+            .take(3) // Extract next 10 as keywords
             .map(|(word, count)| format!("{}:{}", word, count))
             .collect();
 
@@ -1128,31 +1426,23 @@ impl Neo4jClient {
         Ok((themes, keywords))
     }
 
-
-    async fn perform_clustering(&self, embedding: &[f32]) -> Result<String> {
-        debug!("Performing Clustering:");
-        // This is a simplified clustering method.
-        // In a real-world scenario, you'd want to implement a more sophisticated clustering algorithm.
-        let sum: f32 = embedding.iter().sum();
-        let avg = sum / embedding.len() as f32;
-
-        let cluster = if avg > 0.0 { "positive" } else { "negative" };
-
-        Ok(cluster.to_string())
-    }
-
-
-    async fn extract_clusters(&self, content: &str, all_documents: &[String]) -> Result<Vec<String>> {
+    async fn extract_clusters(
+        &self,
+        content: &str,
+        all_documents: &[String],
+    ) -> Result<Vec<String>> {
         debug!("Extracting clusters");
         let stemmer = Stemmer::create(Algorithm::English);
-        let stop_words: HashSet<_> = stop_words::get(stop_words::LANGUAGE::English).into_iter().collect();
+        let stop_words: HashSet<_> = stop_words::get(stop_words::LANGUAGE::English)
+            .into_iter()
+            .collect();
 
         // Function to tokenize and clean text
         let tokenize = |text: &str| -> Vec<String> {
             text.split_whitespace()
                 .map(|word| word.to_lowercase())
                 .filter(|word| {
-                    word.len() > 3 && // Filter out very short words
+                    word.len() > 5 && // Filter out very short words
                         !stop_words.contains(word) && // Filter out stop words
                         word.chars().any(|c| c.is_alphabetic()) // Ensure at least one alphabetic character
                 })
@@ -1186,7 +1476,8 @@ impl Neo4jClient {
         }
 
         // Calculate TF-IDF
-        let mut tfidf: Vec<(String, f64)> = tf.into_iter()
+        let mut tfidf: Vec<(String, f64)> = tf
+            .into_iter()
             .map(|(word, tf_value)| {
                 let df_value = df.get(&word).unwrap_or(&1.0);
                 let idf = (n_docs / df_value).ln();
@@ -1198,52 +1489,14 @@ impl Neo4jClient {
         tfidf.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         // Extract top terms as clusters
-        let clusters: Vec<String> = tfidf.into_iter()
+        let clusters: Vec<String> = tfidf
+            .into_iter()
             .take(3) // Take top 5 terms as clusters
             .map(|(word, score)| format!("{}:{:.2}", word, score))
             .collect();
 
         debug!("Extracted clusters: {:?}", clusters);
         Ok(clusters)
-    }
-
-
-    async fn analyze_sentiment(&self, embedding: &[f32]) -> Result<f32> {
-        debug!("Analyzing Sentiment:");
-        // This is a very simplified sentiment analysis based on the embedding.
-        // In a real-world scenario, you'd want to use a more sophisticated method.
-        let sum: f32 = embedding.iter().sum();
-        let avg = sum / embedding.len() as f32;
-
-        // Normalize to range [-1, 1]
-        let sentiment = avg.max(-1.0).min(1.0);
-
-        Ok(sentiment)
-    }
-
-    async fn get_sentence_embedding(&self, content: &str, config: &VoyageAIConfig) -> Result<Vec<f32>> {
-        debug!("Getting Sentence Embedding:");
-        get_voyage_embedding(content, config).await
-    }
-
-    async fn get_document(&self, document_id: &str) -> Result<Document> {
-        debug!("Getting Document:");
-        let query = query("
-    MATCH (d:Document {id: $document_id})
-    RETURN d.content as content, d.metadata as metadata
-    ")
-            .param("document_id", BoltType::String(BoltString::from(document_id)));
-
-        let mut result = self.graph.execute(query).await?;
-        if let Some(row) = result.next().await? {
-            Ok(Document {
-                id: document_id.to_string(),
-                content: row.get("content")?,
-                metadata: row.get("metadata")?,
-            })
-        } else {
-            Err(anyhow!("Document not found"))
-        }
     }
 
     pub async fn execute_cypher(&self, cypher_query: &str) -> Result<Value> {
@@ -1267,7 +1520,8 @@ impl Neo4jClient {
     }
 
     fn row_to_json(&self, row: &Row) -> Result<Value> {
-        row.to::<Value>().map_err(|e| anyhow!("Failed to convert row to JSON: {}", e))
+        row.to::<Value>()
+            .map_err(|e| anyhow!("Failed to convert row to JSON: {}", e))
     }
 
     pub async fn get_database_schema(&self) -> Result<String, Error> {
@@ -1284,7 +1538,6 @@ impl Neo4jClient {
 
         Ok(schema_str)
     }
-
 }
 
 // Define the necessary structs

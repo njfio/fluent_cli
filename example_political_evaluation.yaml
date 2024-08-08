@@ -1,0 +1,92 @@
+name: my_pipeline
+steps:
+  - !Command
+    name: create_story
+    command: fluent perplexity  "'${input}'" -o temperature=1
+    save_output: problem
+
+
+  - !ShellCommand
+    name: break_down_steps
+    command: |
+      fluent perplexity '' <<"""EOT"""
+        Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
+      
+        Problem: ${problem}
+      
+        Output the steps in a numbered list.
+      EOT
+    save_output: steps
+
+
+  - !PrintOutput
+    name: display_steps
+    value: "Problem Breakdown:\n${steps}"
+
+
+  - !ShellCommand
+    name: initialize_solutions
+    command: echo ""
+    save_output: solutions
+
+
+  - !Map
+    name: solve_steps
+    input: "1,2,3,4,5"
+    command: |
+      fluent  perplexity '' <<"""EOT"""
+        Solve the following step of our problem. Provide a concise answer (max 75 words).
+      
+        Overall Problem: ${problem}
+      
+        All Steps:
+        ${steps}
+      
+        Solve Step ${ITEM}. Use relevant data or estimates where necessary. If you make any assumptions, state them clearly.
+      
+        Your solution for Step ${ITEM}:
+      EOT
+    save_output: step_solutions
+
+
+  - !ShellCommand
+    name: combine_solutions
+    command: |
+      echo <<"""EOT"""
+        ${solutions}
+      
+        Step-by-step solutions:
+        ${step_solutions}
+      EOT
+    save_output: detailed_solution
+
+
+  - !ShellCommand
+    name: generate_final_answer
+    command: |
+      fluent mistral-large2 '' <<"""EOT"""
+        Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
+      
+        Original Problem: ${problem}
+      
+        Detailed Solutions:
+        ${detailed_solution}
+      
+        Final Answer:
+      EOT
+    save_output: final_answer
+
+
+  - !ShellCommand
+    name: extract_triples
+    command: |
+      fluent openai-mini "give me an output of all the meaningful triples in this text.  Only output the cypher in Neo4j format. use single quotes" --parse-code <<EOT &
+      ${final_answer}
+      EOT
+    save_output: triples_data
+
+  - !ShellCommand
+    name: add_triples
+    command: |
+      fluent neo4j --generate-cypher "create a cypher that adds these triples to the graph always do merge over create,  ${triples_data}"
+    save_output: add_triples_data

@@ -1,27 +1,25 @@
-use std::env;
-use anyhow::{Result, anyhow, Context};
-use regex::Regex;
-use std::path::PathBuf;
-use crossterm::style::Color;
+use anyhow::{anyhow, Context, Result};
 use log::{debug, info};
+use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
+use std::env;
+use std::path::Path;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
+use termimad::crossterm::style::Color;
+use termimad::{MadSkin, StyledChar};
 use tokio::fs;
 use tokio::process::Command;
 use url::Url;
 use uuid::Uuid;
-use termimad::crossterm::style::Stylize;
-use termimad::{MadSkin, StyledChar};
 
 pub struct OutputProcessor;
 
 impl OutputProcessor {
-
-    pub async fn download_media_files(content: &str, directory: &PathBuf) -> Result<()> {
+    pub async fn download_media_files(content: &str, directory: &Path) -> Result<()> {
         debug!("Starting media file download process");
 
         // Try to parse the content as JSON
@@ -31,10 +29,12 @@ impl OutputProcessor {
         } else {
             debug!("Content is not valid JSON, proceeding with regex-based URL extraction");
             // Corrected regex for URL matching, including query parameters
-            let url_regex = Regex::new(r#"(https?://[^\s"']+\.(?:jpg|jpeg|png|gif|bmp|svg|mp4|webm|ogg)(?:\?[^\s"']+)?)"#)?;
+            let url_regex = Regex::new(
+                r#"(https?://[^\s"']+\.(?:jpg|jpeg|png|gif|bmp|svg|mp4|webm|ogg)(?:\?[^\s"']+)?)"#,
+            )?;
 
             for cap in url_regex.captures_iter(content) {
-                let url = &cap[1];  // This includes the full URL with query parameters
+                let url = &cap[1]; // This includes the full URL with query parameters
                 debug!("Found URL in content: {}", url);
                 Self::download_file(url, directory, None).await?;
             }
@@ -43,14 +43,21 @@ impl OutputProcessor {
         Ok(())
     }
 
-    async fn download_file(url: &str, directory: &PathBuf, suggested_name: Option<String>) -> Result<()> {
+    async fn download_file(
+        url: &str,
+        directory: &Path,
+        suggested_name: Option<String>,
+    ) -> Result<()> {
         debug!("Attempting to download file from URL: {}", url);
 
         let client = Client::new();
         let response = client.get(url).send().await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to download file: HTTP status {}", response.status()));
+            return Err(anyhow!(
+                "Failed to download file: HTTP status {}",
+                response.status()
+            ));
         }
 
         let file_name = if let Some(name) = suggested_name {
@@ -67,12 +74,16 @@ impl OutputProcessor {
         let content = response.bytes().await?;
         fs::write(&file_path, &content).await?;
 
-        info!("Downloaded: {} ({} bytes)", file_path.display(), content.len());
+        info!(
+            "Downloaded: {} ({} bytes)",
+            file_path.display(),
+            content.len()
+        );
 
         Ok(())
     }
 
-    async fn download_from_json(json_content: &Value, directory: &PathBuf) -> Result<()> {
+    async fn download_from_json(json_content: &Value, directory: &Path) -> Result<()> {
         if let Some(data) = json_content.get("data") {
             if let Some(data_array) = data.as_array() {
                 for item in data_array {
@@ -87,10 +98,10 @@ impl OutputProcessor {
     }
 
     fn extract_file_name_from_url(url: &str) -> Option<String> {
-        Url::parse(url).ok()?
+        Url::parse(url)
+            .ok()?
             .path_segments()?
             .last()?
-            .to_string()
             .split('?')
             .next()
             .map(|s| s.to_string())
@@ -98,7 +109,8 @@ impl OutputProcessor {
 
     pub fn parse_code(content: &str) -> Vec<String> {
         let code_block_regex = Regex::new(r"```(?:\w+)?\n([\s\S]*?)\n```").unwrap();
-        code_block_regex.captures_iter(content)
+        code_block_regex
+            .captures_iter(content)
             .filter_map(|cap| cap.get(1))
             .map(|m| m.as_str().trim().to_string())
             .collect()
@@ -116,7 +128,7 @@ impl OutputProcessor {
                 output.push_str(&Self::execute_commands(&block).await?);
             }
 
-            output.push_str("\n");
+            output.push('\n');
         }
         Ok(output)
     }
@@ -128,11 +140,17 @@ impl OutputProcessor {
     async fn execute_script(script: &str) -> Result<String> {
         // Use a platform-agnostic way to get the temp directory
         let temp_dir = env::temp_dir();
-        let file_name = format!("script_{}.{}", Uuid::new_v4(), if cfg!(windows) { "bat" } else { "sh" });
+        let file_name = format!(
+            "script_{}.{}",
+            Uuid::new_v4(),
+            if cfg!(windows) { "bat" } else { "sh" }
+        );
         let temp_file = temp_dir.join(file_name);
 
         // Write the script to the temporary file
-        fs::write(&temp_file, script).await.context("Failed to write script to temporary file")?;
+        fs::write(&temp_file, script)
+            .await
+            .context("Failed to write script to temporary file")?;
 
         // Set executable permissions on Unix-like systems
         #[cfg(unix)]
@@ -140,25 +158,23 @@ impl OutputProcessor {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(&temp_file).await?.permissions();
             perms.set_mode(0o755);
-            fs::set_permissions(&temp_file, perms).await.context("Failed to set file permissions")?;
+            fs::set_permissions(&temp_file, perms)
+                .await
+                .context("Failed to set file permissions")?;
         }
 
         // Execute the script
         let result = if cfg!(windows) {
-            Command::new("cmd")
-                .arg("/C")
-                .arg(&temp_file)
-                .output()
-                .await
+            Command::new("cmd").arg("/C").arg(&temp_file).output().await
         } else {
-            Command::new("sh")
-                .arg(&temp_file)
-                .output()
-                .await
-        }.context("Failed to execute script")?;
+            Command::new("sh").arg(&temp_file).output().await
+        }
+        .context("Failed to execute script")?;
 
         // Remove the temporary file
-        fs::remove_file(&temp_file).await.context("Failed to remove temporary file")?;
+        fs::remove_file(&temp_file)
+            .await
+            .context("Failed to remove temporary file")?;
 
         // Collect and format the output
         let stdout = String::from_utf8_lossy(&result.stdout);
@@ -177,11 +193,7 @@ impl OutputProcessor {
 
             output.push_str(&format!("Executing: {}\n", trimmed));
 
-            let result = Command::new("sh")
-                .arg("-c")
-                .arg(trimmed)
-                .output()
-                .await?;
+            let result = Command::new("sh").arg("-c").arg(trimmed).output().await?;
 
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
@@ -190,12 +202,10 @@ impl OutputProcessor {
             if !stderr.is_empty() {
                 output.push_str(&format!("Errors:\n{}\n", stderr));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
         Ok(output)
     }
-
-
 }
 
 pub struct MarkdownFormatter {
@@ -204,26 +214,58 @@ pub struct MarkdownFormatter {
     theme_set: ThemeSet,
 }
 
-impl MarkdownFormatter {
-    pub fn new() -> Self {
+impl Default for MarkdownFormatter {
+    fn default() -> Self {
         let mut skin = MadSkin::default();
-        skin.set_bg(Color::Rgb { r: 10, g: 10, b: 10 });
-        skin.set_headers_fg(Color::Rgb { r: 255, g: 187, b: 0 });
-        skin.bold.set_fg(Color::Rgb { r: 255, g: 215, b: 0 });
-        skin.italic.set_fg(Color::Rgb { r: 173, g: 216, b: 230 });
-        skin.paragraph.set_fg(Color::Rgb { r: 220, g: 220, b: 220 }); // Light grey for normal text
+        skin.set_bg(Color::Rgb {
+            r: 10,
+            g: 10,
+            b: 10,
+        });
+        skin.set_headers_fg(Color::Rgb {
+            r: 255,
+            g: 187,
+            b: 0,
+        });
+        skin.bold.set_fg(Color::Rgb {
+            r: 255,
+            g: 215,
+            b: 0,
+        });
+        skin.italic.set_fg(Color::Rgb {
+            r: 173,
+            g: 216,
+            b: 230,
+        });
+        skin.paragraph.set_fg(Color::Rgb {
+            r: 220,
+            g: 220,
+            b: 220,
+        }); // Light grey for normal text
         skin.bullet = StyledChar::from_fg_char(Color::Rgb { r: 0, g: 255, b: 0 }, '•');
 
         // Set code block colors
-        skin.code_block.set_bg(Color::Rgb { r: 30, g: 30, b: 30 }); // Slightly lighter than main background
-        skin.code_block.set_fg(Color::Rgb { r: 255, g: 255, b: 255 }); // White text for code
-
+        skin.code_block.set_bg(Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 30,
+        }); // Slightly lighter than main background
+        skin.code_block.set_fg(Color::Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        }); // White text for code
 
         MarkdownFormatter {
             skin,
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
         }
+    }
+}
+impl MarkdownFormatter {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn format(&self, content: &str) -> Result<String> {
@@ -263,12 +305,16 @@ impl MarkdownFormatter {
 
     fn highlight_code(&self, lang: &str, code: &str) -> Result<String> {
         debug!("highlight_code: {}", lang);
-        let syntax = self.syntax_set.find_syntax_by_extension(lang).unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
-        let mut highlighter = HighlightLines::new(syntax, &self.theme_set.themes["base16-ocean.dark"]);
+        let syntax = self
+            .syntax_set
+            .find_syntax_by_extension(lang)
+            .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
+        let mut highlighter =
+            HighlightLines::new(syntax, &self.theme_set.themes["base16-ocean.dark"]);
 
         let mut output = String::new();
         for line in LinesWithEndings::from(code) {
-            let ranges: Vec<(Style, &str)> = highlighter.highlight(line, &self.syntax_set);
+            let ranges: Vec<(Style, &str)> = highlighter.highlight_line(line, &self.syntax_set)?;
             let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
             output.push_str(&escaped);
         }

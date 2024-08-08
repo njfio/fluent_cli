@@ -2,17 +2,19 @@ use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
-use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcessor, FileUpload};
+use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcessor};
 use fluent_core::config::EngineConfig;
 use anyhow::{Result, anyhow, Context};
 use reqwest::Client;
-use async_trait::async_trait;
 use serde_json::{json, Value};
 use log::debug;
 use mime_guess::from_path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use fluent_core::neo4j_client::Neo4jClient;
+use base64::Engine as Base64Engine;
+use base64::engine::general_purpose::STANDARD as Base64;
+
 
 pub struct AnthropicEngine {
     config: EngineConfig,
@@ -83,7 +85,7 @@ impl Engine for AnthropicEngine {
     }
 
 
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             // Implement Anthropic-specific upsert logic here
             // For now, we'll just return a placeholder response
@@ -160,13 +162,15 @@ impl Engine for AnthropicEngine {
         })
     }
 
+
+
     fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             // Read and encode the file
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).await.context("Failed to read file")?;
-            let base64_image = base64::encode(&buffer);
+            let base64_image = Base64.encode(&buffer);
 
             // Guess the MIME type of the file
             let mime_type = from_path(file_path)
@@ -251,29 +255,6 @@ impl Engine for AnthropicEngine {
     }
 }
 
-fn parse_anthropic_response(response: &serde_json::Value) -> Result<Response> {
-    let content = response["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow!("Failed to extract content from Anthropic response"))?
-        .to_string();
-
-    let usage = Usage {
-        prompt_tokens: response["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
-        completion_tokens: response["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
-        total_tokens: (response["usage"]["input_tokens"].as_u64().unwrap_or(0) +
-            response["usage"]["output_tokens"].as_u64().unwrap_or(0)) as u32,
-    };
-
-    let model = response["model"].as_str().unwrap_or("unknown").to_string();
-    let finish_reason = response["stop_reason"].as_str().map(String::from);
-
-    Ok(Response {
-        content,
-        usage,
-        model,
-        finish_reason,
-    })
-}
 
 
 

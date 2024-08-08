@@ -4,25 +4,7 @@
 fuzzy_match() {
     local pattern="$1"
     local word="$2"
-    local pattern_length=${#pattern}
-    local word_length=${#word}
-
-    # If the pattern is longer than the word, no match
-    if [ "$pattern_length" -gt "$word_length" ]; then
-        return 1
-    fi
-
-    local i=0
-    local j=0
-    while [ "$i" -lt "$pattern_length" ] && [ "$j" -lt "$word_length" ]; do
-        if [ "${pattern:$i:1}" = "${word:$j:1}" ]; then
-            i=$((i + 1))
-        fi
-        j=$((j + 1))
-    done
-
-    # If we've matched all characters in the pattern, it's a match
-    [ "$i" -eq "$pattern_length" ]
+    [[ "$word" == *"$pattern"* ]]
 }
 
 # Fuzzy filter function
@@ -95,52 +77,44 @@ _fluent_cli_v2_autocomplete() {
         fi
     done
 
-    case "${prev}" in
+    case "$prev" in
         -c|--config|-a|--additional-context-file)
-            COMPREPLY=( $(compgen -f -- "${cur}") )
+            COMPREPLY=($(compgen -f -- "$cur"))
             return 0
             ;;
         --override|-o)
             if [[ -n "$selected_engine" && -f "$config_file" ]]; then
                 local engine_parameters=$(jq -r ".engines[] | select(.name == \"$selected_engine\") | .parameters | keys[]" "$config_file" 2>/dev/null | sort -u | tr '\n' ' ')
                 local filtered_params=$(fuzzy_filter "$cur" $engine_parameters)
-                COMPREPLY=( $(compgen -W "${filtered_params}" -- "${cur}") )
-                if [[ ${#COMPREPLY[@]} -eq 1 ]]; then
-                    COMPREPLY=( "${COMPREPLY[0]}=" )
-                fi
+                COMPREPLY=($(compgen -W "$filtered_params" -- "$cur"))
+                [[ ${#COMPREPLY[@]} -eq 1 ]] && COMPREPLY=("${COMPREPLY[0]}=")
             fi
             return 0
             ;;
     esac
 
-    # If we're at the very start, suggest only engines
-    if [[ ${cword} -eq 1 ]]; then
-        local filtered_engines=$(fuzzy_filter "$cur" $engines)
-        COMPREPLY=( $(compgen -W "${filtered_engines}" -- "${cur}") )
+    # If we're at the very start, suggest engines and global options
+    if [[ $cword -eq 1 ]]; then
+        local global_opts="-c --config -a --additional-context-file --help -h --version -v"
+        local all_suggestions="$engines $global_opts"
+        local filtered_suggestions=$(fuzzy_filter "$cur" $all_suggestions)
+        COMPREPLY=($(compgen -W "$filtered_suggestions" -- "$cur"))
         return 0
     fi
 
     # If we're at the first argument after config, suggest engines
-    if [[ ${cword} -eq 3 && ${words[1]} == "--config" ]]; then
+    if [[ $cword -eq 3 && (${words[1]} == "-c" || ${words[1]} == "--config") ]]; then
         local filtered_engines=$(fuzzy_filter "$cur" $engines)
-        COMPREPLY=( $(compgen -W "${filtered_engines}" -- "${cur}") )
-        return 0
-    fi
-
-    # If we're right after the engine selection, add quotes for the request
-    if [[ -n "$selected_engine" && ${cword} -eq 2 && ${cur} == "" ]]; then
-        COMPREPLY=( "\"\"" )
-        # This will place the cursor inside the quotes in most terminals
-        printf '\e[1;2D'
+        COMPREPLY=($(compgen -W "$filtered_engines" -- "$cur"))
         return 0
     fi
 
     # If we're past the engine selection, suggest other options or nothing (for the request)
     if [[ -n "$selected_engine" ]]; then
-        if [[ ${cur} == -* || $request_entered == true ]] ; then
-            local opts="--override --upsert --input --metadata --upload_image_file --download-media --parse-code --execute-output --markdown --additional-context-file --generate-cypher"
+        if [[ $cur == -* || $request_entered == true ]] ; then
+            local opts="--override -o --upsert --input --metadata --upload_image_file --download-media --parse-code --execute-output --markdown --additional-context-file --generate-cypher"
             local filtered_opts=$(fuzzy_filter "$cur" $opts)
-            COMPREPLY=( $(compgen -W "${filtered_opts}" -- "${cur}") )
+            COMPREPLY=($(compgen -W "$filtered_opts" -- "$cur"))
         else
             # If it's not an option and request hasn't been entered, don't suggest anything
             COMPREPLY=()

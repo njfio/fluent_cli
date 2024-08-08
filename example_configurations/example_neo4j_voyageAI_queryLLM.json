@@ -1,0 +1,28 @@
+{
+  "engines": [
+    {
+      "name": "neo4j",
+      "engine": "neo4j",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "sessionID": "NJF1234567DEFAULT"
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        },
+        "query_llm": "sonnet3.5"
+      }
+    }
+  ]
+}

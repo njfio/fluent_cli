@@ -1,0 +1,74 @@
+name: llm_conversation
+steps:
+  - !Command
+    name: initialize_context
+    command: echo "You are two AI assistants having a conversation about ${input}. Assistant 1 is optimistic, while Assistant 2 is more cautious. Start the conversation."
+    save_output: context
+
+  - !ShellCommand
+    name: set_turn_counter
+    command: echo "0"
+    save_output: turn_counter
+
+  - !RepeatUntil
+    name: conversation_loop
+    steps:
+      - !ShellCommand
+        name: increment_turn
+        command: echo $((${turn_counter} + 1))
+        save_output: turn_counter
+
+      - !ShellCommand
+        name: choose_speaker_and_llm
+        command: |
+          if [ $((${turn_counter} % 2)) -eq 1 ]; then
+            echo "Assistant 1 (Optimistic)|cohere"
+          else
+            echo "Assistant 2 (Cautious)|gemini"
+          fi
+        save_output: current_speaker_and_llm
+
+      - !ShellCommand
+        name: split_speaker_and_llm
+        command: |
+          echo "${current_speaker_and_llm}" | awk -F'|' '{print $1}'
+        save_output: current_speaker
+
+      - !ShellCommand
+        name: get_current_llm
+        command: |
+          echo "${current_speaker_and_llm}" | awk -F'|' '{print $2}'
+        save_output: current_llm
+
+      - !ShellCommand
+        name: generate_response
+        command: |
+          fluent ${current_llm} '' <<'EOF'
+          You are ${current_speaker}. Given the context and previous messages, continue the conversation. Keep your response concise (max 150 words).
+
+          Context: ${context}
+          Previous messages: ${conversation_history}
+
+          ${current_speaker}:
+          EOF
+        save_output: current_response
+
+      - !ShellCommand
+        name: update_conversation_history
+        command: |
+          echo "${conversation_history}
+          ${current_speaker} (using ${current_llm}): ${current_response}"
+        save_output: conversation_history
+
+      - !PrintOutput
+        name: display_turn
+        value: "\nTurn ${turn_counter}:\n\t${current_speaker} (using ${current_llm}) says:\n\t\t${current_response}\n\n"
+
+    condition: "[ ${turn_counter} = 10 ]"
+
+  - !PrintOutput
+    name: final_output
+    value: |
+      Conversation Summary:
+      ---------------------
+      ${conversation_history}

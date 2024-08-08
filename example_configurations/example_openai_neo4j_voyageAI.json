@@ -1,0 +1,36 @@
+{
+  "engines": [
+    {
+      "name": "openai",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "sessionID": "NJF1234567DEFAULT",
+        "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "modelName": "gpt-4o",
+        "max_tokens": -1,
+        "temperature": 1.0,
+        "top_p": 1,
+        "n": 1,
+        "stream": false,
+        "presence_penalty": 0,
+        "frequency_penalty": 0
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    }
+  ]
+}

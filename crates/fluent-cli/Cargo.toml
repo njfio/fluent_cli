@@ -2,20 +2,22 @@
 name = "fluent-cli"
 version = "0.1.0"
 edition = "2021"
+default-run = "fluent-cli"
+
 
 [dependencies]
 clap = { version = "4.5.8", features = ["derive"] }
 fluent-core = { path = "../fluent-core" }
 fluent-engines = { path = "../fluent-engines" }
-fluent-storage = { path = "../fluent-storage" }
-
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 log = "0.4.22"
-atty = "0.2.14"
 uuid = { version = "1.9.1", features = ["v4"] }
-clap_complete = "4.5.1"
 serde_json = "1.0.120"
 indicatif = "0.17.8"
-owo-colors = "3.5.0"
+owo-colors = "4.0.0"
 regex = "1.10.5"
+serde_yaml = "0.9.34"
+#fluent-storage = { path = "../fluent-storage" }  # is not used
+#clap_complete = "4.5.1"  #is not used
+#atty = "0.2.14" "use standard std::io::IsTerminal"
