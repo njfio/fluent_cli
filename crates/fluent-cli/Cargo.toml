@@ -2,6 +2,8 @@
 name = "fluent-cli"
 version = "0.1.0"
 edition = "2021"
+default-run = "fluent-cli"
+
 
 [dependencies]
 clap = { version = "4.5.8", features = ["derive"] }
