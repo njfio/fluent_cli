@@ -13,7 +13,7 @@
         "sessionID": "DEFAULT_SESSION_ID",
         "bearer_token": "CREDENTIAL_OPENAI_API_KEY",
         "modelName": "gpt-4o-mini",
-        "max_tokens": null,
+        "max_tokens": -1,
         "temperature": 1.0,
         "top_p": 1,
         "n": 1,
