@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use fluent_core::config::load_engine_config;
 use fluent_engines::create_engine;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{collections::HashMap, pin::Pin};
 use strum::{Display, EnumString};
 
@@ -18,7 +19,7 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
         .unwrap_or_default()
         .into_iter()
         .map(|kv| (kv.key, kv.value))
-        .collect::<HashMap<String, String>>();
+        .collect::<HashMap<String, Value>>();
 
     let credentials = request
         .credentials
@@ -28,7 +29,7 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
         .collect::<HashMap<String, String>>();
 
     let user_prompt = request
-        .prompt
+        .request
         .ok_or_else(|| anyhow!("Prompt is required"))?;
 
     let engine_config = load_engine_config(config_content, &engine_name, &overrides, &credentials)?;
@@ -198,10 +199,10 @@ pub struct Request {
     credentials: Option<Vec<KeyValue>>,
 
     //Overrides for the configuration parameters
-    overrides: Option<Vec<KeyValue>>,
+    overrides: Option<Vec<OverrideValue>>,
 
     // The user prompt to process
-    prompt: Option<String>,
+    request: Option<String>,
 
     // Parse and display code blocks from the output
     parse_code: Option<bool>,
@@ -211,6 +212,12 @@ pub struct Request {
 pub struct KeyValue {
     pub key: String,
     pub value: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OverrideValue {
+    pub key: String,
+    pub value: Value,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -1,52 +1,63 @@
-
-use std::future::Future;
-use std::path::Path;
-use std::sync::Arc;
-use async_trait::async_trait;
-use anyhow::{Result, anyhow};
-use serde_json::{json, Value};
-use log::debug;
-use pdf_extract::extract_text;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use crate::config::EngineConfig;
 use crate::neo4j_client::Neo4jClient;
 use crate::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
-
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use log::debug;
+use pdf_extract::extract_text;
+use serde_json::{json, Value};
+use std::future::Future;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 #[async_trait]
 
 pub trait FileUpload: Send + Sync {
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a>;
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a>;
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
 }
-
-
 
 #[async_trait]
 pub trait Engine: Send + Sync {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
 
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
-
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a>;
+    fn upsert<'a>(
+        &'a self,
+        request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a>;
 
     fn get_neo4j_client(&self) -> Option<&Arc<Neo4jClient>>;
 
-    fn get_session_id(&self) -> Option<String>;  // New method
+    fn get_session_id(&self) -> Option<String>; // New method
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent>;
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a>;
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
-
-
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a>;
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
 }
 
 pub trait EngineConfigProcessor {
     fn process_config(&self, config: &EngineConfig) -> Result<serde_json::Value>;
 }
-
-
 
 pub struct AnthropicConfigProcessor;
 impl EngineConfigProcessor for AnthropicConfigProcessor {
@@ -76,14 +87,14 @@ impl EngineConfigProcessor for AnthropicConfigProcessor {
                         } else if let Some(num) = value.as_i64() {
                             payload[key] = json!(num);
                         }
-                    },
+                    }
                     "temperature" | "top_p" => {
                         if let Some(num) = value.as_str().and_then(|s| s.parse::<f64>().ok()) {
                             payload[key] = json!(num);
                         } else if let Some(num) = value.as_f64() {
                             payload[key] = json!(num);
                         }
-                    },
+                    }
                     _ => {
                         payload[key] = value.clone();
                     }
@@ -95,7 +106,6 @@ impl EngineConfigProcessor for AnthropicConfigProcessor {
         Ok(payload)
     }
 }
-
 
 pub struct OpenAIConfigProcessor;
 impl EngineConfigProcessor for OpenAIConfigProcessor {
@@ -129,7 +139,15 @@ impl EngineConfigProcessor for OpenAIConfigProcessor {
         }
 
         // Add optional parameters if they exist in the configuration
-        for &param in &["frequency_penalty", "presence_penalty", "top_p", "n", "stream", "stop"] {
+        //stream was removed from the list of optional parameters
+        for &param in &[
+            "frequency_penalty",
+            "presence_penalty",
+            "top_p",
+            "n",
+            "stop",
+            "response_format",
+        ] {
             if let Some(value) = config.parameters.get(param) {
                 payload[param] = value.clone();
             }
@@ -139,8 +157,6 @@ impl EngineConfigProcessor for OpenAIConfigProcessor {
         Ok(payload)
     }
 }
-
-
 
 pub struct TextProcessor;
 pub struct PdfProcessor;
@@ -171,7 +187,8 @@ impl DocumentProcessor for PdfProcessor {
         let text = tokio::task::spawn_blocking(move || {
             debug!("PdfProcessor::process: Extracting text from PDF");
             extract_text(&path_buf)
-        }).await??;
+        })
+        .await??;
 
         // Extract metadata (you can expand this based on your needs)
         let mut metadata = Vec::new();
@@ -200,17 +217,15 @@ impl DocumentProcessor for PdfProcessor {
     }
 }
 
-
 #[async_trait]
 impl DocumentProcessor for DocxProcessor {
-
     async fn process(&self, file_path: &Path) -> Result<(String, Vec<String>)> {
         let mut file = File::open(file_path).await?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).await?;
 
         let file_path = file_path.to_owned();
-        let file_size = buffer.len();  // Calculate buffer length here
+        let file_size = buffer.len(); // Calculate buffer length here
 
         let content = tokio::task::spawn_blocking(move || -> Result<String> {
             // Instead of parsing DOCX, we'll just read the file as UTF-8 text
@@ -221,17 +236,18 @@ impl DocumentProcessor for DocxProcessor {
             let content = content.replace("\n", "\n\n");
 
             Ok(content)
-        }).await??;
+        })
+        .await??;
 
         let metadata = vec![
-            format!("filename:{}", file_path.file_name().unwrap().to_string_lossy()),
-            format!("filesize:{}", file_size),  // Use file_size here instead of buffer.len()
+            format!(
+                "filename:{}",
+                file_path.file_name().unwrap().to_string_lossy()
+            ),
+            format!("filesize:{}", file_size), // Use file_size here instead of buffer.len()
             "filetype:docx".to_string(), // Adding this to maintain similarity with original function
         ];
 
         Ok((content, metadata))
     }
 }
-
-
-

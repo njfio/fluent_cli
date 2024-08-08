@@ -1,7 +1,7 @@
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
 use anyhow::{anyhow, Context, Result};
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -68,7 +68,7 @@ impl CredentialResolver {
 pub fn load_engine_config(
     config_content: &str,
     engine_name: &str,
-    overrides: &HashMap<String, String>,
+    overrides: &HashMap<String, Value>,
     credentials: &HashMap<String, String>,
 ) -> Result<EngineConfig> {
     //Converts the string into a json value to be manipulated
@@ -126,7 +126,7 @@ fn apply_variable_resolver(
 }
 fn apply_variable_overrider(
     engine_config: &mut Value,
-    overrides: &HashMap<String, String>,
+    overrides: &HashMap<String, Value>,
 ) -> Result<()> {
     if let Some(parameters) = engine_config
         .get_mut("parameters")
@@ -139,18 +139,7 @@ fn apply_variable_overrider(
             let mut current = &mut *parameters; // Reborrow parameters for each iteration
             while let Some(part) = keys.next() {
                 if keys.peek().is_none() {
-                    let parsed_value: Value = match current.get(part) {
-                        Some(Value::Number(_)) => value
-                            .parse()
-                            .map(Value::Number)
-                            .unwrap_or_else(|_| Value::String(value.to_string())),
-                        Some(Value::Bool(_)) => value
-                            .parse()
-                            .map(Value::Bool)
-                            .unwrap_or_else(|_| Value::String(value.to_string())),
-                        _ => Value::String(value.to_string()),
-                    };
-                    current.insert(part.to_string(), parsed_value);
+                    current.insert(part.to_string(), value.clone());
                 } else {
                     // Continue traversing or create new nested object
                     current = current
@@ -170,10 +159,26 @@ pub fn load_config(
     engine_name: &str,
     overrides: &HashMap<String, String>,
 ) -> Result<Config> {
+    //Workaround to transform a HashMap<String,String> from cli into HashMap<String,Value>
+    //This is for cli/lambda compatibility
+    let overrides: HashMap<String, Value> = overrides
+        .clone()
+        .drain()
+        .map(|(k, v)| match v.parse::<bool>() {
+            Ok(b) => (k, serde_json::Value::Bool(b)),
+            _ => match v.parse::<f64>() {
+                Ok(f) => (
+                    k,
+                    serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()),
+                ),
+                _ => (k, serde_json::Value::String(v.clone())),
+            },
+        })
+        .collect();
     let engine_config = load_engine_config(
         &fs::read_to_string(config_path)?,
         engine_name,
-        overrides,
+        &overrides,
         &HashMap::new(),
     )?;
     Ok(Config::new(vec![engine_config]))
@@ -331,7 +336,6 @@ impl Drop for VariableResolverProcessor {
     fn drop(&mut self) {
         for key in &self.keys {
             std::env::remove_var(key);
-            info!("Environment variable {} has been unset.", key);
         }
     }
 }
