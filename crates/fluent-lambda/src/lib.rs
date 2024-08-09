@@ -14,12 +14,7 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
 
     let config_content = include_str!("config.json");
 
-    let overrides = request
-        .overrides
-        .unwrap_or_default()
-        .into_iter()
-        .map(|kv| (kv.key, kv.value))
-        .collect::<HashMap<String, Value>>();
+    let overrides = request.overrides.unwrap_or_default();
 
     let credentials = request
         .credentials
@@ -30,7 +25,7 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
 
     let user_prompt = request
         .request
-        .ok_or_else(|| anyhow!("Prompt is required"))?;
+        .ok_or_else(|| anyhow!("Request is required"))?;
 
     let engine_config = load_engine_config(config_content, &engine_name, &overrides, &credentials)?;
 
@@ -193,19 +188,19 @@ pub enum Template {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
     // The template to use (openai or anthropic)
-    engine: Option<Template>,
+    pub engine: Option<Template>,
 
     // The credentials to be used on the request
-    credentials: Option<Vec<KeyValue>>,
+    pub credentials: Option<Vec<KeyValue>>,
 
     //Overrides for the configuration parameters
-    overrides: Option<Vec<OverrideValue>>,
+    pub overrides: Option<HashMap<String, Value>>,
 
     // The user prompt to process
-    request: Option<String>,
+    pub request: Option<String>,
 
     // Parse and display code blocks from the output
-    parse_code: Option<bool>,
+    pub parse_code: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
