@@ -61,7 +61,7 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
 }
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display, Clone)]
-pub enum Template {
+pub enum EngineTemplate {
     #[strum(ascii_case_insensitive, to_string = "openai")]
     #[serde(alias = "openai")]
     OpenAI,
@@ -188,7 +188,7 @@ pub enum Template {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Request {
     // The template to use (openai or anthropic)
-    pub engine: Option<Template>,
+    pub engine: Option<EngineTemplate>,
 
     // The credentials to be used on the request
     pub credentials: Option<Vec<KeyValue>>,
