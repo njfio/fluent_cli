@@ -2,11 +2,12 @@ use anyhow::anyhow;
 use fluent_core::config::load_engine_config;
 use fluent_engines::create_engine;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{collections::HashMap, pin::Pin};
 use strum::{Display, EnumString};
 
-pub async fn run(request: Request) -> anyhow::Result<Response> {
+pub async fn run(request: impl Into<LambdaRequest>) -> anyhow::Result<Response> {
+    let request: LambdaRequest = request.into();
     let engine_name = request
         .engine
         .map(|t| t.to_string())
@@ -58,6 +59,50 @@ pub async fn run(request: Request) -> anyhow::Result<Response> {
     Ok(Response {
         data: fluent_response,
     })
+}
+
+pub struct OpenAIRequest {
+    pub prompt: String,
+    pub openai_api_key: String,
+    pub response_format: Option<Value>,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i64>,
+    pub top_p: Option<f64>,
+    pub frequency_penalty: Option<f64>,
+    pub presence_penalty: Option<f64>,
+}
+impl From<OpenAIRequest> for LambdaRequest {
+    fn from(request: OpenAIRequest) -> Self {
+        let mut overrides = vec![];
+        if let Some(response_format) = request.response_format {
+            overrides.push(("response_format".to_string(), response_format));
+        }
+        if let Some(temperature) = request.temperature {
+            overrides.push(("temperature".to_string(), json!(temperature)));
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            overrides.push(("max_tokens".to_string(), json!(max_tokens)));
+        }
+        if let Some(top_p) = request.top_p {
+            overrides.push(("top_p".to_string(), json!(top_p)));
+        }
+        if let Some(frequency_penalty) = request.frequency_penalty {
+            overrides.push(("frequency_penalty".to_string(), json!(frequency_penalty)));
+        }
+        if let Some(presence_penalty) = request.presence_penalty {
+            overrides.push(("presence_penalty".to_string(), json!(presence_penalty)));
+        }
+        LambdaRequest {
+            request: Some(request.prompt),
+            engine: Some(EngineTemplate::OpenAI),
+            credentials: Some(vec![KeyValue::new(
+                "OPENAI_API_KEY",
+                &request.openai_api_key,
+            )]),
+            overrides: Some(overrides.into_iter().collect()),
+            parse_code: None,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display, Clone)]
@@ -186,7 +231,7 @@ pub enum EngineTemplate {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Request {
+pub struct LambdaRequest {
     // The template to use (openai or anthropic)
     pub engine: Option<EngineTemplate>,
 
@@ -216,6 +261,16 @@ impl KeyValue {
         }
     }
 }
+
+impl<K: Into<String>, V: Into<String>> From<(K, V)> for KeyValue {
+    fn from(kv: (K, V)) -> Self {
+        Self {
+            key: kv.0.into(),
+            value: kv.1.into(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OverrideValue {
     pub key: String,
