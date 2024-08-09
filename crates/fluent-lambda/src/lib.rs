@@ -208,7 +208,14 @@ pub struct KeyValue {
     pub key: String,
     pub value: String,
 }
-
+impl KeyValue {
+    pub fn new(key: &str, value: &str) -> Self {
+        Self {
+            key: key.to_string(),
+            value: value.to_string(),
+        }
+    }
+}
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OverrideValue {
     pub key: String,
