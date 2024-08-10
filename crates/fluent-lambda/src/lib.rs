@@ -61,7 +61,7 @@ pub async fn run(request: impl Into<LambdaRequest>) -> anyhow::Result<Response> 
     })
 }
 
-pub struct OpenAIRequest {
+pub struct FluentOpenAIRequest {
     pub prompt: String,
     pub openai_api_key: String,
     pub response_format: Option<Value>,
@@ -71,8 +71,8 @@ pub struct OpenAIRequest {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<OpenAIRequest> for LambdaRequest {
-    fn from(request: OpenAIRequest) -> Self {
+impl From<FluentOpenAIRequest> for LambdaRequest {
+    fn from(request: FluentOpenAIRequest) -> Self {
         let mut overrides = vec![];
         if let Some(response_format) = request.response_format {
             overrides.push(("response_format".to_string(), response_format));
