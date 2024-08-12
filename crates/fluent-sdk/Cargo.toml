@@ -1,5 +1,5 @@
 [package]
-name = "fluent-lambda"
+name = "fluent-sdk"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,10 +9,7 @@ tokio = { workspace = true, features = ["macros"] }
 anyhow = { workspace = true }
 fluent-core.workspace = true
 fluent-engines.workspace = true
-fluent-sdk.workspace = true
 serde = { workspace = true }
-lambda_runtime = { workspace = true }
 serde_json = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
+async-trait = { workspace = true }

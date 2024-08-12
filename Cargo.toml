@@ -9,6 +9,7 @@ members = [
     "crates/fluent-core",
     "crates/fluent-engines",
     "crates/fluent-storage",
+    "crates/fluent-sdk",
     "crates/fluent-lambda",
 ]
 
@@ -17,16 +18,56 @@ fluent-cli = { path = "crates/fluent-cli" }
 fluent-core = { path = "crates/fluent-core" }
 fluent-engines = { path = "crates/fluent-engines" }
 fluent-storage = { path = "crates/fluent-storage" }
-tokio = { version = "1", features = ["full"] }
-clap = { version = "4.5.8", features = ["derive"] }
-anyhow = "1.0"
-env_logger = "0.11.3"
-neo4rs = "0.8.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.3", features = ["v4", "serde"] }
+fluent-sdk = { path = "crates/fluent-sdk" }
+tokio = { workspace = true, features = ["full"] }
+clap = { workspace = true, features = ["derive"] }
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+neo4rs = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [workspace.dependencies]
+reqwest = { version = "^0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "multipart",
+    "rustls-tls",
+] }
 fluent-cli = { path = "crates/fluent-cli" }
 fluent-core = { path = "crates/fluent-core" }
 fluent-engines = { path = "crates/fluent-engines" }
 fluent-storage = { path = "crates/fluent-storage" }
+fluent-sdk = { path = "crates/fluent-sdk" }
+serde = { version = "^1.0" }
+lambda_runtime = "^0.13"
+serde_json = "^1.0"
+tracing-subscriber = "^0.3"
+tracing = "^0.1"
+tokio = { version = "^1" }
+anyhow = { version = "^1.0" }
+strum = { version = "^0.26" }
+clap = { version = "^4.5" }
+env_logger = { version = "^0.11" }
+neo4rs = { version = "^0.8" }
+chrono = { version = "^0.4" }
+uuid = { version = "^1.3" }
+indicatif = "^0.17"
+owo-colors = "^4.0"
+regex = "^1.10"
+serde_yaml = "^0.9"
+async-trait = "^0.1"
+log = "^0.4"
+unicode-segmentation = "^1.11"
+rust-stemmers = "^1.2"
+stop-words = "^0.8"
+base64 = "^0.22"
+url = "^2.5"
+termimad = "^0.30"
+syntect = "^5.2"
+pdf-extract = "^0.7"
+tokio-util = { version = "^0.7" }
+mime_guess = { version = "^2.0" }
+futures-util = { version = "^0.3" }
+tempfile = "^3.10"
+futures = "^0.3"
