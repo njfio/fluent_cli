@@ -1,0 +1,33 @@
+{
+  "engines": [
+    {
+      "name": "gemini-pro",
+      "engine": "google_gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/{model}:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
+        "modelName": "gemini-1.5-pro",
+        "temperature": 0.7,
+        "top_k": 0,
+        "top_p": 0.95,
+        "max_tokens": -1,
+        "sessionId": ""
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    }
+  ]
+}

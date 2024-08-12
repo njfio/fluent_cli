@@ -1,0 +1,23 @@
+{
+  "engines": [
+    {
+      "name": "fluxPro-replicate",
+      "engine": "replicate",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.replicate.com",
+        "port": 443,
+        "request_path": "/v1/models/black-forest-labs/flux-pro/predictions"
+      },
+      "parameters": {
+        "steps": 50,
+        "guidance": 2,
+        "interval": 4,
+        "safety_tolerance": 5,
+        "aspect_ratio": "9:16",
+        "api_token": "AMBER_FLUENT_REPLICATE_KEY",
+        "model": "black-forest-labs/flux-pro"
+      }
+    }
+  ]
+}

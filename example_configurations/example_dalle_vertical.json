@@ -1,0 +1,27 @@
+{
+  "engines": [
+    {
+      "name": "dalleVertical",
+      "engine": "dalle",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/images/generations"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "sessionID": "NJF1234567DEFAULT",
+        "modelName": "dall-e-3",
+        "openAIApiKey": "AMBER_FLUENT_OPENAI_API_KEY_01",
+        "n": 1,
+        "logprobs": null,
+        "echo": false,
+        "user": "example-user-id",
+        "size": "1024x1792",
+        "style": "vivid",
+        "quality": "hd"
+      }
+    }
+  ]
+}
