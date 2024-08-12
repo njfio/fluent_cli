@@ -358,12 +358,12 @@ impl FluentOpenAIChatRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn build(self) -> Result<FluentOpenAIChatRequest, String> {
+    pub fn build(self) -> anyhow::Result<FluentOpenAIChatRequest> {
         if self.request.prompt.is_empty() {
-            return Err("Prompt is required".into());
+            return Err(anyhow!("Prompt is required"));
         }
         if self.request.openai_key.is_empty() {
-            return Err("OpenAI key is required".into());
+            return Err(anyhow!("OpenAI key is required"));
         }
         Ok(self.request)
     }
