@@ -36,6 +36,8 @@ pub mod pipeline_executor;
 pub mod stabilityai;
 pub mod webhook;
 
+pub mod replicate;
+
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
     #[strum(ascii_case_insensitive, to_string = "openai")]

@@ -49,6 +49,8 @@ pub mod cli {
     use fluent_engines::leonardoai::LeonardoAIEngine;
     use fluent_engines::mistral::MistralEngine;
     use fluent_engines::perplexity::PerplexityEngine;
+    use fluent_engines::replicate::ReplicateEngine;
+
     use fluent_engines::pipeline_executor::{
         FileStateStore, Pipeline, PipelineExecutor, StateStore,
     };
@@ -329,7 +331,7 @@ pub mod cli {
 
                 std::process::exit(0);
             }
-            // ... other commands ...
+
             _ => Ok(()), // Default case, do nothing
         };
 
@@ -564,6 +566,15 @@ pub mod cli {
                 "webhook" => Box::new(WebhookEngine::new(engine_config.clone()).await?),
                 "flowise_chain" => Box::new(FlowiseChainEngine::new(engine_config.clone()).await?),
                 "langflow_chain" => Box::new(LangflowEngine::new(engine_config.clone()).await?),
+                "replicate" => {
+                    let mut engine = Box::new(ReplicateEngine::new(engine_config.clone()).await?);
+                    // Set download directory if provided
+                    if let Some(download_dir) = matches.get_one::<String>("download-media") {
+                        engine.set_download_dir(download_dir.to_string());
+                    }
+                    engine // Return the engine
+                }
+
                 "dalle" => Box::new(DalleEngine::new(engine_config.clone()).await?),
                 "stabilityai" => {
                     let mut engine = Box::new(StabilityAIEngine::new(engine_config.clone()).await?);
