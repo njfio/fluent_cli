@@ -291,13 +291,12 @@ impl From<FluentOpenAIChatRequest> for FluentRequest {
 }
 impl FluentSdkRequest for FluentOpenAIChatRequest {}
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentOpenAIChatRequestBuilder {
     request: FluentOpenAIChatRequest,
 }
-
-#[allow(clippy::new_without_default)]
-impl FluentOpenAIChatRequestBuilder {
-    pub fn new() -> Self {
+impl Default for FluentOpenAIChatRequestBuilder {
+    fn default() -> Self {
         Self {
             request: FluentOpenAIChatRequest {
                 prompt: String::new(),
@@ -314,6 +313,9 @@ impl FluentOpenAIChatRequestBuilder {
             },
         }
     }
+}
+
+impl FluentOpenAIChatRequestBuilder {
     pub fn prompt(mut self, prompt: String) -> Self {
         self.request.prompt = prompt;
         self
