@@ -1,78 +1,99 @@
 use anyhow::anyhow;
-use fluent_core::config::load_engine_config;
-use fluent_engines::create_engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, pin::Pin};
+use std::collections::HashMap;
 use strum::{Display, EnumString};
 
-pub async fn run(request: impl Into<LambdaRequest>) -> anyhow::Result<Response> {
-    let request: LambdaRequest = request.into();
-    let engine_name = request
-        .engine
-        .map(|t| t.to_string())
-        .ok_or_else(|| anyhow!("Engine is required"))?;
-
-    let config_content = include_str!("config.json");
-
-    let overrides = request.overrides.unwrap_or_default();
-
-    let credentials = request
-        .credentials
-        .unwrap_or_default()
-        .into_iter()
-        .map(|kv| (kv.key, kv.value))
-        .collect::<HashMap<String, String>>();
-
-    let user_prompt = request
-        .request
-        .ok_or_else(|| anyhow!("Request is required"))?;
-
-    let engine_config = load_engine_config(config_content, &engine_name, &overrides, &credentials)?;
-
-    let max_tokens = engine_config
-        .parameters
-        .get("max_tokens")
-        .and_then(|v| v.as_i64());
-
-    //TODO: Add support for other extended input
-    let mut combined_request = user_prompt;
-
-    if let Some(max_tokens) = max_tokens {
-        if combined_request.len() > max_tokens as usize {
-            combined_request.truncate(max_tokens as usize);
-            combined_request += "... [truncated]";
-        }
+#[async_trait::async_trait]
+pub trait FluentSdkRequest: Into<FluentRequest> + Clone {
+    fn as_request(&self) -> FluentRequest {
+        self.clone().into()
     }
-
-    let engine = create_engine(&engine_config).await?;
-
-    let fluent_request = fluent_core::types::Request {
-        flowname: engine_name,
-        payload: combined_request,
-    };
-
-    let fluent_response = Pin::from(engine.execute(&fluent_request)).await?;
-
-    //TODO: Add support for other extended output
-
-    Ok(Response {
-        data: fluent_response,
-    })
+    async fn run(&self) -> anyhow::Result<Response> {
+        self.as_request().run().await
+    }
 }
 
-pub struct FluentOpenAIRequest {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FluentRequest {
+    // The template to use (openai or anthropic)
+    pub engine: Option<EngineTemplate>,
+    // The credentials to be used on the request
+    pub credentials: Option<Vec<KeyValue>>,
+    //Overrides for the configuration parameters
+    pub overrides: Option<HashMap<String, Value>>,
+    // The user prompt to process
+    pub request: Option<String>,
+    // Parse and display code blocks from the output
+    pub parse_code: Option<bool>,
+}
+impl FluentRequest {
+    pub async fn run(&self) -> anyhow::Result<Response> {
+        // Convert the implementing type into a FluentRequest
+        let request: FluentRequest = self.clone();
+        // Perform the run logic that was previously in the `run` function
+        let engine_name = request
+            .engine
+            .map(|t| t.to_string())
+            .ok_or_else(|| anyhow!("Engine is required"))?;
+        let config_content = include_str!("config.json");
+        let overrides = request.overrides.unwrap_or_default();
+        let credentials = request
+            .credentials
+            .unwrap_or_default()
+            .into_iter()
+            .map(|kv| (kv.key, kv.value))
+            .collect::<std::collections::HashMap<String, String>>();
+        let user_prompt = request
+            .request
+            .ok_or_else(|| anyhow!("Request is required"))?;
+        let engine_config = fluent_core::config::load_engine_config(
+            config_content,
+            &engine_name,
+            &overrides,
+            &credentials,
+        )?;
+        let max_tokens = engine_config
+            .parameters
+            .get("max_tokens")
+            .and_then(|v| v.as_i64());
+        // Prepare the combined request
+        let mut combined_request = user_prompt;
+        if let Some(max_tokens) = max_tokens {
+            if combined_request.len() > max_tokens as usize {
+                combined_request.truncate(max_tokens as usize);
+                combined_request += "... [truncated]";
+            }
+        }
+        let engine = fluent_engines::create_engine(&engine_config).await?;
+        let fluent_core_request = fluent_core::types::Request {
+            flowname: engine_name,
+            payload: combined_request,
+        };
+        let fluent_core_response =
+            std::pin::Pin::from(engine.execute(&fluent_core_request)).await?;
+        Ok(Response {
+            data: fluent_core_response,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FluentOpenAIChatRequest {
     pub prompt: String,
-    pub openai_api_key: String,
+    pub openai_key: String,
+    pub model: Option<String>,
     pub response_format: Option<Value>,
     pub temperature: Option<f64>,
     pub max_tokens: Option<i64>,
     pub top_p: Option<f64>,
+    pub n: Option<i8>,
+    pub stop: Option<Vec<String>>,
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<FluentOpenAIRequest> for LambdaRequest {
-    fn from(request: FluentOpenAIRequest) -> Self {
+impl From<FluentOpenAIChatRequest> for FluentRequest {
+    fn from(request: FluentOpenAIChatRequest) -> Self {
         let mut overrides = vec![];
         if let Some(response_format) = request.response_format {
             overrides.push(("response_format".to_string(), response_format));
@@ -92,24 +113,31 @@ impl From<FluentOpenAIRequest> for LambdaRequest {
         if let Some(presence_penalty) = request.presence_penalty {
             overrides.push(("presence_penalty".to_string(), json!(presence_penalty)));
         }
-        LambdaRequest {
+        if let Some(model_name) = request.model {
+            overrides.push(("modelName".to_string(), json!(model_name)));
+        }
+        if let Some(n) = request.n {
+            overrides.push(("n".to_string(), json!(n)));
+        }
+        if let Some(stop) = request.stop {
+            overrides.push(("stop".to_string(), json!(stop)));
+        }
+        FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineTemplate::OpenAI),
-            credentials: Some(vec![KeyValue::new(
-                "OPENAI_API_KEY",
-                &request.openai_api_key,
-            )]),
+            engine: Some(EngineTemplate::OpenAIChatCompletions),
+            credentials: Some(vec![KeyValue::new("OPENAI_API_KEY", &request.openai_key)]),
             overrides: Some(overrides.into_iter().collect()),
             parse_code: None,
         }
     }
 }
+impl FluentSdkRequest for FluentOpenAIChatRequest {}
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display, Clone)]
 pub enum EngineTemplate {
-    #[strum(ascii_case_insensitive, to_string = "openai")]
-    #[serde(alias = "openai")]
-    OpenAI,
+    #[strum(ascii_case_insensitive, to_string = "openai-chat-completions")]
+    #[serde(alias = "openai-chat-completions", alias = "openai")]
+    OpenAIChatCompletions,
 
     #[strum(ascii_case_insensitive, to_string = "anthropic")]
     #[serde(alias = "anthropic")]
@@ -229,25 +257,6 @@ pub enum EngineTemplate {
     #[strum(ascii_case_insensitive)]
     DalleHorizontal,
 }
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct LambdaRequest {
-    // The template to use (openai or anthropic)
-    pub engine: Option<EngineTemplate>,
-
-    // The credentials to be used on the request
-    pub credentials: Option<Vec<KeyValue>>,
-
-    //Overrides for the configuration parameters
-    pub overrides: Option<HashMap<String, Value>>,
-
-    // The user prompt to process
-    pub request: Option<String>,
-
-    // Parse and display code blocks from the output
-    pub parse_code: Option<bool>,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct KeyValue {
     pub key: String,

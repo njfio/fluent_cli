@@ -9,6 +9,7 @@ members = [
     "crates/fluent-core",
     "crates/fluent-engines",
     "crates/fluent-storage",
+    "crates/fluent-sdk",
     "crates/fluent-lambda",
 ]
 
@@ -17,6 +18,7 @@ fluent-cli = { path = "crates/fluent-cli" }
 fluent-core = { path = "crates/fluent-core" }
 fluent-engines = { path = "crates/fluent-engines" }
 fluent-storage = { path = "crates/fluent-storage" }
+fluent-sdk = { path = "crates/fluent-sdk" }
 tokio = { workspace = true, features = ["full"] }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
@@ -36,6 +38,7 @@ fluent-cli = { path = "crates/fluent-cli" }
 fluent-core = { path = "crates/fluent-core" }
 fluent-engines = { path = "crates/fluent-engines" }
 fluent-storage = { path = "crates/fluent-storage" }
+fluent-sdk = { path = "crates/fluent-sdk" }
 serde = { version = "^1.0" }
 lambda_runtime = "^0.13"
 serde_json = "^1.0"
