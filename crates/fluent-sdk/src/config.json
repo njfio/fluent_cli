@@ -53,9 +53,9 @@
         "bearer_token": "CREDENTIAL_GOOGLE_API_KEY",
         "modelName": "gemini-1.5-flash",
         "temperature": 0.7,
+        "max_tokens": 4096,
         "top_k": 0,
         "top_p": 0.95,
-        "max_tokens": 4096,
         "sessionId": ""
       }
     },
@@ -425,13 +425,13 @@
       },
       "parameters": {
         "bearer_token": "CREDENTIAL_IMAGINEPRO_API_KEY",
-        "ref": "optional-reference-id",
         "mode": "default",
-        "webhookOverride": "https://your-webhook-url.com/endpoint"
+        "webhookOverride": null,
+        "ref": null
       }
     },
     {
-      "name": "leonardoVertical",
+      "name": "leonardo",
       "engine": "leonardo_ai",
       "connection": {
         "protocol": "https",
@@ -441,7 +441,6 @@
       },
       "parameters": {
         "bearer_token": "CREDENTIAL_LEONARDO_API_KEY",
-        "sessionID": "LDO1234567DEFAULT",
         "modelId": "b24e16ff-06e3-43eb-8d33-4416c2d75876",
         "width": 832,
         "height": 1472,
@@ -464,7 +463,7 @@
       }
     },
     {
-      "name": "dalleVertical",
+      "name": "openai-dalle",
       "engine": "dalle",
       "connection": {
         "protocol": "https",
@@ -482,29 +481,6 @@
         "echo": false,
         "user": "example-user-id",
         "size": "1024x1792",
-        "style": "vivid",
-        "quality": "hd"
-      }
-    },
-    {
-      "name": "dalleHorizontal",
-      "engine": "dalle",
-      "connection": {
-        "protocol": "https",
-        "hostname": "api.openai.com",
-        "port": 443,
-        "request_path": "/v1/images/generations"
-      },
-      "parameters": {
-        "bearer_token": "CREDENTIAL_OPENAI_API_KEY",
-        "sessionID": "NJF1234567DEFAULT",
-        "modelName": "dall-e-3",
-        "openAIApiKey": "CREDENTIAL_OPENAI_API_KEY",
-        "n": 1,
-        "logprobs": null,
-        "echo": false,
-        "user": "example-user-id",
-        "size": "1792x1024",
         "style": "vivid",
         "quality": "hd"
       }

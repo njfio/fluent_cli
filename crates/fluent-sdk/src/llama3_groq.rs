@@ -1,17 +1,16 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
 
-impl FluentSdkRequest for FluentOpenAIChatRequest {}
+impl FluentSdkRequest for FluentLlama3GroqChatRequest {}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentOpenAIChatRequest {
+pub struct FluentLlama3GroqChatRequest {
     pub prompt: String,
     pub bearer_token: String,
     pub model: Option<String>,
-    pub response_format: Option<Value>,
     pub temperature: Option<f64>,
     pub max_tokens: Option<i64>,
     pub top_p: Option<f64>,
@@ -20,12 +19,9 @@ pub struct FluentOpenAIChatRequest {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<FluentOpenAIChatRequest> for FluentRequest {
-    fn from(request: FluentOpenAIChatRequest) -> Self {
+impl From<FluentLlama3GroqChatRequest> for FluentRequest {
+    fn from(request: FluentLlama3GroqChatRequest) -> Self {
         let mut overrides = vec![];
-        if let Some(response_format) = request.response_format {
-            overrides.push(("response_format".to_string(), response_format));
-        }
         if let Some(temperature) = request.temperature {
             overrides.push(("temperature".to_string(), json!(temperature)));
         }
@@ -52,8 +48,8 @@ impl From<FluentOpenAIChatRequest> for FluentRequest {
         }
         FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineName::OpenAIChatCompletions),
-            credentials: Some(vec![KeyValue::new("OPENAI_API_KEY", &request.bearer_token)]),
+            engine: Some(EngineName::Llama3Groq),
+            credentials: Some(vec![KeyValue::new("GROQ_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
             parse_code: None,
         }
@@ -61,16 +57,15 @@ impl From<FluentOpenAIChatRequest> for FluentRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentOpenAIChatRequestBuilder {
-    request: FluentOpenAIChatRequest,
+pub struct FluentLlama3GroqRequestBuilder {
+    request: FluentLlama3GroqChatRequest,
 }
-impl Default for FluentOpenAIChatRequestBuilder {
+impl Default for FluentLlama3GroqRequestBuilder {
     fn default() -> Self {
         Self {
-            request: FluentOpenAIChatRequest {
+            request: FluentLlama3GroqChatRequest {
                 prompt: String::new(),
                 bearer_token: String::new(),
-                response_format: None,
                 temperature: None,
                 max_tokens: None,
                 top_p: None,
@@ -84,17 +79,13 @@ impl Default for FluentOpenAIChatRequestBuilder {
     }
 }
 
-impl FluentOpenAIChatRequestBuilder {
+impl FluentLlama3GroqRequestBuilder {
     pub fn prompt(mut self, prompt: String) -> Self {
         self.request.prompt = prompt;
         self
     }
     pub fn bearer_token(mut self, bearer_token: String) -> Self {
         self.request.bearer_token = bearer_token;
-        self
-    }
-    pub fn response_format(mut self, response_format: Value) -> Self {
-        self.request.response_format = Some(response_format);
         self
     }
     pub fn temperature(mut self, temperature: f64) -> Self {
@@ -129,7 +120,7 @@ impl FluentOpenAIChatRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn build(self) -> anyhow::Result<FluentOpenAIChatRequest> {
+    pub fn build(self) -> anyhow::Result<FluentLlama3GroqChatRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }

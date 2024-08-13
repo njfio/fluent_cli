@@ -1,12 +1,41 @@
+pub mod cohere;
+pub mod flowise_sonnet_chain;
+pub mod gemini_flash;
+pub mod gemini_pro;
+pub mod gemma_groq;
+pub mod imaginepro;
+pub mod leonardo;
+pub mod llama3_groq;
+pub mod mistral_large2;
+pub mod mistral_nemo;
+pub mod openai;
+pub mod openai_dalle;
+pub mod perplexity;
+pub mod sonnet35;
+pub mod stability_ultravertical;
+
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use strum::{Display, EnumString};
-pub mod openai;
 
 pub mod prelude {
+    pub use crate::cohere::*;
+    pub use crate::flowise_sonnet_chain::*;
+    pub use crate::gemini_flash::*;
+    pub use crate::gemini_pro::*;
+    pub use crate::gemma_groq::*;
+    pub use crate::imaginepro::*;
+    pub use crate::leonardo::*;
+    pub use crate::llama3_groq::*;
+    pub use crate::mistral_large2::*;
+    pub use crate::mistral_nemo::*;
     pub use crate::openai::*;
+    pub use crate::openai_dalle::*;
+    pub use crate::perplexity::*;
+    pub use crate::sonnet35::*;
+    pub use crate::stability_ultravertical::*;
     pub use crate::{FluentRequest, FluentSdkRequest, KeyValue};
 }
 
@@ -27,7 +56,7 @@ pub trait FluentSdkRequest: Into<FluentRequest> + Clone {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentRequest {
     // The template to use (openai or anthropic)
-    pub engine: Option<EngineTemplate>,
+    pub engine: Option<EngineName>,
     // The credentials to be used on the request
     pub credentials: Option<Vec<KeyValue>>,
     //Overrides for the configuration parameters
@@ -89,7 +118,7 @@ impl FluentRequest {
 }
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display, Clone)]
-pub enum EngineTemplate {
+pub enum EngineName {
     #[strum(ascii_case_insensitive, to_string = "openai-chat-completions")]
     #[serde(alias = "openai-chat-completions", alias = "openai")]
     OpenAIChatCompletions,
@@ -165,7 +194,7 @@ pub enum EngineTemplate {
         to_string = "sonnet3.5_chain"
     )]
     #[serde(alias = "sonnet3.5_chain", alias = "sonnet35chain")]
-    Sonnet35Chain,
+    FlowiseSonnet35Chain,
 
     #[strum(ascii_case_insensitive)]
     OmniAgentWithSearchAndBrowsing,
@@ -204,10 +233,12 @@ pub enum EngineTemplate {
     ImaginePro,
 
     #[strum(ascii_case_insensitive)]
-    LeonardoVertical,
+    #[serde(alias = "leonardo", alias = "leonardo")]
+    Leonardo,
 
-    #[strum(ascii_case_insensitive)]
-    DalleVertical,
+    #[strum(ascii_case_insensitive, to_string = "openai-dalle")]
+    #[serde(alias = "openai-dalle")]
+    OpenAiDalle,
 
     #[strum(ascii_case_insensitive)]
     DalleHorizontal,
