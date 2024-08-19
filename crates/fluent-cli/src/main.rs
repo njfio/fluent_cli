@@ -1,6 +1,4 @@
-use fluent_cli::cli;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    cli::run().await
+    fluent_cli::v2::run().await
 }

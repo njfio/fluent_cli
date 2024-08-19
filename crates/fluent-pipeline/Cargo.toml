@@ -1,0 +1,17 @@
+[package]
+name = "fluent-pipeline"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+petgraph = { workspace = true, features = ["serde-1"] }
+anyhow.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+uuid = { workspace = true, features = ["v4", "serde"] }
+tokio = { workspace = true, features = ["full"] }
+serde_json.workspace = true
+serde = { workspace = true, features = ["derive"] }
+chrono = { version = "0.4.38" }
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -9,7 +9,13 @@ tokio = { workspace = true, features = ["macros"] }
 anyhow = { workspace = true }
 fluent-core.workspace = true
 fluent-engines.workspace = true
+fluent-pipeline.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 async-trait = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+ron = "0.8.1"
+serde_yaml = "0.9.34"
+tracing.workspace = true
+tracing-subscriber.workspace = true

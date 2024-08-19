@@ -2,12 +2,10 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentGemmaGroqChatRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentGemmaGroqChatRequest {
+pub struct FluentMistralLarge2ChatRequest {
     pub prompt: String,
     pub bearer_token: String,
     pub model: Option<String>,
@@ -19,8 +17,8 @@ pub struct FluentGemmaGroqChatRequest {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<FluentGemmaGroqChatRequest> for FluentRequest {
-    fn from(request: FluentGemmaGroqChatRequest) -> Self {
+impl From<FluentMistralLarge2ChatRequest> for FluentRequest {
+    fn from(request: FluentMistralLarge2ChatRequest) -> Self {
         let mut overrides = vec![];
         if let Some(temperature) = request.temperature {
             overrides.push(("temperature".to_string(), json!(temperature)));
@@ -48,22 +46,24 @@ impl From<FluentGemmaGroqChatRequest> for FluentRequest {
         }
         FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineName::GemmaGroq),
-            credentials: Some(vec![KeyValue::new("GROQ_API_KEY", &request.bearer_token)]),
+            engine: Some(EngineName::MistralLarge2),
+            credentials: Some(vec![KeyValue::new(
+                "MISTRAL_API_KEY",
+                &request.bearer_token,
+            )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentGemmaGroqRequestBuilder {
-    request: FluentGemmaGroqChatRequest,
+pub struct FluentMistralLarge2RequestBuilder {
+    request: FluentMistralLarge2ChatRequest,
 }
-impl Default for FluentGemmaGroqRequestBuilder {
+impl Default for FluentMistralLarge2RequestBuilder {
     fn default() -> Self {
         Self {
-            request: FluentGemmaGroqChatRequest {
+            request: FluentMistralLarge2ChatRequest {
                 prompt: String::new(),
                 bearer_token: String::new(),
                 temperature: None,
@@ -79,7 +79,7 @@ impl Default for FluentGemmaGroqRequestBuilder {
     }
 }
 
-impl FluentGemmaGroqRequestBuilder {
+impl FluentMistralLarge2RequestBuilder {
     pub fn prompt(mut self, prompt: String) -> Self {
         self.request.prompt = prompt;
         self
@@ -120,7 +120,7 @@ impl FluentGemmaGroqRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn build(self) -> anyhow::Result<FluentGemmaGroqChatRequest> {
+    pub fn build(self) -> anyhow::Result<FluentMistralLarge2ChatRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }

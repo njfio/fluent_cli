@@ -2,12 +2,10 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentPerplexityRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentPerplexityRequest {
+pub struct FluentMistralNemoChatRequest {
     pub prompt: String,
     pub bearer_token: String,
     pub model: Option<String>,
@@ -18,10 +16,9 @@ pub struct FluentPerplexityRequest {
     pub stop: Option<Vec<String>>,
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
-    pub session_id: Option<String>,
 }
-impl From<FluentPerplexityRequest> for FluentRequest {
-    fn from(request: FluentPerplexityRequest) -> Self {
+impl From<FluentMistralNemoChatRequest> for FluentRequest {
+    fn from(request: FluentMistralNemoChatRequest) -> Self {
         let mut overrides = vec![];
         if let Some(temperature) = request.temperature {
             overrides.push(("temperature".to_string(), json!(temperature)));
@@ -47,30 +44,26 @@ impl From<FluentPerplexityRequest> for FluentRequest {
         if let Some(stop) = request.stop {
             overrides.push(("stop".to_string(), json!(stop)));
         }
-        if let Some(session_id) = request.session_id {
-            overrides.push(("sessionId".to_string(), json!(session_id)));
-        }
         FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineName::Perplexity),
+            engine: Some(EngineName::MistralNemo),
             credentials: Some(vec![KeyValue::new(
-                "PERPLEXITY_API_KEY",
+                "MISTRAL_API_KEY",
                 &request.bearer_token,
             )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentPerplexityRequestBuilder {
-    request: FluentPerplexityRequest,
+pub struct FluentMistralNemoRequestBuilder {
+    request: FluentMistralNemoChatRequest,
 }
-impl Default for FluentPerplexityRequestBuilder {
+impl Default for FluentMistralNemoRequestBuilder {
     fn default() -> Self {
         Self {
-            request: FluentPerplexityRequest {
+            request: FluentMistralNemoChatRequest {
                 prompt: String::new(),
                 bearer_token: String::new(),
                 temperature: None,
@@ -81,13 +74,12 @@ impl Default for FluentPerplexityRequestBuilder {
                 model: None,
                 n: None,
                 stop: None,
-                session_id: None,
             },
         }
     }
 }
 
-impl FluentPerplexityRequestBuilder {
+impl FluentMistralNemoRequestBuilder {
     pub fn prompt(mut self, prompt: String) -> Self {
         self.request.prompt = prompt;
         self
@@ -128,11 +120,7 @@ impl FluentPerplexityRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn session_id(mut self, session_id: String) -> Self {
-        self.request.session_id = Some(session_id);
-        self
-    }
-    pub fn build(self) -> anyhow::Result<FluentPerplexityRequest> {
+    pub fn build(self) -> anyhow::Result<FluentMistralNemoChatRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }

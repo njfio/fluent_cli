@@ -2,9 +2,9 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
+use crate::Credential;
 
-impl FluentSdkRequest for FluentSonnet35Request {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentSonnet35Request {
@@ -34,11 +34,10 @@ impl From<FluentSonnet35Request> for FluentRequest {
             request: Some(request.prompt),
             engine: Some(EngineName::Sonnet35),
             credentials: Some(vec![KeyValue::new(
-                "ANTHROPIC_API_KEY",
+                &Credential::ANTHROPIC_API_KEY.to_string().to_string(),
                 &request.bearer_token,
             )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
@@ -87,10 +86,16 @@ impl FluentSonnet35RequestBuilder {
         self.request.system = Some(system);
         self
     }
-    pub fn build(self) -> anyhow::Result<FluentSonnet35Request> {
+    pub fn build(mut self) -> anyhow::Result<FluentSonnet35Request> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }
+        if self.request.bearer_token.is_empty() {
+            if let Ok(cred) = std::env::var(Credential::ANTHROPIC_API_KEY.to_string()) {
+                self.request.bearer_token = cred;
+            }
+        }
+
         if self.request.bearer_token.is_empty() {
             return Err(anyhow!("Bearer Token is required"));
         }

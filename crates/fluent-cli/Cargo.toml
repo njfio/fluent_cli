@@ -9,6 +9,7 @@ default-run = "fluent-cli"
 clap = { workspace = true, features = ["derive"] }
 fluent-core = { workspace = true }
 fluent-engines = { workspace = true }
+fluent-sdk = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 anyhow = { workspace = true }
 log = { workspace = true }

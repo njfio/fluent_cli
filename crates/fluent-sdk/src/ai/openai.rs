@@ -1,16 +1,16 @@
 use anyhow::anyhow;
+use clap::Args;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
+use super::{EngineName, FluentRequest, KeyValue};
 
-impl FluentSdkRequest for FluentMistralNemoChatRequest {}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentMistralNemoChatRequest {
+#[derive(Debug, Deserialize, Serialize, Clone, Args)]
+pub struct FluentOpenAIChatRequest {
     pub prompt: String,
     pub bearer_token: String,
     pub model: Option<String>,
+    pub response_format: Option<Value>,
     pub temperature: Option<f64>,
     pub max_tokens: Option<i64>,
     pub top_p: Option<f64>,
@@ -19,9 +19,12 @@ pub struct FluentMistralNemoChatRequest {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<FluentMistralNemoChatRequest> for FluentRequest {
-    fn from(request: FluentMistralNemoChatRequest) -> Self {
+impl From<FluentOpenAIChatRequest> for FluentRequest {
+    fn from(request: FluentOpenAIChatRequest) -> Self {
         let mut overrides = vec![];
+        if let Some(response_format) = request.response_format {
+            overrides.push(("response_format".to_string(), response_format));
+        }
         if let Some(temperature) = request.temperature {
             overrides.push(("temperature".to_string(), json!(temperature)));
         }
@@ -48,27 +51,24 @@ impl From<FluentMistralNemoChatRequest> for FluentRequest {
         }
         FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineName::MistralNemo),
-            credentials: Some(vec![KeyValue::new(
-                "MISTRAL_API_KEY",
-                &request.bearer_token,
-            )]),
+            engine: Some(EngineName::OpenAIChatCompletions),
+            credentials: Some(vec![KeyValue::new("OPENAI_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentMistralNemoRequestBuilder {
-    request: FluentMistralNemoChatRequest,
+pub struct FluentOpenAIChatRequestBuilder {
+    pub request: FluentOpenAIChatRequest,
 }
-impl Default for FluentMistralNemoRequestBuilder {
+impl Default for FluentOpenAIChatRequestBuilder {
     fn default() -> Self {
         Self {
-            request: FluentMistralNemoChatRequest {
+            request: FluentOpenAIChatRequest {
                 prompt: String::new(),
                 bearer_token: String::new(),
+                response_format: None,
                 temperature: None,
                 max_tokens: None,
                 top_p: None,
@@ -82,13 +82,17 @@ impl Default for FluentMistralNemoRequestBuilder {
     }
 }
 
-impl FluentMistralNemoRequestBuilder {
-    pub fn prompt(mut self, prompt: String) -> Self {
-        self.request.prompt = prompt;
+impl FluentOpenAIChatRequestBuilder {
+    pub fn prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.request.prompt = prompt.into();
         self
     }
-    pub fn bearer_token(mut self, bearer_token: String) -> Self {
-        self.request.bearer_token = bearer_token;
+    pub fn bearer_token(mut self, bearer_token: impl Into<String>) -> Self {
+        self.request.bearer_token = bearer_token.into();
+        self
+    }
+    pub fn response_format(mut self, response_format: Value) -> Self {
+        self.request.response_format = Some(response_format);
         self
     }
     pub fn temperature(mut self, temperature: f64) -> Self {
@@ -111,8 +115,8 @@ impl FluentMistralNemoRequestBuilder {
         self.request.presence_penalty = Some(presence_penalty);
         self
     }
-    pub fn model(mut self, model: String) -> Self {
-        self.request.model = Some(model);
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.request.model = Some(model.into());
         self
     }
     pub fn n(mut self, n: i8) -> Self {
@@ -123,7 +127,7 @@ impl FluentMistralNemoRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn build(self) -> anyhow::Result<FluentMistralNemoChatRequest> {
+    pub fn build(self) -> anyhow::Result<FluentOpenAIChatRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }

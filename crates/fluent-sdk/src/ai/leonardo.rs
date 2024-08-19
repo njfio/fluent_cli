@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use strum::Display;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentLeonardoRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Display)]
 pub enum FluentLeonardoPromptMagicVersion {
@@ -177,7 +175,6 @@ impl From<FluentLeonardoRequest> for FluentRequest {
                 &request.bearer_token,
             )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }

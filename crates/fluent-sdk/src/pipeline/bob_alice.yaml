@@ -1,0 +1,59 @@
+nodes:
+    - name: Start
+      type: Start
+      next:
+          - node: Loop
+
+    - name: Loop
+      type: Join
+      next:
+          - node: Bob
+
+    - name: Bob
+      type:
+          Task:
+              OpenAI:
+                  bearer_token: ENV_OPENAI_KEY
+                  prompt: |
+                      Instruction: you are Bob.
+                      You are a human.
+                      You are chatting with Alice.
+                      You are trying to get to know her better.
+                      You are trying to be friendly and polite.
+                      You are trying to be respectful.
+                      Every time you send a message, put Bob: at the beginning of the message.
+
+      next:
+          - node: Alice
+
+    - name: Alice
+      type:
+          Task:
+              OpenAI:
+                  bearer_token: ENV_OPENAI_KEY
+                  prompt: |
+                      Instruction: you are Alice.
+                      You are a human.
+                      You are chatting with Bob.
+                      You are trying to get to know him better.
+                      You are trying to be friendly and polite.
+                      You are trying to be respectful.
+                      You also feel very attracted to Bob.
+                      Every time you send a message, put Alice: at the beginning of the message.
+
+    - name: Reach interactions limit
+      type: Decision
+      next:
+          - node: Loop
+            condition:
+                OpenAI:
+                    bearer_token: ENV_OPENAI_KEY
+                    prompt: |
+                        You will receive interactions between Bob and Alice.
+                        You should decide when to end the conversation.
+                        the number of allowed iteractions between Bob and Alice is 10.
+          - node: End
+            condition: AlwaysPass
+
+    - name: End
+      type: End

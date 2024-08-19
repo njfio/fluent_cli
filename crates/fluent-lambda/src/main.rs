@@ -1,4 +1,4 @@
-use fluent_sdk::FluentRequest;
+use fluent_sdk::prelude::*;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde::{Deserialize, Serialize};
 

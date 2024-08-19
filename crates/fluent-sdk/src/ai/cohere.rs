@@ -5,9 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 use strum::Display;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentCohereRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Display)]
 pub enum FluentCoherePromptTruncation {
@@ -156,7 +154,6 @@ impl From<FluentCohereRequest> for FluentRequest {
             engine: Some(EngineName::Cohere),
             credentials: Some(vec![KeyValue::new("COHERE_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }

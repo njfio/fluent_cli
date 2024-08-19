@@ -2,9 +2,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentImagineProRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentImagineProRequest {
@@ -30,7 +28,6 @@ impl From<FluentImagineProRequest> for FluentRequest {
                 &request.bearer_token,
             )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }

@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use strum::Display;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentOpenAIDalleRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 /*
 The style of the generated images. Must be one of vivid or natural. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images. This param is only supported for dall-e-3.
@@ -54,17 +52,6 @@ pub enum FluentOpenAIDalleSize {
     #[strum(serialize = "1024x1792")]
     Size1024x1792,
 }
-/**
-*         "sessionID": "NJF1234567DEFAULT",
-       "n": 1,
-       "logprobs": null,
-       "echo": false,
-       "user": "example-user-id",
-       "size": "1024x1792",
-       "style": "vivid",
-       "quality": "hd"
-
-*/
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentOpenAIDalleRequest {
     pub prompt: String,
@@ -114,7 +101,6 @@ impl From<FluentOpenAIDalleRequest> for FluentRequest {
             engine: Some(EngineName::OpenAiDalle),
             credentials: Some(vec![KeyValue::new("OPENAI_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }

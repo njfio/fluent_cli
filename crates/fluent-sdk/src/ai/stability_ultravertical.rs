@@ -3,9 +3,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use strum::Display;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
+use crate::Credential;
 
-impl FluentSdkRequest for FluentStabilityRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FluentStabilityRequest {
+    pub prompt: String,
+    pub bearer_token: String,
+    pub steps: Option<i64>,
+    pub cfg_scale: Option<i64>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub samples: Option<i64>,
+    pub seed: Option<i64>,
+    pub style_preset: Option<FluentStabilityStylePreset>,
+    pub aspect_ratio: Option<FluentStabilityAspectoRatio>,
+    pub output_format: Option<FluentStabilityOutputFormat>,
+    pub sampler: Option<FluentStabilitySampler>,
+}
 
 //3d-model analog-film anime cinematic comic-book digital-art enhance fantasy-art isometric line-art low-poly modeling-compound neon-punk origami photographic pixel-art tile-texture
 #[derive(Debug, Deserialize, Serialize, Clone, Display)]
@@ -132,22 +148,6 @@ pub enum FluentStabilitySampler {
     K_LMS,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentStabilityRequest {
-    pub prompt: String,
-    pub bearer_token: String,
-    pub steps: Option<i64>,
-    pub cfg_scale: Option<i64>,
-    pub width: Option<i64>,
-    pub height: Option<i64>,
-    pub samples: Option<i64>,
-    pub seed: Option<i64>,
-    pub style_preset: Option<FluentStabilityStylePreset>,
-    pub aspect_ratio: Option<FluentStabilityAspectoRatio>,
-    pub output_format: Option<FluentStabilityOutputFormat>,
-    pub sampler: Option<FluentStabilitySampler>,
-}
-
 impl From<FluentStabilityRequest> for FluentRequest {
     fn from(request: FluentStabilityRequest) -> Self {
         let mut overrides = vec![];
@@ -189,11 +189,10 @@ impl From<FluentStabilityRequest> for FluentRequest {
             request: Some(request.prompt),
             engine: Some(EngineName::StabilityUltraVertical),
             credentials: Some(vec![KeyValue::new(
-                "STABILITYAI_API_KEY",
+                &Credential::STABILITYAI_API_KEY.to_string(),
                 &request.bearer_token,
             )]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
@@ -273,9 +272,14 @@ impl FluentStabilityRequestBuilder {
         self
     }
 
-    pub fn build(self) -> anyhow::Result<FluentStabilityRequest> {
+    pub fn build(mut self) -> anyhow::Result<FluentStabilityRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
+        }
+        if self.request.bearer_token.is_empty() {
+            if let Ok(cred) = std::env::var(Credential::STABILITYAI_API_KEY.to_string()) {
+                self.request.bearer_token = cred;
+            }
         }
         if self.request.bearer_token.is_empty() {
             return Err(anyhow!("Bearer Token is required"));

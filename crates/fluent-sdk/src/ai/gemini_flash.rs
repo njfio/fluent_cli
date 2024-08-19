@@ -2,9 +2,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentGeminiFlashRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FluentGeminiFlashRequest {
@@ -43,7 +41,6 @@ impl From<FluentGeminiFlashRequest> for FluentRequest {
             engine: Some(EngineName::GeminiFlash),
             credentials: Some(vec![KeyValue::new("GOOGLE_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }

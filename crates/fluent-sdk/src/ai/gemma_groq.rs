@@ -2,12 +2,10 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{EngineName, FluentRequest, FluentSdkRequest, KeyValue};
-
-impl FluentSdkRequest for FluentLlama3GroqChatRequest {}
+use super::{EngineName, FluentRequest, KeyValue};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentLlama3GroqChatRequest {
+pub struct FluentGemmaGroqChatRequest {
     pub prompt: String,
     pub bearer_token: String,
     pub model: Option<String>,
@@ -19,8 +17,8 @@ pub struct FluentLlama3GroqChatRequest {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
 }
-impl From<FluentLlama3GroqChatRequest> for FluentRequest {
-    fn from(request: FluentLlama3GroqChatRequest) -> Self {
+impl From<FluentGemmaGroqChatRequest> for FluentRequest {
+    fn from(request: FluentGemmaGroqChatRequest) -> Self {
         let mut overrides = vec![];
         if let Some(temperature) = request.temperature {
             overrides.push(("temperature".to_string(), json!(temperature)));
@@ -48,22 +46,21 @@ impl From<FluentLlama3GroqChatRequest> for FluentRequest {
         }
         FluentRequest {
             request: Some(request.prompt),
-            engine: Some(EngineName::Llama3Groq),
+            engine: Some(EngineName::GemmaGroq),
             credentials: Some(vec![KeyValue::new("GROQ_API_KEY", &request.bearer_token)]),
             overrides: Some(overrides.into_iter().collect()),
-            parse_code: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct FluentLlama3GroqRequestBuilder {
-    request: FluentLlama3GroqChatRequest,
+pub struct FluentGemmaGroqRequestBuilder {
+    request: FluentGemmaGroqChatRequest,
 }
-impl Default for FluentLlama3GroqRequestBuilder {
+impl Default for FluentGemmaGroqRequestBuilder {
     fn default() -> Self {
         Self {
-            request: FluentLlama3GroqChatRequest {
+            request: FluentGemmaGroqChatRequest {
                 prompt: String::new(),
                 bearer_token: String::new(),
                 temperature: None,
@@ -79,7 +76,7 @@ impl Default for FluentLlama3GroqRequestBuilder {
     }
 }
 
-impl FluentLlama3GroqRequestBuilder {
+impl FluentGemmaGroqRequestBuilder {
     pub fn prompt(mut self, prompt: String) -> Self {
         self.request.prompt = prompt;
         self
@@ -120,7 +117,7 @@ impl FluentLlama3GroqRequestBuilder {
         self.request.stop = Some(stop);
         self
     }
-    pub fn build(self) -> anyhow::Result<FluentLlama3GroqChatRequest> {
+    pub fn build(self) -> anyhow::Result<FluentGemmaGroqChatRequest> {
         if self.request.prompt.is_empty() {
             return Err(anyhow!("Prompt is required"));
         }
