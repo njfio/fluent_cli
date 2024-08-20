@@ -87,6 +87,34 @@
       }
     },
     {
+      "name": "haiku",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
+        "max_tokens": 4096,
+        "modelName": "claude-3-haiku-20240307",
+        "temperature": 0.7,
+        "system": "You are a helpful AI assistant."
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        },
+        "query_llm": "sonnet3.5"
+      }
+    },
+    {
       "name": "gemini-flash",
       "engine": "google_gemini",
       "connection": {
@@ -114,7 +142,67 @@
           "model": "voyage-large-2"
         }
       }
-    },    {
+    },
+    {
+      "name": "gemini-pro-no-safety",
+      "engine": "google_gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/{model}:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "AMBER_FLUENT_GOOGLE_AI_STUDIO_KEY_01",
+        "modelName": "gemini-1.5-pro",
+        "temperature": 0.7,
+        "top_k": 0,
+        "top_p": 0.95,
+        "max_tokens": -1,
+        "sessionId": "",
+        "safetySettings": [
+          {
+            "category": "HARM_CATEGORY_UNSPECIFIED",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_DEROGATORY",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_TOXICITY",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_VIOLENCE",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_SEXUAL",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_MEDICAL",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          },
+          {
+            "category": "HARM_CATEGORY_DANGEROUS",
+            "threshold": "SAFETY_THRESHOLD_NONE"
+          }
+        ]
+      },
+      "neo4j": {
+        "uri": "bolt://localhost:7687",
+        "user": "neo4j",
+        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
+        "database": "neo4j",
+        "voyage_ai": {
+          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
+          "model": "voyage-large-2"
+        }
+      }
+    },
+    {
       "name": "gemini-pro",
       "engine": "google_gemini",
       "connection": {
@@ -131,16 +219,6 @@
         "top_p": 0.95,
         "max_tokens": -1,
         "sessionId": ""
-      },
-      "neo4j": {
-        "uri": "bolt://localhost:7687",
-        "user": "neo4j",
-        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
-        "database": "neo4j",
-        "voyage_ai": {
-          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
-          "model": "voyage-large-2"
-        }
       }
     },
     {
@@ -171,16 +249,6 @@
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0,
         "sessionID": "unique-session-id"
-      },
-      "neo4j": {
-        "uri": "bolt://localhost:7687",
-        "user": "neo4j",
-        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
-        "database": "neo4j",
-        "voyage_ai": {
-          "api_key": "AMBER_FLUENT_VOYAGE_AI_KEY",
-          "model": "voyage-large-2"
-        }
       }
     },
     {
@@ -282,7 +350,7 @@
       },
       "parameters": {
         "bearer_token": "AMBER_FLUENT_PERPLEXITY_API_KEY_01",
-        "model": "llama-3.1-sonar-large-128k-online",
+        "model": "llama-3.1-sonar-huge-128k-online",
         "temperature": 0.7,
         "max_tokens": -1,
         "top_p": 1.0,
@@ -578,17 +646,6 @@
         "aspect_ratio": "9:16",
         "output_format": "png",
         "sampler": ""
-      },
-      "neo4j": {
-        "uri": "neo4j://localhost:7687",
-        "user": "neo4j",
-        "password": "system2024!",
-        "database": "neo4j",
-        "voyage_ai": {
-          "api_key": "YOUR_VOYAGE_AI_API_KEY",
-          "model": "voyage-1536-v1"
-        },
-        "query_llm": "openai-gpt4"
       }
     },
     {
@@ -605,17 +662,6 @@
         "ref": "optional-reference-id",
         "mode": "default",
         "webhookOverride": "https://your-webhook-url.com/endpoint"
-      },
-      "neo4j": {
-        "uri": "neo4j://localhost:7687",
-        "user": "neo4j",
-        "password": "system2024!",
-        "database": "neo4j",
-        "voyage_ai": {
-          "api_key": "YOUR_VOYAGE_AI_API_KEY",
-          "model": "voyage-1536-v1"
-        },
-        "query_llm": "openai-gpt4"
       }
     },
     {

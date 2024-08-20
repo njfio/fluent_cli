@@ -24,7 +24,7 @@ steps:
           if [ $((${turn_counter} % 2)) -eq 1 ]; then
             echo "Assistant 1 (Optimistic)|cohere"
           else
-            echo "Assistant 2 (Cautious)|gemini"
+            echo "Assistant 2 (Cautious)|mistral-nemo"
           fi
         save_output: current_speaker_and_llm
 
@@ -44,7 +44,8 @@ steps:
         name: generate_response
         command: |
           fluent ${current_llm} '' <<'EOF'
-          You are ${current_speaker}. Given the context and previous messages, continue the conversation. Keep your response concise (max 150 words).
+          You are ${current_speaker}. Given the context and previous messages, continue the conversation. Keep your 
+          response concise (max 250 words).
 
           Context: ${context}
           Previous messages: ${conversation_history}
@@ -62,9 +63,10 @@ steps:
 
       - !PrintOutput
         name: display_turn
-        value: "\nTurn ${turn_counter}:\n\t${current_speaker} (using ${current_llm}) says:\n\t\t${current_response}\n\n"
+        value: "----\nTurn ${turn_counter}:\n\t${current_speaker} (using ${current_llm}) 
+        says:\n\t\t${current_response}\n----\n"
 
-    condition: "[ ${turn_counter} = 10 ]"
+    condition: "[ ${turn_counter} = 50 ]"
 
   - !PrintOutput
     name: final_output
