@@ -5,7 +5,7 @@ app = Flask(__name__, static_url_path='', static_folder='frontend')
 
 @app.route('/', methods=['GET'])
 def index():
-    return app.send_static_file('front_end_index.html')
+    return app.send_static_file('index.html')
 
 @app.route('/execute', methods=['POST'])
 def execute_fluent():
