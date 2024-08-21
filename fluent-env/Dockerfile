@@ -18,6 +18,7 @@ RUN cargo install --force --git https://github.com/njfio/fluent_cli --branch v.0
     fluent
 # Install Amber CLI
 RUN cargo install --git https://github.com/fpco/amber amber
+
 # Install Flask
 RUN apk add py3-flask
 RUN mkdir /app
@@ -28,6 +29,8 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/frontend/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/index.html
 
 RUN mkdir /.fluent/
+RUN mkdir /.fluent/state_store/
+
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/default_config_test.json /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent_autocomplete.sh /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/

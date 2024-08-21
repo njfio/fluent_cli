@@ -303,7 +303,15 @@ pub mod cli {
 
                 let pipeline: Pipeline =
                     serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
-                let state_store_dir = PathBuf::from("./pipeline_states");
+                let state_store_dir = match env::var("FLUENT_STATE_STORE") {
+                    Ok(path) => PathBuf::from(path),
+                    Err(_) => {
+                        // Handle the case where the environment variable is not set
+                        // You can either return an error or use a default path here
+                        eprintln!("Warning: FLUENT_STATE_STORE environment variable not set. Using default path.");
+                        PathBuf::from("./pipeline_states")
+                    }
+                };
                 tokio::fs::create_dir_all(&state_store_dir).await?;
                 let state_store = FileStateStore {
                     directory: state_store_dir,
