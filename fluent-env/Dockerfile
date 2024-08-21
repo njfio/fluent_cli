@@ -24,8 +24,7 @@ RUN mkdir /app/frontend
 
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/frontend.py /app/app.py
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/frontend/index.html
-
-
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/index.html
 
 RUN mkdir /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/default_config_test.json /.fluent/
@@ -34,9 +33,8 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/
 
 EXPOSE 5000
 WORKDIR /app
-RUN python -m flask run --host=0.0.0.0 --port=5000 &
-#CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
-
+#RUN python -m flask run --host=0.0.0.0 --port=5000 &
+#CMD ["python3", "app.py"]
 
 # Set up Entrypoint
 ENTRYPOINT ["bash"]
