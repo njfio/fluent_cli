@@ -32,10 +32,12 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/default_config_test.json /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent_autocomplete.sh /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/
 
+EXPOSE 5000
+WORKDIR /app
+RUN python -m flask run --host=0.0.0.0 --port=5000 &
+#CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
+
+
 # Set up Entrypoint
 ENTRYPOINT ["bash"]
 RUN echo "source /.fluent/fluent_autocomplete.sh" >> ~/.bashrc
-
-EXPOSE 5000
-WORKDIR /app
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]

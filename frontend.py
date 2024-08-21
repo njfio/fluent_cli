@@ -3,7 +3,7 @@ import subprocess
 import logging
 import os
 
-app = Flask(__name__, static_url_path='', static_folder='frontend')
+app = Flask(__name__, static_folder='frontend')
 
 @app.route('/', methods=['GET'])
 def index():
