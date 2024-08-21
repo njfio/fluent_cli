@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fluent Web Frontend</title>
+    <script>
+        function executeCommand() {
+            const command = document.getElementById('command').value;
+            fetch('/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.output) {
+                        document.getElementById('output').innerText = data.output;
+                    } else if (data.error) {
+                        document.getElementById('output').innerText = "Error: " + data.error;
+                    }
+                });
+        }
+    </script>
+</head>
+<body>
+<h1>Fluent Web Frontend</h1>
+<input type="text" id="command" placeholder="Enter Fluent command">
+<button onclick="executeCommand()">Execute</button>
+<div id="output"></div>
+</body>
+</html>
