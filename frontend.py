@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 import subprocess
+import logging
+import os
 
 app = Flask(__name__, static_url_path='', static_folder='frontend')
 
@@ -17,4 +19,7 @@ def execute_fluent():
         return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
+    logging.debug("Flask app starting...")
+    logging.debug(f"Working directory: {os.getcwd()}")
+    logging.debug(f"Environment variables: {os.environ}")
     app.run(debug=True, host='0.0.0.0')

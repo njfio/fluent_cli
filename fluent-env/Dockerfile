@@ -22,12 +22,10 @@ RUN apk add py3-flask
 RUN mkdir /app
 RUN mkdir /app/frontend
 
-RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/frontend.py /app/frontend/app.py
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/frontend.py /app/app.py
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/frontend/index.html
 
-EXPOSE 5000
 
-CMD ["flask", "run", "--host=0.0.0.0"]
 
 RUN mkdir /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/default_config_test.json /.fluent/
@@ -37,3 +35,7 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/
 # Set up Entrypoint
 ENTRYPOINT ["bash"]
 RUN echo "source /.fluent/fluent_autocomplete.sh" >> ~/.bashrc
+
+EXPOSE 5000
+WORKDIR /app
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
