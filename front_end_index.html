@@ -5,10 +5,12 @@
     <script>
         function executeCommand() {
             const command = document.getElementById('command').value;
+            const engine = document.getElementById('engine').value; // Get engine name
+
             fetch('/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: command })
+                body: JSON.stringify({ command: command, engine: engine }) // Send engine
             })
                 .then(response => response.json())
                 .then(data => {
@@ -23,6 +25,17 @@
 </head>
 <body>
 <h1>Fluent Web Frontend</h1>
+
+<div>
+    <label for="engine">Engine:</label>
+    <select id="engine">
+        <option value="openai">OpenAI</option>
+        <option value="perplexity">Anthropic</option>
+        <!-- Add more engine options as needed -->
+    </select>
+</div>
+<br/>
+
 <input type="text" id="command" placeholder="Enter Fluent command">
 <button onclick="executeCommand()">Execute</button>
 <div id="output"></div>
