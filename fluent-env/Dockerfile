@@ -2,10 +2,14 @@ FROM alpine:latest
 
 RUN apk update && apk upgrade
 
+# Install dependencies
+RUN apk add py3-gunicorn
+RUN apk add coreutils
 RUN apk add jq
 RUN apk add pandoc
 RUN apk add neo4j
-# Install dependencies
+
+#install Python and Ruby
 RUN apk add --no-cache build-base bash git curl wget python3 python3-dev py3-pip \
                    ruby ruby-dev ruby-irb ruby-rdoc ruby-json ruby-bigdecimal
 RUN apk add screen
@@ -62,16 +66,9 @@ RUN neo4j-admin set-initial-password system2024!
 
 #CMD ["/.fluent/start-neo4j.sh"]
 #CMD ["/.fluent/start-flask.sh"]
-CMD ["/.fluent/start-combined.sh"]
-#CMD ["python", "app.py", "&"]
-#RUN python -m flask run --host=0.0.0.0 --port=5000 &
-#CMD ["python3", "app.py"]
-
-# Set up Entrypoint
-
-
+# /.fluent/start-combined.sh
 
 WORKDIR /app
+#CMD ["/.fluent/start-combined.sh"]
 ENTRYPOINT ["bash"]
-
 RUN echo "source /.fluent/fluent_autocomplete.sh" >> ~/.bashrc
