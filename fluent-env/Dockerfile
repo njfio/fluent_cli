@@ -8,7 +8,7 @@ RUN apk add neo4j
 # Install dependencies
 RUN apk add --no-cache build-base bash git curl wget python3 python3-dev py3-pip \
                    ruby ruby-dev ruby-irb ruby-rdoc ruby-json ruby-bigdecimal
-
+RUN apk add screen
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -31,18 +31,24 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/front_end_index.html /app/index.htm
 
 RUN mkdir /.fluent/
 RUN mkdir /.fluent/state_store/
+RUN mkdir /.fluent/example_configurations/
 
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/default_config_test.json /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent_autocomplete.sh /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/
-RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env /.fluent/
+
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env/start-neo4j.sh /.fluent/
 RUN chmod +x /.fluent/start-neo4j.sh
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env/start-flask.sh /.fluent/
+RUN chmod +x /.fluent/start-flash.sh
+
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/example_configurations/*.json /.fluent/example_configurations
+
 
 EXPOSE 5000
 EXPOSE 7474
 EXPOSE 7687
 
-WORKDIR /app
 RUN echo "dbms.default_database=neo4j" >> /etc/neo4j/neo4j.conf
 RUN echo "dbms.connector.bolt.enabled=true" >> /etc/neo4j/neo4j.conf
 RUN echo "dbms.connector.bolt.listen_address=:7687" >> /etc/neo4j/neo4j.conf
@@ -51,15 +57,17 @@ RUN echo "dbms.default_listen_address=0.0.0.0" >> /etc/neo4j/neo4j.conf
 
 RUN neo4j-admin set-default-admin neo4j
 RUN neo4j-admin set-initial-password system2024!
-RUN neo4j start &
-
-
+CMD ["/.fluent/start-neo4j.sh"]
+CMD ["/.fluent/start-flask.sh"]
 #CMD ["python", "app.py", "&"]
-
-
 #RUN python -m flask run --host=0.0.0.0 --port=5000 &
 #CMD ["python3", "app.py"]
 
 # Set up Entrypoint
-ENTRYPOINT ["/.fluent/start-neo4j.sh"]
+
+
+
+WORKDIR /app
+ENTRYPOINT ["bash"]
+
 RUN echo "source /.fluent/fluent_autocomplete.sh" >> ~/.bashrc

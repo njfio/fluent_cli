@@ -3,5 +3,4 @@
 # Start Neo4j in the background
 neo4j start &
 
-# Run the bash shell
-bash
+echo "started neo4j server"
