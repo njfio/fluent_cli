@@ -4,13 +4,34 @@
     <title>Fluent Web Frontend</title>
     <script>
         function executeCommand() {
-            const command = document.getElementById('command').value;
-            const engine = document.getElementById('engine').value; // Get engine name
+            const formData = new FormData(document.getElementById('fluent-form'));
+
+            const commandData = {
+                engine: formData.get('engine'),
+                request: formData.get('request'),
+                config: formData.get('config'),
+                override: formData.getAll('override').join(' '), // Join overrides
+                additionalContextFile: formData.get('additionalContextFile'),
+                upsert: formData.get('upsert') === 'on', // Checkbox value
+                input: formData.get('input'),
+                metadata: formData.get('metadata'),
+                uploadImageFile: formData.get('uploadImageFile'),
+                downloadMedia: formData.get('downloadMedia'),
+                parseCode: formData.get('parseCode') === 'on',
+                executeOutput: formData.get('executeOutput') === 'on',
+                markdown: formData.get('markdown') === 'on',
+                generateCypher: formData.get('generateCypher'),
+                pipelineFile: formData.get('pipelineFile'),
+                pipelineInput: formData.get('pipelineInput'),
+                jsonOutput: formData.get('jsonOutput') === 'on',
+                runId: formData.get('runId'),
+                forceFresh: formData.get('forceFresh') === 'on',
+            };
 
             fetch('/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: command, engine: engine }) // Send engine
+                body: JSON.stringify(commandData)
             })
                 .then(response => response.json())
                 .then(data => {
@@ -26,41 +47,128 @@
 <body>
 <h1>Fluent Web Frontend</h1>
 
-<div>
-    <label for="engine">Engine:</label>
-    <select id="engine">
-        <option value="openai">openai</option>
-        <option value="openai-mini">openai-mini</option>
-        <option value="sonnet3.5">sonnet3.5</option>
-        <option value="haiku">haiku</option>
-        <option value="gemini-flash">gemini-flash</option>
-        <option value="gemini-pro-no-safety">gemini-pro-no-safety</option>
-        <option value="gemini-pro">gemini-pro</option>
-        <option value="cohere">cohere</option>
-        <option value="llama3-groq">llama3-groq</option>
-        <option value="gemma-groq">gemma-groq</option>
-        <option value="mistral-nemo">mistral-nemo</option>
-        <option value="mistral-large2">mistral-large2</option>
-        <option value="perplexity">perplexity</option>
-        <option value="sonnet3.5_chain">sonnet3.5_chain</option>
-        <option value="OmniAgentWithSearchAndBrowsing">OmniAgentWithSearchAndBrowsing</option>
-        <option value="Omni_Chain">Omni_Chain</option>
-        <option value="Omni_Chain2">Omni_Chain2</option>
-        <option value="langflow_test">langflow_test</option>
-        <option value="makeLeonardoImagePostRawOutput">makeLeonardoImagePostRawOutput</option>
-        <option value="stabilityUltraVertical">stabilityUltraVertical</option>
-        <option value="imaginepro">imaginepro</option>
-        <option value="leonardoVertical">leonardoVertical</option>
-        <option value="dalleVertical">dalleVertical</option>
-        <option value="dalleHorizontal">dalleHorizontal</option>
-        <option value="fluxPro-replicate">fluxPro-replicate</option>
-        <option value="neo4j">neo4j</option>
-    </select>
-</div>
-<br/>
+<form id="fluent-form">
+    <div>
+        <label for="engine">Engine:</label>
+        <select id="engine">
+            <option value="openai">openai</option>
+            <option value="openai-mini">openai-mini</option>
+            <option value="sonnet3.5">sonnet3.5</option>
+            <option value="haiku">haiku</option>
+            <option value="gemini-flash">gemini-flash</option>
+            <option value="gemini-pro-no-safety">gemini-pro-no-safety</option>
+            <option value="gemini-pro">gemini-pro</option>
+            <option value="cohere">cohere</option>
+            <option value="llama3-groq">llama3-groq</option>
+            <option value="gemma-groq">gemma-groq</option>
+            <option value="mistral-nemo">mistral-nemo</option>
+            <option value="mistral-large2">mistral-large2</option>
+            <option value="perplexity">perplexity</option>
+            <option value="sonnet3.5_chain">sonnet3.5_chain</option>
+            <option value="OmniAgentWithSearchAndBrowsing">OmniAgentWithSearchAndBrowsing</option>
+            <option value="Omni_Chain">Omni_Chain</option>
+            <option value="Omni_Chain2">Omni_Chain2</option>
+            <option value="langflow_test">langflow_test</option>
+            <option value="makeLeonardoImagePostRawOutput">makeLeonardoImagePostRawOutput</option>
+            <option value="stabilityUltraVertical">stabilityUltraVertical</option>
+            <option value="imaginepro">imaginepro</option>
+            <option value="leonardoVertical">leonardoVertical</option>
+            <option value="dalleVertical">dalleVertical</option>
+            <option value="dalleHorizontal">dalleHorizontal</option>
+            <option value="fluxPro-replicate">fluxPro-replicate</option>
+            <option value="neo4j">neo4j</option>
+        </select>
+    </div>
+    <br/>
 
-<input type="text" id="command" placeholder="Enter Fluent command">
-<button onclick="executeCommand()">Execute</button>
+    <input type="text" id="request" name="request" placeholder="Enter Fluent request">
+    <br/>
+
+    <div>
+        <label for="config">Config (JSON):</label>
+        <textarea id="config" name="config" placeholder="Paste JSON config"></textarea>
+    </div>
+    <br/>
+
+    <div>
+        <label for="override">Override (KEY=VALUE):</label>
+        <input type="text" id="override" name="override">
+        <button type="button" onclick="addOverride()">Add Override</button>
+        <div id="overrides"></div>
+    </div>
+    <br/>
+
+    <input type="checkbox" id="upsert" name="upsert">
+    <label for="upsert">Upsert</label>
+    <br/>
+
+    <input type="text" id="input" name="input" placeholder="Input File/Directory (for upsert)">
+    <br/>
+
+    <input type="text" id="metadata" name="metadata" placeholder="Metadata (for upsert)">
+    <br/>
+
+    <input type="file" id="uploadImageFile" name="uploadImageFile">
+    <br/>
+
+    <input type="text" id="downloadMedia" name="downloadMedia" placeholder="Download Media Directory">
+    <br/>
+
+    <input type="checkbox" id="parseCode" name="parseCode">
+    <label for="parseCode">Parse Code</label>
+    <br/>
+
+    <input type="checkbox" id="executeOutput" name="executeOutput">
+    <label for="executeOutput">Execute Output</label>
+    <br/>
+
+    <input type="checkbox" id="markdown" name="markdown">
+    <label for="markdown">Markdown</label>
+    <br/>
+
+    <input type="text" id="generateCypher" name="generateCypher" placeholder="Cypher Query">
+    <br/>
+
+    <h2>Pipeline</h2>
+    <div>
+        <label for="pipelineFile">Pipeline File (YAML):</label>
+        <textarea id="pipelineFile" name="pipelineFile" placeholder="Paste YAML pipeline"></textarea>
+    </div>
+    <br/>
+
+    <input type="text" id="pipelineInput" name="pipelineInput" placeholder="Pipeline Input">
+    <br/>
+
+    <input type="checkbox" id="jsonOutput" name="jsonOutput">
+    <label for="jsonOutput">JSON Output</label>
+    <br/>
+
+    <input type="text" id="runId" name="runId" placeholder="Run ID">
+    <br/>
+
+    <input type="checkbox" id="forceFresh" name="forceFresh">
+    <label for="forceFresh">Force Fresh</label>
+    <br/>
+
+    <button type="button" onclick="executeCommand()">Execute</button>
+</form>
+
 <div id="output"></div>
+
+<script>
+    function addOverride() {
+        const overrideInput = document.getElementById('override');
+        const overrideValue = overrideInput.value;
+        if (overrideValue) {
+            const overridesDiv = document.getElementById('overrides');
+            const newOverride = document.createElement('input');
+            newOverride.type = 'hidden';
+            newOverride.name = 'override';
+            newOverride.value = overrideValue;
+            overridesDiv.appendChild(newOverride);
+            overrideInput.value = ''; // Clear the input field
+        }
+    }
+</script>
 </body>
 </html>
