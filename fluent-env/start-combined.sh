@@ -7,4 +7,4 @@ gunicorn -w 2 app:app -b 0.0.0.0:5000 &
 
 echo "started neo4j and web server"
 
-bash
+wait
