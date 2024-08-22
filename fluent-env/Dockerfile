@@ -69,6 +69,6 @@ RUN neo4j-admin set-initial-password system2024!
 # /.fluent/start-combined.sh
 
 WORKDIR /app
-#CMD ["/.fluent/start-combined.sh"]
-ENTRYPOINT ["bash"]
+CMD ["/.fluent/start-combined.sh"]
+#ENTRYPOINT ["bash"]
 RUN echo "source /.fluent/fluent_autocomplete.sh" >> ~/.bashrc

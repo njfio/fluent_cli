@@ -6,3 +6,5 @@ neo4j start &
 nohup gunicorn -w 2 app:app &
 
 echo "started neo4j and web server"
+
+bash
