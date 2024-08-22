@@ -40,7 +40,9 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/amber.yaml /.fluent/
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env/start-neo4j.sh /.fluent/
 RUN chmod +x /.fluent/start-neo4j.sh
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env/start-flask.sh /.fluent/
-RUN chmod +x /.fluent/start-flash.sh
+RUN chmod +x /.fluent/start-flask.sh
+RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/fluent-env/start-combined.sh /.fluent/
+RUN chmod +x /.fluent/start-combined.sh
 
 RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/example_configurations/*.json /.fluent/example_configurations
 
@@ -57,8 +59,10 @@ RUN echo "dbms.default_listen_address=0.0.0.0" >> /etc/neo4j/neo4j.conf
 
 RUN neo4j-admin set-default-admin neo4j
 RUN neo4j-admin set-initial-password system2024!
-CMD ["/.fluent/start-neo4j.sh"]
-CMD ["/.fluent/start-flask.sh"]
+
+#CMD ["/.fluent/start-neo4j.sh"]
+#CMD ["/.fluent/start-flask.sh"]
+CMD ["/.fluent/start-combined.sh"]
 #CMD ["python", "app.py", "&"]
 #RUN python -m flask run --host=0.0.0.0 --port=5000 &
 #CMD ["python3", "app.py"]
