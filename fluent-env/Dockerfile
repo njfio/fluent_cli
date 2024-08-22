@@ -54,6 +54,7 @@ RUN cp ~/.cargo/git/checkouts/fluent_cli-*/*/example_configurations/*.json /.flu
 EXPOSE 5000
 EXPOSE 7474
 EXPOSE 7687
+EXPOSE 8000
 
 RUN echo "dbms.default_database=neo4j" >> /etc/neo4j/neo4j.conf
 RUN echo "dbms.connector.bolt.enabled=true" >> /etc/neo4j/neo4j.conf
