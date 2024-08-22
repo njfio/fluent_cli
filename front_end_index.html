@@ -4,15 +4,17 @@
     <title>Fluent Web Frontend</title>
     <script>
         function executeCommand() {
+            // Get the form data
             const formData = new FormData(document.getElementById('fluent-form'));
 
+            // Create an object to hold the command data
             const commandData = {
                 engine: formData.get('engine'),
                 request: formData.get('request'),
                 config: formData.get('config'),
-                override: formData.getAll('override').join(' '), // Join overrides
+                override: formData.getAll('override').join(' '), // Join multiple overrides with spaces
                 additionalContextFile: formData.get('additionalContextFile'),
-                upsert: formData.get('upsert') === 'on', // Checkbox value
+                upsert: formData.get('upsert') === 'on', // Check if the checkbox is checked
                 input: formData.get('input'),
                 metadata: formData.get('metadata'),
                 uploadImageFile: formData.get('uploadImageFile'),
@@ -28,6 +30,7 @@
                 forceFresh: formData.get('forceFresh') === 'on',
             };
 
+            // Send the command data to the Flask server
             fetch('/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -35,12 +38,38 @@
             })
                 .then(response => response.json())
                 .then(data => {
+                    // Handle the response from the server
                     if (data.output) {
                         document.getElementById('output').innerText = data.output;
                     } else if (data.error) {
                         document.getElementById('output').innerText = "Error: " + data.error;
                     }
                 });
+        }
+
+        function addOverride() {
+            // Get the override input field
+            const overrideInput = document.getElementById('override');
+            // Get the value from the input field
+            const overrideValue = overrideInput.value;
+
+            // If there is a value in the input field
+            if (overrideValue) {
+                // Get the div where we'll add the overrides
+                const overridesDiv = document.getElementById('overrides');
+                // Create a new hidden input element
+                const newOverride = document.createElement('input');
+                // Set the type to hidden
+                newOverride.type = 'hidden';
+                // Set the name to 'override' so it's sent with the form data
+                newOverride.name = 'override';
+                // Set the value to the override value from the input field
+                newOverride.value = overrideValue;
+                // Add the new hidden input element to the overrides div
+                overridesDiv.appendChild(newOverride);
+                // Clear the override input field
+                overrideInput.value = '';
+            }
         }
     </script>
 </head>
@@ -50,33 +79,10 @@
 <form id="fluent-form">
     <div>
         <label for="engine">Engine:</label>
-        <select id="engine">
+        <select id="engine" name="engine">
             <option value="openai">openai</option>
             <option value="openai-mini">openai-mini</option>
-            <option value="sonnet3.5">sonnet3.5</option>
-            <option value="haiku">haiku</option>
-            <option value="gemini-flash">gemini-flash</option>
-            <option value="gemini-pro-no-safety">gemini-pro-no-safety</option>
-            <option value="gemini-pro">gemini-pro</option>
-            <option value="cohere">cohere</option>
-            <option value="llama3-groq">llama3-groq</option>
-            <option value="gemma-groq">gemma-groq</option>
-            <option value="mistral-nemo">mistral-nemo</option>
-            <option value="mistral-large2">mistral-large2</option>
-            <option value="perplexity">perplexity</option>
-            <option value="sonnet3.5_chain">sonnet3.5_chain</option>
-            <option value="OmniAgentWithSearchAndBrowsing">OmniAgentWithSearchAndBrowsing</option>
-            <option value="Omni_Chain">Omni_Chain</option>
-            <option value="Omni_Chain2">Omni_Chain2</option>
-            <option value="langflow_test">langflow_test</option>
-            <option value="makeLeonardoImagePostRawOutput">makeLeonardoImagePostRawOutput</option>
-            <option value="stabilityUltraVertical">stabilityUltraVertical</option>
-            <option value="imaginepro">imaginepro</option>
-            <option value="leonardoVertical">leonardoVertical</option>
-            <option value="dalleVertical">dalleVertical</option>
-            <option value="dalleHorizontal">dalleHorizontal</option>
-            <option value="fluxPro-replicate">fluxPro-replicate</option>
-            <option value="neo4j">neo4j</option>
+            <!-- Add more engine options as needed -->
         </select>
     </div>
     <br/>
@@ -154,21 +160,5 @@
 </form>
 
 <div id="output"></div>
-
-<script>
-    function addOverride() {
-        const overrideInput = document.getElementById('override');
-        const overrideValue = overrideInput.value;
-        if (overrideValue) {
-            const overridesDiv = document.getElementById('overrides');
-            const newOverride = document.createElement('input');
-            newOverride.type = 'hidden';
-            newOverride.name = 'override';
-            newOverride.value = overrideValue;
-            overridesDiv.appendChild(newOverride);
-            overrideInput.value = ''; // Clear the input field
-        }
-    }
-</script>
 </body>
 </html>
