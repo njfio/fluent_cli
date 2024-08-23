@@ -64,6 +64,8 @@
             background-color: #e9f7ef;
             border: 1px solid #d4edda;
             border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-x: auto;
         }
     </style>
     <script>
@@ -100,7 +102,12 @@
                 .then(data => {
                     const outputElement = document.getElementById('output');
                     if (data.output) {
-                        outputElement.innerText = data.output;
+                        try {
+                            const parsedJson = JSON.parse(data.output);
+                            outputElement.innerText = JSON.stringify(parsedJson, null, 2);
+                        } catch (e) {
+                            outputElement.innerText = data.output;
+                        }
                     } else if (data.error) {
                         outputElement.innerText = "Error: " + data.error;
                     }
