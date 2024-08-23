@@ -24,7 +24,7 @@ steps:
     name: generate_illustrations
     input: "introduction,climax,conclusion"
     command: |
-      fluent dalleVertical '' --download-media ~/Downloads <<'EOF'
+      fluent dalleVertical '' --download-media / <<'EOF'
       'Create an image for the ${ITEM} of a story about ${theme}'
       EOF
     save_output: illustrations

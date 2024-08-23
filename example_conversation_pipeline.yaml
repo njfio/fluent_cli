@@ -22,9 +22,9 @@ steps:
         name: choose_speaker_and_llm
         command: |
           if [ $((${turn_counter} % 2)) -eq 1 ]; then
-            echo "Assistant 1 (Optimistic)|cohere"
+            echo "Assistant 1 (Pragmatic)|gemini-flash"
           else
-            echo "Assistant 2 (Cautious)|mistral-nemo"
+            echo "Assistant 2 (Conspiracy Theory)|perplexity"
           fi
         save_output: current_speaker_and_llm
 

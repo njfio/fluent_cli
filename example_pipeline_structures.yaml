@@ -16,7 +16,8 @@ steps:
   - !ShellCommand
     name: create_refined_image_prompt
     command: |
-      fluent mistral-large2 'refine this image prompt to produce a masterpiece that captures the essence of the text.  It must be less than 1000 characters..  Only output the prompt.' <<EOT
+      fluent cohere 'refine this image prompt to produce a masterpiece that captures the essence of the text.  It must
+      be less than 1000 characters..  Only output the prompt.' <<EOT
       ${initial_image_prompt_data}
       EOT
     save_output: image_prompt_data
@@ -25,17 +26,17 @@ steps:
   - !ShellCommand
       name: generate_images
       command: |
-        fluent dalleVertical '' --download-media ~/Downloads <<EOT &
+        fluent dalleVertical '' --download-media / <<EOT &
         ${image_prompt_data}
         EOT
         pid1=$!
 
-        fluent leonardoVertical '' --download-media ~/Downloads <<EOT &
+        fluent leonardoVertical '' --download-media / <<EOT &
         ${image_prompt_data}
         EOT
         pid2=$!
 
-        fluent stabilityUltraVertical '' --download-media ~/Downloads <<EOT &
+        fluent stabilityUltraVertical '' --download-media / <<EOT &
         ${image_prompt_data}
         EOT
         pid3=$!

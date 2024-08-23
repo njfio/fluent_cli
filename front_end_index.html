@@ -1,20 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fluent Web Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #4a90e2;
+        }
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        div {
+            margin-bottom: 15px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        button {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #357ab8;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9f7ef;
+            border: 1px solid #d4edda;
+            border-radius: 4px;
+        }
+    </style>
     <script>
         function executeCommand() {
-            // Get the form data
             const formData = new FormData(document.getElementById('fluent-form'));
-
-            // Create an object to hold the command data
             const commandData = {
                 engine: formData.get('engine'),
                 request: formData.get('request'),
                 config: formData.get('config'),
-                override: formData.getAll('override').join(' '), // Join multiple overrides with spaces
+                override: formData.getAll('override').join(' '),
                 additionalContextFile: formData.get('additionalContextFile'),
-                upsert: formData.get('upsert') === 'on', // Check if the checkbox is checked
+                upsert: formData.get('upsert') === 'on',
                 input: formData.get('input'),
                 metadata: formData.get('metadata'),
                 uploadImageFile: formData.get('uploadImageFile'),
@@ -30,7 +91,6 @@
                 forceFresh: formData.get('forceFresh') === 'on',
             };
 
-            // Send the command data to the Flask server
             fetch('/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -38,63 +98,48 @@
             })
                 .then(response => response.json())
                 .then(data => {
-                    // Handle the response from the server
+                    const outputElement = document.getElementById('output');
                     if (data.output) {
-                        document.getElementById('output').innerText = data.output;
+                        outputElement.innerText = data.output;
                     } else if (data.error) {
-                        document.getElementById('output').innerText = "Error: " + data.error;
+                        outputElement.innerText = "Error: " + data.error;
                     }
                 });
         }
 
         function addOverride() {
-            // Get the override input field
             const overrideInput = document.getElementById('override');
-            // Get the value from the input field
             const overrideValue = overrideInput.value;
 
-            // If there is a value in the input field
             if (overrideValue) {
-                // Get the div where we'll add the overrides
                 const overridesDiv = document.getElementById('overrides');
-                // Create a new hidden input element
                 const newOverride = document.createElement('input');
-                // Set the type to hidden
                 newOverride.type = 'hidden';
-                // Set the name to 'override' so it's sent with the form data
                 newOverride.name = 'override';
-                // Set the value to the override value from the input field
                 newOverride.value = overrideValue;
-                // Add the new hidden input element to the overrides div
                 overridesDiv.appendChild(newOverride);
-                // Clear the override input field
                 overrideInput.value = '';
             }
         }
     </script>
 </head>
 <body>
-<h1>Fluent Web Frontend</h1>
-
 <form id="fluent-form">
+    <h1>Fluent Web Frontend</h1>
     <div>
         <label for="engine">Engine:</label>
         <select id="engine" name="engine">
             <option value="openai">openai</option>
             <option value="openai-mini">openai-mini</option>
-            <!-- Add more engine options as needed -->
         </select>
     </div>
-    <br/>
 
     <input type="text" id="request" name="request" placeholder="Enter Fluent request">
-    <br/>
 
     <div>
         <label for="config">Config (JSON):</label>
         <textarea id="config" name="config" placeholder="Paste JSON config"></textarea>
     </div>
-    <br/>
 
     <div>
         <label for="override">Override (KEY=VALUE):</label>
@@ -102,59 +147,44 @@
         <button type="button" onclick="addOverride()">Add Override</button>
         <div id="overrides"></div>
     </div>
-    <br/>
 
     <input type="checkbox" id="upsert" name="upsert">
     <label for="upsert">Upsert</label>
-    <br/>
 
     <input type="text" id="input" name="input" placeholder="Input File/Directory (for upsert)">
-    <br/>
 
     <input type="text" id="metadata" name="metadata" placeholder="Metadata (for upsert)">
-    <br/>
 
     <input type="file" id="uploadImageFile" name="uploadImageFile">
-    <br/>
 
     <input type="text" id="downloadMedia" name="downloadMedia" placeholder="Download Media Directory">
-    <br/>
 
     <input type="checkbox" id="parseCode" name="parseCode">
     <label for="parseCode">Parse Code</label>
-    <br/>
 
     <input type="checkbox" id="executeOutput" name="executeOutput">
     <label for="executeOutput">Execute Output</label>
-    <br/>
 
     <input type="checkbox" id="markdown" name="markdown">
     <label for="markdown">Markdown</label>
-    <br/>
 
     <input type="text" id="generateCypher" name="generateCypher" placeholder="Cypher Query">
-    <br/>
 
     <h2>Pipeline</h2>
     <div>
         <label for="pipelineFile">Pipeline File (YAML):</label>
         <textarea id="pipelineFile" name="pipelineFile" placeholder="Paste YAML pipeline"></textarea>
     </div>
-    <br/>
 
     <input type="text" id="pipelineInput" name="pipelineInput" placeholder="Pipeline Input">
-    <br/>
 
     <input type="checkbox" id="jsonOutput" name="jsonOutput">
     <label for="jsonOutput">JSON Output</label>
-    <br/>
 
     <input type="text" id="runId" name="runId" placeholder="Run ID">
-    <br/>
 
     <input type="checkbox" id="forceFresh" name="forceFresh">
     <label for="forceFresh">Force Fresh</label>
-    <br/>
 
     <button type="button" onclick="executeCommand()">Execute</button>
 </form>

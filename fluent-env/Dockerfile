@@ -4,6 +4,10 @@ RUN apk update && apk upgrade
 
 # Install dependencies
 RUN apk add py3-gunicorn
+RUN apk add py3-gevent
+RUN apk add py3-requests
+RUN apk add py3-beautifulsoup4
+RUN apk add py3-matplotlib
 RUN apk add coreutils
 RUN apk add jq
 RUN apk add pandoc
