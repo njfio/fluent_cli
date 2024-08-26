@@ -2,7 +2,7 @@ name: foreach_and_trycatch_example
 steps:
   - !Command
     name: set_items
-    command: echo "item1,item2,item3"
+    command: echo "item1, item2, item3"
     save_output: item_list
 
   - !ForEach
@@ -11,7 +11,7 @@ steps:
     steps:
       - !ShellCommand
         name: process_item
-        command: echo "Processing ${ITEM}"
+        command: echo -e "Processing ${ITEM}"
         save_output: item_result
 
   - !TryCatch
@@ -30,7 +30,7 @@ steps:
       - !ShellCommand
         name: error_handling
         command: |
-          echo "An error occurred: ${error}"
+          echo -e "An error occurred: ${error}"
         save_output: error_message
     finally_steps:
       - !ShellCommand
