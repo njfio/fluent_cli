@@ -48,7 +48,7 @@ tokio = { version = "^1" }
 anyhow = { version = "^1.0" }
 strum = { version = "^0.26" }
 clap = { version = "^4.5" }
-env_logger = { version = "^0.11" }
+env_logger = { version = "^0.11.5" }
 neo4rs = { version = "^0.8" }
 chrono = { version = "^0.4" }
 uuid = { version = "^1.3" }
