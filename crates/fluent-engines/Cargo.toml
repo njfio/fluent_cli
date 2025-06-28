@@ -21,3 +21,5 @@ futures-util = { workspace = true }
 tempfile = { workspace = true }
 futures = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
+libloading = { workspace = true }
+once_cell = { workspace = true }
