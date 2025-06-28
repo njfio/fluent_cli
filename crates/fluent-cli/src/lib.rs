@@ -18,7 +18,7 @@ pub mod cli {
     use clap::{Arg, ArgAction, ArgMatches, Command};
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_core::traits::Engine;
-    use fluent_core::types::{Request, Response};
+    use fluent_core::types::{Cost, Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
     use fluent_engines::create_engine;
     use fluent_engines::openai::OpenAIEngine;
@@ -128,6 +128,10 @@ pub mod cli {
         println!("  Prompt tokens: {}", response.usage.prompt_tokens);
         println!("  Completion tokens: {}", response.usage.completion_tokens);
         println!("  Total tokens: {}", response.usage.total_tokens);
+        println!("Cost:");
+        println!("  Prompt cost: ${:.6}", response.cost.prompt_cost);
+        println!("  Completion cost: ${:.6}", response.cost.completion_cost);
+        println!("  Total cost: ${:.6}", response.cost.total_cost);
         println!("  Response time: {:.2} seconds", response_time);
         if let Some(reason) = &response.finish_reason {
             println!("Finish reason: {}", reason);
@@ -352,6 +356,7 @@ pub mod cli {
         let pb = ProgressBar::new_spinner();
         let engine_config = &config.engines[0];
         let start_time = Instant::now();
+        let mut cumulative_cost = 0.0;
 
         let spinner_style = ProgressStyle::default_spinner()
             .tick_chars(&spinner_config.frames)
@@ -421,6 +426,7 @@ pub mod cli {
                 };
 
                 let response = Pin::from(engine.execute(&request)).await?;
+                cumulative_cost += response.cost.total_cost;
                 let mut output = response.content.clone();
 
                 if let Some(download_dir) = matches.get_one::<String>("download-media") {
@@ -642,6 +648,7 @@ pub mod cli {
                 pb.set_message("Executing request...");
                 Pin::from(engine.execute(&request)).await?
             };
+            cumulative_cost += response.cost.total_cost;
 
             let mut output = response.content.clone();
 
@@ -770,6 +777,7 @@ pub mod cli {
             );
         }
 
+        eprintln!("Total cost: ${:.6}", cumulative_cost);
         Ok(())
     }
 

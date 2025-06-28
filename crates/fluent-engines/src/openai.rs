@@ -5,7 +5,8 @@ use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor, OpenAIConfigProcessor};
 use fluent_core::types::{
-    ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
 };
 use log::debug;
 use reqwest::multipart::{Form, Part};
@@ -37,6 +38,15 @@ impl OpenAIEngine {
             config_processor: OpenAIConfigProcessor,
             neo4j_client,
         })
+    }
+
+    fn pricing(model: &str) -> (f64, f64) {
+        match model {
+            m if m.contains("gpt-4o") => (0.000005, 0.000015),
+            m if m.contains("gpt-4") => (0.00001, 0.00003),
+            m if m.contains("gpt-3.5") => (0.0000015, 0.000002),
+            _ => (0.0, 0.0),
+        }
     }
 }
 
@@ -155,11 +165,21 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
+            let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }
@@ -302,11 +322,21 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
+            let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }

@@ -5,7 +5,8 @@ use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
-    ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
 };
 use log::{debug, warn};
 use mime_guess::from_path;
@@ -225,6 +226,11 @@ impl Engine for FlowiseChainEngine {
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }
@@ -337,6 +343,11 @@ impl Engine for FlowiseChainEngine {
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }
