@@ -1,4 +1,5 @@
 pub mod args;
+pub mod pipeline_builder;
 
 use std::pin::Pin;
 
@@ -291,8 +292,13 @@ pub mod cli {
                     ),
             )
             .subcommand(
+
+                Command::new("build-pipeline")
+                    .about("Interactively build a pipeline")
+
                 Command::new("agent")
                     .about("Start interactive agent loop")
+
             )
     }
 
@@ -350,6 +356,11 @@ pub mod cli {
                     }
                 }
 
+                std::process::exit(0);
+            }
+
+            Some(("build-pipeline", _sub_matches)) => {
+                crate::pipeline_builder::build_interactively().await?;
                 std::process::exit(0);
             }
 
