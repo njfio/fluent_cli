@@ -1,3 +1,10 @@
+//! Fluent SDK provides strongly typed builders for composing requests to the
+//! various engines supported by Fluent.
+//!
+//! Most users will interact with the [`FluentOpenAIChatRequestBuilder`], but a
+//! generic [`FluentRequestBuilder`] is also available when you need full
+//! control.
+
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -38,6 +45,10 @@ pub struct FluentRequest {
     pub parse_code: Option<bool>,
 }
 impl FluentRequest {
+    /// Creates a new [`FluentRequestBuilder`].
+    pub fn builder() -> FluentRequestBuilder {
+        FluentRequestBuilder::default()
+    }
     pub async fn run(&self) -> anyhow::Result<Response> {
         // Convert the implementing type into a FluentRequest
         let request = self.clone();
@@ -85,6 +96,71 @@ impl FluentRequest {
         Ok(Response {
             data: fluent_core_response,
         })
+    }
+}
+
+/// Builder for [`FluentRequest`].
+#[derive(Debug, Clone)]
+pub struct FluentRequestBuilder {
+    request: FluentRequest,
+}
+
+impl Default for FluentRequestBuilder {
+    fn default() -> Self {
+        Self {
+            request: FluentRequest {
+                engine: None,
+                credentials: Some(Vec::new()),
+                overrides: Some(HashMap::new()),
+                request: None,
+                parse_code: Some(false),
+            },
+        }
+    }
+}
+
+impl FluentRequestBuilder {
+    /// Sets the engine template to use.
+    pub fn engine(mut self, engine: EngineTemplate) -> Self {
+        self.request.engine = Some(engine);
+        self
+    }
+
+    /// Sets the request string that will be sent to the engine.
+    pub fn request(mut self, request: impl Into<String>) -> Self {
+        self.request.request = Some(request.into());
+        self
+    }
+
+    /// Adds a credential key/value pair.
+    pub fn credential(mut self, kv: impl Into<KeyValue>) -> Self {
+        let entry = self.request.credentials.get_or_insert_with(Vec::new);
+        entry.push(kv.into());
+        self
+    }
+
+    /// Adds a single override parameter.
+    pub fn override_param(mut self, key: impl Into<String>, value: Value) -> Self {
+        let map = self.request.overrides.get_or_insert_with(HashMap::new);
+        map.insert(key.into(), value);
+        self
+    }
+
+    /// Whether to parse code blocks from the engine output.
+    pub fn parse_code(mut self, parse: bool) -> Self {
+        self.request.parse_code = Some(parse);
+        self
+    }
+
+    /// Finalises the builder returning a [`FluentRequest`].
+    pub fn build(self) -> anyhow::Result<FluentRequest> {
+        if self.request.engine.is_none() {
+            return Err(anyhow!("Engine is required"));
+        }
+        if self.request.request.is_none() {
+            return Err(anyhow!("Request is required"));
+        }
+        Ok(self.request)
     }
 }
 
