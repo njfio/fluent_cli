@@ -744,13 +744,41 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     }
                 }
                 PipelineStep::Parallel { name: _, steps } => {
-                    // For simplicity, we'll execute parallel steps sequentially in this context
-                    let mut result = HashMap::new();
-                    for sub_step in steps {
-                        let step_result = Self::execute_single_step(sub_step, state).await?;
-                        result.extend(step_result);
+                    let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
+                    let mut set = JoinSet::new();
+
+                    for sub_step in steps.iter().cloned() {
+                        let state_clone = Arc::clone(&state_arc);
+                        set.spawn(async move {
+                            let mut guard = state_clone.lock().await;
+                            Self::execute_single_step(&sub_step, &mut guard).await
+                        });
                     }
-                    Ok(result)
+
+                    let mut combined_results = HashMap::new();
+                    while let Some(result) = set.join_next().await {
+                        match result {
+                            Ok(Ok(step_result)) => {
+                                combined_results.extend(step_result);
+                            }
+                            Ok(Err(e)) => {
+                                combined_results
+                                    .insert(format!("error_{}", combined_results.len()), e.to_string());
+                            }
+                            Err(e) => {
+                                combined_results.insert(
+                                    format!("join_error_{}", combined_results.len()),
+                                    e.to_string(),
+                                );
+                            }
+                        }
+                    }
+
+                    let state_guard = state_arc.lock().await;
+                    state.data.extend(state_guard.data.clone());
+                    state.data.extend(combined_results.clone());
+
+                    Ok(combined_results)
                 }
                 _ => Err(anyhow!("Unknown step type")),
             }
