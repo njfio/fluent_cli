@@ -5,7 +5,10 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
+};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
@@ -102,11 +105,21 @@ impl Engine for PerplexityEngine {
             let model = response["model"].as_str().unwrap_or("unknown").to_string();
             let finish_reason = response["choices"][0]["finish_reason"].as_str().map(String::from);
 
+            let (prompt_rate, completion_rate) = (0.0_f64, 0.0_f64);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }

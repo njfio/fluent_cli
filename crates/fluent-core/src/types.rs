@@ -13,6 +13,7 @@ pub struct Response {
     pub usage: Usage,
     pub model: String,
     pub finish_reason: Option<String>,
+    pub cost: Cost,
 
 }
 
@@ -23,6 +24,14 @@ pub struct Usage {
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Cost {
+    pub prompt_cost: f64,
+    pub completion_cost: f64,
+    pub total_cost: f64,
+}
+
 
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

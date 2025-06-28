@@ -5,7 +5,8 @@ use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::{
-    ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
 };
 use log::debug;
 use reqwest::Client;
@@ -144,6 +145,11 @@ impl Engine for CohereEngine {
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }
@@ -297,6 +303,11 @@ impl Engine for CohereEngine {
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }
