@@ -18,8 +18,12 @@ indicatif = { workspace = true }
 owo-colors = { workspace = true }
 regex = { workspace = true }
 serde_yaml = { workspace = true }
+
 termimad = { workspace = true }
 dialoguer = { workspace = true }
+
+fluent-agent = { path = "../fluent-agent" }
+
 #fluent-storage = { path = "../fluent-storage" }  # is not used
 #clap_complete = "4.5.1"  #is not used
 #atty = "0.2.14" "use standard std::io::IsTerminal"
