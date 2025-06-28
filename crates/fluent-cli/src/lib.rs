@@ -1,4 +1,5 @@
 pub mod args;
+pub mod pipeline_builder;
 
 use std::pin::Pin;
 
@@ -280,6 +281,10 @@ pub mod cli {
                             .action(ArgAction::SetTrue),
                     ),
             )
+            .subcommand(
+                Command::new("build-pipeline")
+                    .about("Interactively build a pipeline")
+            )
     }
 
     pub async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &EngineConfig)> {
@@ -329,6 +334,11 @@ pub mod cli {
                     }
                 }
 
+                std::process::exit(0);
+            }
+
+            Some(("build-pipeline", _sub_matches)) => {
+                crate::pipeline_builder::build_interactively().await?;
                 std::process::exit(0);
             }
 
