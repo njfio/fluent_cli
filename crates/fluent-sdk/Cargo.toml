@@ -2,6 +2,11 @@
 name = "fluent-sdk"
 version = "0.1.0"
 edition = "2021"
+description = "SDK for interacting with the Fluent AI engine configurations"
+license = "MIT"
+repository = "https://github.com/njfio/fluent_cli"
+readme = "../../README.md"
+homepage = "https://fluentcli.com"
 
 
 [dependencies]
