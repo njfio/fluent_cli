@@ -52,7 +52,7 @@ pub mod cli {
     use fluent_engines::replicate::ReplicateEngine;
 
     use fluent_engines::pipeline_executor::{
-        FileStateStore, Pipeline, PipelineExecutor, StateStore,
+        validate_pipeline_yaml, FileStateStore, Pipeline, PipelineExecutor, StateStore,
     };
     use fluent_engines::stabilityai::StabilityAIEngine;
     use fluent_engines::webhook::WebhookEngine;
@@ -321,8 +321,9 @@ pub mod cli {
                 let run_id = sub_matches.get_one::<String>("run_id").cloned();
                 let json_output = sub_matches.get_flag("json_output");
 
-                let pipeline: Pipeline =
-                    serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
+                let yaml_str = std::fs::read_to_string(pipeline_file)?;
+                validate_pipeline_yaml(&yaml_str)?;
+                let pipeline: Pipeline = serde_yaml::from_str(&yaml_str)?;
                 let state_store_dir = PathBuf::from("./pipeline_states");
                 tokio::fs::create_dir_all(&state_store_dir).await?;
                 let state_store = FileStateStore {

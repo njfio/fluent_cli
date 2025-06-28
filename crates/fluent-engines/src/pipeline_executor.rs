@@ -20,14 +20,18 @@ use tokio::process::Command;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
+use schemars::JsonSchema;
+use jsonschema::{Draft, JSONSchema};
+use serde_yaml;
+use serde_json;
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
 pub struct Pipeline {
     pub name: String,
     pub steps: Vec<PipelineStep>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
 pub enum PipelineStep {
     Command {
         name: String,
@@ -99,18 +103,35 @@ pub enum PipelineStep {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
 pub struct RetryConfig {
     max_attempts: u32,
     delay_ms: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct PipelineState {
     pub current_step: usize,
     pub data: HashMap<String, String>,
     pub run_id: String,
     pub start_time: u64,
+}
+
+pub fn pipeline_schema() -> schemars::schema::RootSchema {
+    schemars::schema_for!(Pipeline)
+}
+
+pub fn validate_pipeline_yaml(yaml: &str) -> Result<(), Error> {
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml)?;
+    let schema = pipeline_schema();
+    let compiled = JSONSchema::options()
+        .with_draft(Draft::Draft7)
+        .compile(&serde_json::to_value(&schema)?)?;
+    let instance = serde_json::to_value(&value)?;
+    compiled
+        .validate(&instance)
+        .map(|_| ())
+        .map_err(|errors| anyhow!(errors.map(|e| e.to_string()).collect::<Vec<_>>().join("; ")))
 }
 
 #[async_trait]
@@ -987,5 +1008,116 @@ impl StateStore for FileStateStore {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_executor() -> PipelineExecutor<FileStateStore> {
+        let dir = tempdir().unwrap();
+        let store = FileStateStore { directory: dir.path().to_path_buf() };
+        PipelineExecutor::new(store, false)
+    }
+
+    #[tokio::test]
+    async fn test_condition() {
+        let executor = test_executor();
+        let pipeline = Pipeline {
+            name: "cond".into(),
+            steps: vec![PipelineStep::Condition {
+                name: "check".into(),
+                condition: "true".into(),
+                if_true: "echo yes".into(),
+                if_false: "echo no".into(),
+            }],
+        };
+
+        let out = executor.execute(&pipeline, "", true, None).await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["data"]["output"], "yes");
+    }
+
+    #[tokio::test]
+    async fn test_repeat_until_loop() {
+        let executor = test_executor();
+        let pipeline = Pipeline {
+            name: "loop".into(),
+            steps: vec![
+                PipelineStep::ShellCommand {
+                    name: "init".into(),
+                    command: "echo 0".into(),
+                    save_output: Some("counter".into()),
+                    retry: None,
+                },
+                PipelineStep::RepeatUntil {
+                    name: "inc".into(),
+                    steps: vec![PipelineStep::ShellCommand {
+                        name: "add".into(),
+                        command: "echo $(($counter + 1))".into(),
+                        save_output: Some("counter".into()),
+                        retry: None,
+                    }],
+                    condition: "[ $counter -ge 3 ]".into(),
+                },
+            ],
+        };
+
+        let out = executor.execute(&pipeline, "", true, None).await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["data"]["counter"], "3");
+    }
+
+    #[tokio::test]
+    async fn test_parallel() {
+        let executor = test_executor();
+        let pipeline = Pipeline {
+            name: "par".into(),
+            steps: vec![PipelineStep::Parallel {
+                name: "p".into(),
+                steps: vec![
+                    PipelineStep::ShellCommand {
+                        name: "one".into(),
+                        command: "echo a".into(),
+                        save_output: Some("a".into()),
+                        retry: None,
+                    },
+                    PipelineStep::ShellCommand {
+                        name: "two".into(),
+                        command: "echo b".into(),
+                        save_output: Some("b".into()),
+                        retry: None,
+                    },
+                ],
+            }],
+        };
+
+        let out = executor.execute(&pipeline, "", true, None).await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["data"]["a"], "a");
+        assert_eq!(v["data"]["b"], "b");
+    }
+
+    #[tokio::test]
+    async fn test_timeout() {
+        let executor = test_executor();
+        let pipeline = Pipeline {
+            name: "timeout".into(),
+            steps: vec![PipelineStep::Timeout {
+                name: "t".into(),
+                duration: 1,
+                step: Box::new(PipelineStep::ShellCommand {
+                    name: "sleep".into(),
+                    command: "sleep 2".into(),
+                    save_output: Some("out".into()),
+                    retry: None,
+                }),
+            }],
+        };
+
+        let res = executor.execute(&pipeline, "", true, None).await;
+        assert!(res.is_err());
     }
 }
