@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 use stabilityai::StabilityAIEngine;
 use strum::{Display, EnumString};
 use webhook::WebhookEngine;
+use plugin::{CreateEngineFn, EngineTypeFn};
+use once_cell::sync::OnceCell;
+use libloading::Library;
+use anyhow;
 
 extern crate core;
 
@@ -37,6 +41,7 @@ pub mod stabilityai;
 pub mod webhook;
 
 pub mod replicate;
+pub mod plugin;
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
@@ -90,8 +95,45 @@ pub enum EngineType {
     Dalle,
 }
 
+struct PluginEntry {
+    #[allow(dead_code)]
+    lib: Library,
+    create: CreateEngineFn,
+    engine_type: String,
+}
+
+static PLUGINS: OnceCell<Vec<PluginEntry>> = OnceCell::new();
+
+fn load_plugins() -> anyhow::Result<&'static Vec<PluginEntry>> {
+    PLUGINS.get_or_try_init(|| {
+        let mut plugins = Vec::new();
+        if let Ok(dir) = std::env::var("FLUENT_ENGINE_PLUGIN_DIR") {
+            for entry in std::fs::read_dir(&dir)? {
+                let path = entry?.path();
+                if path.extension().and_then(|s| s.to_str()).map(|s| s == "so" || s == "dll" || s == "dylib").unwrap_or(false) {
+                    unsafe {
+                        let lib = Library::new(&path)?;
+                        let engine_type_fn: libloading::Symbol<EngineTypeFn> = lib.get(b"engine_type")?;
+                        let c_str = std::ffi::CStr::from_ptr(engine_type_fn());
+                        let engine_type = c_str.to_str()?.to_string();
+                        let create_fn: libloading::Symbol<CreateEngineFn> = lib.get(b"create_engine")?;
+                        let entry = PluginEntry {
+                            lib,
+                            create: *create_fn,
+                            engine_type,
+                        };
+                        plugins.push(entry);
+                    }
+                }
+            }
+        }
+        Ok(plugins)
+    })
+}
+
 pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<dyn Engine>> {
-    let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str())? {
+    let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str()) {
+        Ok(et) => match et {
         EngineType::OpenAI => Box::new(OpenAIEngine::new(engine_config.clone()).await?),
         EngineType::Anthropic => Box::new(AnthropicEngine::new(engine_config.clone()).await?),
         EngineType::Cohere => Box::new(CohereEngine::new(engine_config.clone()).await?),
@@ -106,6 +148,19 @@ pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<d
         EngineType::ImaginePro => Box::new(ImagineProEngine::new(engine_config.clone()).await?),
         EngineType::LeonardoAI => Box::new(LeonardoAIEngine::new(engine_config.clone()).await?),
         EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
+        },
+        Err(_) => {
+            if let Ok(plugins) = load_plugins() {
+                for plugin in plugins {
+                    if plugin.engine_type.eq_ignore_ascii_case(&engine_config.engine) {
+                        let create = plugin.create;
+                        let engine = unsafe { create(engine_config.clone()) };
+                        return Ok(engine);
+                    }
+                }
+            }
+            return Err(anyhow::anyhow!(format!("Unknown engine type: {}", engine_config.engine)));
+        }
     };
     Ok(engine)
 }
