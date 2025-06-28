@@ -231,6 +231,12 @@ pub mod cli {
                     .action(ArgAction::SetTrue),
             )
             .arg(
+                Arg::new("cache")
+                    .long("cache")
+                    .help("Enable request caching")
+                    .action(ArgAction::SetTrue),
+            )
+            .arg(
                 Arg::new("markdown")
                     .short('m')
                     .long("markdown")
@@ -292,6 +298,12 @@ pub mod cli {
 
     pub async fn run() -> Result<()> {
         let matches = build_cli().get_matches();
+
+        if matches.get_flag("cache") {
+            std::env::set_var("FLUENT_CACHE", "1");
+        } else {
+            std::env::set_var("FLUENT_CACHE", "0");
+        }
 
         let _: Result<(), Error> = match matches.subcommand() {
             Some(("pipeline", sub_matches)) => {
