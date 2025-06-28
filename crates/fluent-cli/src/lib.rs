@@ -34,7 +34,7 @@ pub mod cli {
 
     use log::{debug, error, info};
     use serde_json::Value;
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncBufReadExt, BufReader};
 
     use crate::{create_llm_engine, generate_and_execute_cypher};
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
@@ -284,6 +284,10 @@ pub mod cli {
                             .action(ArgAction::SetTrue),
                     ),
             )
+            .subcommand(
+                Command::new("agent")
+                    .about("Start interactive agent loop")
+            )
     }
 
     pub async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &EngineConfig)> {
@@ -367,6 +371,25 @@ pub mod cli {
         pb.set_message(format!("Processing {} request...", engine_name));
         pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
         pb.set_length(100);
+
+        if matches.subcommand_matches("agent").is_some() {
+            let engine: Box<dyn Engine> = create_engine(engine_config).await?;
+            let mut agent = Agent::new(engine);
+            let mut reader = BufReader::new(tokio::io::stdin());
+            let mut line = String::new();
+            println!("Starting agent loop. Type 'exit' to quit.");
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).await? == 0 { break; }
+                let prompt = line.trim();
+                if prompt.eq_ignore_ascii_case("exit") { break; }
+                if prompt.is_empty() { continue; }
+                if let Err(e) = agent.run_cycle(prompt).await {
+                    eprintln!("Agent error: {}", e);
+                }
+            }
+            return Ok(());
+        }
 
         if let Some(cypher_query) = matches.get_one::<String>("generate-cypher") {
             let neo4j_config = engine_config

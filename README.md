@@ -238,7 +238,7 @@ This will execute the `my_pipeline` pipeline with the initial input "hello world
 * **Variable Substitution:** Pipeline steps can use variables defined in the state using `${variable_name}` syntax.
 * **Retry Mechanism:** Steps can be configured with a retry mechanism to handle transient errors.
 * **State Persistence:** Pipeline state is automatically saved and loaded, allowing for seamless resumption.
-* **Parallel Execution:** The `Parallel` step allows for concurrent execution of steps.
+* **Parallel Execution:** The `Parallel` step allows for concurrent execution of steps. Nested `Parallel` blocks are also run concurrently and their results aggregated when all tasks finish.
 * **Timeout Mechanism:** The `Timeout` step allows for setting a time limit for a specific step.
 
 ### Example Pipeline
