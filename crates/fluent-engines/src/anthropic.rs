@@ -1,7 +1,10 @@
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
+};
 use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcessor};
 use fluent_core::config::EngineConfig;
 use anyhow::{Result, anyhow, Context};
@@ -37,6 +40,18 @@ impl AnthropicEngine {
             config_processor: AnthropicConfigProcessor,
             neo4j_client,
         })
+    }
+
+    fn pricing(model: &str) -> (f64, f64) {
+        if model.contains("haiku") {
+            (0.00000025, 0.00000125)
+        } else if model.contains("sonnet") {
+            (0.000003, 0.000015)
+        } else if model.contains("opus") {
+            (0.000015, 0.000075)
+        } else {
+            (0.0, 0.0)
+        }
     }
 }
 
@@ -147,11 +162,26 @@ impl Engine for AnthropicEngine {
             let model = response_body["model"].as_str().unwrap_or("unknown").to_string();
             let finish_reason = response_body["stop_reason"].as_str().map(String::from);
 
+            let (prompt_rate, completion_rate) = AnthropicEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }
@@ -245,11 +275,21 @@ impl Engine for AnthropicEngine {
             let model = response_body["model"].as_str().unwrap_or("claude-3-5-sonnet-20240620").to_string();
             let finish_reason = response_body["stop_reason"].as_str().map(String::from);
 
+            let (prompt_rate, completion_rate) = AnthropicEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }

@@ -1,7 +1,10 @@
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
+};
 use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
@@ -133,6 +136,11 @@ impl Engine for LangflowEngine {
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }

@@ -1,4 +1,5 @@
 pub mod args;
+pub mod pipeline_builder;
 
 use std::pin::Pin;
 
@@ -18,7 +19,7 @@ pub mod cli {
     use clap::{Arg, ArgAction, ArgMatches, Command};
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_core::traits::Engine;
-    use fluent_core::types::{Request, Response};
+    use fluent_core::types::{Cost, Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
     use fluent_engines::create_engine;
     use fluent_engines::openai::OpenAIEngine;
@@ -34,7 +35,7 @@ pub mod cli {
 
     use log::{debug, error, info};
     use serde_json::Value;
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncBufReadExt, BufReader};
 
     use crate::{create_llm_engine, generate_and_execute_cypher};
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
@@ -52,7 +53,7 @@ pub mod cli {
     use fluent_engines::replicate::ReplicateEngine;
 
     use fluent_engines::pipeline_executor::{
-        FileStateStore, Pipeline, PipelineExecutor, StateStore,
+        validate_pipeline_yaml, FileStateStore, Pipeline, PipelineExecutor, StateStore,
     };
     use fluent_engines::stabilityai::StabilityAIEngine;
     use fluent_engines::webhook::WebhookEngine;
@@ -128,6 +129,10 @@ pub mod cli {
         println!("  Prompt tokens: {}", response.usage.prompt_tokens);
         println!("  Completion tokens: {}", response.usage.completion_tokens);
         println!("  Total tokens: {}", response.usage.total_tokens);
+        println!("Cost:");
+        println!("  Prompt cost: ${:.6}", response.cost.prompt_cost);
+        println!("  Completion cost: ${:.6}", response.cost.completion_cost);
+        println!("  Total cost: ${:.6}", response.cost.total_cost);
         println!("  Response time: {:.2} seconds", response_time);
         if let Some(reason) = &response.finish_reason {
             println!("Finish reason: {}", reason);
@@ -231,6 +236,12 @@ pub mod cli {
                     .action(ArgAction::SetTrue),
             )
             .arg(
+                Arg::new("cache")
+                    .long("cache")
+                    .help("Enable request caching")
+                    .action(ArgAction::SetTrue),
+            )
+            .arg(
                 Arg::new("markdown")
                     .short('m')
                     .long("markdown")
@@ -280,6 +291,15 @@ pub mod cli {
                             .action(ArgAction::SetTrue),
                     ),
             )
+            .subcommand(
+
+                Command::new("build-pipeline")
+                    .about("Interactively build a pipeline")
+
+                Command::new("agent")
+                    .about("Start interactive agent loop")
+
+            )
     }
 
     pub async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &EngineConfig)> {
@@ -293,6 +313,12 @@ pub mod cli {
     pub async fn run() -> Result<()> {
         let matches = build_cli().get_matches();
 
+        if matches.get_flag("cache") {
+            std::env::set_var("FLUENT_CACHE", "1");
+        } else {
+            std::env::set_var("FLUENT_CACHE", "0");
+        }
+
         let _: Result<(), Error> = match matches.subcommand() {
             Some(("pipeline", sub_matches)) => {
                 let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
@@ -301,8 +327,9 @@ pub mod cli {
                 let run_id = sub_matches.get_one::<String>("run_id").cloned();
                 let json_output = sub_matches.get_flag("json_output");
 
-                let pipeline: Pipeline =
-                    serde_yaml::from_str(&std::fs::read_to_string(pipeline_file)?)?;
+                let yaml_str = std::fs::read_to_string(pipeline_file)?;
+                validate_pipeline_yaml(&yaml_str)?;
+                let pipeline: Pipeline = serde_yaml::from_str(&yaml_str)?;
                 let state_store_dir = match env::var("FLUENT_STATE_STORE") {
                     Ok(path) => PathBuf::from(path),
                     Err(_) => {
@@ -340,6 +367,11 @@ pub mod cli {
                 std::process::exit(0);
             }
 
+            Some(("build-pipeline", _sub_matches)) => {
+                crate::pipeline_builder::build_interactively().await?;
+                std::process::exit(0);
+            }
+
             _ => Ok(()), // Default case, do nothing
         };
 
@@ -360,6 +392,7 @@ pub mod cli {
         let pb = ProgressBar::new_spinner();
         let engine_config = &config.engines[0];
         let start_time = Instant::now();
+        let mut cumulative_cost = 0.0;
 
         let spinner_style = ProgressStyle::default_spinner()
             .tick_chars(&spinner_config.frames)
@@ -370,6 +403,25 @@ pub mod cli {
         pb.set_message(format!("Processing {} request...", engine_name));
         pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
         pb.set_length(100);
+
+        if matches.subcommand_matches("agent").is_some() {
+            let engine: Box<dyn Engine> = create_engine(engine_config).await?;
+            let mut agent = Agent::new(engine);
+            let mut reader = BufReader::new(tokio::io::stdin());
+            let mut line = String::new();
+            println!("Starting agent loop. Type 'exit' to quit.");
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).await? == 0 { break; }
+                let prompt = line.trim();
+                if prompt.eq_ignore_ascii_case("exit") { break; }
+                if prompt.is_empty() { continue; }
+                if let Err(e) = agent.run_cycle(prompt).await {
+                    eprintln!("Agent error: {}", e);
+                }
+            }
+            return Ok(());
+        }
 
         if let Some(cypher_query) = matches.get_one::<String>("generate-cypher") {
             let neo4j_config = engine_config
@@ -429,6 +481,7 @@ pub mod cli {
                 };
 
                 let response = Pin::from(engine.execute(&request)).await?;
+                cumulative_cost += response.cost.total_cost;
                 let mut output = response.content.clone();
 
                 if let Some(download_dir) = matches.get_one::<String>("download-media") {
@@ -650,6 +703,7 @@ pub mod cli {
                 pb.set_message("Executing request...");
                 Pin::from(engine.execute(&request)).await?
             };
+            cumulative_cost += response.cost.total_cost;
 
             let mut output = response.content.clone();
 
@@ -778,6 +832,7 @@ pub mod cli {
             );
         }
 
+        eprintln!("Total cost: ${:.6}", cumulative_cost);
         Ok(())
     }
 

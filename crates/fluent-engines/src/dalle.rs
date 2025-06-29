@@ -7,7 +7,10 @@ use serde_json::Value;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
+};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
@@ -91,6 +94,11 @@ impl Engine for DalleEngine {
                 usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
                 model: "dall-e".to_string(),
                 finish_reason: Some("success".to_string()),
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }
@@ -183,6 +191,11 @@ impl Engine for DalleEngine {
                 usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
                 model: "dall-e".to_string(),
                 finish_reason: Some("success".to_string()),
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
             })
         })
     }

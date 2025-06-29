@@ -8,7 +8,10 @@ use serde_json::{json, Value};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
+};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
@@ -34,6 +37,14 @@ impl GoogleGeminiEngine {
             client: Client::new(),
             neo4j_client,
         })
+    }
+
+    fn pricing(model: &str) -> (f64, f64) {
+        if model.contains("flash") {
+            (0.0000025, 0.0000075)
+        } else {
+            (0.000003, 0.00001)
+        }
     }
 
     async fn encode_image(&self, file_path: &Path) -> Result<String> {
@@ -131,11 +142,21 @@ impl Engine for GoogleGeminiEngine {
                 .as_str()
                 .map(String::from);
 
+            let (prompt_rate, completion_rate) = GoogleGeminiEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content: generated_text,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }
@@ -200,11 +221,21 @@ impl Engine for GoogleGeminiEngine {
                 .as_str()
                 .map(String::from);
 
+            let (prompt_rate, completion_rate) = GoogleGeminiEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
                 content: generated_text,
                 usage,
                 model,
                 finish_reason,
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
         })
     }

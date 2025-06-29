@@ -1,11 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine as Base64Engine;
+use fluent_core::cache::{cache_key, RequestCache};
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor, OpenAIConfigProcessor};
 use fluent_core::types::{
-    ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
+    Usage,
 };
 use log::debug;
 use reqwest::multipart::{Form, Part};
@@ -22,6 +24,7 @@ pub struct OpenAIEngine {
     config: EngineConfig,
     config_processor: OpenAIConfigProcessor,
     neo4j_client: Option<Arc<Neo4jClient>>,
+    cache: Option<RequestCache>,
 }
 
 impl OpenAIEngine {
@@ -32,11 +35,28 @@ impl OpenAIEngine {
             None
         };
 
+        let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {
+            let path = std::env::var("FLUENT_CACHE_DIR").unwrap_or_else(|_| "fluent_cache".to_string());
+            Some(RequestCache::new(std::path::Path::new(&path))?)
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             config_processor: OpenAIConfigProcessor,
             neo4j_client,
+            cache,
         })
+    }
+
+    fn pricing(model: &str) -> (f64, f64) {
+        match model {
+            m if m.contains("gpt-4o") => (0.000005, 0.000015),
+            m if m.contains("gpt-4") => (0.00001, 0.00003),
+            m if m.contains("gpt-3.5") => (0.0000015, 0.000002),
+            _ => (0.0, 0.0),
+        }
     }
 }
 
@@ -88,6 +108,12 @@ impl Engine for OpenAIEngine {
         request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
+            if let Some(cache) = &self.cache {
+                if let Some(cached) = cache.get(&cache_key(&request.payload))? {
+                    return Ok(cached);
+                }
+            }
+
             let client = Client::new();
             debug!("Config: {:?}", self.config);
 
@@ -155,12 +181,26 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
+
+            let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
+
                 content,
                 usage,
                 model,
                 finish_reason,
+
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
+
         })
     }
 
@@ -216,6 +256,12 @@ impl Engine for OpenAIEngine {
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
+            let key_input = format!("{}:{}", request.payload, file_path.display());
+            if let Some(cache) = &self.cache {
+                if let Some(cached) = cache.get(&cache_key(&key_input))? {
+                    return Ok(cached);
+                }
+            }
             // Read and encode the file
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
@@ -302,12 +348,26 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
+
+            let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
+            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
+            let completion_cost = usage.completion_tokens as f64 * completion_rate;
+            let total_cost = prompt_cost + completion_cost;
+
             Ok(Response {
+
                 content,
                 usage,
                 model,
                 finish_reason,
+
+                cost: Cost {
+                    prompt_cost,
+                    completion_cost,
+                    total_cost,
+                },
             })
+
         })
     }
 }
