@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::fs;
 use tokio::process::Command;
+use std::pin::Pin;
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
@@ -21,7 +22,7 @@ impl Agent {
     /// Send a prompt to the engine and store the response in history.
     pub async fn send(&mut self, prompt: &str) -> Result<String> {
         let request = Request { flowname: "agent".to_string(), payload: prompt.to_string() };
-        let response = self.engine.execute(&request).await?;
+        let response = Pin::from(self.engine.execute(&request)).await?;
         let content = response.content.clone();
         self.history.push((prompt.to_string(), content.clone()));
         Ok(content)

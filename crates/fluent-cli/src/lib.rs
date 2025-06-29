@@ -55,6 +55,7 @@ pub mod cli {
     use fluent_engines::pipeline_executor::{
         validate_pipeline_yaml, FileStateStore, Pipeline, PipelineExecutor, StateStore,
     };
+    use fluent_agent::Agent;
     use fluent_engines::stabilityai::StabilityAIEngine;
     use fluent_engines::webhook::WebhookEngine;
     use tokio::time::Instant;
@@ -292,13 +293,12 @@ pub mod cli {
                     ),
             )
             .subcommand(
-
                 Command::new("build-pipeline")
                     .about("Interactively build a pipeline")
-
+            )
+            .subcommand(
                 Command::new("agent")
                     .about("Start interactive agent loop")
-
             )
     }
 

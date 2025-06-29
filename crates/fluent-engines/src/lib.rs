@@ -117,9 +117,10 @@ fn load_plugins() -> anyhow::Result<&'static Vec<PluginEntry>> {
                         let c_str = std::ffi::CStr::from_ptr(engine_type_fn());
                         let engine_type = c_str.to_str()?.to_string();
                         let create_fn: libloading::Symbol<CreateEngineFn> = lib.get(b"create_engine")?;
+                        let create_fn_ptr = *create_fn;
                         let entry = PluginEntry {
                             lib,
-                            create: *create_fn,
+                            create: create_fn_ptr,
                             engine_type,
                         };
                         plugins.push(entry);

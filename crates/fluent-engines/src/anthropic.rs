@@ -177,11 +177,6 @@ impl Engine for AnthropicEngine {
                     completion_cost,
                     total_cost,
                 },
-                cost: Cost {
-                    prompt_cost,
-                    completion_cost,
-                    total_cost,
-                },
             })
         })
     }
