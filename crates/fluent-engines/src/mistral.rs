@@ -1,7 +1,7 @@
 // crates/fluent-engines/src/mistral.rs
 use std::future::Future;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -14,6 +14,7 @@ use fluent_core::types::{
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
+use fluent_core::cost_calculator::CostCalculator;
 use log::debug;
 use reqwest::Client;
 
@@ -21,6 +22,7 @@ pub struct MistralEngine {
     config: EngineConfig,
     client: Client,
     neo4j_client: Option<Arc<Neo4jClient>>,
+    cost_calculator: Arc<Mutex<CostCalculator>>,
 }
 
 impl MistralEngine {
@@ -35,6 +37,7 @@ impl MistralEngine {
             config,
             client: Client::new(),
             neo4j_client,
+            cost_calculator: Arc::new(Mutex::new(CostCalculator::new())),
         })
     }
 
@@ -107,31 +110,40 @@ impl Engine for MistralEngine {
             let model = response["model"].as_str().unwrap_or("unknown").to_string();
             let finish_reason = response["choices"][0]["finish_reason"].as_str().map(String::from);
 
-            let (prompt_rate, completion_rate) = (0.0_f64, 0.0_f64);
-            let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
-            let completion_cost = usage.completion_tokens as f64 * completion_rate;
-            let total_cost = prompt_cost + completion_cost;
+            // Calculate cost securely
+            let cost = {
+                let mut calculator = self.cost_calculator.lock().unwrap();
+                calculator.calculate_cost("mistral", &model, &usage)
+                    .unwrap_or_else(|e| {
+                        debug!("Cost calculation failed: {}, using zero cost", e);
+                        Cost {
+                            prompt_cost: 0.0,
+                            completion_cost: 0.0,
+                            total_cost: 0.0,
+                        }
+                    })
+            };
 
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
-                cost: Cost {
-                    prompt_cost,
-                    completion_cost,
-                    total_cost,
-                },
+                cost,
             })
         })
     }
 
     fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Mistral doesn't have a native upsert/embedding API
+            // Return appropriate error indicating unsupported operation
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "mistral".to_string(),
+                operation: "upsert".to_string(),
+            }).into())
         })
     }
 
@@ -157,13 +169,23 @@ impl Engine for MistralEngine {
 
     fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File upload not supported for Mistral engine"))
+            use fluent_core::error::{FluentError, EngineError};
+
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "mistral".to_string(),
+                operation: "file_upload".to_string(),
+            }).into())
         })
     }
 
     fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File processing not supported for Mistral engine"))
+            use fluent_core::error::{FluentError, EngineError};
+
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "mistral".to_string(),
+                operation: "file_processing".to_string(),
+            }).into())
         })
     }
 }

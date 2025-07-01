@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use fluent_core::config::EngineConfig;
+use fluent_core::cost_calculator::CostCalculator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::{
@@ -14,7 +15,7 @@ use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
@@ -22,6 +23,7 @@ pub struct CohereEngine {
     config: EngineConfig,
     client: Client,
     neo4j_client: Option<Arc<Neo4jClient>>,
+    cost_calculator: Arc<Mutex<CostCalculator>>,
 }
 
 impl CohereEngine {
@@ -36,6 +38,7 @@ impl CohereEngine {
             config,
             client: Client::new(),
             neo4j_client,
+            cost_calculator: Arc::new(Mutex::new(CostCalculator::new())),
         })
     }
 }
@@ -140,16 +143,26 @@ impl Engine for CohereEngine {
             let model = "cohere".to_string(); // Or extract from response if available
             let finish_reason = response["finish_reason"].as_str().map(String::from);
 
+            // Calculate cost securely
+            let cost = {
+                let mut calculator = self.cost_calculator.lock().unwrap();
+                calculator.calculate_cost("cohere", &model, &usage)
+                    .unwrap_or_else(|e| {
+                        debug!("Cost calculation failed: {}, using zero cost", e);
+                        Cost {
+                            prompt_cost: 0.0,
+                            completion_cost: 0.0,
+                            total_cost: 0.0,
+                        }
+                    })
+            };
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
-                cost: Cost {
-                    prompt_cost: 0.0,
-                    completion_cost: 0.0,
-                    total_cost: 0.0,
-                },
+                cost,
             })
         })
     }
@@ -298,16 +311,26 @@ impl Engine for CohereEngine {
             let model = "cohere".to_string(); // Or extract from response if available
             let finish_reason = response["finish_reason"].as_str().map(String::from);
 
+            // Calculate cost securely
+            let cost = {
+                let mut calculator = self.cost_calculator.lock().unwrap();
+                calculator.calculate_cost("cohere", &model, &usage)
+                    .unwrap_or_else(|e| {
+                        debug!("Cost calculation failed: {}, using zero cost", e);
+                        Cost {
+                            prompt_cost: 0.0,
+                            completion_cost: 0.0,
+                            total_cost: 0.0,
+                        }
+                    })
+            };
+
             Ok(Response {
                 content,
                 usage,
                 model,
                 finish_reason,
-                cost: Cost {
-                    prompt_cost: 0.0,
-                    completion_cost: 0.0,
-                    total_cost: 0.0,
-                },
+                cost,
             })
         })
     }

@@ -7,6 +7,7 @@ use tokio::fs;
 use tokio::process::Command;
 use std::pin::Pin;
 
+
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
     engine: Box<dyn Engine>,

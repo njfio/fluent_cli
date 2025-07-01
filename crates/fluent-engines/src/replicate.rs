@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow, Context};
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
     Usage,
@@ -15,9 +15,8 @@ use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
 use log::debug;
 use reqwest::Client;
-use reqwest::multipart::{Form, Part};
-use base64::Engine as Base64Engine;
-use base64::engine::general_purpose::STANDARD as Base64;
+
+
 
 
 pub struct ReplicateEngine {
@@ -172,10 +171,13 @@ impl Engine for ReplicateEngine {
 
     fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Replicate doesn't have a native upsert/embedding API
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "replicate".to_string(),
+                operation: "upsert".to_string(),
+            }).into())
         })
     }
 
@@ -210,19 +212,27 @@ impl Engine for ReplicateEngine {
         }
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            // Replicate doesn't directly support file uploads for image generation.
-            // This method is left unimplemented for now.
-            Err(anyhow!("File uploads are not directly supported for image generation with Replicate."))
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Replicate doesn't directly support file uploads for image generation
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "replicate".to_string(),
+                operation: "file_upload".to_string(),
+            }).into())
         })
     }
 
     fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            // Replicate doesn't directly support file uploads for image generation.
-            // This method is left unimplemented for now.
-            Err(anyhow!("File uploads are not directly supported for image generation with Replicate."))
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Replicate doesn't directly support file uploads for image generation
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "replicate".to_string(),
+                operation: "file_processing".to_string(),
+            }).into())
         })
     }
 }

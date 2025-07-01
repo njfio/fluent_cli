@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::path::Path;
-use std::pin::Pin;
+
 use std::sync::Arc;
 use anyhow::{Result, anyhow, Context};
 use async_trait::async_trait;
@@ -198,7 +198,7 @@ impl Engine for GoogleGeminiEngine {
 
     fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let encoded_image = Pin::from(self.upload_file(file_path)).await?;
+            let encoded_image = self.encode_image(file_path).await?;
             let response = self.send_gemini_request(&request.payload, Some(encoded_image)).await?;
 
             let generated_text = response["candidates"][0]["content"]["parts"][0]["text"]

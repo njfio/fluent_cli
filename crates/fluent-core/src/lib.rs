@@ -9,6 +9,10 @@ mod voyageai_client;
 pub mod output_processor;
 pub mod spinner_configuration;
 pub mod cache;
+pub mod cost_calculator;
+pub mod input_validator;
+pub mod auth;
+pub mod error;
 
 
 

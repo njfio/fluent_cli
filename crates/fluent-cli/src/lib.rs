@@ -1,9 +1,10 @@
 pub mod args;
 pub mod pipeline_builder;
 
-use std::pin::Pin;
+
 
 use anyhow::{anyhow, Error};
+use std::pin::Pin;
 
 use fluent_core::config::{EngineConfig, Neo4jConfig};
 use fluent_core::neo4j_client::Neo4jClient;
@@ -19,7 +20,7 @@ pub mod cli {
     use clap::{Arg, ArgAction, ArgMatches, Command};
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_core::traits::Engine;
-    use fluent_core::types::{Cost, Request, Response};
+    use fluent_core::types::{Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
     use fluent_engines::create_engine;
     use fluent_engines::openai::OpenAIEngine;

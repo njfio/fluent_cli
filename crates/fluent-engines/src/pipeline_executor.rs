@@ -25,6 +25,9 @@ use schemars::JsonSchema;
 use serde_yaml;
 use serde_json;
 
+// Security: Import input validator for pipeline security
+use fluent_core::input_validator::InputValidator;
+
 #[derive(Debug, Deserialize, Serialize, Clone, JsonSchema)]
 pub struct Pipeline {
     pub name: String,
@@ -121,11 +124,173 @@ pub fn pipeline_schema() -> schemars::schema::RootSchema {
     schemars::schema_for!(Pipeline)
 }
 
+/// Validates pipeline YAML with comprehensive security checks
 pub fn validate_pipeline_yaml(yaml: &str) -> Result<(), Error> {
-    // For now, just try to parse the YAML to ensure it's valid
-    // TODO: Implement proper schema validation when JSONSchema lifetime issues are resolved
-    let _value: serde_yaml::Value = serde_yaml::from_str(yaml)?;
-    let _pipeline: Pipeline = serde_yaml::from_str(yaml)?;
+    // Basic YAML validation
+    if yaml.is_empty() {
+        return Err(anyhow!("Pipeline YAML cannot be empty"));
+    }
+
+    if yaml.len() > 1_000_000 { // 1MB limit
+        return Err(anyhow!("Pipeline YAML too large: {} bytes", yaml.len()));
+    }
+
+    // Check for dangerous patterns in YAML
+    InputValidator::validate_request_payload(yaml)?;
+
+    // Parse YAML structure
+    let _value: serde_yaml::Value = serde_yaml::from_str(yaml)
+        .map_err(|e| anyhow!("Invalid YAML syntax: {}", e))?;
+
+    let pipeline: Pipeline = serde_yaml::from_str(yaml)
+        .map_err(|e| anyhow!("Invalid pipeline structure: {}", e))?;
+
+    // Security validation of pipeline content
+    validate_pipeline_security(&pipeline)?;
+
+    Ok(())
+}
+
+/// Performs security validation on pipeline structure
+fn validate_pipeline_security(pipeline: &Pipeline) -> Result<(), Error> {
+    // Validate pipeline name
+    if pipeline.name.is_empty() || pipeline.name.len() > 100 {
+        return Err(anyhow!("Invalid pipeline name length"));
+    }
+
+    // Check for dangerous characters in pipeline name
+    for dangerous_char in ['/', '\\', '\0'] {
+        if pipeline.name.contains(dangerous_char) {
+            return Err(anyhow!("Pipeline name contains dangerous characters"));
+        }
+    }
+    if pipeline.name.contains("..") {
+        return Err(anyhow!("Pipeline name contains dangerous characters"));
+    }
+
+    // Validate steps
+    if pipeline.steps.is_empty() {
+        return Err(anyhow!("Pipeline must have at least one step"));
+    }
+
+    if pipeline.steps.len() > 1000 {
+        return Err(anyhow!("Pipeline has too many steps: {}", pipeline.steps.len()));
+    }
+
+    // Validate each step for security
+    for step in &pipeline.steps {
+        validate_step_security(step)?;
+    }
+
+    Ok(())
+}
+
+/// Validates individual pipeline steps for security issues
+fn validate_step_security(step: &PipelineStep) -> Result<(), Error> {
+    match step {
+        PipelineStep::Command { command, .. } |
+        PipelineStep::ShellCommand { command, .. } => {
+            // SECURITY: Disable command execution entirely for safety
+            return Err(anyhow!(
+                "Command execution is disabled for security reasons. \
+                Commands found: '{}'. To enable command execution, \
+                implement proper sandboxing and command whitelisting.",
+                command
+            ));
+        }
+
+        PipelineStep::Condition { condition, .. } => {
+            // SECURITY: Disable condition evaluation that uses shell commands
+            return Err(anyhow!(
+                "Condition evaluation is disabled for security reasons. \
+                Condition found: '{}'. Implement safe condition evaluation \
+                without shell command execution.",
+                condition
+            ));
+        }
+
+        PipelineStep::Map { command, .. } => {
+            // SECURITY: Disable map operations that execute commands
+            return Err(anyhow!(
+                "Map operations with command execution are disabled for security reasons. \
+                Command found: '{}'. Implement safe map operations \
+                without shell command execution.",
+                command
+            ));
+        }
+
+        PipelineStep::PrintOutput { value, .. } => {
+            // Validate print output for injection patterns
+            InputValidator::validate_request_payload(value)?;
+        }
+
+        PipelineStep::ForEach { items, steps, .. } => {
+            // Validate items string
+            InputValidator::validate_request_payload(items)?;
+
+            // Recursively validate nested steps
+            for nested_step in steps {
+                validate_step_security(nested_step)?;
+            }
+        }
+
+        PipelineStep::TryCatch { try_steps, catch_steps, finally_steps, .. } => {
+            // Recursively validate all nested steps
+            for nested_step in try_steps.iter()
+                .chain(catch_steps.iter())
+                .chain(finally_steps.iter()) {
+                validate_step_security(nested_step)?;
+            }
+        }
+
+        PipelineStep::Parallel { steps, .. } => {
+            // Recursively validate parallel steps
+            for nested_step in steps {
+                validate_step_security(nested_step)?;
+            }
+        }
+
+        PipelineStep::Timeout { step, duration, .. } => {
+            // Validate timeout duration
+            if *duration > 3600 { // 1 hour max
+                return Err(anyhow!("Timeout duration too long: {} seconds", duration));
+            }
+
+            // Recursively validate nested step
+            validate_step_security(step)?;
+        }
+
+        PipelineStep::Loop { condition, .. } => {
+            // SECURITY: Disable loop conditions that use shell commands
+            return Err(anyhow!(
+                "Loop operations with condition evaluation are disabled for security reasons. \
+                Condition found: '{}'. Implement safe loop operations \
+                without shell command execution.",
+                condition
+            ));
+        }
+
+        PipelineStep::SubPipeline { pipeline, .. } => {
+            // Validate sub-pipeline reference
+            InputValidator::validate_request_payload(pipeline)?;
+        }
+
+        PipelineStep::HumanInTheLoop { prompt, .. } => {
+            // Validate human prompt for injection patterns
+            InputValidator::validate_request_payload(prompt)?;
+        }
+
+        PipelineStep::RepeatUntil { condition, .. } => {
+            // SECURITY: Disable repeat-until conditions that use shell commands
+            return Err(anyhow!(
+                "RepeatUntil operations with condition evaluation are disabled for security reasons. \
+                Condition found: '{}'. Implement safe repeat operations \
+                without shell command execution.",
+                condition
+            ));
+        }
+    }
+
     Ok(())
 }
 

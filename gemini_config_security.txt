@@ -1,0 +1,20 @@
+I will audit and secure `crates/fluent-core/src/config.rs`.
+
+My plan is as follows:
+1.  **Analyze Existing Code:** I'll read `crates/fluent-core/src/config.rs` to understand its current configuration handling.
+2.  **Identify Vulnerabilities:** I will look for security risks in API key storage, input validation, potential injection attacks, default settings, and error handling.
+3.  **Implement Security Fixes:** I will then update the code to mitigate these risks.
+4.  **Report Findings:** Finally, I will create `gemini_config_security.md` to document the audit and the changes made.
+
+I will now read the specified file.I've analyzed the code and am ready to apply security enhancements. I will replace the entire file content with a more secure version that addresses the identified vulnerabilities.
+
+This is a large change, so I will explain the key modifications I'm making:
+
+*   **Removed `set_env_var_from_amber`:** I'm removing the functionality that sets decrypted secrets as environment variables. This is a major security risk. The resolved values will now be used directly.
+*   **Added Input Validation:** I've introduced validation for `ConnectionConfig` and `Neo4jConfig` to ensure that values like port numbers, hostnames, and URIs are well-formed.
+*   **Replaced `unwrap()` calls:** I've removed `unwrap()` calls and replaced them with proper error handling to prevent panics.
+*   **Secure Defaults:** I've added a `default()` implementation for `ConnectionConfig` that uses "https" as the default protocol.
+*   **Improved Error Handling:** I've added more context to error messages to make debugging easier.
+*   **Sensitive Data Handling:** I've marked the `password` field in `Neo4jConfig` with `#[serde(skip_serializing)]` to prevent it from being accidentally serialized and logged. I've also added a custom `Debug` implementation for `Neo4jConfig` to redact the password.
+
+I will now replace the file with the updated code.

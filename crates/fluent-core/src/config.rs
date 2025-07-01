@@ -167,10 +167,13 @@ pub fn load_config(
         .map(|(k, v)| match v.parse::<bool>() {
             Ok(b) => (k, serde_json::Value::Bool(b)),
             _ => match v.parse::<f64>() {
-                Ok(f) => (
-                    k,
-                    serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()),
-                ),
+                Ok(f) => match serde_json::Number::from_f64(f) {
+                    Some(num) => (k, serde_json::Value::Number(num)),
+                    None => {
+                        debug!("Invalid f64 value for key '{}': {}, treating as string", k, f);
+                        (k, serde_json::Value::String(v.clone()))
+                    }
+                },
                 _ => (k, serde_json::Value::String(v.clone())),
             },
         })
@@ -273,21 +276,18 @@ pub fn apply_overrides(config: &mut EngineConfig, overrides: &[(String, String)]
 impl Default for VariableResolverProcessor {
     fn default() -> Self {
         VariableResolverProcessor {
-            keys: Vec::new(),
             resolvers: vec![Arc::new(EnvVarResolver {}), Arc::new(AmberVarResolver {})],
         }
     }
 }
 
 pub struct VariableResolverProcessor {
-    keys: Vec<String>,
     resolvers: Vec<Arc<dyn VariableResolver>>,
 }
 
 impl VariableResolverProcessor {
     pub fn new(credentials: &HashMap<String, String>) -> Self {
         VariableResolverProcessor {
-            keys: Vec::new(),
             resolvers: vec![
                 Arc::new(EnvVarResolver {}),
                 Arc::new(AmberVarResolver {}),
@@ -301,7 +301,9 @@ impl VariableResolverProcessor {
                 for resolver in &self.resolvers {
                     if resolver.is_resolvable(s) {
                         let resolved = resolver.resolve(s)?;
-                        self.set_env_var_from_amber(s, &resolved)?; //TODO: Is this necessary?
+                        // Security fix: Do not set decrypted secrets as environment variables
+                        // This prevents secrets from being exposed to child processes
+                        debug!("Resolved variable without setting environment variable for security");
                         *s = resolved;
                         return Ok(());
                     }
@@ -324,21 +326,11 @@ impl VariableResolverProcessor {
         }
     }
 
-    fn set_env_var_from_amber(&mut self, key: &str, value: &str) -> Result<()> {
-        std::env::set_var(key, value);
-        debug!("Set environment variable {} with decrypted value", key);
-        self.keys.push(key.to_owned());
-        Ok(())
-    }
+    // Removed set_env_var_from_amber for security reasons
+    // Setting decrypted secrets as environment variables is a security risk
 }
 
-impl Drop for VariableResolverProcessor {
-    fn drop(&mut self) {
-        for key in &self.keys {
-            std::env::remove_var(key);
-        }
-    }
-}
+// Drop implementation removed - no longer setting environment variables for security
 
 // Helper function to replace config strings starting with "AMBER_" with their env values
 pub fn replace_with_env_var(value: &mut Value) {

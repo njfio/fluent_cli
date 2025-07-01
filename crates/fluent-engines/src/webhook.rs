@@ -5,8 +5,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow, Context};
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
@@ -15,6 +14,7 @@ use fluent_core::types::{
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
+use fluent_core::input_validator::InputValidator;
 use log::debug;
 use reqwest::Client;
 
@@ -76,14 +76,27 @@ impl WebhookEngine {
 impl Engine for WebhookEngine {
     fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
-            );
+            // Validate request payload
+            let validated_payload = InputValidator::validate_request_payload(&request.payload)?;
 
-            let payload = self.prepare_payload(request, None).await;
+            // Validate and construct URL securely
+            let url = InputValidator::validate_url_components(
+                &self.config.connection.protocol,
+                &self.config.connection.hostname,
+                self.config.connection.port,
+                &self.config.connection.request_path
+            )?;
+
+            // Create a validated request
+            let validated_request = Request {
+                payload: validated_payload,
+                ..request.clone()
+            };
+
+            let payload = self.prepare_payload(&validated_request, None).await;
+
+            // Validate JSON payload structure
+            InputValidator::validate_json_payload(&payload)?;
 
             debug!("Webhook Payload: {:?}", payload);
 
@@ -161,9 +174,11 @@ impl Engine for WebhookEngine {
 
     fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            let mut file = File::open(file_path).await.context("Failed to open file")?;
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+            // Security validation
+            InputValidator::validate_file_upload(file_path).await?;
+
+            // Use secure file reading
+            let buffer = InputValidator::read_file_securely(file_path).await?;
             let base64_content = STANDARD.encode(&buffer);
             Ok(base64_content)
         })

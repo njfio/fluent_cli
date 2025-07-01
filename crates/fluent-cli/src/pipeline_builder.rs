@@ -1,4 +1,4 @@
-use std::io::{stdout, Write};
+use std::io::stdout;
 use anyhow::Result;
 use termimad::crossterm::{execute, terminal::{Clear, ClearType}};
 use dialoguer::{Select, Input, Confirm};

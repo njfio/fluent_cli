@@ -14,4 +14,5 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 clap = { workspace = true }
+futures = { workspace = true }
 

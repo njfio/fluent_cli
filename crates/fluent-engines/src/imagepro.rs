@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use std::pin::Pin;
+
 use std::time::Duration;
 use anyhow::{Result, anyhow, Context};
 use async_trait::async_trait;
@@ -234,8 +234,51 @@ impl Engine for ImagineProEngine {
                 payload: prompt,
             };
 
-            // Use Box::pin to create a pinned future that can be awaited
-            Pin::from(self.execute(&new_request)).await
+            // Manually implement the execute logic to avoid recursive async calls
+            let url = format!("{}://{}:{}/api/v1/midjourney/imagine",
+                              self.config.connection.protocol,
+                              self.config.connection.hostname,
+                              self.config.connection.port
+            );
+
+            let auth_token = self.config.parameters.get("bearer_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+
+            let clean_prompt = self.extract_prompt(&new_request.payload);
+
+            let payload = json!({
+                "prompt": clean_prompt,
+                "ref": self.config.parameters.get("ref"),
+                "webhookOverride": self.config.parameters.get("webhookOverride"),
+            });
+
+            let response = self.client.post(&url)
+                .header("Authorization", format!("Bearer {}", auth_token))
+                .json(&payload)
+                .send()
+                .await?
+                .json::<Value>()
+                .await?;
+
+            let content = response.to_string();
+            let usage = Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            };
+
+            Ok(Response {
+                content,
+                usage,
+                model: "midjourney".to_string(),
+                finish_reason: None,
+                cost: Cost {
+                    prompt_cost: 0.0,
+                    completion_cost: 0.0,
+                    total_cost: 0.0,
+                },
+            })
         })
     }
 }
