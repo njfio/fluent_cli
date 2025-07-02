@@ -240,12 +240,11 @@ impl LLMReasoningEngine {
         ];
 
         for pattern in patterns {
-            if let Some(captures) = regex::Regex::new(pattern)
-                .unwrap()
-                .captures(&response.to_lowercase())
-            {
-                if let Some(score_str) = captures.get(1) {
-                    return score_str.as_str().parse().unwrap_or(0.5);
+            if let Ok(regex) = regex::Regex::new(pattern) {
+                if let Some(captures) = regex.captures(&response.to_lowercase()) {
+                    if let Some(score_str) = captures.get(1) {
+                        return score_str.as_str().parse().unwrap_or(0.5);
+                    }
                 }
             }
         }
@@ -255,12 +254,11 @@ impl LLMReasoningEngine {
     /// Extract goal achievement confidence from reasoning response
     fn extract_goal_achievement_confidence(&self, response: &str) -> f64 {
         // Look for goal achievement indicators
-        if let Some(captures) = regex::Regex::new(r"goal.*achievement.*([0-9]*\.?[0-9]+)")
-            .unwrap()
-            .captures(&response.to_lowercase())
-        {
-            if let Some(score_str) = captures.get(1) {
-                return score_str.as_str().parse().unwrap_or(0.0);
+        if let Ok(regex) = regex::Regex::new(r"goal.*achievement.*([0-9]*\.?[0-9]+)") {
+            if let Some(captures) = regex.captures(&response.to_lowercase()) {
+                if let Some(score_str) = captures.get(1) {
+                    return score_str.as_str().parse().unwrap_or(0.0);
+                }
             }
         }
         

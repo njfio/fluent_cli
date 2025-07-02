@@ -45,6 +45,8 @@ struct PooledClient {
     created_at: Instant,
     last_used: Instant,
     use_count: u64,
+    health_check_failures: u32,
+    is_healthy: bool,
 }
 
 impl PooledClient {
@@ -55,6 +57,8 @@ impl PooledClient {
             created_at: now,
             last_used: now,
             use_count: 0,
+            health_check_failures: 0,
+            is_healthy: true,
         }
     }
 
@@ -65,6 +69,23 @@ impl PooledClient {
 
     fn is_expired(&self, max_idle_time: Duration) -> bool {
         self.last_used.elapsed() > max_idle_time
+    }
+
+    fn mark_unhealthy(&mut self) {
+        self.health_check_failures += 1;
+        if self.health_check_failures >= 3 {
+            self.is_healthy = false;
+        }
+    }
+
+    fn mark_healthy(&mut self) {
+        self.health_check_failures = 0;
+        self.is_healthy = true;
+    }
+
+    fn should_health_check(&self) -> bool {
+        // Health check every 5 minutes or after 10 uses
+        self.last_used.elapsed() > Duration::from_secs(300) || self.use_count % 10 == 0
     }
 }
 
@@ -84,6 +105,9 @@ pub struct PoolStats {
     pub current_pool_size: usize,
     pub cache_hits: u64,
     pub cache_misses: u64,
+    pub health_checks_performed: u64,
+    pub health_check_failures: u64,
+    pub unhealthy_clients_removed: u64,
 }
 
 impl ConnectionPool {
@@ -184,6 +208,60 @@ impl ConnectionPool {
         pools.get(&host_key).map(|p| p.len()).unwrap_or(0)
     }
 
+    /// Perform health checks on all pooled clients
+    pub async fn health_check_all(&self) -> Result<()> {
+        let mut pools = self.pools.write().await;
+        let mut total_health_checks = 0;
+        let mut total_failures = 0;
+        let mut total_removed = 0;
+
+        for (host_key, pool) in pools.iter_mut() {
+            let mut healthy_clients = Vec::new();
+
+            for mut client in pool.drain(..) {
+                if client.should_health_check() {
+                    total_health_checks += 1;
+
+                    // Perform a simple health check (HEAD request to the host)
+                    match self.perform_health_check(&client.client, host_key).await {
+                        Ok(()) => {
+                            client.mark_healthy();
+                            healthy_clients.push(client);
+                        }
+                        Err(_) => {
+                            client.mark_unhealthy();
+                            total_failures += 1;
+
+                            if client.is_healthy {
+                                healthy_clients.push(client);
+                            } else {
+                                total_removed += 1;
+                            }
+                        }
+                    }
+                } else if client.is_healthy {
+                    healthy_clients.push(client);
+                } else {
+                    total_removed += 1;
+                }
+            }
+
+            *pool = healthy_clients;
+        }
+
+        // Remove empty pools
+        pools.retain(|_, pool| !pool.is_empty());
+
+        self.update_stats(|stats| {
+            stats.health_checks_performed += total_health_checks;
+            stats.health_check_failures += total_failures;
+            stats.unhealthy_clients_removed += total_removed;
+            stats.current_pool_size = pools.values().map(|p| p.len()).sum();
+        });
+
+        Ok(())
+    }
+
     // Private helper methods
 
     fn create_host_key(&self, config: &EngineConfig) -> String {
@@ -245,8 +323,32 @@ impl ConnectionPool {
         Ok(authenticated_client)
     }
 
-    fn update_stats<F>(&self, update_fn: F) 
-    where 
+    async fn perform_health_check(&self, client: &Client, host_key: &str) -> Result<()> {
+        // Parse the host key to get the base URL
+        let url = format!("{}/health", host_key);
+
+        // Perform a simple HEAD request with a short timeout
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            client.head(&url).send()
+        ).await;
+
+        match response {
+            Ok(Ok(resp)) => {
+                if resp.status().is_success() || resp.status() == 404 {
+                    // 404 is acceptable for health checks (endpoint might not exist)
+                    Ok(())
+                } else {
+                    Err(anyhow!("Health check failed with status: {}", resp.status()))
+                }
+            }
+            Ok(Err(e)) => Err(anyhow!("Health check request failed: {}", e)),
+            Err(_) => Err(anyhow!("Health check timed out")),
+        }
+    }
+
+    fn update_stats<F>(&self, update_fn: F)
+    where
         F: FnOnce(&mut PoolStats),
     {
         if let Ok(mut stats) = self.stats.lock() {
@@ -274,13 +376,23 @@ pub async fn return_pooled_client(engine_config: &EngineConfig, client: Client) 
     global_pool().return_client(engine_config, client).await;
 }
 
-/// Start a background task to clean up expired connections
+/// Start a background task to clean up expired connections and perform health checks
 pub fn start_cleanup_task() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async {
-        let mut interval = tokio::time::interval(Duration::from_secs(60)); // Clean up every minute
+        let mut cleanup_interval = tokio::time::interval(Duration::from_secs(60)); // Clean up every minute
+        let mut health_check_interval = tokio::time::interval(Duration::from_secs(300)); // Health check every 5 minutes
+
         loop {
-            interval.tick().await;
-            global_pool().cleanup_expired().await;
+            tokio::select! {
+                _ = cleanup_interval.tick() => {
+                    global_pool().cleanup_expired().await;
+                }
+                _ = health_check_interval.tick() => {
+                    if let Err(e) = global_pool().health_check_all().await {
+                        eprintln!("Health check failed: {}", e);
+                    }
+                }
+            }
         }
     })
 }

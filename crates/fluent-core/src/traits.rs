@@ -242,7 +242,9 @@ impl DocumentProcessor for DocxProcessor {
         let metadata = vec![
             format!(
                 "filename:{}",
-                file_path.file_name().unwrap().to_string_lossy()
+                file_path.file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_else(|| "unknown".into())
             ),
             format!("filesize:{}", file_size), // Use file_size here instead of buffer.len()
             "filetype:docx".to_string(), // Adding this to maintain similarity with original function

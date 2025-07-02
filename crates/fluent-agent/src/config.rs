@@ -186,7 +186,9 @@ impl AgentEngineConfig {
         let mut parameters = StdHashMap::new();
         parameters.insert("api_key".to_string(), Value::String(api_key.clone()));
         parameters.insert("model".to_string(), Value::String(model.to_string()));
-        parameters.insert("temperature".to_string(), Value::Number(serde_json::Number::from_f64(0.1).unwrap()));
+        if let Some(temp_number) = serde_json::Number::from_f64(0.1) {
+            parameters.insert("temperature".to_string(), Value::Number(temp_number));
+        }
 
         if engine_type != "google_gemini" {
             parameters.insert("max_tokens".to_string(), Value::Number(serde_json::Number::from(4000)));

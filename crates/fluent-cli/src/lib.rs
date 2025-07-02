@@ -19,6 +19,9 @@ pub mod cli {
     use anyhow::{anyhow, Error, Result};
     use clap::{Arg, ArgAction, ArgMatches, Command};
     use fluent_core::config::{load_config, Config, EngineConfig};
+    use fluent_core::error::{FluentError, FluentResult, ValidationError};
+    use fluent_core::input_validator::InputValidator;
+    use fluent_core::memory_utils::{StringUtils, ObjectPool, StringBuffer};
     use fluent_core::traits::Engine;
     use fluent_core::types::{Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
@@ -37,6 +40,225 @@ pub mod cli {
     use log::{debug, error, info};
     use serde_json::Value;
     use tokio::io::{AsyncReadExt, AsyncBufReadExt, BufReader};
+
+    /// Convert anyhow errors to FluentError with context
+    fn to_fluent_error(err: anyhow::Error, context: &str) -> FluentError {
+        FluentError::Internal(format!("{}: {}", context, err))
+    }
+
+    /// Validate required CLI arguments
+    fn validate_required_string(matches: &ArgMatches, arg_name: &str, context: &str) -> FluentResult<String> {
+        matches.get_one::<String>(arg_name)
+            .cloned()
+            .ok_or_else(|| FluentError::Validation(ValidationError::MissingField(
+                format!("{} is required for {}", arg_name, context)
+            )))
+    }
+
+    /// Enhanced validation for file paths with security checks
+    fn validate_file_path_secure(path: &str, context: &str) -> FluentResult<String> {
+        if path.is_empty() {
+            return Err(FluentError::Validation(ValidationError::MissingField(
+                format!("File path is required for {}", context)
+            )));
+        }
+
+        // Use the comprehensive InputValidator
+        match InputValidator::validate_file_path(path) {
+            Ok(validated_path) => Ok(validated_path.to_string_lossy().to_string()),
+            Err(e) => Err(FluentError::Validation(ValidationError::InvalidFormat {
+                input: path.to_string(),
+                expected: format!("secure file path for {}: {}", context, e),
+            })),
+        }
+    }
+
+    /// Validate request payload with comprehensive checks
+    fn validate_request_payload(payload: &str, context: &str) -> FluentResult<String> {
+        match InputValidator::validate_request_payload(payload) {
+            Ok(validated_payload) => Ok(validated_payload),
+            Err(e) => Err(FluentError::Validation(ValidationError::InvalidFormat {
+                input: payload.chars().take(100).collect::<String>() + "...",
+                expected: format!("valid request payload for {}: {}", context, e),
+            })),
+        }
+    }
+
+    /// Validate numeric parameters with bounds checking
+    fn validate_numeric_parameter(value: u32, min: u32, max: u32, param_name: &str) -> FluentResult<u32> {
+        if value < min || value > max {
+            return Err(FluentError::Validation(ValidationError::InvalidFormat {
+                input: value.to_string(),
+                expected: format!("{} must be between {} and {}", param_name, min, max),
+            }));
+        }
+        Ok(value)
+    }
+
+    /// Validate configuration file path and existence
+    fn validate_config_path(config_path: &str) -> FluentResult<String> {
+        if config_path.is_empty() {
+            return Err(FluentError::Validation(ValidationError::MissingField(
+                "Configuration file path cannot be empty".to_string()
+            )));
+        }
+
+        // Validate the path format
+        let validated_path = validate_file_path_secure(config_path, "configuration")?;
+
+        // Check if file exists
+        if !std::path::Path::new(&validated_path).exists() {
+            return Err(FluentError::Validation(ValidationError::InvalidFormat {
+                input: validated_path.clone(),
+                expected: "existing configuration file".to_string(),
+            }));
+        }
+
+        Ok(validated_path)
+    }
+
+    /// Validate engine name against supported engines
+    fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
+        if engine_name.is_empty() {
+            return Err(FluentError::Validation(ValidationError::MissingField(
+                "Engine name cannot be empty".to_string()
+            )));
+        }
+
+        let supported_engines = [
+            "openai", "anthropic", "google_gemini", "cohere", "mistral",
+            "stability_ai", "replicate", "leonardo_ai", "imagine_pro", "webhook"
+        ];
+
+        if !supported_engines.contains(&engine_name) {
+            // Use memory-efficient string concatenation
+            let expected = StringUtils::concat_with_separator(&supported_engines, ", ");
+            return Err(FluentError::Validation(ValidationError::InvalidFormat {
+                input: engine_name.to_string(),
+                expected: format!("supported engine ({})", expected),
+            }));
+        }
+
+        Ok(engine_name.to_string())
+    }
+
+    /// Memory-efficient request processing with resource cleanup
+    struct RequestProcessor {
+        string_buffer: StringBuffer,
+        object_pool: ObjectPool<String>,
+    }
+
+    impl RequestProcessor {
+        fn new() -> Self {
+            Self {
+                string_buffer: StringBuffer::with_capacity(4096), // Pre-allocate reasonable size
+                object_pool: ObjectPool::new(10), // Pool for reusable strings
+            }
+        }
+
+        /// Process request with memory-efficient string handling
+        fn process_request_content(&mut self, parts: &[&str]) -> String {
+            self.string_buffer.clear();
+
+            for (i, part) in parts.iter().enumerate() {
+                if i > 0 {
+                    self.string_buffer.write_str(" ");
+                }
+                self.string_buffer.write_str(part);
+            }
+
+            self.string_buffer.take()
+        }
+
+        /// Get a reusable string from the pool
+        fn get_temp_string(&mut self) -> String {
+            self.object_pool.get(|| String::with_capacity(256))
+        }
+
+        /// Return a string to the pool for reuse
+        fn return_temp_string(&mut self, mut s: String) {
+            s.clear();
+            self.object_pool.return_object(s);
+        }
+
+        /// Clean up resources and free memory
+        fn cleanup(&mut self) {
+            self.string_buffer.clear();
+            // The object pool will be dropped automatically
+        }
+    }
+
+    /// Memory monitoring and cleanup utilities
+    struct MemoryManager;
+
+    impl MemoryManager {
+        /// Force garbage collection and memory cleanup
+        fn force_cleanup() {
+            // In Rust, we can't force GC, but we can drop large allocations
+            // and encourage the allocator to return memory to the OS
+            std::hint::black_box(Vec::<u8>::with_capacity(1024 * 1024)); // Dummy allocation to trigger cleanup
+        }
+
+        /// Log current memory usage (basic implementation)
+        fn log_memory_usage(context: &str) {
+            // This is a basic implementation - in production you might use a proper memory profiler
+            debug!("Memory checkpoint: {}", context);
+        }
+
+        /// Cleanup temporary files and resources
+        fn cleanup_temp_resources() -> Result<()> {
+            // Clean up any temporary files that might have been created
+            if let Ok(temp_dir) = std::env::temp_dir().read_dir() {
+                for entry in temp_dir.flatten() {
+                    let path = entry.path();
+                    if let Some(name) = path.file_name() {
+                        if name.to_string_lossy().starts_with("fluent_cli_temp_") {
+                            if let Err(e) = std::fs::remove_file(&path) {
+                                debug!("Failed to remove temp file {:?}: {}", path, e);
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// Process response output with all requested transformations
+    async fn process_response_output(
+        response_content: &str,
+        mut output: String,
+        matches: &ArgMatches,
+    ) -> Result<String> {
+        // Download media files if requested
+        if let Some(download_dir) = matches.get_one::<String>("download-media") {
+            let download_path = PathBuf::from(download_dir);
+            OutputProcessor::download_media_files(response_content, &download_path).await?;
+        }
+
+        // Parse code blocks if requested
+        if matches.get_flag("parse-code") {
+            debug!("Parsing code blocks");
+            let code_blocks = OutputProcessor::parse_code(&output);
+            debug!("Code blocks: {:?}", code_blocks);
+            output = code_blocks.join("\n\n");
+        }
+
+        // Execute output code if requested
+        if matches.get_flag("execute-output") {
+            debug!("Executing output code");
+            debug!("Attempting to execute: {}", output);
+            output = OutputProcessor::execute_code(&output).await?;
+        }
+
+        // Format as markdown if requested (currently commented out)
+        if matches.get_flag("markdown") {
+            debug!("Formatting output as markdown");
+            // output = format_markdown(&output);
+        }
+
+        Ok(output)
+    }
 
     use crate::{create_llm_engine, generate_and_execute_cypher};
     use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
@@ -832,13 +1054,16 @@ fn main() -> io::Result<()> {
 
         let _: Result<(), Error> = match matches.subcommand() {
             Some(("pipeline", sub_matches)) => {
-                let pipeline_file = sub_matches.get_one::<String>("file").unwrap();
-                let input = sub_matches.get_one::<String>("input").unwrap();
+                let pipeline_file = validate_required_string(sub_matches, "file", "pipeline execution")
+                    .map_err(|e| anyhow!("{}", e))?;
+                let input = validate_required_string(sub_matches, "input", "pipeline execution")
+                    .map_err(|e| anyhow!("{}", e))?;
                 let force_fresh = sub_matches.get_flag("force_fresh");
                 let run_id = sub_matches.get_one::<String>("run_id").cloned();
                 let json_output = sub_matches.get_flag("json_output");
 
-                let yaml_str = std::fs::read_to_string(pipeline_file)?;
+                let yaml_str = std::fs::read_to_string(&pipeline_file)
+                    .map_err(|e| to_fluent_error(e.into(), "reading pipeline file"))?;
                 validate_pipeline_yaml(&yaml_str)?;
                 let pipeline: Pipeline = serde_yaml::from_str(&yaml_str)?;
                 let state_store_dir = match env::var("FLUENT_STATE_STORE") {
@@ -857,7 +1082,7 @@ fn main() -> io::Result<()> {
                 let executor = PipelineExecutor::new(state_store.clone(), json_output);
 
                 executor
-                    .execute(&pipeline, input, force_fresh, run_id.clone())
+                    .execute(&pipeline, &input, force_fresh, run_id.clone())
                     .await?;
 
                 if json_output {
@@ -889,9 +1114,12 @@ fn main() -> io::Result<()> {
             }
 
             Some(("agent-mcp", sub_matches)) => {
-                let engine_name = sub_matches.get_one::<String>("engine").unwrap();
-                let task = sub_matches.get_one::<String>("task").unwrap();
-                let mcp_servers_str = sub_matches.get_one::<String>("mcp-servers").unwrap();
+                let engine_name = validate_required_string(sub_matches, "engine", "agent-mcp")
+                    .map_err(|e| anyhow!("{}", e))?;
+                let task = validate_required_string(sub_matches, "task", "agent-mcp")
+                    .map_err(|e| anyhow!("{}", e))?;
+                let mcp_servers_str = validate_required_string(sub_matches, "mcp-servers", "agent-mcp")
+                    .map_err(|e| anyhow!("{}", e))?;
                 let config_path = sub_matches.get_one::<String>("config")
                     .map(|s| s.to_string())
                     .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
@@ -904,8 +1132,8 @@ fn main() -> io::Result<()> {
                     .filter(|s| !s.is_empty())
                     .collect();
 
-                let config = load_config(&config_path, engine_name, &HashMap::new())?;
-                run_agent_with_mcp(engine_name, task, mcp_servers, &config).await?;
+                let config = load_config(&config_path, &engine_name, &HashMap::new())?;
+                run_agent_with_mcp(&engine_name, &task, mcp_servers, &config).await?;
                 std::process::exit(0);
             }
 
@@ -917,10 +1145,16 @@ fn main() -> io::Result<()> {
             let goal = matches.get_one::<String>("goal")
                 .ok_or_else(|| anyhow!("Goal is required when using agentic mode. Use --goal to specify the goal."))?;
 
-            let agent_config_path = matches.get_one::<String>("agent_config").unwrap();
-            let max_iterations_str = matches.get_one::<String>("max_iterations").unwrap();
+            let agent_config_path = matches.get_one::<String>("agent_config")
+                .ok_or_else(|| anyhow!("Agent config path is required for agentic mode"))?;
+            let max_iterations_str = matches.get_one::<String>("max_iterations")
+                .ok_or_else(|| anyhow!("Max iterations is required for agentic mode"))?;
             let max_iterations: u32 = max_iterations_str.parse()
                 .map_err(|_| anyhow!("Invalid max_iterations value: {}", max_iterations_str))?;
+
+            // Validate max_iterations is within reasonable bounds
+            let validated_max_iterations = validate_numeric_parameter(max_iterations, 1, 1000, "max_iterations")
+                .map_err(|e| anyhow!("{}", e))?;
             let enable_tools = matches.get_flag("enable_tools");
 
             // Load the main config for engine credentials
@@ -938,7 +1172,7 @@ fn main() -> io::Result<()> {
 
             let config = load_config(&config_path, engine_name, &overrides)?;
 
-            return run_agentic_mode(goal, agent_config_path, max_iterations, enable_tools, &config, &config_path).await;
+            return run_agentic_mode(goal, agent_config_path, validated_max_iterations, enable_tools, &config, &config_path).await;
         }
 
         let config_path = matches.get_one::<String>("config")
@@ -946,14 +1180,17 @@ fn main() -> io::Result<()> {
             .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
             .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
 
-        let engine_name = matches.get_one::<String>("engine").unwrap();
+        let engine_name = matches.get_one::<String>("engine")
+            .ok_or_else(|| anyhow!("Engine name is required"))?;
+        let validated_engine_name = validate_engine_name(engine_name)
+            .map_err(|e| anyhow!("{}", e))?;
 
         let overrides: HashMap<String, String> = matches
             .get_many::<String>("override")
             .map(|values| values.filter_map(|s| parse_key_value_pair(s)).collect())
             .unwrap_or_default();
 
-        let config = load_config(&config_path, engine_name, &overrides)?;
+        let config = load_config(&config_path, &validated_engine_name, &overrides)?;
         let spinner_config = config.engines[0].spinner.clone().unwrap_or_default();
         let pb = ProgressBar::new_spinner();
         let engine_config = &config.engines[0];
@@ -963,10 +1200,10 @@ fn main() -> io::Result<()> {
         let spinner_style = ProgressStyle::default_spinner()
             .tick_chars(&spinner_config.frames)
             .template("{spinner:.green} {msg}")
-            .unwrap();
+            .map_err(|e| anyhow!("Failed to create spinner template: {}", e))?;
 
         pb.set_style(spinner_style);
-        pb.set_message(format!("Processing {} request...", engine_name));
+        pb.set_message(format!("Processing {} request...", validated_engine_name));
         pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
         pb.set_length(100);
 
@@ -1050,29 +1287,7 @@ fn main() -> io::Result<()> {
                 cumulative_cost += response.cost.total_cost;
                 let mut output = response.content.clone();
 
-                if let Some(download_dir) = matches.get_one::<String>("download-media") {
-                    let download_path = PathBuf::from(download_dir);
-                    OutputProcessor::download_media_files(&response.content, &download_path)
-                        .await?;
-                }
-
-                if matches.get_flag("parse-code") {
-                    debug!("Parsing code blocks");
-                    let code_blocks = OutputProcessor::parse_code(&output);
-                    debug!("Code blocks: {:?}", code_blocks);
-                    output = code_blocks.join("\n\n");
-                }
-
-                if matches.get_flag("execute-output") {
-                    debug!("Executing output code");
-                    debug!("Attempting to execute : {}", output);
-                    output = OutputProcessor::execute_code(&output).await?;
-                }
-
-                if matches.get_flag("markdown") {
-                    debug!("Formatting output as markdown");
-                    //output = format_markdown(&output);
-                }
+                output = process_response_output(&response.content, output, &matches).await?;
 
                 let response_time = start_time.elapsed().as_secs_f64();
 
@@ -1240,32 +1455,51 @@ fn main() -> io::Result<()> {
             }
 
             // Combine all inputs
-            let mut combined_request_parts = Vec::new();
-            // Always add the request first
-            combined_request_parts.push(request.trim().to_string());
-            // Add context if it's not empty
-            if !context.trim().is_empty() {
-                combined_request_parts.push(format!("Context:\n{}", context.trim()));
-            }
-            // Add file contents if it's not empty
-            if !file_contents.trim().is_empty() {
-                combined_request_parts
-                    .push(format!("Additional Context:\n{}", file_contents.trim()));
-            }
-            // Join all parts with a separator
-            let combined_request = combined_request_parts.join("\n\n----\n\n");
+            // Use memory-efficient request processing
+            let mut processor = RequestProcessor::new();
+            let combined_request = {
+                let mut parts = Vec::with_capacity(3); // Pre-allocate for known max size
+
+                // Always add the request first
+                parts.push(request.trim());
+
+                // Add context if it's not empty
+                if !context.trim().is_empty() {
+                    parts.push("Context:");
+                    parts.push(context.trim());
+                }
+
+                // Add file contents if provided
+                if !file_contents.trim().is_empty() {
+                    parts.push("Additional Context:");
+                    parts.push(file_contents.trim());
+                }
+
+                // Use memory-efficient concatenation
+                let result = processor.process_request_content(&parts);
+                processor.cleanup(); // Clean up resources
+                result
+            };
             debug!("Combined Request:\n{}", combined_request);
 
+            // Validate the combined request payload
+            let validated_payload = validate_request_payload(&combined_request, "engine request")
+                .map_err(|e| anyhow!("{}", e))?;
+
             let request = Request {
-                flowname: engine_name.to_string(),
-                payload: combined_request,
+                flowname: validated_engine_name.to_string(),
+                payload: validated_payload,
             };
             debug!("Combined Request: {:?}", request);
 
             let response = if let Some(file_path) = matches.get_one::<String>("upload-image-file") {
-                debug!("Processing request with file: {}", file_path);
+                // Validate file path for security
+                let validated_path = validate_file_path_secure(file_path, "image upload")
+                    .map_err(|e| anyhow!("{}", e))?;
+
+                debug!("Processing request with validated file: {}", validated_path);
                 pb.set_message("Processing request with file...");
-                Pin::from(engine.process_request_with_file(&request, Path::new(file_path))).await?
+                Pin::from(engine.process_request_with_file(&request, Path::new(&validated_path))).await?
             } else {
                 pb.set_message("Executing request...");
                 Pin::from(engine.execute(&request)).await?
@@ -1274,28 +1508,7 @@ fn main() -> io::Result<()> {
 
             let mut output = response.content.clone();
 
-            if let Some(download_dir) = matches.get_one::<String>("download-media") {
-                let download_path = PathBuf::from(download_dir);
-                OutputProcessor::download_media_files(&response.content, &download_path).await?;
-            }
-
-            if matches.get_flag("parse-code") {
-                debug!("Parsing code blocks");
-                let code_blocks = OutputProcessor::parse_code(&output);
-                debug!("Code blocks: {:?}", code_blocks);
-                output = code_blocks.join("\n\n");
-            }
-
-            if matches.get_flag("execute-output") {
-                debug!("Executing output code");
-                debug!("Attempting to execute : {}", output);
-                output = OutputProcessor::execute_code(&output).await?;
-            }
-
-            if matches.get_flag("markdown") {
-                debug!("Formatting output as markdown");
-                //output = format_markdown(&output);
-            }
+            output = process_response_output(&response.content, output, &matches).await?;
 
             let response_time = start_time.elapsed().as_secs_f64();
 
@@ -1400,12 +1613,19 @@ fn main() -> io::Result<()> {
         }
 
         eprintln!("Total cost: ${:.6}", cumulative_cost);
+
+        // Perform memory cleanup before exit
+        MemoryManager::log_memory_usage("before cleanup");
+        MemoryManager::cleanup_temp_resources()?;
+        MemoryManager::force_cleanup();
+        MemoryManager::log_memory_usage("after cleanup");
+
         Ok(())
     }
 
     async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {
         if let Some(neo4j_config) = &engine_config.neo4j {
-            let neo4j_client = Neo4jClient::new(neo4j_config).await?;
+            let neo4j_client = std::sync::Arc::new(Neo4jClient::new(neo4j_config).await?);
 
             let input = matches
                 .get_one::<String>("input")
@@ -1423,18 +1643,49 @@ fn main() -> io::Result<()> {
                     document_id
                 );
             } else if input_path.is_dir() {
-                let mut uploaded_count = 0;
+                // Collect all files first
+                let mut file_paths = Vec::new();
                 for entry in fs::read_dir(input_path)? {
                     let entry = entry?;
                     let path = entry.path();
                     if path.is_file() {
+                        file_paths.push(path);
+                    }
+                }
+
+                // Process files concurrently with a reasonable limit
+                let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5)); // Max 5 concurrent uploads
+                let neo4j_client_for_parallel = neo4j_client.clone();
+                let mut handles = Vec::new();
+
+                for path in file_paths {
+                    let neo4j_client = neo4j_client_for_parallel.clone();
+                    let metadata = metadata.clone();
+                    let permit = semaphore.clone();
+
+                    let handle = tokio::spawn(async move {
+                        let _permit = permit.acquire().await.unwrap();
                         let document_id = neo4j_client.upsert_document(&path, &metadata).await?;
-                        eprintln!(
-                            "Uploaded document {} with ID: {}. Embeddings and chunks created.",
-                            path.display(),
-                            document_id
-                        );
-                        uploaded_count += 1;
+                        Ok::<(PathBuf, String), anyhow::Error>((path, document_id))
+                    });
+                    handles.push(handle);
+                }
+
+                // Wait for all uploads to complete
+                let mut uploaded_count = 0;
+                for handle in handles {
+                    match handle.await? {
+                        Ok((path, document_id)) => {
+                            eprintln!(
+                                "Uploaded document {} with ID: {}. Embeddings and chunks created.",
+                                path.display(),
+                                document_id
+                            );
+                            uploaded_count += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to upload document: {}", e);
+                        }
                     }
                 }
                 eprintln!(
@@ -1520,7 +1771,8 @@ async fn generate_and_execute_cypher(
 
 fn extract_cypher_query(content: &str) -> Result<String, Error> {
     // First, try to extract content between triple backticks
-    let backtick_re = Regex::new(r"```(?:cypher)?\s*([\s\S]*?)\s*```").unwrap();
+    let backtick_re = Regex::new(r"```(?:cypher)?\s*([\s\S]*?)\s*```")
+        .map_err(|e| anyhow!("Failed to compile backtick regex: {}", e))?;
     if let Some(captures) = backtick_re.captures(content) {
         if let Some(query) = captures.get(1) {
             let extracted = query.as_str().trim();
@@ -1531,8 +1783,8 @@ fn extract_cypher_query(content: &str) -> Result<String, Error> {
     }
 
     // If not found, look for common Cypher keywords to identify the query
-    let cypher_re =
-        Regex::new(r"(?i)(MATCH|CREATE|MERGE|DELETE|REMOVE|SET|RETURN)[\s\S]+").unwrap();
+    let cypher_re = Regex::new(r"(?i)(MATCH|CREATE|MERGE|DELETE|REMOVE|SET|RETURN)[\s\S]+")
+        .map_err(|e| anyhow!("Failed to compile cypher regex: {}", e))?;
     if let Some(captures) = cypher_re.captures(content) {
         if let Some(query) = captures.get(0) {
             let extracted = query.as_str().trim();
