@@ -39,6 +39,7 @@ impl Default for ConnectionPoolConfig {
 
 /// A pooled HTTP client with metadata
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PooledClient {
     client: Client,
     created_at: Instant,

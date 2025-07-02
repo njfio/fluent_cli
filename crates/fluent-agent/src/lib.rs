@@ -11,6 +11,7 @@ use std::pin::Pin;
 pub mod config;
 pub mod mcp_adapter;
 pub mod mcp_client;
+pub mod enhanced_mcp_client;
 pub mod agent_with_mcp;
 pub mod orchestrator;
 pub mod reasoning;
@@ -21,6 +22,10 @@ pub mod context;
 pub mod goal;
 pub mod task;
 pub mod tools;
+pub mod transport;
+pub mod workflow;
+pub mod performance;
+pub mod security;
 
 // Re-export advanced agentic types
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};

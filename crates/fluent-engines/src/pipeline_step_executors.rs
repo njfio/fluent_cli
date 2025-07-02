@@ -488,7 +488,7 @@ mod tests {
     #[tokio::test]
     async fn test_command_step_executor() {
         let executor = CommandStepExecutor;
-        let mut step = PipelineStep {
+        let step = PipelineStep {
             name: "test".to_string(),
             step_type: "command".to_string(),
             config: [

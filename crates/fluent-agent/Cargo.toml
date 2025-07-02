@@ -12,7 +12,7 @@ async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 futures = { workspace = true }
 uuid = { version = "1.0", features = ["v4"] }
@@ -21,6 +21,23 @@ rmcp = { workspace = true }
 rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "serde_json"] }
 tokio-rusqlite = "0.5.1"
 which = "6.0"
+# Enhanced MCP Protocol Support
+tokio-tungstenite = "0.20"
+url = "2.4"
+# Performance Optimization
+deadpool = "0.10"
+moka = { version = "0.12", features = ["future"] }
+# Security and Sandboxing
+nix = "0.27"
+# Workflow Engine
+petgraph = "0.6"
+handlebars = "4.4"
+# Metrics and Monitoring
+metrics = "0.21"
+prometheus = "0.13"
+# Additional utilities
+base64 = "0.21"
+thiserror = "1.0"
 
 [dev-dependencies]
 tempfile = "3.0"

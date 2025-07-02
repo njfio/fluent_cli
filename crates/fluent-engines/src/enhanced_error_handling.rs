@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Context, Result};
-use fluent_core::error::{FluentError, FluentResult};
+use anyhow::Result;
+use fluent_core::error::FluentError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;

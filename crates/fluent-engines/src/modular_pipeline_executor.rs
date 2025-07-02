@@ -313,7 +313,7 @@ impl ModularPipelineExecutor {
         // Execute with retry logic
         let retry_config = step.retry_config.clone().unwrap_or_default();
         let mut attempt = 0;
-        let mut last_error = None;
+        let mut _last_error = None;
 
         loop {
             attempt += 1;
@@ -337,7 +337,7 @@ impl ModularPipelineExecutor {
                     return Ok(());
                 }
                 Err(e) => {
-                    last_error = Some(anyhow::anyhow!("{}", e));
+                    _last_error = Some(anyhow::anyhow!("{}", e));
                     
                     // Check if we should retry
                     if attempt < retry_config.max_attempts && self.should_retry(&e, &retry_config) {

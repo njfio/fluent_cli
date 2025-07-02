@@ -121,10 +121,12 @@ impl Task {
             }
         } else if self.started_at.is_some() {
             TaskStatus::Running
-        } else if self.dependencies_satisfied() {
-            TaskStatus::Ready
         } else if !self.dependencies.is_empty() {
-            TaskStatus::Blocked
+            if self.dependencies_satisfied() {
+                TaskStatus::Ready
+            } else {
+                TaskStatus::Blocked
+            }
         } else {
             TaskStatus::Created
         }
@@ -385,13 +387,15 @@ pub struct TaskTemplates;
 impl TaskTemplates {
     /// Create a code generation task
     pub fn code_generation(description: String, language: String, requirements: Vec<String>) -> Task {
+        let mut criteria = vec![
+            format!("Generate valid {} code", language),
+            "Code meets requirements".to_string(),
+        ];
+        criteria.extend(requirements);
+
         Task::builder(description, TaskType::CodeGeneration)
             .priority(TaskPriority::High)
-            .success_criteria(vec![
-                format!("Generate valid {} code", language),
-                "Code meets requirements".to_string(),
-            ])
-            .success_criteria(requirements)
+            .success_criteria(criteria)
             .expected_output("Generated code".to_string())
             .estimated_duration(Duration::from_secs(180))
             .metadata("language".to_string(), serde_json::json!(language))

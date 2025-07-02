@@ -234,12 +234,19 @@ impl LLMReasoningEngine {
     /// Extract confidence score from reasoning response
     fn extract_confidence(&self, response: &str) -> f64 {
         // Simple regex-based extraction - could be enhanced with more sophisticated parsing
-        if let Some(captures) = regex::Regex::new(r"confidence[:\s]*([0-9]*\.?[0-9]+)")
-            .unwrap()
-            .captures(&response.to_lowercase())
-        {
-            if let Some(score_str) = captures.get(1) {
-                return score_str.as_str().parse().unwrap_or(0.5);
+        let patterns = vec![
+            r"confidence[:\s]*([0-9]*\.?[0-9]+)",  // "confidence: 0.85" or "confidence 0.85"
+            r"confidence\s+(?:score\s+)?(?:is\s+)?([0-9]*\.?[0-9]+)",  // "confidence score is 0.85"
+        ];
+
+        for pattern in patterns {
+            if let Some(captures) = regex::Regex::new(pattern)
+                .unwrap()
+                .captures(&response.to_lowercase())
+            {
+                if let Some(score_str) = captures.get(1) {
+                    return score_str.as_str().parse().unwrap_or(0.5);
+                }
             }
         }
         0.5_f64 // Default confidence if not found
@@ -399,6 +406,7 @@ mod tests {
 }
 
 // Mock engine for testing
+#[allow(dead_code)]
 struct MockEngine;
 
 #[async_trait]

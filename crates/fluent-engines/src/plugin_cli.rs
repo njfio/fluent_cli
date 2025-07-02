@@ -348,7 +348,7 @@ fluent-plugin load .
         Ok(())
     }
 
-    async fn show_audit_logs(runtime: &PluginRuntime, plugin_id: &str, limit: usize) -> Result<()> {
+    async fn show_audit_logs(_runtime: &PluginRuntime, plugin_id: &str, limit: usize) -> Result<()> {
         // This would require access to the audit logger from the runtime
         // For now, just show a placeholder
         println!("📋 Audit logs for plugin '{}' (last {} entries):", plugin_id, limit);

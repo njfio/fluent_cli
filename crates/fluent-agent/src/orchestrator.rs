@@ -34,6 +34,7 @@ pub struct AgentOrchestrator {
 }
 
 /// Manages the execution state and context throughout the agent workflow
+#[allow(dead_code)]
 pub struct StateManager {
     current_state: Arc<RwLock<AgentState>>,
     state_history: Arc<RwLock<Vec<AgentState>>>,
