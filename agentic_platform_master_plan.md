@@ -49,16 +49,16 @@ Based on comprehensive research and analysis from both Claude and Gemini AI syst
 ┌─────────────────────────────────────────────────────────────┐
 │                    Fluent Agentic Platform                 │
 ├─────────────────────────────────────────────────────────────┤
-│  Frontend Layer                                             │
+│  Interface Layer                                            │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │   Web UI    │ │  CLI Tool   │ │ IDE Plugin  │           │
-│  │ (React/TS)  │ │   (Rust)    │ │    (LSP)    │           │
+│  │  CLI Tool   │ │ IDE Plugin  │ │  Terminal   │           │
+│  │   (Rust)    │ │    (LSP)    │ │     UI      │           │
 │  └─────────────┘ └─────────────┘ └─────────────┘           │
 ├─────────────────────────────────────────────────────────────┤
-│  API & Communication Layer                                  │
+│  Communication Layer                                        │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │  REST API   │ │  WebSocket  │ │     MCP     │           │
-│  │   (Axum)    │ │ (Real-time) │ │ (Protocol)  │           │
+│  │  CLI Args   │ │  Streaming  │ │     MCP     │           │
+│  │   (Clap)    │ │   Output    │ │ (Protocol)  │           │
 │  └─────────────┘ └─────────────┘ └─────────────┘           │
 ├─────────────────────────────────────────────────────────────┤
 │  Agent Orchestration Layer                                  │

@@ -13,6 +13,7 @@ pub mod cost_calculator;
 pub mod input_validator;
 pub mod auth;
 pub mod error;
+pub mod memory_utils;
 
 
 

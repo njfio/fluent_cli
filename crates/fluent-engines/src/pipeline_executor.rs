@@ -1070,8 +1070,24 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
     async fn run_shell_command(&self, script_path: &Path) -> Result<String, Error> {
         debug!("Running shell command from file: {:?}", script_path);
-        let output = TokioCommand::new("bash")
-            .arg(script_path)
+
+        // Validate script path to prevent path traversal
+        let canonical_path = script_path.canonicalize()
+            .map_err(|e| anyhow!("Invalid script path: {}", e))?;
+
+        // Ensure script is in a safe location (temp directory)
+        if !canonical_path.starts_with(std::env::temp_dir()) {
+            return Err(anyhow!("Script must be in temporary directory for security"));
+        }
+
+        // Use absolute path to bash and clear environment
+        let bash_path = which::which("bash")
+            .map_err(|_| anyhow!("bash command not found in PATH"))?;
+
+        let output = TokioCommand::new(bash_path)
+            .arg(&canonical_path)
+            .env_clear() // Clear environment for security
+            .env("PATH", "/usr/bin:/bin") // Minimal PATH
             .output()
             .await
             .map_err(|e| anyhow!("Failed to execute shell command: {}", e))?;

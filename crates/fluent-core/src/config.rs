@@ -1,9 +1,11 @@
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
+use crate::memory_utils::{StringUtils, ParamUtils};
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
@@ -197,7 +199,7 @@ impl VariableResolver for CredentialResolver {
         debug!("Looking up credential: {}", credential_key);
         match self.credentials.get(credential_key) {
             Some(credential_value) => {
-                debug!("Credential found for: {}", credential_key);
+                debug!("Credential found for: {} (length: {})", credential_key, credential_value.len());
                 Ok(credential_value.clone())
             }
             None => {
@@ -212,12 +214,29 @@ impl VariableResolver for AmberVarResolver {
         key.starts_with("AMBER_")
     }
     fn resolve(&self, key: &str) -> Result<String> {
-        let output = Command::new("amber").arg("print").output()?;
-        if !output.status.success() {
-            return Err(anyhow!("Failed to run amber print command"));
+        // Validate key to prevent injection attacks
+        if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err(anyhow!("Invalid key format: {}", key));
         }
-        let stdout = String::from_utf8(output.stdout)?;
-        //debug!("Amber print output: {}", stdout);
+
+        // Use absolute path and validate amber command exists
+        let amber_path = which::which("amber")
+            .map_err(|_| anyhow!("amber command not found in PATH"))?;
+
+        let output = Command::new(amber_path)
+            .arg("print")
+            .env_clear() // Clear environment for security
+            .output()
+            .map_err(|e| anyhow!("Failed to execute amber command: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Amber command failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| anyhow!("Invalid UTF-8 in amber output: {}", e))?;
+
         for line in stdout.lines() {
             if line.contains(key) {
                 let parts: Vec<&str> = line.splitn(2, '=').collect();

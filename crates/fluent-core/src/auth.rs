@@ -4,6 +4,54 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Secure string that clears memory on drop
+#[derive(Clone)]
+pub struct SecureString {
+    data: Vec<u8>,
+}
+
+impl SecureString {
+    pub fn new(s: String) -> Self {
+        Self {
+            data: s.into_bytes(),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        // SAFETY: We know this is valid UTF-8 since it came from a String
+        unsafe { std::str::from_utf8_unchecked(&self.data) }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl Drop for SecureString {
+    fn drop(&mut self) {
+        // Securely clear the memory
+        for byte in &mut self.data {
+            *byte = 0;
+        }
+    }
+}
+
+impl std::fmt::Debug for SecureString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecureString([REDACTED] {} bytes)", self.len())
+    }
+}
+
+impl std::fmt::Display for SecureString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[REDACTED]")
+    }
+}
+
 /// Authentication types supported by the system
 #[derive(Debug, Clone)]
 pub enum AuthType {
@@ -16,7 +64,7 @@ pub enum AuthType {
 /// Secure authentication manager
 pub struct AuthManager {
     auth_type: AuthType,
-    token: String,
+    token: SecureString,
 }
 
 impl AuthManager {
@@ -24,10 +72,10 @@ impl AuthManager {
     pub fn new(config_params: &HashMap<String, Value>, auth_type: AuthType) -> Result<Self> {
         let token = Self::extract_token_securely(config_params)?;
         Self::validate_token(&token)?;
-        
+
         Ok(Self {
             auth_type,
-            token,
+            token: SecureString::new(token),
         })
     }
     
@@ -61,7 +109,7 @@ impl AuthManager {
         
         Ok(Self {
             auth_type: AuthType::Basic { username, password },
-            token: encoded,
+            token: SecureString::new(encoded),
         })
     }
     
@@ -132,14 +180,14 @@ impl AuthManager {
     pub fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<()> {
         match &self.auth_type {
             AuthType::Bearer => {
-                let auth_value = format!("Bearer {}", self.token);
+                let auth_value = format!("Bearer {}", self.token.as_str());
                 let header_value = HeaderValue::from_str(&auth_value)
                     .map_err(|e| anyhow!("Invalid bearer token format: {}", e))?;
                 headers.insert(AUTHORIZATION, header_value);
             }
-            
+
             AuthType::ApiKey(header_name) => {
-                let header_value = HeaderValue::from_str(&self.token)
+                let header_value = HeaderValue::from_str(self.token.as_str())
                     .map_err(|e| anyhow!("Invalid API key format: {}", e))?;
                 let header_name = reqwest::header::HeaderName::from_bytes(header_name.as_bytes())
                     .map_err(|e| anyhow!("Invalid header name: {}", e))?;
@@ -147,7 +195,7 @@ impl AuthManager {
             }
             
             AuthType::Basic { .. } => {
-                let auth_value = format!("Basic {}", self.token);
+                let auth_value = format!("Basic {}", self.token.as_str());
                 let header_value = HeaderValue::from_str(&auth_value)
                     .map_err(|e| anyhow!("Invalid basic auth format: {}", e))?;
                 headers.insert(AUTHORIZATION, header_value);
@@ -193,7 +241,7 @@ impl AuthManager {
     
     /// Validates that the token is still valid (basic checks)
     pub fn validate_current_token(&self) -> Result<()> {
-        Self::validate_token(&self.token)
+        Self::validate_token(self.token.as_str())
     }
 }
 

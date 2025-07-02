@@ -2,6 +2,7 @@ use crate::modular_pipeline_executor::{StepExecutor, StepResult, ExecutionContex
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tokio::process::Command;
 
 /// Concrete step executors for common pipeline operations
@@ -223,13 +224,66 @@ impl StepExecutor for FileStepExecutor {
 }
 
 impl FileStepExecutor {
+    /// Validate file path for security
+    fn validate_file_path(&self, path: &str) -> Result<PathBuf> {
+
+        // Check for path traversal attempts
+        if path.contains("..") {
+            return Err(anyhow!("Path traversal attempt detected: {}", path));
+        }
+
+        // Check for absolute paths outside of allowed areas
+        let path_buf = PathBuf::from(path);
+        if path_buf.is_absolute() {
+            // For absolute paths, ensure they're in safe locations
+            let current_dir = std::env::current_dir()?.to_string_lossy().to_string();
+            let allowed_prefixes = [
+                "/tmp/",
+                "/var/tmp/",
+                current_dir.as_str(),
+            ];
+
+            let mut is_allowed = false;
+            for prefix in &allowed_prefixes {
+                if path.starts_with(prefix) {
+                    is_allowed = true;
+                    break;
+                }
+            }
+
+            if !is_allowed {
+                return Err(anyhow!("Absolute path not in allowed location: {}", path));
+            }
+        }
+
+        // Canonicalize to resolve any remaining path issues
+        let canonical_path = match path_buf.canonicalize() {
+            Ok(path) => path,
+            Err(_) => {
+                // If canonicalize fails (file doesn't exist), validate parent directory
+                if let Some(parent) = path_buf.parent() {
+                    match parent.canonicalize() {
+                        Ok(parent_canonical) => parent_canonical.join(path_buf.file_name().unwrap_or_default()),
+                        Err(_) => return Err(anyhow!("Invalid parent directory: {}", path)),
+                    }
+                } else {
+                    return Err(anyhow!("Invalid path: {}", path));
+                }
+            }
+        };
+
+        Ok(canonical_path)
+    }
     async fn read_file(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
         let path = step.config.get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Read operation requires 'path' config"))?;
 
         let expanded_path = self.expand_variables(path, &context.variables)?;
-        let content = tokio::fs::read_to_string(&expanded_path).await?;
+
+        // Validate path for security
+        let validated_path = self.validate_file_path(&expanded_path)?;
+        let content = tokio::fs::read_to_string(&validated_path).await?;
 
         let mut variables = HashMap::new();
         if let Some(save_output) = step.config.get("save_output").and_then(|v| v.as_str()) {
@@ -255,7 +309,9 @@ impl FileStepExecutor {
         let expanded_path = self.expand_variables(path, &context.variables)?;
         let expanded_content = self.expand_variables(content, &context.variables)?;
 
-        tokio::fs::write(&expanded_path, &expanded_content).await?;
+        // Validate path for security
+        let validated_path = self.validate_file_path(&expanded_path)?;
+        tokio::fs::write(&validated_path, &expanded_content).await?;
 
         Ok(StepResult {
             output: Some(format!("Written {} bytes to {}", expanded_content.len(), expanded_path)),

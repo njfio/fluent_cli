@@ -1,0 +1,32 @@
+{
+  "agent": {
+    "reasoning_engine": "sonnet3.5",
+    "action_engine": "sonnet3.5",
+    "reflection_engine": "sonnet3.5",
+    "memory_database": "sqlite://./agent_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": true,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./",
+        "./src",
+        "./examples",
+        "./tests",
+        "./crates",
+        "./games"
+      ],
+      "allowed_commands": [
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo run"
+      ]
+    },
+    "config_path": "./anthropic_config.json",
+    "max_iterations": 15,
+    "timeout_seconds": 1800
+  }
+}

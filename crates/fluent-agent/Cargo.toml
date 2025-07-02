@@ -11,8 +11,17 @@ tokio = { workspace = true, features = ["full"] }
 async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
+uuid = { version = "1.0", features = ["v4"] }
+regex = "1.0"
+rmcp = { workspace = true }
+rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "serde_json"] }
+tokio-rusqlite = "0.5.1"
+which = "6.0"
+
+[dev-dependencies]
+tempfile = "3.0"
 

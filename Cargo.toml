@@ -28,6 +28,8 @@ env_logger = { workspace = true }
 neo4rs = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
+crossterm = "0.27"
+rand = "0.8"
 
 [workspace.dependencies]
 reqwest = { version = "^0.12", default-features = false, features = [
@@ -84,6 +86,7 @@ jsonschema = "^0.17"
 
 sled = "^0.34"
 sha2 = "^0.10"
+rmcp = { version = "0.1", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
 
 
 libloading = "^0.8"
