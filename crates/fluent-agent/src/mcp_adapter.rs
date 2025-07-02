@@ -15,11 +15,13 @@ use crate::memory::{LongTermMemory, MemoryItem, MemoryType, MemoryQuery};
 
 /// MCP adapter that exposes fluent_cli tools as MCP server capabilities
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct FluentMcpAdapter {
     tool_registry: Arc<ToolRegistry>,
     memory_system: Arc<dyn LongTermMemory>,
 }
 
+#[allow(dead_code)]
 impl FluentMcpAdapter {
     /// Create a new MCP adapter
     pub fn new(
@@ -87,6 +89,7 @@ impl FluentMcpAdapter {
     }
 }
 
+#[allow(dead_code)]
 impl FluentMcpAdapter {
     /// Get available tools
     fn get_available_tools(&self) -> Vec<Tool> {

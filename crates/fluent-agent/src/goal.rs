@@ -288,14 +288,16 @@ pub struct GoalTemplates;
 impl GoalTemplates {
     /// Create a code generation goal
     pub fn code_generation(description: String, language: String, requirements: Vec<String>) -> Goal {
+        let mut criteria = vec![
+            format!("Generate valid {} code", language),
+            "Code compiles without errors".to_string(),
+            "Code meets all requirements".to_string(),
+        ];
+        criteria.extend(requirements);
+
         Goal::builder(description, GoalType::CodeGeneration)
             .priority(GoalPriority::High)
-            .success_criteria(vec![
-                format!("Generate valid {} code", language),
-                "Code compiles without errors".to_string(),
-                "Code meets all requirements".to_string(),
-            ])
-            .success_criteria(requirements)
+            .success_criteria(criteria)
             .max_iterations(20)
             .timeout(Duration::from_secs(600))
             .metadata("language".to_string(), serde_json::json!(language))

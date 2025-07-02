@@ -117,7 +117,7 @@ impl OptimizedOpenAIEngine {
         let model = self.config.parameters.get("model")
             .and_then(|v| v.as_str());
         
-        let payload = payload_builder.build_openai_payload(&request.payload, model);
+        let _payload = payload_builder.build_openai_payload(&request.payload, model);
         
         // Add configuration parameters
         payload_builder.add_config_params(&self.config.parameters);
@@ -217,7 +217,7 @@ impl OptimizedOpenAIEngine {
             pool.get_payload_builder()
         };
 
-        let payload = payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
+        let _payload = payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
 
         // Build URL
         let mut string_buffer = {

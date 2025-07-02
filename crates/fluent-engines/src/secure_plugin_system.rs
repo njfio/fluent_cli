@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use sha2::{Sha256, Digest};
+use sha2::Digest;
 use fluent_core::config::EngineConfig;
 use fluent_core::traits::Engine;
 use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use tokio::sync::{Mutex, RwLock};
 
 /// Secure plugin system using WebAssembly for sandboxing
@@ -110,6 +110,7 @@ pub struct PluginRuntime {
 }
 
 /// Loaded plugin with WASM instance and metadata
+#[allow(dead_code)]
 struct LoadedPlugin {
     manifest: PluginManifest,
     wasm_bytes: Vec<u8>,
@@ -186,6 +187,7 @@ impl AuditLogger for DefaultAuditLogger {
 }
 
 /// Secure plugin engine that wraps WASM plugins
+#[allow(dead_code)]
 pub struct SecurePluginEngine {
     plugin_id: String,
     runtime: Arc<PluginRuntime>,
@@ -398,7 +400,7 @@ pub struct PluginStats {
 impl Engine for SecurePluginEngine {
     fn execute<'a>(
         &'a self,
-        request: &'a Request,
+        _request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             // TODO: Execute WASM plugin with request

@@ -28,9 +28,24 @@ impl FileSystemExecutor {
         // First, use the existing validation
         let validated_path = validation::validate_path(path, &self.config.allowed_paths)?;
 
-        // Additional security checks
-        let canonical_path = validated_path.canonicalize()
-            .map_err(|e| anyhow!("Failed to canonicalize path '{}': {}", path, e))?;
+        // Additional security checks - handle non-existent files
+        let canonical_path = if validated_path.exists() {
+            validated_path.canonicalize()
+                .map_err(|e| anyhow!("Failed to canonicalize path '{}': {}", path, e))?
+        } else {
+            // For non-existent files, canonicalize the parent directory
+            if let Some(parent) = validated_path.parent() {
+                if parent.exists() {
+                    let canonical_parent = parent.canonicalize()
+                        .map_err(|e| anyhow!("Failed to canonicalize parent path '{}': {}", parent.display(), e))?;
+                    canonical_parent.join(validated_path.file_name().unwrap_or_default())
+                } else {
+                    validated_path.clone()
+                }
+            } else {
+                validated_path.clone()
+            }
+        };
 
         // Ensure the canonical path is still within allowed directories
         let mut is_allowed = false;

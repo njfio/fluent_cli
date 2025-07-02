@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 /// Cached state entry with metadata
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct CachedState {
     state: PipelineState,
     last_accessed: SystemTime,
@@ -174,6 +175,7 @@ impl OptimizedStateStore {
     }
 
     /// Clean up expired cache entries
+    #[allow(dead_code)]
     async fn cleanup_expired_entries(&self) {
         let now = SystemTime::now();
         let mut cache_guard = self.cache.write().await;

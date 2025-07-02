@@ -1,0 +1,366 @@
+warning: unused imports: `ParamUtils` and `StringUtils`
+ --> crates/fluent-core/src/config.rs:3:27
+  |
+3 | use crate::memory_utils::{StringUtils, ParamUtils};
+  |                           ^^^^^^^^^^^  ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::borrow::Cow`
+ --> crates/fluent-core/src/config.rs:8:5
+  |
+8 | use std::borrow::Cow;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: `fluent-core` (lib) generated 2 warnings (run `cargo fix --lib -p fluent-core` to apply 2 suggestions)
+warning: unused import: `Sha256`
+ --> crates/fluent-engines/src/secure_plugin_system.rs:3:12
+  |
+3 | use sha2::{Sha256, Digest};
+  |            ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Duration`
+  --> crates/fluent-engines/src/secure_plugin_system.rs:13:17
+   |
+13 | use std::time::{Duration, SystemTime};
+   |                 ^^^^^^^^
+
+warning: unused import: `anyhow`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:1:14
+  |
+1 | use anyhow::{anyhow, Context, Result};
+  |              ^^^^^^
+
+warning: unused import: `FluentResult`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:2:39
+  |
+2 | use fluent_core::error::{FluentError, FluentResult};
+  |                                       ^^^^^^^^^^^^
+
+warning: unused variable: `payload`
+   --> crates/fluent-engines/src/optimized_openai.rs:120:13
+    |
+120 |         let payload = payload_builder.build_openai_payload(&request.payload, model);
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payload`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `payload`
+   --> crates/fluent-engines/src/optimized_openai.rs:220:13
+    |
+220 |         let payload = payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payload`
+
+warning: variable does not need to be mutable
+   --> crates/fluent-engines/src/enhanced_cache.rs:251:33
+    |
+251 |                     if let Some(mut entry) = memory_cache.get_mut(&key_str) {
+    |                                 ----^^^^^
+    |                                 |
+    |                                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `runtime`
+   --> crates/fluent-engines/src/plugin_cli.rs:351:30
+    |
+351 |     async fn show_audit_logs(runtime: &PluginRuntime, plugin_id: &str, limit: usize) -> Result<()> {
+    |                              ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_runtime`
+
+warning: variable `last_error` is assigned to, but never used
+   --> crates/fluent-engines/src/modular_pipeline_executor.rs:316:17
+    |
+316 |         let mut last_error = None;
+    |                 ^^^^^^^^^^
+    |
+    = note: consider using `_last_error` instead
+
+warning: value assigned to `last_error` is never read
+   --> crates/fluent-engines/src/modular_pipeline_executor.rs:340:21
+    |
+340 |                     last_error = Some(anyhow::anyhow!("{}", e));
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: unused import: `Hasher`
+ --> crates/fluent-engines/src/enhanced_cache.rs:7:23
+  |
+7 | use std::hash::{Hash, Hasher};
+  |                       ^^^^^^
+
+warning: unused import: `Context`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:1:22
+  |
+1 | use anyhow::{anyhow, Context, Result};
+  |                      ^^^^^^^
+
+warning: unused variable: `request`
+   --> crates/fluent-engines/src/secure_plugin_system.rs:401:9
+    |
+401 |         request: &'a Request,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+warning: field `last_modified` is never read
+  --> crates/fluent-engines/src/optimized_state_store.rs:17:5
+   |
+14 | struct CachedState {
+   |        ----------- field in this struct
+...
+17 |     last_modified: SystemTime,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `CachedState` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: method `cleanup_expired_entries` is never used
+   --> crates/fluent-engines/src/optimized_state_store.rs:177:14
+    |
+60  | impl OptimizedStateStore {
+    | ------------------------ method in this implementation
+...
+177 |     async fn cleanup_expired_entries(&self) {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `created_at` is never read
+  --> crates/fluent-engines/src/connection_pool.rs:44:5
+   |
+42 | struct PooledClient {
+   |        ------------ field in this struct
+43 |     client: Client,
+44 |     created_at: Instant,
+   |     ^^^^^^^^^^
+   |
+   = note: `PooledClient` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `wasm_bytes` is never read
+   --> crates/fluent-engines/src/secure_plugin_system.rs:115:5
+    |
+113 | struct LoadedPlugin {
+    |        ------------ field in this struct
+114 |     manifest: PluginManifest,
+115 |     wasm_bytes: Vec<u8>,
+    |     ^^^^^^^^^^
+
+warning: fields `plugin_id`, `runtime`, and `context` are never read
+   --> crates/fluent-engines/src/secure_plugin_system.rs:190:5
+    |
+189 | pub struct SecurePluginEngine {
+    |            ------------------ fields in this struct
+190 |     plugin_id: String,
+    |     ^^^^^^^^^
+191 |     runtime: Arc<PluginRuntime>,
+    |     ^^^^^^^
+192 |     context: Arc<PluginContext>,
+    |     ^^^^^^^
+
+warning: `fluent-engines` (lib) generated 18 warnings (run `cargo fix --lib -p fluent-engines` to apply 5 suggestions)
+warning: unused variable: `error`
+   --> crates/fluent-agent/src/enhanced_mcp_client.rs:216:21
+    |
+216 |         if let Some(error) = response.error {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `step_id`
+   --> crates/fluent-agent/src/workflow/engine.rs:126:17
+    |
+126 |             let step_id = &graph[node_index];
+    |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_step_id`
+
+warning: value assigned to `error_count` is never read
+   --> crates/fluent-agent/src/performance/connection_pool.rs:174:21
+    |
+174 |                     error_count += 1;
+    |                     ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: value assigned to `error_count` is never read
+   --> crates/fluent-agent/src/performance/connection_pool.rs:178:21
+    |
+178 |                     error_count += 1;
+    |                     ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `condition`
+   --> crates/fluent-agent/src/workflow/engine.rs:340:27
+    |
+340 |     fn evaluate_condition(condition: &str, _context: &WorkflowContext) -> Result<bool> {
+    |                           ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_condition`
+
+warning: unused variable: `path`
+   --> crates/fluent-agent/src/workflow/engine.rs:349:9
+    |
+349 |         path: &str,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+
+warning: unused variable: `context`
+   --> crates/fluent-agent/src/workflow/engine.rs:359:9
+    |
+359 |         context: &WorkflowContext,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_context`
+
+warning: fields `tool_registry` and `memory_system` are never read
+  --> crates/fluent-agent/src/mcp_adapter.rs:19:5
+   |
+18 | pub struct FluentMcpAdapter {
+   |            ---------------- fields in this struct
+19 |     tool_registry: Arc<ToolRegistry>,
+   |     ^^^^^^^^^^^^^
+20 |     memory_system: Arc<dyn LongTermMemory>,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `FluentMcpAdapter` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: methods `convert_tool_to_mcp` and `execute_fluent_tool` are never used
+  --> crates/fluent-agent/src/mcp_adapter.rs:36:8
+   |
+23 | impl FluentMcpAdapter {
+   | --------------------- methods in this implementation
+...
+36 |     fn convert_tool_to_mcp(&self, name: &str, description: &str) -> Tool {
+   |        ^^^^^^^^^^^^^^^^^^^
+...
+59 |     async fn execute_fluent_tool(&self, name: &str, params: Value) -> Result<CallToolResult> {
+   |              ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `get_available_tools` and `handle_tool_call` are never used
+   --> crates/fluent-agent/src/mcp_adapter.rs:92:8
+    |
+90  | impl FluentMcpAdapter {
+    | --------------------- methods in this implementation
+91  |     /// Get available tools
+92  |     fn get_available_tools(&self) -> Vec<Tool> {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+104 |     async fn handle_tool_call(&self, name: &str, arguments: Option<Value>) -> Result<CallToolResult, rmcp::Error> {
+    |              ^^^^^^^^^^^^^^^^
+
+warning: field `jsonrpc` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:27:5
+   |
+26 | struct JsonRpcResponse {
+   |        --------------- field in this struct
+27 |     jsonrpc: String,
+   |     ^^^^^^^
+   |
+   = note: `JsonRpcResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `data` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:41:5
+   |
+37 | struct JsonRpcError {
+   |        ------------ field in this struct
+...
+41 |     data: Option<Value>,
+   |     ^^^^
+   |
+   = note: `JsonRpcError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `list_changed` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:58:5
+   |
+56 | struct ToolsCapability {
+   |        --------------- field in this struct
+57 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+58 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ToolsCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `list_changed` and `subscribe` are never read
+  --> crates/fluent-agent/src/mcp_client.rs:64:5
+   |
+62 | struct ResourcesCapability {
+   |        ------------------- fields in this struct
+63 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+64 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+65 |     #[serde(skip_serializing_if = "Option::is_none")]
+66 |     subscribe: Option<bool>,
+   |     ^^^^^^^^^
+   |
+   = note: `ResourcesCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `list_changed` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:72:5
+   |
+70 | struct PromptsCapability {
+   |        ----------------- field in this struct
+71 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+72 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `PromptsCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `state_history` is never read
+  --> crates/fluent-agent/src/orchestrator.rs:39:5
+   |
+37 | pub struct StateManager {
+   |            ------------ field in this struct
+38 |     current_state: Arc<RwLock<AgentState>>,
+39 |     state_history: Arc<RwLock<Vec<AgentState>>>,
+   |     ^^^^^^^^^^^^^
+
+warning: struct `MockEngine` is never constructed
+   --> crates/fluent-agent/src/reasoning.rs:402:8
+    |
+402 | struct MockEngine;
+    |        ^^^^^^^^^^
+
+warning: field `pattern_detector` is never read
+  --> crates/fluent-agent/src/observation.rs:71:5
+   |
+69 | pub struct ComprehensiveObservationProcessor {
+   |            --------------------------------- field in this struct
+70 |     result_analyzer: Box<dyn ResultAnalyzer>,
+71 |     pattern_detector: Box<dyn PatternDetector>,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: field `retry_config` is never read
+  --> crates/fluent-agent/src/transport/stdio.rs:21:5
+   |
+12 | pub struct StdioTransport {
+   |            -------------- field in this struct
+...
+21 |     retry_config: RetryConfig,
+   |     ^^^^^^^^^^^^
+
+warning: field `retry_config` is never read
+  --> crates/fluent-agent/src/transport/websocket.rs:17:5
+   |
+13 | pub struct WebSocketTransport {
+   |            ------------------ field in this struct
+...
+17 |     retry_config: RetryConfig,
+   |     ^^^^^^^^^^^^
+
+warning: fields `max_concurrent_steps` and `semaphore` are never read
+  --> crates/fluent-agent/src/workflow/engine.rs:20:5
+   |
+18 | pub struct WorkflowEngine {
+   |            -------------- fields in this struct
+19 |     tool_registry: Arc<ToolRegistry>,
+20 |     max_concurrent_steps: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^
+21 |     semaphore: Arc<Semaphore>,
+   |     ^^^^^^^^^
+
+warning: field `counter` is never read
+   --> crates/fluent-agent/src/performance/cache.rs:278:5
+    |
+277 | pub struct CacheMetrics {
+    |            ------------ field in this struct
+278 |     counter: PerformanceCounter,
+    |     ^^^^^^^
+
+warning: `fluent-agent` (lib) generated 22 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.62s

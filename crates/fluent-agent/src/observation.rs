@@ -66,6 +66,7 @@ pub enum ChangeSeverity {
 }
 
 /// Comprehensive observation processor that analyzes multiple aspects of execution
+#[allow(dead_code)]
 pub struct ComprehensiveObservationProcessor {
     result_analyzer: Box<dyn ResultAnalyzer>,
     pattern_detector: Box<dyn PatternDetector>,

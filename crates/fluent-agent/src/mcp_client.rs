@@ -23,6 +23,7 @@ struct JsonRpcRequest {
 
 /// JSON-RPC 2.0 response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcResponse {
     jsonrpc: String,
     id: Value,
@@ -34,6 +35,7 @@ struct JsonRpcResponse {
 
 /// JSON-RPC 2.0 error
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcError {
     code: i32,
     message: String,
@@ -53,12 +55,14 @@ struct ServerCapabilities {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ToolsCapability {
     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
     list_changed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ResourcesCapability {
     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
     list_changed: Option<bool>,
@@ -67,6 +71,7 @@ struct ResourcesCapability {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct PromptsCapability {
     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
     list_changed: Option<bool>,

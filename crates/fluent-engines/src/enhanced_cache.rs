@@ -4,7 +4,7 @@ use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -248,7 +248,7 @@ impl EnhancedCache {
             if let Some(entry) = memory_cache.peek(&key_str) {
                 if !entry.is_expired(self.config.ttl) {
                     // Entry is valid, get it and mark as accessed
-                    if let Some(mut entry) = memory_cache.get_mut(&key_str) {
+                    if let Some(entry) = memory_cache.get_mut(&key_str) {
                         entry.mark_accessed();
                         self.update_stats(|stats| stats.memory_hits += 1);
                         return Ok(Some(entry.response.clone()));

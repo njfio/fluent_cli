@@ -1,0 +1,553 @@
+warning: unused imports: `ParamUtils` and `StringUtils`
+ --> crates/fluent-core/src/config.rs:3:27
+  |
+3 | use crate::memory_utils::{StringUtils, ParamUtils};
+  |                           ^^^^^^^^^^^  ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::borrow::Cow`
+ --> crates/fluent-core/src/config.rs:8:5
+  |
+8 | use std::borrow::Cow;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: `fluent-core` (lib) generated 2 warnings (run `cargo fix --lib -p fluent-core` to apply 2 suggestions)
+warning: unused import: `Sha256`
+ --> crates/fluent-engines/src/secure_plugin_system.rs:3:12
+  |
+3 | use sha2::{Sha256, Digest};
+  |            ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Duration`
+  --> crates/fluent-engines/src/secure_plugin_system.rs:13:17
+   |
+13 | use std::time::{Duration, SystemTime};
+   |                 ^^^^^^^^
+
+warning: unused import: `anyhow`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:1:14
+  |
+1 | use anyhow::{anyhow, Context, Result};
+  |              ^^^^^^
+
+warning: unused import: `FluentResult`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:2:39
+  |
+2 | use fluent_core::error::{FluentError, FluentResult};
+  |                                       ^^^^^^^^^^^^
+
+warning: unused variable: `payload`
+   --> crates/fluent-engines/src/optimized_openai.rs:120:13
+    |
+120 |         let payload = payload_builder.build_openai_payload(&request.payload, model);
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payload`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `payload`
+   --> crates/fluent-engines/src/optimized_openai.rs:220:13
+    |
+220 |         let payload = payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_payload`
+
+warning: variable does not need to be mutable
+   --> crates/fluent-engines/src/enhanced_cache.rs:251:33
+    |
+251 |                     if let Some(mut entry) = memory_cache.get_mut(&key_str) {
+    |                                 ----^^^^^
+    |                                 |
+    |                                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `runtime`
+   --> crates/fluent-engines/src/plugin_cli.rs:351:30
+    |
+351 |     async fn show_audit_logs(runtime: &PluginRuntime, plugin_id: &str, limit: usize) -> Result<()> {
+    |                              ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_runtime`
+
+warning: variable `last_error` is assigned to, but never used
+   --> crates/fluent-engines/src/modular_pipeline_executor.rs:316:17
+    |
+316 |         let mut last_error = None;
+    |                 ^^^^^^^^^^
+    |
+    = note: consider using `_last_error` instead
+
+warning: value assigned to `last_error` is never read
+   --> crates/fluent-engines/src/modular_pipeline_executor.rs:340:21
+    |
+340 |                     last_error = Some(anyhow::anyhow!("{}", e));
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: unused import: `Hasher`
+ --> crates/fluent-engines/src/enhanced_cache.rs:7:23
+  |
+7 | use std::hash::{Hash, Hasher};
+  |                       ^^^^^^
+
+warning: unused import: `Context`
+ --> crates/fluent-engines/src/enhanced_error_handling.rs:1:22
+  |
+1 | use anyhow::{anyhow, Context, Result};
+  |                      ^^^^^^^
+
+warning: unused variable: `request`
+   --> crates/fluent-engines/src/secure_plugin_system.rs:401:9
+    |
+401 |         request: &'a Request,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+warning: field `last_modified` is never read
+  --> crates/fluent-engines/src/optimized_state_store.rs:17:5
+   |
+14 | struct CachedState {
+   |        ----------- field in this struct
+...
+17 |     last_modified: SystemTime,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `CachedState` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: method `cleanup_expired_entries` is never used
+   --> crates/fluent-engines/src/optimized_state_store.rs:177:14
+    |
+60  | impl OptimizedStateStore {
+    | ------------------------ method in this implementation
+...
+177 |     async fn cleanup_expired_entries(&self) {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `created_at` is never read
+  --> crates/fluent-engines/src/connection_pool.rs:44:5
+   |
+42 | struct PooledClient {
+   |        ------------ field in this struct
+43 |     client: Client,
+44 |     created_at: Instant,
+   |     ^^^^^^^^^^
+   |
+   = note: `PooledClient` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `wasm_bytes` is never read
+   --> crates/fluent-engines/src/secure_plugin_system.rs:115:5
+    |
+113 | struct LoadedPlugin {
+    |        ------------ field in this struct
+114 |     manifest: PluginManifest,
+115 |     wasm_bytes: Vec<u8>,
+    |     ^^^^^^^^^^
+
+warning: fields `plugin_id`, `runtime`, and `context` are never read
+   --> crates/fluent-engines/src/secure_plugin_system.rs:190:5
+    |
+189 | pub struct SecurePluginEngine {
+    |            ------------------ fields in this struct
+190 |     plugin_id: String,
+    |     ^^^^^^^^^
+191 |     runtime: Arc<PluginRuntime>,
+    |     ^^^^^^^
+192 |     context: Arc<PluginContext>,
+    |     ^^^^^^^
+
+warning: `fluent-engines` (lib) generated 18 warnings (run `cargo fix --lib -p fluent-engines` to apply 5 suggestions)
+warning: unused variable: `error`
+   --> crates/fluent-agent/src/enhanced_mcp_client.rs:216:21
+    |
+216 |         if let Some(error) = response.error {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `step_id`
+   --> crates/fluent-agent/src/workflow/engine.rs:126:17
+    |
+126 |             let step_id = &graph[node_index];
+    |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_step_id`
+
+warning: value assigned to `error_count` is never read
+   --> crates/fluent-agent/src/performance/connection_pool.rs:174:21
+    |
+174 |                     error_count += 1;
+    |                     ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: value assigned to `error_count` is never read
+   --> crates/fluent-agent/src/performance/connection_pool.rs:178:21
+    |
+178 |                     error_count += 1;
+    |                     ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `condition`
+   --> crates/fluent-agent/src/workflow/engine.rs:340:27
+    |
+340 |     fn evaluate_condition(condition: &str, _context: &WorkflowContext) -> Result<bool> {
+    |                           ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_condition`
+
+warning: unused variable: `path`
+   --> crates/fluent-agent/src/workflow/engine.rs:349:9
+    |
+349 |         path: &str,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+
+warning: unused variable: `context`
+   --> crates/fluent-agent/src/workflow/engine.rs:359:9
+    |
+359 |         context: &WorkflowContext,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_context`
+
+warning: fields `tool_registry` and `memory_system` are never read
+  --> crates/fluent-agent/src/mcp_adapter.rs:19:5
+   |
+18 | pub struct FluentMcpAdapter {
+   |            ---------------- fields in this struct
+19 |     tool_registry: Arc<ToolRegistry>,
+   |     ^^^^^^^^^^^^^
+20 |     memory_system: Arc<dyn LongTermMemory>,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `FluentMcpAdapter` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: methods `convert_tool_to_mcp` and `execute_fluent_tool` are never used
+  --> crates/fluent-agent/src/mcp_adapter.rs:36:8
+   |
+23 | impl FluentMcpAdapter {
+   | --------------------- methods in this implementation
+...
+36 |     fn convert_tool_to_mcp(&self, name: &str, description: &str) -> Tool {
+   |        ^^^^^^^^^^^^^^^^^^^
+...
+59 |     async fn execute_fluent_tool(&self, name: &str, params: Value) -> Result<CallToolResult> {
+   |              ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `get_available_tools` and `handle_tool_call` are never used
+   --> crates/fluent-agent/src/mcp_adapter.rs:92:8
+    |
+90  | impl FluentMcpAdapter {
+    | --------------------- methods in this implementation
+91  |     /// Get available tools
+92  |     fn get_available_tools(&self) -> Vec<Tool> {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+104 |     async fn handle_tool_call(&self, name: &str, arguments: Option<Value>) -> Result<CallToolResult, rmcp::Error> {
+    |              ^^^^^^^^^^^^^^^^
+
+warning: field `jsonrpc` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:27:5
+   |
+26 | struct JsonRpcResponse {
+   |        --------------- field in this struct
+27 |     jsonrpc: String,
+   |     ^^^^^^^
+   |
+   = note: `JsonRpcResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `data` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:41:5
+   |
+37 | struct JsonRpcError {
+   |        ------------ field in this struct
+...
+41 |     data: Option<Value>,
+   |     ^^^^
+   |
+   = note: `JsonRpcError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `list_changed` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:58:5
+   |
+56 | struct ToolsCapability {
+   |        --------------- field in this struct
+57 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+58 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ToolsCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `list_changed` and `subscribe` are never read
+  --> crates/fluent-agent/src/mcp_client.rs:64:5
+   |
+62 | struct ResourcesCapability {
+   |        ------------------- fields in this struct
+63 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+64 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+65 |     #[serde(skip_serializing_if = "Option::is_none")]
+66 |     subscribe: Option<bool>,
+   |     ^^^^^^^^^
+   |
+   = note: `ResourcesCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `list_changed` is never read
+  --> crates/fluent-agent/src/mcp_client.rs:72:5
+   |
+70 | struct PromptsCapability {
+   |        ----------------- field in this struct
+71 |     #[serde(rename = "listChanged", skip_serializing_if = "Option::is_none")]
+72 |     list_changed: Option<bool>,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `PromptsCapability` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `state_history` is never read
+  --> crates/fluent-agent/src/orchestrator.rs:39:5
+   |
+37 | pub struct StateManager {
+   |            ------------ field in this struct
+38 |     current_state: Arc<RwLock<AgentState>>,
+39 |     state_history: Arc<RwLock<Vec<AgentState>>>,
+   |     ^^^^^^^^^^^^^
+
+warning: struct `MockEngine` is never constructed
+   --> crates/fluent-agent/src/reasoning.rs:402:8
+    |
+402 | struct MockEngine;
+    |        ^^^^^^^^^^
+
+warning: field `pattern_detector` is never read
+  --> crates/fluent-agent/src/observation.rs:71:5
+   |
+69 | pub struct ComprehensiveObservationProcessor {
+   |            --------------------------------- field in this struct
+70 |     result_analyzer: Box<dyn ResultAnalyzer>,
+71 |     pattern_detector: Box<dyn PatternDetector>,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: field `retry_config` is never read
+  --> crates/fluent-agent/src/transport/stdio.rs:21:5
+   |
+12 | pub struct StdioTransport {
+   |            -------------- field in this struct
+...
+21 |     retry_config: RetryConfig,
+   |     ^^^^^^^^^^^^
+
+warning: field `retry_config` is never read
+  --> crates/fluent-agent/src/transport/websocket.rs:17:5
+   |
+13 | pub struct WebSocketTransport {
+   |            ------------------ field in this struct
+...
+17 |     retry_config: RetryConfig,
+   |     ^^^^^^^^^^^^
+
+warning: fields `max_concurrent_steps` and `semaphore` are never read
+  --> crates/fluent-agent/src/workflow/engine.rs:20:5
+   |
+18 | pub struct WorkflowEngine {
+   |            -------------- fields in this struct
+19 |     tool_registry: Arc<ToolRegistry>,
+20 |     max_concurrent_steps: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^
+21 |     semaphore: Arc<Semaphore>,
+   |     ^^^^^^^^^
+
+warning: field `counter` is never read
+   --> crates/fluent-agent/src/performance/cache.rs:278:5
+    |
+277 | pub struct CacheMetrics {
+    |            ------------ field in this struct
+278 |     counter: PerformanceCounter,
+    |     ^^^^^^^
+
+warning: unused imports: `AuthConfig` and `AuthType`
+   --> crates/fluent-agent/src/enhanced_mcp_client.rs:317:28
+    |
+317 |     use crate::transport::{AuthConfig, AuthType, TransportType, ConnectionConfig, TimeoutConfig, RetryConfig};
+    |                            ^^^^^^^^^^  ^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: method `execute_fluent_tool` is never used
+  --> crates/fluent-agent/src/mcp_adapter.rs:59:14
+   |
+23 | impl FluentMcpAdapter {
+   | --------------------- method in this implementation
+...
+59 |     async fn execute_fluent_tool(&self, name: &str, params: Value) -> Result<CallToolResult> {
+   |              ^^^^^^^^^^^^^^^^^^^
+
+warning: field `semaphore` is never read
+  --> crates/fluent-agent/src/workflow/engine.rs:21:5
+   |
+18 | pub struct WorkflowEngine {
+   |            -------------- field in this struct
+...
+21 |     semaphore: Arc<Semaphore>,
+   |     ^^^^^^^^^
+
+warning: `fluent-agent` (lib) generated 22 warnings
+warning: `fluent-agent` (lib test) generated 22 warnings (19 duplicates) (run `cargo fix --lib -p fluent-agent --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.53s
+     Running unittests src/lib.rs (target/debug/deps/fluent_agent-8cd2f3d8cb36fde8)
+
+running 91 tests
+test action::tests::test_risk_level_ordering ... ok
+test config::tests::test_invalid_config_validation ... ok
+test config::tests::test_invalid_database_url ... ok
+test config::tests::test_default_config_validation ... ok
+test enhanced_mcp_client::tests::test_client_info_default ... ok
+test goal::tests::test_goal_builder ... ok
+test action::tests::test_action_plan_creation ... ok
+test goal::tests::test_goal_creation ... ok
+test goal::tests::test_goal_complexity ... ok
+test config::tests::test_credential_validation ... ok
+test goal::tests::test_goal_validation ... ok
+test goal::tests::test_goal_timeout ... ok
+test context::tests::test_context_stats ... ok
+test context::tests::test_execution_context_creation ... ok
+test memory::tests::test_memory_config_default ... ok
+test context::tests::test_context_variable_management ... ok
+test memory::tests::test_short_term_memory_creation ... ok
+test context::tests::test_context_summary ... ok
+test observation::tests::test_environment_change_creation ... ok
+test memory::tests::test_memory_item_creation ... ok
+test orchestrator::tests::test_agent_state_creation ... ok
+test orchestrator::tests::test_orchestration_metrics_default ... ok
+test performance::cache::tests::test_cache_metrics ... ok
+test goal::tests::test_goal_templates ... FAILED
+test observation::tests::test_basic_observation_processing ... ok
+test performance::connection_pool::tests::test_http_client_manager_creation ... ok
+test performance::connection_pool::tests::test_connection_pool_manager ... ok
+test performance::tests::test_memory_tracker ... ok
+test performance::tests::test_performance_config_defaults ... ok
+test performance::connection_pool::tests::test_http_request_creation ... ok
+test performance::tests::test_performance_counter ... ok
+test performance::tests::test_resource_limiter ... ok
+test performance::cache::tests::test_multi_level_cache_creation ... ok
+test performance::cache::tests::test_cache_operations ... ok
+test reasoning::tests::test_reasoning_prompts_default ... ok
+test security::capability::tests::test_rate_limiter ... ok
+test security::capability::tests::test_capability_manager_creation ... ok
+test reasoning::tests::test_extract_next_actions ... ok
+test security::tests::test_resource_usage_default ... ok
+test security::tests::test_security_session_creation ... ok
+test task::tests::test_task_builder ... ok
+test security::tests::test_security_policy_default ... ok
+test config::tests::test_config_file_creation ... ok
+test task::tests::test_task_complexity ... ok
+test security::capability::tests::test_session_creation ... ok
+test task::tests::test_task_creation ... FAILED
+test task::tests::test_task_templates ... FAILED
+test task::tests::test_task_retry ... FAILED
+test task::tests::test_task_lifecycle ... FAILED
+test tools::filesystem::tests::test_read_only_mode ... ok
+test tools::filesystem::tests::test_list_directory ... ok
+test tools::filesystem::tests::test_read_file ... ok
+test memory::tests::test_sqlite_memory_store_creation ... ok
+test memory::tests::test_sqlite_memory_store ... ok
+test mcp_adapter::tests::test_mcp_adapter_creation ... ok
+test mcp_adapter::tests::test_tool_conversion ... ok
+test tools::rust_compiler::tests::test_parameter_validation ... ok
+test tools::filesystem::tests::test_path_validation ... FAILED
+test tools::filesystem::tests::test_write_file ... FAILED
+test tools::shell::tests::test_command_validation ... ok
+test tools::shell::tests::test_get_working_directory ... ok
+test tools::shell::tests::test_parse_command ... ok
+test tools::tests::test_command_validation ... ok
+test tools::tests::test_output_sanitization ... ok
+test tools::rust_compiler::tests::test_validate_cargo_project ... ok
+test tools::tests::test_tool_registry ... ok
+test tools::tests::test_path_validation ... ok
+test tools::shell::tests::test_check_command_available ... ok
+test transport::stdio::tests::test_metadata ... ok
+test transport::stdio::tests::test_stdio_transport_creation ... ok
+test tools::shell::tests::test_run_command ... ok
+test transport::tests::test_transport_config_serialization ... ok
+test tools::shell::tests::test_run_script ... ok
+test transport::websocket::tests::test_metadata ... ok
+test reasoning::tests::test_extract_confidence ... FAILED
+test workflow::engine::tests::test_workflow_engine_creation ... ok
+test workflow::engine::tests::test_dag_building ... ok
+test workflow::template::tests::test_json_path_extraction ... ok
+test transport::http::tests::test_metadata ... ok
+test workflow::tests::test_duration_parsing ... ok
+test workflow::tests::test_workflow_context_creation ... ok
+test workflow::tests::test_workflow_validation ... ok
+test workflow::template::tests::test_template_engine_creation ... ok
+test workflow::template::tests::test_parameter_resolution ... ok
+test transport::websocket::tests::test_websocket_transport_creation ... ok
+test transport::http::tests::test_http_transport_creation ... ok
+test enhanced_mcp_client::tests::test_enhanced_mcp_client_creation ... ok
+test transport::tests::test_retry_with_backoff ... ok
+test tools::rust_compiler::tests::test_get_cargo_info ... ok
+test tools::rust_compiler::tests::test_cargo_check ... ok
+test tools::rust_compiler::tests::test_cargo_build_with_parameters ... ok
+
+failures:
+
+---- goal::tests::test_goal_templates stdout ----
+
+thread 'goal::tests::test_goal_templates' panicked at crates/fluent-agent/src/goal.rs:483:9:
+assertion failed: code_goal.success_criteria.len() >= 3
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- task::tests::test_task_creation stdout ----
+
+thread 'task::tests::test_task_creation' panicked at crates/fluent-agent/src/task.rs:480:9:
+assertion `left == right` failed
+  left: Ready
+ right: Created
+
+---- task::tests::test_task_templates stdout ----
+
+thread 'task::tests::test_task_templates' panicked at crates/fluent-agent/src/task.rs:541:9:
+assertion failed: code_task.success_criteria.len() >= 2
+
+---- task::tests::test_task_retry stdout ----
+
+thread 'task::tests::test_task_retry' panicked at crates/fluent-agent/src/task.rs:527:9:
+assertion `left == right` failed
+  left: Ready
+ right: Created
+
+---- task::tests::test_task_lifecycle stdout ----
+
+thread 'task::tests::test_task_lifecycle' panicked at crates/fluent-agent/src/task.rs:504:9:
+assertion `left == right` failed
+  left: Ready
+ right: Created
+
+---- tools::filesystem::tests::test_path_validation stdout ----
+
+thread 'tools::filesystem::tests::test_path_validation' panicked at crates/fluent-agent/src/tools/filesystem.rs:406:9:
+assertion failed: executor.validate_tool_request("read_file", &params).is_ok()
+
+---- tools::filesystem::tests::test_write_file stdout ----
+
+thread 'tools::filesystem::tests::test_write_file' panicked at crates/fluent-agent/src/tools/filesystem.rs:355:73:
+called `Result::unwrap()` on an `Err` value: Failed to canonicalize path '/var/folders/bz/bc80l0s925b_jdm2jdspnzw00000gn/T/.tmpOjQAGJ/test_write.txt': No such file or directory (os error 2)
+
+---- reasoning::tests::test_extract_confidence stdout ----
+
+thread 'reasoning::tests::test_extract_confidence' panicked at crates/fluent-agent/src/reasoning.rs:381:9:
+assertion `left == right` failed
+  left: 0.5
+ right: 0.85
+
+
+failures:
+    goal::tests::test_goal_templates
+    reasoning::tests::test_extract_confidence
+    task::tests::test_task_creation
+    task::tests::test_task_lifecycle
+    task::tests::test_task_retry
+    task::tests::test_task_templates
+    tools::filesystem::tests::test_path_validation
+    tools::filesystem::tests::test_write_file
+
+test result: FAILED. 83 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `-p fluent-agent --lib`
