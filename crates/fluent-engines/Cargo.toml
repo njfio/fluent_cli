@@ -28,6 +28,8 @@ serde_yaml = { workspace = true }
 
 libloading = { workspace = true }
 once_cell = { workspace = true }
+num_cpus = "1.16"
+async-stream = "0.3"
 lru = "0.12"
 lz4_flex = "0.11"
 sha2 = "0.10"
@@ -38,5 +40,6 @@ clap = { version = "4.0", features = ["derive"] }
 hex = "0.4"
 
 [dev-dependencies]
+tokio-test = "0.4"
 tempfile = { workspace = true }
 

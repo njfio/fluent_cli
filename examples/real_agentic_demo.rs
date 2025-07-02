@@ -1,15 +1,16 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
 use fluent_agent::{
-    config::{AgentEngineConfig, credentials},
+    config::{AgentEngineConfig, ToolConfig, credentials},
     goal::{Goal, GoalType},
-    memory::{MemorySystem, SqliteMemoryStore, MemoryItem, MemoryType, MemoryQuery},
-    context::{ExecutionContext, ContextVariable},
+    memory::{MemoryItem, MemoryType, MemoryQuery, SqliteMemoryStore, LongTermMemory},
+    context::ExecutionContext,
     tools::{ToolRegistry, FileSystemExecutor, ToolExecutionConfig},
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use chrono::Utc;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -55,8 +56,8 @@ async fn demo_memory_system() -> Result<()> {
             content: "Successfully compiled Rust project with zero warnings".to_string(),
             metadata: {
                 let mut map = HashMap::new();
-                map.insert("project_type".to_string(), "rust".to_string());
-                map.insert("outcome".to_string(), "success".to_string());
+                map.insert("project_type".to_string(), json!("rust"));
+                map.insert("outcome".to_string(), json!("success"));
                 map
             },
             importance: 0.8,
@@ -72,8 +73,8 @@ async fn demo_memory_system() -> Result<()> {
             content: "When using async/await in Rust, always handle Result types properly".to_string(),
             metadata: {
                 let mut map = HashMap::new();
-                map.insert("language".to_string(), "rust".to_string());
-                map.insert("concept".to_string(), "async_programming".to_string());
+                map.insert("language".to_string(), json!("rust"));
+                map.insert("concept".to_string(), json!("async_programming"));
                 map
             },
             importance: 0.9,
@@ -88,7 +89,7 @@ async fn demo_memory_system() -> Result<()> {
     // Store memories in real database
     for memory in &experiences {
         let stored_id = memory_store.store(memory.clone()).await?;
-        println!("✅ Stored memory: {} -> {}", memory.memory_type, stored_id);
+        println!("✅ Stored memory: {:?} -> {}", memory.memory_type, stored_id);
     }
     
     // Query real memories
@@ -105,7 +106,7 @@ async fn demo_memory_system() -> Result<()> {
     println!("✅ Retrieved {} memories from database", retrieved.len());
     
     for memory in retrieved {
-        println!("   📝 {}: {}", memory.memory_type, memory.content);
+        println!("   📝 {:?}: {}", memory.memory_type, memory.content);
         println!("      Importance: {}, Access count: {}", memory.importance, memory.access_count);
     }
     
@@ -120,9 +121,9 @@ async fn demo_goal_system() -> Result<()> {
             GoalType::CodeGeneration
         )
         .max_iterations(10)
-        .add_success_criterion("Function compiles without errors".to_string())
-        .add_success_criterion("Function returns correct fibonacci sequence".to_string())
-        .add_success_criterion("Function includes proper documentation".to_string())
+        .success_criterion("Function compiles without errors".to_string())
+        .success_criterion("Function returns correct fibonacci sequence".to_string())
+        .success_criterion("Function includes proper documentation".to_string())
         .build()?,
         
         Goal::builder(
@@ -130,18 +131,18 @@ async fn demo_goal_system() -> Result<()> {
             GoalType::Analysis
         )
         .max_iterations(20)
-        .add_success_criterion("Scan all Rust files for unsafe code blocks".to_string())
-        .add_success_criterion("Check for potential buffer overflow conditions".to_string())
+        .success_criterion("Scan all Rust files for unsafe code blocks".to_string())
+        .success_criterion("Check for potential buffer overflow conditions".to_string())
         .build()?,
         
         Goal::builder(
             "Optimize database query performance in the application".to_string(),
-            GoalType::Optimization
+            GoalType::Refactoring
         )
         .max_iterations(15)
-        .add_success_criterion("Identify slow queries using EXPLAIN ANALYZE".to_string())
-        .add_success_criterion("Implement appropriate database indexes".to_string())
-        .add_success_criterion("Achieve 50% performance improvement".to_string())
+        .success_criterion("Identify slow queries using EXPLAIN ANALYZE".to_string())
+        .success_criterion("Implement appropriate database indexes".to_string())
+        .success_criterion("Achieve 50% performance improvement".to_string())
         .build()?,
     ];
     
@@ -152,7 +153,7 @@ async fn demo_goal_system() -> Result<()> {
         println!("   Success criteria: {} items", goal.success_criteria.len());
         
         // Demonstrate goal complexity calculation
-        let complexity = goal.calculate_complexity();
+        let complexity = goal.get_complexity();
         println!("   Calculated complexity: {:?}", complexity);
     }
     
@@ -160,66 +161,76 @@ async fn demo_goal_system() -> Result<()> {
 }
 
 async fn demo_context_system() -> Result<()> {
+    // Create a demo goal for the context
+    let demo_goal = Goal::builder(
+        "Demonstrate context management capabilities".to_string(),
+        GoalType::Planning
+    )
+    .success_criterion("Successfully set context variables".to_string())
+    .success_criterion("Demonstrate metadata management".to_string())
+    .build()?;
+
     // Create real execution context
-    let mut context = ExecutionContext::new("demo_session".to_string());
-    
-    // Add real context variables
+    let mut context = ExecutionContext::new(demo_goal);
+
+    // Add real context variables using the context's variable system
     let variables = vec![
-        ContextVariable::new("project_path".to_string(), "/Users/dev/my_project".to_string()),
-        ContextVariable::new("target_language".to_string(), "rust".to_string()),
-        ContextVariable::new("compilation_target".to_string(), "x86_64-unknown-linux-gnu".to_string()),
-        ContextVariable::new("optimization_level".to_string(), "release".to_string()),
+        ("project_path", "/Users/dev/my_project"),
+        ("target_language", "rust"),
+        ("compilation_target", "x86_64-unknown-linux-gnu"),
+        ("optimization_level", "release"),
     ];
-    
-    for var in variables {
-        context.set_variable(var.name.clone(), var.value.clone());
-        println!("✅ Set context variable: {} = {}", var.name, var.value);
+
+    for (name, value) in variables {
+        context.set_variable(name.to_string(), value.to_string());
+        println!("✅ Set context variable: {} = {}", name, value);
     }
-    
-    // Demonstrate context operations
-    context.add_step_result("compilation".to_string(), "success".to_string());
-    context.add_step_result("testing".to_string(), "passed".to_string());
-    context.add_step_result("linting".to_string(), "clean".to_string());
-    
+
+    // Demonstrate context operations by adding metadata
+    context.add_metadata("compilation_status".to_string(), json!("success"));
+    context.add_metadata("testing_status".to_string(), json!("passed"));
+    context.add_metadata("linting_status".to_string(), json!("clean"));
+
     println!("✅ Context summary: {}", context.get_summary());
     println!("✅ Context stats: {:?}", context.get_stats());
-    
+
     Ok(())
 }
 
 async fn demo_tool_system() -> Result<()> {
-    // Create real tool registry
-    let mut tool_registry = ToolRegistry::new();
-    
-    // Configure real file system executor
-    let tool_config = ToolExecutionConfig {
-        timeout_seconds: 30,
-        max_output_size: 1024 * 1024, // 1MB
-        allowed_paths: vec![
+    // Create tool configuration
+    let tool_config = fluent_agent::config::ToolConfig {
+        file_operations: true,
+        shell_commands: true,
+        rust_compiler: true,
+        git_operations: false,
+        allowed_paths: Some(vec![
             "./".to_string(),
             "./examples/".to_string(),
             "./target/".to_string(),
-        ],
-        allowed_commands: vec![
+            "./crates/".to_string(),
+        ]),
+        allowed_commands: Some(vec![
             "cargo".to_string(),
             "rustc".to_string(),
             "ls".to_string(),
             "cat".to_string(),
-        ],
-        read_only: false,
+        ]),
     };
-    
-    let fs_executor = Arc::new(FileSystemExecutor::new(tool_config));
-    tool_registry.register("filesystem".to_string(), fs_executor);
-    
-    println!("✅ Registered real file system executor");
-    println!("✅ Tool registry contains {} tools", tool_registry.list_tools().len());
-    
+
+    // Create tool registry with all standard tools
+    let tool_registry = ToolRegistry::with_standard_tools(&tool_config);
+
+    println!("✅ Created tool registry with standard tools");
+
     // List available tools
-    for tool_name in tool_registry.list_tools() {
-        println!("   🔧 Available tool: {}", tool_name);
+    let available_tools = tool_registry.get_all_available_tools();
+    println!("✅ Tool registry contains {} tools", available_tools.len());
+
+    for tool_info in available_tools {
+        println!("   🔧 Available tool: {} ({})", tool_info.name, tool_info.description);
     }
-    
+
     Ok(())
 }
 
@@ -239,28 +250,17 @@ async fn demo_config_system() -> Result<()> {
         action_engine: "openai".to_string(),
         reflection_engine: "openai".to_string(),
         memory_database: "sqlite://./demo_agent_memory.db".to_string(),
-        tools: fluent_agent::config::ToolsConfig {
+        tools: ToolConfig {
             file_operations: true,
             shell_commands: true,
             rust_compiler: true,
+            git_operations: true,
             allowed_paths: Some(vec!["./".to_string(), "./examples/".to_string()]),
             allowed_commands: Some(vec!["cargo".to_string(), "rustc".to_string()]),
         },
-        reasoning: fluent_agent::config::ReasoningConfig {
-            max_context_length: 8000,
-            temperature: 0.1,
-            enable_chain_of_thought: true,
-        },
-        action: fluent_agent::config::ActionConfig {
-            max_retries: 3,
-            timeout_seconds: 60,
-            enable_parallel_execution: false,
-        },
-        reflection: fluent_agent::config::ReflectionConfig {
-            enable_self_correction: true,
-            reflection_frequency: 5,
-            learning_rate: 0.1,
-        },
+        config_path: None,
+        max_iterations: Some(50),
+        timeout_seconds: Some(300),
     };
     
     // Validate configuration
@@ -269,10 +269,14 @@ async fn demo_config_system() -> Result<()> {
     println!("   Reasoning engine: {}", agent_config.reasoning_engine);
     println!("   Action engine: {}", agent_config.action_engine);
     println!("   Reflection engine: {}", agent_config.reflection_engine);
-    println!("   Tools enabled: file_ops={}, shell={}, rust={}", 
+    println!("   Memory database: {}", agent_config.memory_database);
+    println!("   Max iterations: {:?}", agent_config.max_iterations);
+    println!("   Timeout: {:?} seconds", agent_config.timeout_seconds);
+    println!("   Tools enabled: file_ops={}, shell={}, rust={}, git={}",
         agent_config.tools.file_operations,
         agent_config.tools.shell_commands,
-        agent_config.tools.rust_compiler
+        agent_config.tools.rust_compiler,
+        agent_config.tools.git_operations
     );
     
     Ok(())

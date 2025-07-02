@@ -165,7 +165,7 @@ impl CacheKey {
 }
 
 /// Cache statistics
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CacheStats {
     pub memory_hits: u64,
     pub memory_misses: u64,

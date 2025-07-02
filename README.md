@@ -21,7 +21,8 @@ A Rust-based command-line interface for interacting with multiple Large Language
 ### 🤖 **Experimental Agentic Features**
 - **Basic Agent Loop**: Interactive agent sessions with memory
 - **MCP Integration**: Model Context Protocol client and server capabilities
-- **Tool System**: File operations, shell commands, and code analysis
+- **Advanced Tool System**: Comprehensive file operations, shell commands, and code analysis
+- **String Replace Editor**: Surgical file editing with precision targeting
 - **Memory System**: SQLite-based persistent memory for agents
 
 ## 📦 Installation
@@ -143,6 +144,40 @@ fluent openai agent-mcp -e openai -t "Read files" -s "filesystem:server"
 
 **Note**: Agentic features are experimental and under active development.
 
+## 🔧 Tool System
+
+### String Replace Editor
+Advanced file editing capabilities with surgical precision:
+
+```bash
+# Replace first occurrence
+fluent openai agent --tool string_replace --file "src/main.rs" --old "println!" --new "log::info!" --occurrence "First"
+
+# Replace all occurrences with backup
+fluent openai agent --tool string_replace --file "config.toml" --old "debug = false" --new "debug = true" --occurrence "All" --backup
+
+# Line range replacement (lines 10-20 only)
+fluent openai agent --tool string_replace --file "lib.rs" --old "i32" --new "u32" --line-range "10,20"
+
+# Dry run preview
+fluent openai agent --tool string_replace --file "app.rs" --old "HashMap" --new "BTreeMap" --dry-run
+```
+
+**Features:**
+- **Multiple occurrence modes**: First, Last, All, Indexed
+- **Line range targeting**: Restrict changes to specific line ranges
+- **Dry run previews**: See changes before applying
+- **Automatic backups**: Timestamped backup creation
+- **Security validation**: Path restrictions and input validation
+- **Case sensitivity control**: Configurable matching behavior
+
+### Available Tools
+- **File Operations**: Read, write, list, create directories
+- **String Replace Editor**: Surgical file editing with precision targeting
+- **Shell Commands**: Execute system commands safely
+- **Rust Compiler**: Build, test, check, clippy, format
+- **Git Operations**: Basic version control operations
+
 ## 🛠️ Supported Engines
 
 ### Available Providers
@@ -176,7 +211,8 @@ export GOOGLE_API_KEY="your-key"
 ### Experimental Features
 - **Agent System**: 🚧 Basic implementation, under development
 - **MCP Integration**: 🚧 Prototype stage
-- **Tool System**: 🚧 Limited functionality
+- **Advanced Tool System**: ✅ Production-ready file operations and code analysis
+- **String Replace Editor**: ✅ Surgical file editing with precision targeting
 - **Memory System**: 🚧 Basic SQLite storage
 
 ### Planned Features

@@ -7,6 +7,7 @@ use fluent_core::types::{
 };
 use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcessor};
 use fluent_core::config::EngineConfig;
+use crate::enhanced_cache::{EnhancedCache, CacheKey, CacheConfig};
 use anyhow::{Result, anyhow, Context};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -23,7 +24,8 @@ pub struct AnthropicEngine {
     config: EngineConfig,
     config_processor: AnthropicConfigProcessor,
     neo4j_client: Option<Arc<Neo4jClient>>,
-
+    client: Client, // Reusable HTTP client
+    cache: Option<Arc<EnhancedCache>>, // Response caching
 }
 
 impl AnthropicEngine {
@@ -35,10 +37,33 @@ impl AnthropicEngine {
             None
         };
 
+        // Create reusable HTTP client with optimized settings
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .tcp_keepalive(std::time::Duration::from_secs(60))
+            .build()
+            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+
+        // Initialize cache if enabled
+        let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {
+            let cache_config = CacheConfig {
+                disk_cache_dir: Some("fluent_cache_anthropic".to_string()),
+                ..Default::default()
+            };
+            Some(Arc::new(EnhancedCache::new(cache_config)?))
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             config_processor: AnthropicConfigProcessor,
             neo4j_client,
+            client,
+            cache,
         })
     }
 
@@ -115,7 +140,17 @@ impl Engine for AnthropicEngine {
 
     fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let client = Client::new();
+            // Check cache first if enabled
+            if let Some(cache) = &self.cache {
+                let cache_key = CacheKey::new(&request.payload, "anthropic")
+                    .with_model("claude-3-5-sonnet-20240620"); // Default model
+
+                if let Ok(Some(cached_response)) = cache.get(&cache_key).await {
+                    debug!("Cache hit for Anthropic request");
+                    return Ok(cached_response);
+                }
+            }
+
             debug!("Config: {:?}", self.config);
 
             let mut payload = self.config_processor.process_config(&self.config)?;
@@ -134,7 +169,7 @@ impl Engine for AnthropicEngine {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let res = client.post(&url)
+            let res = self.client.post(&url)
                 .header("x-api-key", auth_token)
                 .header("anthropic-version", "2023-06-01")
                 .header("content-type", "application/json")
@@ -169,17 +204,29 @@ impl Engine for AnthropicEngine {
             let completion_cost = usage.completion_tokens as f64 * completion_rate;
             let total_cost = prompt_cost + completion_cost;
 
-            Ok(Response {
+            let response = Response {
                 content,
                 usage,
-                model,
+                model: model.clone(),
                 finish_reason,
                 cost: Cost {
                     prompt_cost,
                     completion_cost,
                     total_cost,
                 },
-            })
+            };
+
+            // Cache the response if caching is enabled
+            if let Some(cache) = &self.cache {
+                let cache_key = CacheKey::new(&request.payload, "anthropic")
+                    .with_model(&model);
+
+                if let Err(e) = cache.insert(&cache_key, &response).await {
+                    debug!("Failed to cache response: {}", e);
+                }
+            }
+
+            Ok(response)
         })
     }
 
@@ -211,7 +258,7 @@ impl Engine for AnthropicEngine {
                 .first_or_octet_stream()
                 .to_string();
 
-            let client = reqwest::Client::new();
+            // Use the reusable HTTP client
             let url = format!("{}://{}:{}{}",
                               self.config.connection.protocol,
                               self.config.connection.hostname,
@@ -247,7 +294,7 @@ impl Engine for AnthropicEngine {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = client.post(&url)
+            let response = self.client.post(&url)
                 .header("x-api-key", auth_token)
                 .header("anthropic-version", "2023-06-01")
                 .header("Content-Type", "application/json")

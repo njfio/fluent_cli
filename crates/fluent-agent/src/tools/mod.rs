@@ -7,10 +7,12 @@ use std::sync::Arc;
 pub mod filesystem;
 pub mod shell;
 pub mod rust_compiler;
+pub mod string_replace_editor;
 
 pub use filesystem::FileSystemExecutor;
 pub use shell::ShellExecutor;
 pub use rust_compiler::RustCompilerExecutor;
+pub use string_replace_editor::StringReplaceEditor;
 
 /// Trait for tool executors that can perform actions in the environment
 #[async_trait]
@@ -102,6 +104,85 @@ impl ToolRegistry {
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ToolRegistry {
+    /// Create a tool registry with all standard tools configured
+    pub fn with_standard_tools(config: &crate::config::ToolConfig) -> Self {
+        let mut registry = Self::new();
+
+        // Register file system executor
+        if config.file_operations {
+            let tool_config = ToolExecutionConfig {
+                timeout_seconds: 30,
+                max_output_size: 1024 * 1024, // 1MB
+                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
+                    "./".to_string(),
+                    "./src".to_string(),
+                    "./examples".to_string(),
+                    "./crates".to_string(),
+                ]),
+                allowed_commands: config.allowed_commands.clone().unwrap_or_else(|| vec![
+                    "cargo".to_string(),
+                    "rustc".to_string(),
+                ]),
+                read_only: false,
+            };
+
+            let fs_executor = Arc::new(FileSystemExecutor::new(tool_config));
+            registry.register("filesystem".to_string(), fs_executor);
+
+            // Register string replace editor (also requires file operations)
+            let string_replace_config = string_replace_editor::StringReplaceConfig {
+                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
+                    "./".to_string(),
+                    "./src".to_string(),
+                    "./examples".to_string(),
+                    "./crates".to_string(),
+                ]),
+                max_file_size: 10 * 1024 * 1024, // 10MB
+                backup_enabled: true,
+                case_sensitive: true,
+                max_replacements: 100,
+            };
+
+            let string_replace_executor = Arc::new(StringReplaceEditor::with_config(string_replace_config));
+            registry.register("string_replace".to_string(), string_replace_executor);
+        }
+
+        // Register shell executor
+        if config.shell_commands {
+            let shell_config = ToolExecutionConfig {
+                timeout_seconds: 60,
+                max_output_size: 1024 * 1024, // 1MB
+                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
+                    "./".to_string(),
+                ]),
+                allowed_commands: config.allowed_commands.clone().unwrap_or_else(|| vec![
+                    "cargo".to_string(),
+                    "rustc".to_string(),
+                    "ls".to_string(),
+                    "cat".to_string(),
+                    "echo".to_string(),
+                ]),
+                read_only: false,
+            };
+
+            let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let shell_executor = Arc::new(ShellExecutor::new(shell_config, working_dir));
+            registry.register("shell".to_string(), shell_executor);
+        }
+
+        // Register Rust compiler executor
+        if config.rust_compiler {
+            let rust_compiler_executor = Arc::new(RustCompilerExecutor::with_defaults(
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            ));
+            registry.register("rust_compiler".to_string(), rust_compiler_executor);
+        }
+
+        registry
     }
 }
 
