@@ -1,0 +1,30 @@
+{
+  "agent": {
+    "reasoning_engine": "sonnet3.5",
+    "action_engine": "gpt-4o",
+    "reflection_engine": "gemini-flash",
+    "memory_database": "sqlite://./agent_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": false,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./",
+        "./src",
+        "./examples",
+        "./tests",
+        "./crates"
+      ],
+      "allowed_commands": [
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy"
+      ]
+    },
+    "config_path": "./config.json",
+    "max_iterations": 50,
+    "timeout_seconds": 1800
+  }
+}

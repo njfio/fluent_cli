@@ -167,11 +167,13 @@ impl Engine for FlowiseChainEngine {
         _request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            // Implement FlowiseAI-specific upsert logic here if needed
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Flowise Chain doesn't have a native upsert/embedding API
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "flowise_chain".to_string(),
+                operation: "upsert".to_string(),
+            }).into())
         })
     }
 
@@ -240,9 +242,12 @@ impl Engine for FlowiseChainEngine {
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!(
-                "File upload not implemented for Flowise Chain engine"
-            ))
+            use fluent_core::error::{FluentError, EngineError};
+
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "flowise_chain".to_string(),
+                operation: "file_upload".to_string(),
+            }).into())
         })
     }
 

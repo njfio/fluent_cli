@@ -64,6 +64,22 @@ struct FluentArgs {
     )]
     generate_cypher: Option<String>,
 
+    // Agentic mode arguments
+    #[arg(long, help = "Enable agentic mode with goal-oriented execution")]
+    agentic: bool,
+
+    #[arg(long, help = "Goal for the agent to achieve")]
+    goal: Option<String>,
+
+    #[arg(long, help = "Agent configuration file", default_value = "agent_config.json")]
+    agent_config: String,
+
+    #[arg(long, help = "Maximum iterations for goal achievement", default_value = "50")]
+    max_iterations: u32,
+
+    #[arg(long, help = "Enable tool execution (file operations, shell commands)")]
+    enable_tools: bool,
+
     #[command(subcommand)]
     pipeline: Option<Pipeline>,
 }

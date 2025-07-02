@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluent Web Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #4a90e2;
+        }
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        div {
+            margin-bottom: 15px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        button {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #357ab8;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9f7ef;
+            border: 1px solid #d4edda;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+    </style>
+    <script>
+        function executeCommand() {
+            const formData = new FormData(document.getElementById('fluent-form'));
+            const commandData = {
+                engine: formData.get('engine'),
+                request: formData.get('request'),
+                config: formData.get('config'),
+                override: formData.getAll('override').join(' '),
+                additionalContextFile: formData.get('additionalContextFile'),
+                upsert: formData.get('upsert') === 'on',
+                input: formData.get('input'),
+                metadata: formData.get('metadata'),
+                uploadImageFile: formData.get('uploadImageFile'),
+                downloadMedia: formData.get('downloadMedia'),
+                parseCode: formData.get('parseCode') === 'on',
+                executeOutput: formData.get('executeOutput') === 'on',
+                markdown: formData.get('markdown') === 'on',
+                generateCypher: formData.get('generateCypher'),
+                pipelineFile: formData.get('pipelineFile'),
+                pipelineInput: formData.get('pipelineInput'),
+                jsonOutput: formData.get('jsonOutput') === 'on',
+                runId: formData.get('runId'),
+                forceFresh: formData.get('forceFresh') === 'on',
+            };
+
+            fetch('/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(commandData)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const outputElement = document.getElementById('output');
+                    if (data.output) {
+                        try {
+                            const parsedJson = JSON.parse(data.output);
+                            outputElement.innerText = JSON.stringify(parsedJson, null, 2);
+                        } catch (e) {
+                            outputElement.innerText = data.output;
+                        }
+                    } else if (data.error) {
+                        outputElement.innerText = "Error: " + data.error;
+                    }
+                });
+        }
+
+        function addOverride() {
+            const overrideInput = document.getElementById('override');
+            const overrideValue = overrideInput.value;
+
+            if (overrideValue) {
+                const overridesDiv = document.getElementById('overrides');
+                const newOverride = document.createElement('input');
+                newOverride.type = 'hidden';
+                newOverride.name = 'override';
+                newOverride.value = overrideValue;
+                overridesDiv.appendChild(newOverride);
+                overrideInput.value = '';
+            }
+        }
+    </script>
+</head>
+<body>
+<form id="fluent-form">
+    <h1>Fluent Web Frontend</h1>
+    <div>
+        <label for="engine">Engine:</label>
+        <select id="engine" name="engine">
+            <option value="openai">openai</option>
+            <option value="openai-mini">openai-mini</option>
+        </select>
+    </div>
+
+    <input type="text" id="request" name="request" placeholder="Enter Fluent request">
+
+    <div>
+        <label for="config">Config (JSON):</label>
+        <textarea id="config" name="config" placeholder="Paste JSON config"></textarea>
+    </div>
+
+    <div>
+        <label for="override">Override (KEY=VALUE):</label>
+        <input type="text" id="override" name="override">
+        <button type="button" onclick="addOverride()">Add Override</button>
+        <div id="overrides"></div>
+    </div>
+
+    <input type="checkbox" id="upsert" name="upsert">
+    <label for="upsert">Upsert</label>
+
+    <input type="text" id="input" name="input" placeholder="Input File/Directory (for upsert)">
+
+    <input type="text" id="metadata" name="metadata" placeholder="Metadata (for upsert)">
+
+    <input type="file" id="uploadImageFile" name="uploadImageFile">
+
+    <input type="text" id="downloadMedia" name="downloadMedia" placeholder="Download Media Directory">
+
+    <input type="checkbox" id="parseCode" name="parseCode">
+    <label for="parseCode">Parse Code</label>
+
+    <input type="checkbox" id="executeOutput" name="executeOutput">
+    <label for="executeOutput">Execute Output</label>
+
+    <input type="checkbox" id="markdown" name="markdown">
+    <label for="markdown">Markdown</label>
+
+    <input type="text" id="generateCypher" name="generateCypher" placeholder="Cypher Query">
+
+    <h2>Pipeline</h2>
+    <div>
+        <label for="pipelineFile">Pipeline File (YAML):</label>
+        <textarea id="pipelineFile" name="pipelineFile" placeholder="Paste YAML pipeline"></textarea>
+    </div>
+
+    <input type="text" id="pipelineInput" name="pipelineInput" placeholder="Pipeline Input">
+
+    <input type="checkbox" id="jsonOutput" name="jsonOutput">
+    <label for="jsonOutput">JSON Output</label>
+
+    <input type="text" id="runId" name="runId" placeholder="Run ID">
+
+    <input type="checkbox" id="forceFresh" name="forceFresh">
+    <label for="forceFresh">Force Fresh</label>
+
+    <button type="button" onclick="executeCommand()">Execute</button>
+</form>
+
+<div id="output"></div>
+</body>
+</html>

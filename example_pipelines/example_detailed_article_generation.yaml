@@ -3,18 +3,18 @@ steps:
   - !ShellCommand
     name: generate_article_topic
     command: |
-      fluent openai '' <<EOT
+      fluent openai '' <<EOM
       Generate a unique and intriguing article topic about the intersection of technology and nature
       Integrate this concept also: ${input}
-      EOT
+      EOM
     save_output: article_topic
 
   - !ShellCommand
     name: create_article_outline
     command: |
-      fluent sonnet3.5 '' <<"""EOT"""
+      fluent sonnet3.5 '' <<EOM
       Create a detailed outline for an article with the following topic: ${article_topic}. Include exactly 5 main sections with 3-4 subsections each. Format the outline as a numbered list with main sections numbered 1-5 and subsections using letters (a, b, c, d).
-      EOT
+      EOM
     save_output: article_outline
 
   - !ShellCommand
@@ -33,13 +33,13 @@ steps:
       - !ShellCommand
         name: generate_section
         command: |
-          fluent openai '' <<"""EOT"""
+          fluent openai '' <<EOM
           Write a detailed section for the following part of the article outline: 
 
           ${article_outline}
 
           Focus on main section ${ITEM} and its subsections. Write approximately 500-700 words for this section. Include a section header formatted as an H2 (##) and subheaders as H3 (###).
-          EOT
+          EOM
         save_output: current_section
 
       - !ShellCommand
@@ -52,27 +52,27 @@ steps:
   - !ShellCommand
     name: generate_introduction
     command: |
-      fluent openai '' <<"""EOT"""
+      fluent openai '' <<EOM
       Write an engaging introduction for the article with the following topic and outline:
 
       Topic: ${article_topic}
       Outline: ${article_outline}
 
       The introduction should be approximately 250-300 words and should set the stage for the rest of the article.
-      EOT
+      EOM
     save_output: introduction
 
   - !ShellCommand
     name: generate_conclusion
     command: |
-      fluent openai '' <<"""EOT"""
+      fluent openai '' <<EOM
       Write a compelling conclusion for the article with the following topic and outline:
 
       Topic: ${article_topic}
       Outline: ${article_outline}
 
       The conclusion should be approximately 250-300 words, summarize the main points, and leave the reader with a final thought or call to action.
-      EOT
+      EOM
     save_output: conclusion
 
   - !ShellCommand
@@ -96,7 +96,7 @@ steps:
         echo "Python not found. Please install Python and ensure it's in your PATH."
         exit 1
       fi
-      $PYTHON_CMD <<EOT
+      $PYTHON_CMD <<EOM
       import requests
       from bs4 import BeautifulSoup
       import json
@@ -118,58 +118,58 @@ steps:
           'link': 'https://news.google.com' + link['href'][1:]
         })
       print(json.dumps(results))
-      EOT
+      EOM
     save_output: related_articles
 
   - !ShellCommand
     name: summarize_related_articles
     command: |
-      fluent cohere '' <<"""EOT"""
+      fluent cohere '' <<EOM
       Summarize the following related articles in the context of our main topic '${article_topic}': ${related_articles}
-      EOT
+      EOM
     save_output: article_summary
 
   - !ShellCommand
     name: generate_data_visualization
     command: |
-      fluent gemini-flash ''  --parse-code <<"""EOT"""
+      fluent gemini-flash ''  --parse-code <<EOM
       Create a Python script using matplotlib to visualize the relationship between technology and nature based on the article we've been working on. Use the following topic as inspiration: ${article_topic}
       No pip installs.  
       Only output the python script.  
       Save the plot as output.png
-      EOT
+      EOM
     save_output: data_viz_script
 
   - !ShellCommand
     name: execute_data_visualization
     command: |
-      python3 <<EOT
+      python3 <<EOM
       ${data_viz_script}
-      EOT
+      EOM
     save_output: data_viz_output
 
   - !ShellCommand
     name: generate_image_prompt
     command: |
-      fluent sonnet3.5 '' <<"""EOT"""
+      fluent sonnet3.5 '' <<EOM
       Create a detailed prompt for an AI image generator to create an image that represents the intersection of technology and nature, based on our article topic: 
       ${conclusion}
       Output the prompt only.
-      EOT
+      EOM
     save_output: image_prompt
 
   - !Command
     name: generate_image
     command: |
-      fluent dalleVertical '' --download-media ~/Downloads <<EOT
+      fluent dalleVertical '' --download-media ~/Downloads <<EOM
       "${image_prompt}"
-      EOT
+      EOM
     save_output: generated_image
 
   - !ShellCommand
     name: analyze_generated_content
     command: |
-      fluent mistral-nemo '' <<"""EOT"""
+      fluent openai-mini '' <<EOM
       Analyze the following content we've generated for our article. Provide insights on coherence, factual accuracy, and potential improvements:
 
       Topic: ${article_topic}
@@ -177,32 +177,32 @@ steps:
       First Section: ${article_section_1}
       Related Articles Summary: ${article_summary}
       Generated Image Prompt: ${image_prompt}
-      EOT
+      EOM
     save_output: content_analysis
 
   - !Command
     name: generate_social_media_post
     command: |
-      fluent openai '' <<EOT
+      fluent openai '' <<EOM
       Create an engaging social media post (280 characters max) to promote our article on the topic: ${article_topic}. 
       Include a call-to-action and relevant hashtags.
-      EOT
+      EOM
     save_output: social_media_post
 
   - !ShellCommand
     name: create_markdown_report
     command: |
-      fluent sonnet3.5 '' <<"""EOT"""
+      fluent sonnet3.5 '' <<EOM
       Create a markdown report summarizing our content creation process and results. Include the following sections: Article Topic, Outline, Full Article Content, Related Articles Summary, Data Visualization Description, Generated Image Description, Content Analysis, and Social Media Post.
-      EOT
+      EOM
     save_output: markdown_report
 
   - !ShellCommand
     name: save_report
     command: |
-      cat <<EOT > ai_content_creator_report.md
+      cat <<EOM > ai_content_creator_report.md
       ${markdown_report}
-      EOT
+      EOM
       echo "Report saved as ai_content_creator_report.md"
 
 
@@ -225,9 +225,9 @@ steps:
   - !ShellCommand
     name: extract_triples
     command: |
-      fluent openai-mini "give me an output of all the meaningful triples in this text. Only output the cypher in Neo4j format. use single quotes" --parse-code <<"""EOT"""
-      ${final_summary}
-      EOT
+      fluent openai-mini "give me an output of all the meaningful triples in this text. Only output the cypher in Neo4j format. use single quotes" --parse-code <<EOM
+        ${final_summary}
+      EOM
     save_output: triples_data
 
   - !ShellCommand
@@ -239,8 +239,8 @@ steps:
   - !ShellCommand
     name: final_summary
     command: |
-      fluent openai '' <<EOT
+      fluent openai '' <<EOM
       Summarize the entire process we've just completed in creating an AI-powered article, including the steps taken and the potential impact of this automated content creation pipeline.
       Only output the summary.
-      EOT
+      EOM
     save_output: process_summary

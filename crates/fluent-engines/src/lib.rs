@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use log::debug;
 
 use anthropic::AnthropicEngine;
 use cohere::CohereEngine;
@@ -16,9 +17,7 @@ use serde::{Deserialize, Serialize};
 use stabilityai::StabilityAIEngine;
 use strum::{Display, EnumString};
 use webhook::WebhookEngine;
-use plugin::{CreateEngineFn, EngineTypeFn};
-use once_cell::sync::OnceCell;
-use libloading::Library;
+// Plugin imports removed - plugins disabled for security
 use anyhow;
 
 extern crate core;
@@ -42,6 +41,26 @@ pub mod webhook;
 
 pub mod replicate;
 pub mod plugin;
+pub mod shared;
+pub mod optimized_state_store;
+pub mod state_store_benchmark;
+pub mod memory_optimized_utils;
+pub mod optimized_openai;
+pub mod connection_pool;
+pub mod pooled_openai_example;
+pub mod enhanced_cache;
+pub mod base_engine;
+pub mod simplified_engine;
+pub mod enhanced_config;
+pub mod config_cli;
+pub mod secure_plugin_system;
+pub mod plugin_cli;
+pub mod enhanced_error_handling;
+pub mod error_cli;
+pub mod modular_pipeline_executor;
+pub mod pipeline_step_executors;
+pub mod pipeline_infrastructure;
+pub mod pipeline_cli;
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
@@ -95,41 +114,13 @@ pub enum EngineType {
     Dalle,
 }
 
-struct PluginEntry {
-    #[allow(dead_code)]
-    lib: Library,
-    create: CreateEngineFn,
-    engine_type: String,
-}
-
-static PLUGINS: OnceCell<Vec<PluginEntry>> = OnceCell::new();
-
-fn load_plugins() -> anyhow::Result<&'static Vec<PluginEntry>> {
-    PLUGINS.get_or_try_init(|| {
-        let mut plugins = Vec::new();
-        if let Ok(dir) = std::env::var("FLUENT_ENGINE_PLUGIN_DIR") {
-            for entry in std::fs::read_dir(&dir)? {
-                let path = entry?.path();
-                if path.extension().and_then(|s| s.to_str()).map(|s| s == "so" || s == "dll" || s == "dylib").unwrap_or(false) {
-                    unsafe {
-                        let lib = Library::new(&path)?;
-                        let engine_type_fn: libloading::Symbol<EngineTypeFn> = lib.get(b"engine_type")?;
-                        let c_str = std::ffi::CStr::from_ptr(engine_type_fn());
-                        let engine_type = c_str.to_str()?.to_string();
-                        let create_fn: libloading::Symbol<CreateEngineFn> = lib.get(b"create_engine")?;
-                        let entry = PluginEntry {
-                            lib,
-                            create: *create_fn,
-                            engine_type,
-                        };
-                        plugins.push(entry);
-                    }
-                }
-            }
-        }
-        Ok(plugins)
-    })
-}
+// Plugin system disabled for security reasons
+// TODO: Implement secure plugin architecture with:
+// 1. Proper sandboxing and isolation
+// 2. Memory safety guarantees
+// 3. Plugin signature verification
+// 4. Comprehensive error handling
+// 5. Security auditing and validation
 
 pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<dyn Engine>> {
     let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str()) {
@@ -150,15 +141,8 @@ pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<d
         EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
         },
         Err(_) => {
-            if let Ok(plugins) = load_plugins() {
-                for plugin in plugins {
-                    if plugin.engine_type.eq_ignore_ascii_case(&engine_config.engine) {
-                        let create = plugin.create;
-                        let engine = unsafe { create(engine_config.clone()) };
-                        return Ok(engine);
-                    }
-                }
-            }
+            // Plugin support disabled for security reasons
+            debug!("Unknown engine type '{}' - plugins are disabled", engine_config.engine);
             return Err(anyhow::anyhow!(format!("Unknown engine type: {}", engine_config.engine)));
         }
     };

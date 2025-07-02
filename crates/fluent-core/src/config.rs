@@ -1,9 +1,11 @@
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
+use crate::memory_utils::{StringUtils, ParamUtils};
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
@@ -167,10 +169,13 @@ pub fn load_config(
         .map(|(k, v)| match v.parse::<bool>() {
             Ok(b) => (k, serde_json::Value::Bool(b)),
             _ => match v.parse::<f64>() {
-                Ok(f) => (
-                    k,
-                    serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()),
-                ),
+                Ok(f) => match serde_json::Number::from_f64(f) {
+                    Some(num) => (k, serde_json::Value::Number(num)),
+                    None => {
+                        debug!("Invalid f64 value for key '{}': {}, treating as string", k, f);
+                        (k, serde_json::Value::String(v.clone()))
+                    }
+                },
                 _ => (k, serde_json::Value::String(v.clone())),
             },
         })
@@ -194,7 +199,7 @@ impl VariableResolver for CredentialResolver {
         debug!("Looking up credential: {}", credential_key);
         match self.credentials.get(credential_key) {
             Some(credential_value) => {
-                debug!("Credential found for: {}", credential_key);
+                debug!("Credential found for: {} (length: {})", credential_key, credential_value.len());
                 Ok(credential_value.clone())
             }
             None => {
@@ -209,12 +214,29 @@ impl VariableResolver for AmberVarResolver {
         key.starts_with("AMBER_")
     }
     fn resolve(&self, key: &str) -> Result<String> {
-        let output = Command::new("amber").arg("print").output()?;
-        if !output.status.success() {
-            return Err(anyhow!("Failed to run amber print command"));
+        // Validate key to prevent injection attacks
+        if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err(anyhow!("Invalid key format: {}", key));
         }
-        let stdout = String::from_utf8(output.stdout)?;
-        //debug!("Amber print output: {}", stdout);
+
+        // Use absolute path and validate amber command exists
+        let amber_path = which::which("amber")
+            .map_err(|_| anyhow!("amber command not found in PATH"))?;
+
+        let output = Command::new(amber_path)
+            .arg("print")
+            .env_clear() // Clear environment for security
+            .output()
+            .map_err(|e| anyhow!("Failed to execute amber command: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Amber command failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| anyhow!("Invalid UTF-8 in amber output: {}", e))?;
+
         for line in stdout.lines() {
             if line.contains(key) {
                 let parts: Vec<&str> = line.splitn(2, '=').collect();
@@ -273,21 +295,18 @@ pub fn apply_overrides(config: &mut EngineConfig, overrides: &[(String, String)]
 impl Default for VariableResolverProcessor {
     fn default() -> Self {
         VariableResolverProcessor {
-            keys: Vec::new(),
             resolvers: vec![Arc::new(EnvVarResolver {}), Arc::new(AmberVarResolver {})],
         }
     }
 }
 
 pub struct VariableResolverProcessor {
-    keys: Vec<String>,
     resolvers: Vec<Arc<dyn VariableResolver>>,
 }
 
 impl VariableResolverProcessor {
     pub fn new(credentials: &HashMap<String, String>) -> Self {
         VariableResolverProcessor {
-            keys: Vec::new(),
             resolvers: vec![
                 Arc::new(EnvVarResolver {}),
                 Arc::new(AmberVarResolver {}),
@@ -301,7 +320,9 @@ impl VariableResolverProcessor {
                 for resolver in &self.resolvers {
                     if resolver.is_resolvable(s) {
                         let resolved = resolver.resolve(s)?;
-                        self.set_env_var_from_amber(s, &resolved)?; //TODO: Is this necessary?
+                        // Security fix: Do not set decrypted secrets as environment variables
+                        // This prevents secrets from being exposed to child processes
+                        debug!("Resolved variable without setting environment variable for security");
                         *s = resolved;
                         return Ok(());
                     }
@@ -324,21 +345,11 @@ impl VariableResolverProcessor {
         }
     }
 
-    fn set_env_var_from_amber(&mut self, key: &str, value: &str) -> Result<()> {
-        std::env::set_var(key, value);
-        debug!("Set environment variable {} with decrypted value", key);
-        self.keys.push(key.to_owned());
-        Ok(())
-    }
+    // Removed set_env_var_from_amber for security reasons
+    // Setting decrypted secrets as environment variables is a security risk
 }
 
-impl Drop for VariableResolverProcessor {
-    fn drop(&mut self) {
-        for key in &self.keys {
-            std::env::remove_var(key);
-        }
-    }
-}
+// Drop implementation removed - no longer setting environment variables for security
 
 // Helper function to replace config strings starting with "AMBER_" with their env values
 pub fn replace_with_env_var(value: &mut Value) {

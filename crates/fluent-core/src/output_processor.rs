@@ -4,7 +4,7 @@ use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -16,7 +16,77 @@ use tokio::process::Command;
 use url::Url;
 use uuid::Uuid;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 pub struct OutputProcessor;
+
+impl OutputProcessor {
+    /// Validates that a URL is safe for downloading
+    fn validate_download_url(url: &str) -> Result<()> {
+        let parsed_url = Url::parse(url)?;
+
+        // Only allow HTTPS for security
+        if parsed_url.scheme() != "https" {
+            return Err(anyhow!("Only HTTPS URLs are allowed for downloads"));
+        }
+
+        // Block localhost and private IP ranges
+        if let Some(host) = parsed_url.host_str() {
+            if host == "localhost" || host == "127.0.0.1" || host.starts_with("192.168.")
+                || host.starts_with("10.") || host.starts_with("172.") {
+                return Err(anyhow!("Downloads from private/local addresses are not allowed"));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Sanitizes a filename to prevent path traversal attacks
+    fn sanitize_filename(filename: &str) -> String {
+        // Remove path separators and dangerous characters
+        let mut sanitized = filename.to_string();
+        for dangerous_char in ['/', '\\', '\0'] {
+            sanitized = sanitized.replace(dangerous_char, "_");
+        }
+        sanitized = sanitized.replace("..", "_");
+
+        let sanitized = sanitized
+            .chars()
+            .filter(|c| c.is_alphanumeric() || matches!(*c, '.' | '_' | '-'))
+            .collect::<String>();
+
+        // Ensure filename is not empty and has reasonable length
+        if sanitized.is_empty() || sanitized.len() > 255 {
+            format!("file_{}", Uuid::new_v4())
+        } else {
+            sanitized
+        }
+    }
+
+    /// Creates a secure temporary file with restricted permissions
+    async fn create_secure_temp_file(content: &[u8], extension: &str) -> Result<PathBuf> {
+        let temp_dir = env::temp_dir();
+        let file_name = format!("fluent_{}_{}.{}",
+            std::process::id(),
+            Uuid::new_v4(),
+            Self::sanitize_filename(extension)
+        );
+        let temp_file = temp_dir.join(file_name);
+
+        // Create file with secure permissions (owner read/write only)
+        fs::write(&temp_file, content).await?;
+
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&temp_file).await?.permissions();
+            perms.set_mode(0o600); // Owner read/write only
+            fs::set_permissions(&temp_file, perms).await?;
+        }
+
+        Ok(temp_file)
+    }
+}
 
 impl OutputProcessor {
     pub async fn download_media_files(content: &str, directory: &Path) -> Result<()> {
@@ -50,7 +120,12 @@ impl OutputProcessor {
     ) -> Result<()> {
         debug!("Attempting to download file from URL: {}", url);
 
-        let client = Client::new();
+        // Security validation
+        Self::validate_download_url(url)?;
+
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
         let response = client.get(url).send().await?;
 
         if !response.status().is_success() {
@@ -60,19 +135,36 @@ impl OutputProcessor {
             ));
         }
 
+        // Check content length to prevent excessive downloads
+        if let Some(content_length) = response.content_length() {
+            if content_length > 100 * 1024 * 1024 { // 100MB limit
+                return Err(anyhow!("File too large: {} bytes", content_length));
+            }
+        }
+
         let file_name = if let Some(name) = suggested_name {
-            name
+            Self::sanitize_filename(&name)
         } else {
-            Url::parse(url)?
+            let extracted_name = Url::parse(url)?
                 .path_segments()
                 .and_then(|segments| segments.last())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| Uuid::new_v4().to_string())
+                .unwrap_or_else(|| format!("download_{}", Uuid::new_v4()));
+            Self::sanitize_filename(&extracted_name)
         };
 
         let file_path = directory.join(&file_name);
         let content = response.bytes().await?;
+
+        // Create file with secure permissions
         fs::write(&file_path, &content).await?;
+
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&file_path).await?.permissions();
+            perms.set_mode(0o644); // Owner read/write, group/others read only
+            fs::set_permissions(&file_path, perms).await?;
+        }
 
         info!(
             "Downloaded: {} ({} bytes)",
@@ -108,12 +200,19 @@ impl OutputProcessor {
     }
 
     pub fn parse_code(content: &str) -> Vec<String> {
-        let code_block_regex = Regex::new(r"```(?:\w+)?\n([\s\S]*?)\n```").unwrap();
-        code_block_regex
-            .captures_iter(content)
-            .filter_map(|cap| cap.get(1))
-            .map(|m| m.as_str().trim().to_string())
-            .collect()
+        match Regex::new(r"```(?:\w+)?\n([\s\S]*?)\n```") {
+            Ok(code_block_regex) => {
+                code_block_regex
+                    .captures_iter(content)
+                    .filter_map(|cap| cap.get(1))
+                    .map(|m| m.as_str().trim().to_string())
+                    .collect()
+            }
+            Err(e) => {
+                debug!("Failed to create regex for code block parsing: {}", e);
+                Vec::new()
+            }
+        }
     }
 
     pub async fn execute_code(content: &str) -> Result<String> {
@@ -137,74 +236,107 @@ impl OutputProcessor {
         block.starts_with("#!/bin/") || block.starts_with("#!/usr/bin/env")
     }
 
-    async fn execute_script(script: &str) -> Result<String> {
-        // Use a platform-agnostic way to get the temp directory
-        let temp_dir = env::temp_dir();
-        let file_name = format!(
-            "script_{}.{}",
-            Uuid::new_v4(),
-            if cfg!(windows) { "bat" } else { "sh" }
-        );
-        let temp_file = temp_dir.join(file_name);
+    async fn execute_script(_script: &str) -> Result<String> {
+        // Security check: Disable script execution for security reasons
+        return Err(anyhow!(
+            "Script execution is disabled for security reasons. \
+            To enable script execution, implement proper sandboxing and validation."
+        ));
 
-        // Write the script to the temporary file
-        fs::write(&temp_file, script)
-            .await
-            .context("Failed to write script to temporary file")?;
+        // TODO: Implement secure script execution with:
+        // 1. Sandboxing (containers, chroot, etc.)
+        // 2. Resource limits (CPU, memory, time)
+        // 3. Network isolation
+        // 4. File system restrictions
+        // 5. Input validation and sanitization
 
-        // Set executable permissions on Unix-like systems
-        #[cfg(unix)]
+        #[allow(unreachable_code)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&temp_file).await?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&temp_file, perms)
-                .await
-                .context("Failed to set file permissions")?;
-        }
+            let temp_file = Self::create_secure_temp_file(
+                _script.as_bytes(),
+                if cfg!(windows) { "bat" } else { "sh" }
+            ).await?;
 
-        // Execute the script
-        let result = if cfg!(windows) {
-            Command::new("cmd").arg("/C").arg(&temp_file).output().await
-        } else {
-            Command::new("sh").arg(&temp_file).output().await
-        }
-        .context("Failed to execute script")?;
-
-        // Remove the temporary file
-        fs::remove_file(&temp_file)
-            .await
-            .context("Failed to remove temporary file")?;
-
-        // Collect and format the output
-        let stdout = String::from_utf8_lossy(&result.stdout);
-        let stderr = String::from_utf8_lossy(&result.stderr);
-
-        Ok(format!("Script Output:\n{}\nErrors:\n{}\n", stdout, stderr))
-    }
-
-    async fn execute_commands(commands: &str) -> Result<String> {
-        let mut output = String::new();
-        for command in commands.lines() {
-            let trimmed = command.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
+            // Set executable permissions on Unix-like systems
+            #[cfg(unix)]
+            {
+                let mut perms = fs::metadata(&temp_file).await?.permissions();
+                perms.set_mode(0o700); // Owner execute only
+                fs::set_permissions(&temp_file, perms).await?;
             }
 
-            output.push_str(&format!("Executing: {}\n", trimmed));
+            // Execute with timeout and resource limits
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                if cfg!(windows) {
+                    Command::new("cmd").arg("/C").arg(&temp_file).output()
+                } else {
+                    Command::new("sh").arg(&temp_file).output()
+                }
+            ).await
+            .context("Script execution timed out")?
+            .context("Failed to execute script")?;
 
-            let result = Command::new("sh").arg("-c").arg(trimmed).output().await?;
+            // Clean up temporary file
+            let _ = fs::remove_file(&temp_file).await;
 
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
 
-            output.push_str(&format!("Output:\n{}\n", stdout));
-            if !stderr.is_empty() {
-                output.push_str(&format!("Errors:\n{}\n", stderr));
-            }
-            output.push('\n');
+            Ok(format!("Script Output:\n{}\nErrors:\n{}\n", stdout, stderr))
         }
-        Ok(output)
+    }
+
+    async fn execute_commands(_commands: &str) -> Result<String> {
+        // Security check: Disable command execution for security reasons
+        return Err(anyhow!(
+            "Command execution is disabled for security reasons. \
+            To enable command execution, implement proper sandboxing, \
+            input validation, and command whitelisting."
+        ));
+
+        // TODO: Implement secure command execution with:
+        // 1. Command whitelisting (only allow safe commands)
+        // 2. Input sanitization and validation
+        // 3. Sandboxing and resource limits
+        // 4. Network and file system restrictions
+        // 5. Timeout controls
+
+        #[allow(unreachable_code)]
+        {
+            let mut output = String::new();
+            for command in _commands.lines() {
+                let trimmed = command.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+
+                // Basic command validation (would need more comprehensive checks)
+                if trimmed.contains("rm") || trimmed.contains("sudo") || trimmed.contains("curl") {
+                    output.push_str(&format!("Blocked dangerous command: {}\n", trimmed));
+                    continue;
+                }
+
+                output.push_str(&format!("Executing: {}\n", trimmed));
+
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    Command::new("sh").arg("-c").arg(trimmed).output()
+                ).await
+                .context("Command execution timed out")?
+                .context("Failed to execute command")?;
+
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let stderr = String::from_utf8_lossy(&result.stderr);
+
+                output.push_str(&format!("Output:\n{}\n", stdout));
+                if !stderr.is_empty() {
+                    output.push_str(&format!("Errors:\n{}\n", stderr));
+                }
+                output.push('\n');
+            }
+            Ok(output)
+        }
     }
 }
 
@@ -325,14 +457,18 @@ impl MarkdownFormatter {
     pub fn set_theme(&mut self, theme_name: &str) -> Result<()> {
         debug!("set_theme: {}", theme_name);
         if let Some(theme) = self.theme_set.themes.get(theme_name) {
-            self.skin.paragraph.set_fg(Color::Rgb {
-                r: theme.settings.foreground.unwrap().r,
-                g: theme.settings.foreground.unwrap().g,
-                b: theme.settings.foreground.unwrap().b,
-            });
-            Ok(())
+            if let Some(foreground) = theme.settings.foreground {
+                self.skin.paragraph.set_fg(Color::Rgb {
+                    r: foreground.r,
+                    g: foreground.g,
+                    b: foreground.b,
+                });
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Theme '{}' has no foreground color defined", theme_name))
+            }
         } else {
-            Err(anyhow::anyhow!("Theme not found"))
+            Err(anyhow::anyhow!("Theme '{}' not found", theme_name))
         }
     }
 }

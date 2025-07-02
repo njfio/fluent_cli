@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frogger-like Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #2c3e50;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            text-align: center;
+        }
+        #gameCanvas {
+            border: 2px solid #ecf0f1;
+            background-color: #34495e;
+        }
+        #score, #lives {
+            color: #ecf0f1;
+            font-size: 20px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="score">Score: 0</div>
+        <div id="lives">Lives: 3</div>
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+
+        const frogSize = 30;
+        const carHeight = 40;
+        const laneHeight = 50;
+        const carWidth = 60;
+
+        let frog = {
+            x: canvas.width / 2 - frogSize / 2,
+            y: canvas.height - frogSize,
+            width: frogSize,
+            height: frogSize
+        };
+
+        let cars = [];
+        let score = 0;
+        let lives = 3;
+
+        function createCars() {
+            for (let i = 0; i < 5; i++) {
+                cars.push({
+                    x: Math.random() * canvas.width,
+                    y: i * laneHeight + laneHeight,
+                    width: carWidth,
+                    height: carHeight,
+                    speed: Math.random() * 2 + 1
+                });
+            }
+        }
+
+        function drawFrog() {
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(frog.x, frog.y, frog.width, frog.height);
+        }
+
+        function drawCars() {
+            ctx.fillStyle = '#e74c3c';
+            cars.forEach(car => {
+                ctx.fillRect(car.x, car.y, car.width, car.height);
+            });
+        }
+
+        function drawGoal() {
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillRect(0, 0, canvas.width, laneHeight);
+        }
+
+        function moveCars() {
+            cars.forEach(car => {
+                car.x += car.speed;
+                if (car.x > canvas.width) {
+                    car.x = -car.width;
+                }
+            });
+        }
+
+        function checkCollision() {
+            return cars.some(car => {
+                return frog.x < car.x + car.width &&
+                       frog.x + frog.width > car.x &&
+                       frog.y < car.y + car.height &&
+                       frog.y + frog.height > car.y;
+            });
+        }
+
+        function checkWin() {
+            return frog.y < laneHeight;
+        }
+
+        function resetFrog() {
+            frog.x = canvas.width / 2 - frogSize / 2;
+            frog.y = canvas.height - frogSize;
+        }
+
+        function updateScore() {
+            score += 10;
+            scoreElement.textContent = `Score: ${score}`;
+        }
+
+        function updateLives() {
+            lives--;
+            livesElement.textContent = `Lives: ${lives}`;
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawGoal();
+            drawFrog();
+            drawCars();
+            moveCars();
+
+            if (checkCollision()) {
+                updateLives();
+                resetFrog();
+                if (lives === 0) {
+                    alert(`Game Over! Your score: ${score}`);
+                    resetGame();
+                }
+            }
+
+            if (checkWin()) {
+                updateScore();
+                resetFrog();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            scoreElement.textContent = `Score: ${score}`;
+            livesElement.textContent = `Lives: ${lives}`;
+            resetFrog();
+            cars = [];
+            createCars();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                    if (frog.y > 0) frog.y -= 10;
+                    break;
+                case 'ArrowDown':
+                case 's':
+                    if (frog.y < canvas.height - frog.height) frog.y += 10;
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                    if (frog.x > 0) frog.x -= 10;
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    if (frog.x < canvas.width - frog.width) frog.x += 10;
+                    break;
+            }
+        });
+
+        createCars();
+        gameLoop();
+    </script>
+</body>
+</html>

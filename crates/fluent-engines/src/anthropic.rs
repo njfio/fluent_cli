@@ -102,12 +102,14 @@ impl Engine for AnthropicEngine {
 
     fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            // Implement Anthropic-specific upsert logic here
-            // For now, we'll just return a placeholder response
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Anthropic doesn't have a native upsert/embedding API
+            // They focus on conversational AI rather than embeddings
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "anthropic".to_string(),
+                operation: "upsert".to_string(),
+            }).into())
         })
     }
 
@@ -177,18 +179,20 @@ impl Engine for AnthropicEngine {
                     completion_cost,
                     total_cost,
                 },
-                cost: Cost {
-                    prompt_cost,
-                    completion_cost,
-                    total_cost,
-                },
             })
         })
     }
 
     fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File upload not implemented for Anthropic engine"))
+            use fluent_core::error::{FluentError, EngineError};
+
+            // Anthropic doesn't have a separate file upload API
+            // Files are processed inline with vision requests
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "anthropic".to_string(),
+                operation: "file_upload".to_string(),
+            }).into())
         })
     }
 

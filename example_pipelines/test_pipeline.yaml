@@ -15,7 +15,7 @@ steps:
 
   - !Condition
     name: check_greeting
-    condition: "[ '${greeting}' = 'Hello, World!' ]"
+    condition: "[ '${greeting}' = 'hello world' ]"
     if_true: echo "Greeting is correct"
     if_false: echo "Greeting is incorrect"
 
@@ -36,7 +36,7 @@ steps:
 
   - !Command
     name: create_story
-    command: fluent openai 'tell me a story about ${input}., just output the story'
+    command: fluent cohere "tell me a story about ${user_color}, just output the story"
     save_output: story_data
 
   - !ShellCommand
@@ -50,13 +50,16 @@ steps:
       - !ShellCommand
         name: increment_counter
         command: |
-          fluent openai '' <<'EOF'
-          tell a joke about: ${counter}, just about the joke
-          EOF
+          counter=$((${counter} + 1))
+          echo $counter
         save_output: counter
+      - !ShellCommand
+          name: create_story
+          command: fluent perplexity "tell me a joke about ${user_color}, just output the joke"
+          save_output: joke_data
       - !PrintOutput
-        name: display_counter
-        value: "Current count: ${counter}"
+          name: display_counter
+          value: "Current count: ${counter}.  Current joke: ${joke_data}"
     condition: "[ ${counter} -ge 5 ]"
 
   - !PrintOutput
@@ -67,6 +70,7 @@ steps:
       Greeting: ${greeting}
       Loop Result: ${loop_result}
       Story: ${story_data}
+      Joke: ${joke_data}
       Processed Fruits: ${processed_fruits}
       User's Favorite Color: ${user_color}
       Final Counter Value: ${counter}

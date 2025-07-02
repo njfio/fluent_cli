@@ -30,6 +30,7 @@ owo-colors = { workspace = true }
 pdf-extract = { workspace = true }
 sled = { workspace = true }
 sha2 = { workspace = true }
+which = "6.0"
 
 
 #rust-bert = {  version = "0.18.0"  }  #Is not used

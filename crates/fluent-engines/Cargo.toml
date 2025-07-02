@@ -28,4 +28,15 @@ serde_yaml = { workspace = true }
 
 libloading = { workspace = true }
 once_cell = { workspace = true }
+lru = "0.12"
+lz4_flex = "0.11"
+sha2 = "0.10"
+sled = "0.34"
+chrono = { version = "0.4", features = ["serde"] }
+which = "6.0"
+clap = { version = "4.0", features = ["derive"] }
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = { workspace = true }
 

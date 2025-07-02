@@ -3,7 +3,7 @@ steps:
   - !Command
     name: generate_story
     command: |
-      fluent openai '' <<'EOF'
+      fluent openai-mini '' <<'EOF'
       'Write a short story about a robot learning to ${input}}.'
       EOF
     save_output: raw_story
@@ -24,14 +24,20 @@ steps:
     name: generate_illustrations
     input: "introduction,climax,conclusion"
     command: |
-      fluent dalleVertical '' --download-media ~/Downloads <<'EOF'
+      fluent dalleVertical '' --download-media / <<'EOF'
       'Create an image for the ${ITEM} of a story about ${theme}'
       EOF
     save_output: illustrations
 
-  - !HumanInTheLoop
+  - !ShellCommand
     name: get_user_feedback
-    prompt: "Rate the story and illustrations from 1-10:"
+    command: |
+      fluent openai '' <<EOF
+        Be hyper critical and rate the story and illustrations from 1-10:
+        ${raw_story}
+        ${illustrations}
+        Only output a number.
+      EOF
     save_output: user_rating
 
   - !Condition
@@ -47,7 +53,7 @@ steps:
         name: improve_story
         command: |
           fluent openai '' <<'EOF'
-          Rewrite this story, making it more engaging: ${raw_story}
+          Rewrite this story, making it more engaging: ${raw_story}.  Only output the improved Story.
           EOF
         save_output: raw_story
       - !ShellCommand
@@ -57,7 +63,7 @@ steps:
           'Rate this story out of 10: ${raw_story}, only output a number.'
           EOF
         save_output: user_rating
-    condition: "[ ${user_rating} -ge 8 ]"
+    condition: "[ ${user_rating} -ge 9 ]"
 
   - !PrintOutput
     name: final_output

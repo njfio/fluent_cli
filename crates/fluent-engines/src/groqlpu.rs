@@ -123,10 +123,13 @@ impl Engine for GroqLPUEngine {
 
     fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            use fluent_core::error::{FluentError, EngineError};
+
+            // GroqLPU doesn't have a native upsert/embedding API
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "groqlpu".to_string(),
+                operation: "upsert".to_string(),
+            }).into())
         })
     }
 
@@ -152,13 +155,23 @@ impl Engine for GroqLPUEngine {
 
     fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File upload not supported for GroqLPU engine"))
+            use fluent_core::error::{FluentError, EngineError};
+
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "groqlpu".to_string(),
+                operation: "file_upload".to_string(),
+            }).into())
         })
     }
 
     fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File processing not supported for GroqLPU engine"))
+            use fluent_core::error::{FluentError, EngineError};
+
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "groqlpu".to_string(),
+                operation: "file_processing".to_string(),
+            }).into())
         })
     }
 }

@@ -23,6 +23,7 @@ termimad = { workspace = true }
 dialoguer = { workspace = true }
 
 fluent-agent = { path = "../fluent-agent" }
+rmcp = { workspace = true }
 
 #fluent-storage = { path = "../fluent-storage" }  # is not used
 #clap_complete = "4.5.1"  #is not used

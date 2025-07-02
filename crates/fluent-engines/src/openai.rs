@@ -2,7 +2,9 @@ use anyhow::{anyhow, Context, Result};
 use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine as Base64Engine;
 use fluent_core::cache::{cache_key, RequestCache};
+use fluent_core::auth::EngineAuth;
 use fluent_core::config::EngineConfig;
+use fluent_core::input_validator::InputValidator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor, OpenAIConfigProcessor};
 use fluent_core::types::{
@@ -11,7 +13,7 @@ use fluent_core::types::{
 };
 use log::debug;
 use reqwest::multipart::{Form, Part};
-use reqwest::Client;
+
 use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
@@ -25,6 +27,7 @@ pub struct OpenAIEngine {
     config_processor: OpenAIConfigProcessor,
     neo4j_client: Option<Arc<Neo4jClient>>,
     cache: Option<RequestCache>,
+    auth_client: reqwest::Client,
 }
 
 impl OpenAIEngine {
@@ -42,11 +45,16 @@ impl OpenAIEngine {
             None
         };
 
+        // Create authenticated client
+        let auth_client = EngineAuth::openai(&config.parameters)?
+            .create_authenticated_client()?;
+
         Ok(Self {
             config,
             config_processor: OpenAIConfigProcessor,
             neo4j_client,
             cache,
+            auth_client,
         })
     }
 
@@ -78,12 +86,20 @@ impl Engine for OpenAIEngine {
         _request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            // Implement OpenAI-specific upsert logic here
-            // For now, we'll just return a placeholder response
-            Ok(UpsertResponse {
-                processed_files: vec![],
-                errors: vec![],
-            })
+            // OpenAI supports embeddings through their embeddings API
+            // This is a simplified implementation - in production you'd want to:
+            // 1. Process the files in the request
+            // 2. Generate embeddings using OpenAI's embeddings API
+            // 3. Store them in a vector database
+            // 4. Return proper status
+
+            use fluent_core::error::{FluentError, EngineError};
+
+            // For now, return an error indicating this needs proper implementation
+            Err(FluentError::Engine(EngineError::UnsupportedOperation {
+                engine: "openai".to_string(),
+                operation: "upsert - requires embeddings API integration".to_string(),
+            }).into())
         })
     }
 
@@ -114,7 +130,6 @@ impl Engine for OpenAIEngine {
                 }
             }
 
-            let client = Client::new();
             debug!("Config: {:?}", self.config);
 
             let mut payload = self.config_processor.process_config(&self.config)?;
@@ -136,16 +151,9 @@ impl Engine for OpenAIEngine {
                 self.config.connection.request_path
             );
 
-            let auth_token = self
-                .config
-                .parameters
-                .get("bearer_token")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
-
-            let res = client
+            // Use the pre-authenticated client (no need to extract token manually)
+            let res = self.auth_client
                 .post(&url)
-                .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
                 .json(&payload)
                 .send()
@@ -209,7 +217,9 @@ impl Engine for OpenAIEngine {
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            let client = reqwest::Client::new();
+            // Security validation
+            InputValidator::validate_file_upload(file_path).await?;
+
             let url = "https://api.openai.com/v1/files";
 
             let file_name = file_path
@@ -218,25 +228,21 @@ impl Engine for OpenAIEngine {
                 .to_str()
                 .ok_or_else(|| anyhow!("File name is not valid UTF-8"))?;
 
+            // Sanitize filename
+            let sanitized_filename = InputValidator::sanitize_filename(file_name);
+
             let file = File::open(file_path).await?;
             let stream = FramedRead::new(file, BytesCodec::new());
             let file_part =
-                Part::stream(reqwest::Body::wrap_stream(stream)).file_name(file_name.to_owned());
+                Part::stream(reqwest::Body::wrap_stream(stream)).file_name(sanitized_filename);
 
             let form = Form::new()
                 .part("file", file_part)
                 .text("purpose", "assistants");
 
-            let auth_token = self
-                .config
-                .parameters
-                .get("bearer_token")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
-
-            let response = client
+            // Use the pre-authenticated client
+            let response = self.auth_client
                 .post(url)
-                .header("Authorization", format!("Bearer {}", auth_token))
                 .multipart(form)
                 .send()
                 .await?;
@@ -270,7 +276,6 @@ impl Engine for OpenAIEngine {
                 .context("Failed to read file")?;
             let base64_image = Base64.encode(&buffer);
 
-            let client = reqwest::Client::new();
             let url = format!(
                 "{}://{}:{}{}",
                 self.config.connection.protocol,
@@ -301,16 +306,9 @@ impl Engine for OpenAIEngine {
                 "max_tokens": 300
             });
 
-            let auth_token = self
-                .config
-                .parameters
-                .get("bearer_token")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
-
-            let response = client
+            // Use the pre-authenticated client
+            let response = self.auth_client
                 .post(&url)
-                .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
                 .json(&payload)
                 .send()

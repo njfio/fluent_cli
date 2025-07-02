@@ -5,6 +5,33 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::fs;
 use tokio::process::Command;
+use std::pin::Pin;
+
+// Advanced agentic modules
+pub mod config;
+pub mod mcp_adapter;
+pub mod mcp_client;
+pub mod agent_with_mcp;
+pub mod orchestrator;
+pub mod reasoning;
+pub mod action;
+pub mod observation;
+pub mod memory;
+pub mod context;
+pub mod goal;
+pub mod task;
+pub mod tools;
+
+// Re-export advanced agentic types
+pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use reasoning::{ReasoningEngine, LLMReasoningEngine, ReasoningCapability};
+pub use action::{ActionPlanner, ActionExecutor, IntelligentActionPlanner, ComprehensiveActionExecutor};
+pub use observation::{ObservationProcessor, ComprehensiveObservationProcessor};
+pub use memory::{MemorySystem, MemoryConfig, MemoryStats};
+pub use context::{ExecutionContext, ExecutionEvent, ContextStats};
+pub use goal::{Goal, GoalType, GoalPriority, GoalResult, GoalTemplates};
+pub use task::{Task, TaskType, TaskPriority, TaskResult, TaskTemplates};
+
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
@@ -21,7 +48,7 @@ impl Agent {
     /// Send a prompt to the engine and store the response in history.
     pub async fn send(&mut self, prompt: &str) -> Result<String> {
         let request = Request { flowname: "agent".to_string(), payload: prompt.to_string() };
-        let response = self.engine.execute(&request).await?;
+        let response = Pin::from(self.engine.execute(&request)).await?;
         let content = response.content.clone();
         self.history.push((prompt.to_string(), content.clone()));
         Ok(content)

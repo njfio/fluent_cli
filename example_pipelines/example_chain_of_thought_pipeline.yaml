@@ -58,7 +58,7 @@ steps:
   - !ShellCommand
     name: generate_final_answer
     command: |
-      fluent mistral-large2 '' <<"""EOT"""
+      fluent openai-mini '' <<"""EOT"""
         Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
   
         Original Problem: ${problem}
