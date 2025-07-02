@@ -7,7 +7,7 @@ edition = "2021"
 fluent-engines = { workspace = true }
 fluent-core = { workspace = true }
 anyhow = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -15,30 +15,30 @@ chrono = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 futures = { workspace = true }
-uuid = { version = "1.0", features = ["v4"] }
-regex = "1.0"
+uuid = { workspace = true, features = ["v4"] }
+regex = { workspace = true }
 rmcp = { workspace = true }
-rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "serde_json"] }
-tokio-rusqlite = "0.5.1"
-which = "6.0"
+rusqlite = { workspace = true }
+tokio-rusqlite = { workspace = true }
+which = { workspace = true }
 # Enhanced MCP Protocol Support
-tokio-tungstenite = "0.20"
-url = "2.4"
+tokio-tungstenite = { workspace = true }
+url = { workspace = true }
 # Performance Optimization
-deadpool = "0.10"
-moka = { version = "0.12", features = ["future"] }
+deadpool = { workspace = true }
+moka = { workspace = true }
 # Security and Sandboxing
-nix = "0.27"
+nix = { workspace = true }
 # Workflow Engine
-petgraph = "0.6"
-handlebars = "4.4"
+petgraph = { workspace = true }
+handlebars = { workspace = true }
 # Metrics and Monitoring
-metrics = "0.21"
-prometheus = "0.13"
+metrics = { workspace = true }
+prometheus = { workspace = true }
 # Additional utilities
-base64 = "0.21"
-thiserror = "1.0"
+base64 = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.0"
+tempfile = { workspace = true }
 

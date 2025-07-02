@@ -41,15 +41,13 @@ pub struct Neo4jClient {
 }
 impl Neo4jClient {
     pub fn get_document_count(&self) -> usize {
-        *self.document_count.read().unwrap()
+        self.document_count.read().map(|count| *count).unwrap_or(0)
     }
     pub fn get_word_document_count_for_word(&self, word: &str) -> usize {
-        *self
-            .word_document_count
+        self.word_document_count
             .read()
-            .unwrap()
-            .get(word)
-            .unwrap_or(&0)
+            .map(|counts| *counts.get(word).unwrap_or(&0))
+            .unwrap_or(0)
     }
     pub fn get_query_llm(&self) -> Option<&String> {
         self.query_llm.as_ref()
@@ -1486,7 +1484,7 @@ impl Neo4jClient {
             .collect();
 
         // Sort by TF-IDF score
-        tfidf.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        tfidf.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Extract top terms as clusters
         let clusters: Vec<String> = tfidf
