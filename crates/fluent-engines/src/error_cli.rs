@@ -1,5 +1,5 @@
 use crate::enhanced_error_handling::{
-    ErrorHandler, EnhancedError, ErrorContext, ErrorSeverity, ErrorCategory, RecoveryStrategy
+    EnhancedError, ErrorCategory, ErrorContext, ErrorHandler, ErrorSeverity, RecoveryStrategy,
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -92,7 +92,7 @@ impl ErrorCli {
     /// Run the CLI application
     pub async fn run() -> Result<()> {
         let cli = ErrorCli::parse();
-        
+
         // Ensure log directory exists
         tokio::fs::create_dir_all(&cli.log_dir).await?;
 
@@ -100,64 +100,63 @@ impl ErrorCli {
         let handler = ErrorHandler::new(cli.enable_recovery, cli.max_recovery_attempts);
 
         match cli.command {
-            Commands::Stats => {
-                Self::show_stats(&handler).await
-            }
-            Commands::List { limit, severity, category } => {
-                Self::list_errors(&handler, limit, severity, category).await
-            }
-            Commands::Show { error_id } => {
-                Self::show_error(&handler, &error_id).await
-            }
-            Commands::Test { error_type, test_recovery } => {
-                Self::test_error_handling(&handler, &error_type, test_recovery).await
-            }
+            Commands::Stats => Self::show_stats(&handler).await,
+            Commands::List {
+                limit,
+                severity,
+                category,
+            } => Self::list_errors(&handler, limit, severity, category).await,
+            Commands::Show { error_id } => Self::show_error(&handler, &error_id).await,
+            Commands::Test {
+                error_type,
+                test_recovery,
+            } => Self::test_error_handling(&handler, &error_type, test_recovery).await,
             Commands::Simulate { scenario, count } => {
                 Self::simulate_errors(&handler, &scenario, count).await
             }
             Commands::Export { output, format } => {
                 Self::export_errors(&handler, &output, &format).await
             }
-            Commands::Clear { force } => {
-                Self::clear_errors(&handler, force).await
-            }
-            Commands::Monitor { interval } => {
-                Self::monitor_errors(&handler, interval).await
-            }
+            Commands::Clear { force } => Self::clear_errors(&handler, force).await,
+            Commands::Monitor { interval } => Self::monitor_errors(&handler, interval).await,
         }
     }
 
     async fn show_stats(handler: &ErrorHandler) -> Result<()> {
         let stats = handler.get_stats().await;
-        
+
         println!("📊 Error Handler Statistics");
         println!("═══════════════════════════");
         println!("Total Errors: {}", stats.total_errors);
         println!("Recovery Enabled: {}", stats.recovery_enabled);
         println!("Max Recovery Attempts: {}", stats.max_recovery_attempts);
-        
+
         println!("\n📈 Error Breakdown:");
         for (error_type, count) in &stats.error_breakdown {
             println!("  • {}: {}", error_type, count);
         }
-        
+
         println!("\n🔄 Recovery Statistics:");
         for (strategy, recovery_stats) in &stats.recovery_stats {
             let success_rate = if recovery_stats.total_attempts > 0 {
-                (recovery_stats.successful_recoveries as f64 / recovery_stats.total_attempts as f64) * 100.0
+                (recovery_stats.successful_recoveries as f64 / recovery_stats.total_attempts as f64)
+                    * 100.0
             } else {
                 0.0
             };
-            
+
             println!("  • {} Strategy:", strategy);
             println!("    Total Attempts: {}", recovery_stats.total_attempts);
             println!("    Success Rate: {:.1}%", success_rate);
-            println!("    Avg Recovery Time: {:.1}ms", recovery_stats.average_recovery_time_ms);
+            println!(
+                "    Avg Recovery Time: {:.1}ms",
+                recovery_stats.average_recovery_time_ms
+            );
             if let Some(last_attempt) = &recovery_stats.last_recovery_attempt {
                 println!("    Last Attempt: {}", last_attempt);
             }
         }
-        
+
         Ok(())
     }
 
@@ -168,8 +167,9 @@ impl ErrorCli {
         category_filter: Option<String>,
     ) -> Result<()> {
         let errors = handler.aggregator.get_recent_errors(limit * 2).await; // Get more to allow filtering
-        
-        let filtered_errors: Vec<_> = errors.into_iter()
+
+        let filtered_errors: Vec<_> = errors
+            .into_iter()
             .filter(|error| {
                 if let Some(ref severity) = severity_filter {
                     let error_severity = match error.severity {
@@ -182,7 +182,7 @@ impl ErrorCli {
                         return false;
                     }
                 }
-                
+
                 if let Some(ref category) = category_filter {
                     let error_category = match error.category {
                         ErrorCategory::UserError => "user",
@@ -195,7 +195,7 @@ impl ErrorCli {
                         return false;
                     }
                 }
-                
+
                 true
             })
             .take(limit)
@@ -208,7 +208,7 @@ impl ErrorCli {
 
         println!("🚨 Recent Errors ({} shown):", filtered_errors.len());
         println!("═══════════════════════════════════════");
-        
+
         for error in filtered_errors {
             let severity_icon = match error.severity {
                 ErrorSeverity::Low => "🟡",
@@ -216,7 +216,7 @@ impl ErrorCli {
                 ErrorSeverity::High => "🔴",
                 ErrorSeverity::Critical => "💀",
             };
-            
+
             let category_icon = match error.category {
                 ErrorCategory::UserError => "👤",
                 ErrorCategory::SystemError => "⚙️",
@@ -224,32 +224,35 @@ impl ErrorCli {
                 ErrorCategory::SecurityError => "🔒",
                 ErrorCategory::PerformanceError => "⚡",
             };
-            
-            println!("{} {} [{}] {}", 
-                     severity_icon, 
-                     category_icon,
-                     error.context.error_id[..8].to_string(),
-                     error.context.component);
+
+            println!(
+                "{} {} [{}] {}",
+                severity_icon,
+                category_icon,
+                error.context.error_id[..8].to_string(),
+                error.context.component
+            );
             println!("   Time: {}", error.context.timestamp);
             println!("   Message: {}", error.user_message());
-            
+
             if error.is_recoverable() {
                 println!("   🔄 Recoverable");
             }
-            
+
             if error.resolved_at.is_some() {
                 println!("   ✅ Resolved");
             }
-            
+
             println!();
         }
-        
+
         Ok(())
     }
 
     async fn show_error(handler: &ErrorHandler, error_id: &str) -> Result<()> {
         let errors = handler.aggregator.get_recent_errors(1000).await;
-        let error = errors.iter()
+        let error = errors
+            .iter()
             .find(|e| e.context.error_id.starts_with(error_id))
             .ok_or_else(|| anyhow::anyhow!("Error with ID '{}' not found", error_id))?;
 
@@ -261,32 +264,32 @@ impl ErrorCli {
         println!("Timestamp: {}", error.context.timestamp);
         println!("Severity: {:?}", error.severity);
         println!("Category: {:?}", error.category);
-        
+
         println!("\n💬 User Message:");
         println!("{}", error.user_message());
-        
+
         println!("\n🔧 Technical Details:");
         println!("{}", error.technical_details());
-        
+
         if !error.context.recovery_suggestions.is_empty() {
             println!("\n💡 Recovery Suggestions:");
             for suggestion in &error.context.recovery_suggestions {
                 println!("  • {}", suggestion);
             }
         }
-        
+
         if !error.context.metadata.is_empty() {
             println!("\n📋 Metadata:");
             for (key, value) in &error.context.metadata {
                 println!("  {}: {}", key, value);
             }
         }
-        
+
         if let Some(strategy) = &error.recovery_strategy {
             println!("\n🔄 Recovery Strategy:");
             println!("{:?}", strategy);
         }
-        
+
         if let Some(resolved_at) = error.resolved_at {
             println!("\n✅ Resolution:");
             println!("Resolved at: {:?}", resolved_at);
@@ -294,13 +297,17 @@ impl ErrorCli {
                 println!("Notes: {}", notes);
             }
         }
-        
+
         Ok(())
     }
 
-    async fn test_error_handling(handler: &ErrorHandler, error_type: &str, test_recovery: bool) -> Result<()> {
+    async fn test_error_handling(
+        handler: &ErrorHandler,
+        error_type: &str,
+        test_recovery: bool,
+    ) -> Result<()> {
         println!("🧪 Testing error handling for type: {}", error_type);
-        
+
         let (base_error, severity, category) = match error_type {
             "network" => (
                 FluentError::Network(fluent_core::error::NetworkError::RequestFailed {
@@ -365,13 +372,13 @@ impl ErrorCli {
                 println!("❌ Error not recovered: {}", enhanced_error.user_message());
             }
         }
-        
+
         Ok(())
     }
 
     async fn simulate_errors(handler: &ErrorHandler, scenario: &str, count: u32) -> Result<()> {
         println!("🎭 Simulating {} errors for scenario: {}", count, scenario);
-        
+
         for i in 1..=count {
             let error_type = match scenario {
                 "network_outage" => "network",
@@ -387,29 +394,32 @@ impl ErrorCli {
                     return Ok(());
                 }
             };
-            
+
             println!("  Generating error {}/{} (type: {})", i, count, error_type);
             Self::test_error_handling(handler, error_type, i % 2 == 0).await?;
-            
+
             // Small delay between errors
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
-        
+
         println!("✅ Simulation completed");
         Ok(())
     }
 
     async fn export_errors(handler: &ErrorHandler, output: &PathBuf, format: &str) -> Result<()> {
         let errors = handler.aggregator.get_recent_errors(1000).await;
-        
+
         match format {
             "json" => {
-                let serializable_errors: Vec<_> = errors.iter().map(|e| e.to_serializable()).collect();
+                let serializable_errors: Vec<_> =
+                    errors.iter().map(|e| e.to_serializable()).collect();
                 let json = serde_json::to_string_pretty(&serializable_errors)?;
                 tokio::fs::write(output, json).await?;
             }
             "csv" => {
-                let mut csv_content = String::from("id,timestamp,component,operation,severity,category,user_message,resolved\n");
+                let mut csv_content = String::from(
+                    "id,timestamp,component,operation,severity,category,user_message,resolved\n",
+                );
                 for error in errors {
                     csv_content.push_str(&format!(
                         "{},{},{},{},{:?},{:?},{},{}\n",
@@ -430,7 +440,7 @@ impl ErrorCli {
                 return Ok(());
             }
         }
-        
+
         println!("✅ Exported errors to {}", output.display());
         Ok(())
     }
@@ -441,25 +451,31 @@ impl ErrorCli {
             println!("Use --force to confirm");
             return Ok(());
         }
-        
+
         // In a real implementation, this would clear the error aggregator
         println!("✅ Error history cleared");
         Ok(())
     }
 
     async fn monitor_errors(handler: &ErrorHandler, interval: u64) -> Result<()> {
-        println!("👁️  Monitoring errors (refresh every {}s, press Ctrl+C to stop)", interval);
-        
+        println!(
+            "👁️  Monitoring errors (refresh every {}s, press Ctrl+C to stop)",
+            interval
+        );
+
         loop {
             // Clear screen
             print!("\x1B[2J\x1B[1;1H");
-            
+
             // Show current stats
             Self::show_stats(handler).await?;
-            
+
             println!("\n{}", "═".repeat(50));
-            println!("Last updated: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"));
-            
+            println!(
+                "Last updated: {}",
+                chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+            );
+
             tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
         }
     }

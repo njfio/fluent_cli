@@ -1,5 +1,5 @@
-use std::process;
 use fluent_cli::cli;
+use std::process;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -11,5 +11,3 @@ async fn main() -> anyhow::Result<()> {
     // Ensure the program exits even if run() completes without error
     process::exit(0);
 }
-
-

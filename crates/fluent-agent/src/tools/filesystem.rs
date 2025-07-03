@@ -1,4 +1,4 @@
-use super::{ToolExecutor, ToolExecutionConfig, validation};
+use super::{validation, ToolExecutionConfig, ToolExecutor};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -30,14 +30,20 @@ impl FileSystemExecutor {
 
         // Additional security checks - handle non-existent files
         let canonical_path = if validated_path.exists() {
-            validated_path.canonicalize()
+            validated_path
+                .canonicalize()
                 .map_err(|e| anyhow!("Failed to canonicalize path '{}': {}", path, e))?
         } else {
             // For non-existent files, canonicalize the parent directory
             if let Some(parent) = validated_path.parent() {
                 if parent.exists() {
-                    let canonical_parent = parent.canonicalize()
-                        .map_err(|e| anyhow!("Failed to canonicalize parent path '{}': {}", parent.display(), e))?;
+                    let canonical_parent = parent.canonicalize().map_err(|e| {
+                        anyhow!(
+                            "Failed to canonicalize parent path '{}': {}",
+                            parent.display(),
+                            e
+                        )
+                    })?;
                     canonical_parent.join(validated_path.file_name().unwrap_or_default())
                 } else {
                     validated_path.clone()
@@ -50,8 +56,13 @@ impl FileSystemExecutor {
         // Ensure the canonical path is still within allowed directories
         let mut is_allowed = false;
         for allowed_path in &self.config.allowed_paths {
-            let allowed_canonical = PathBuf::from(allowed_path).canonicalize()
-                .map_err(|e| anyhow!("Failed to canonicalize allowed path '{}': {}", allowed_path, e))?;
+            let allowed_canonical = PathBuf::from(allowed_path).canonicalize().map_err(|e| {
+                anyhow!(
+                    "Failed to canonicalize allowed path '{}': {}",
+                    allowed_path,
+                    e
+                )
+            })?;
 
             if canonical_path.starts_with(&allowed_canonical) {
                 is_allowed = true;
@@ -72,7 +83,8 @@ impl FileSystemExecutor {
 
     /// Read file content with size limits
     async fn read_file_safe(&self, path: &Path) -> Result<String> {
-        let metadata = fs::metadata(path).await
+        let metadata = fs::metadata(path)
+            .await
             .map_err(|e| anyhow!("Failed to get file metadata: {}", e))?;
 
         if metadata.len() > self.config.max_output_size as u64 {
@@ -83,14 +95,19 @@ impl FileSystemExecutor {
             ));
         }
 
-        let mut file = fs::File::open(path).await
+        let mut file = fs::File::open(path)
+            .await
             .map_err(|e| anyhow!("Failed to open file: {}", e))?;
 
         let mut contents = String::new();
-        file.read_to_string(&mut contents).await
+        file.read_to_string(&mut contents)
+            .await
             .map_err(|e| anyhow!("Failed to read file: {}", e))?;
 
-        Ok(validation::sanitize_output(&contents, self.config.max_output_size))
+        Ok(validation::sanitize_output(
+            &contents,
+            self.config.max_output_size,
+        ))
     }
 
     /// Write file content safely
@@ -109,17 +126,21 @@ impl FileSystemExecutor {
 
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).await
+            fs::create_dir_all(parent)
+                .await
                 .map_err(|e| anyhow!("Failed to create parent directories: {}", e))?;
         }
 
-        let mut file = fs::File::create(path).await
+        let mut file = fs::File::create(path)
+            .await
             .map_err(|e| anyhow!("Failed to create file: {}", e))?;
 
-        file.write_all(content.as_bytes()).await
+        file.write_all(content.as_bytes())
+            .await
             .map_err(|e| anyhow!("Failed to write file: {}", e))?;
 
-        file.flush().await
+        file.flush()
+            .await
             .map_err(|e| anyhow!("Failed to flush file: {}", e))?;
 
         Ok(())
@@ -135,7 +156,8 @@ impl ToolExecutor for FileSystemExecutor {
     ) -> Result<String> {
         match tool_name {
             "read_file" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
 
@@ -145,44 +167,62 @@ impl ToolExecutor for FileSystemExecutor {
             }
 
             "write_file" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
-                let content = parameters.get("content")
+                let content = parameters
+                    .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'content' parameter"))?;
 
                 let path = self.validate_path(path_str)?;
                 self.write_file_safe(&path, content).await?;
-                Ok(format!("Successfully wrote {} bytes to {}", content.len(), path.display()))
+                Ok(format!(
+                    "Successfully wrote {} bytes to {}",
+                    content.len(),
+                    path.display()
+                ))
             }
 
             "list_directory" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
 
                 let path = self.validate_path(path_str)?;
-                let mut entries = fs::read_dir(&path).await
+                let mut entries = fs::read_dir(&path)
+                    .await
                     .map_err(|e| anyhow!("Failed to read directory: {}", e))?;
 
                 let mut files = Vec::new();
-                while let Some(entry) = entries.next_entry().await
-                    .map_err(|e| anyhow!("Failed to read directory entry: {}", e))? {
-                    
+                while let Some(entry) = entries
+                    .next_entry()
+                    .await
+                    .map_err(|e| anyhow!("Failed to read directory entry: {}", e))?
+                {
                     let file_name = entry.file_name().to_string_lossy().to_string();
-                    let metadata = entry.metadata().await
+                    let metadata = entry
+                        .metadata()
+                        .await
                         .map_err(|e| anyhow!("Failed to get file metadata: {}", e))?;
-                    
+
                     let file_info = FileInfo {
                         name: file_name,
                         is_directory: metadata.is_dir(),
-                        size: if metadata.is_file() { Some(metadata.len()) } else { None },
-                        modified: metadata.modified().ok()
+                        size: if metadata.is_file() {
+                            Some(metadata.len())
+                        } else {
+                            None
+                        },
+                        modified: metadata
+                            .modified()
+                            .ok()
                             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                             .map(|d| d.as_secs()),
                     };
-                    
+
                     files.push(file_info);
                 }
 
@@ -190,7 +230,8 @@ impl ToolExecutor for FileSystemExecutor {
             }
 
             "create_directory" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
 
@@ -199,14 +240,19 @@ impl ToolExecutor for FileSystemExecutor {
                 }
 
                 let path = self.validate_path(path_str)?;
-                fs::create_dir_all(&path).await
+                fs::create_dir_all(&path)
+                    .await
                     .map_err(|e| anyhow!("Failed to create directory: {}", e))?;
 
-                Ok(format!("Successfully created directory: {}", path.display()))
+                Ok(format!(
+                    "Successfully created directory: {}",
+                    path.display()
+                ))
             }
 
             "file_exists" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
 
@@ -216,22 +262,31 @@ impl ToolExecutor for FileSystemExecutor {
             }
 
             "get_file_info" => {
-                let path_str = parameters.get("path")
+                let path_str = parameters
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
 
                 let path = self.validate_path(path_str)?;
-                let metadata = fs::metadata(&path).await
+                let metadata = fs::metadata(&path)
+                    .await
                     .map_err(|e| anyhow!("Failed to get file metadata: {}", e))?;
 
                 let file_info = FileInfo {
-                    name: path.file_name()
+                    name: path
+                        .file_name()
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string(),
                     is_directory: metadata.is_dir(),
-                    size: if metadata.is_file() { Some(metadata.len()) } else { None },
-                    modified: metadata.modified().ok()
+                    size: if metadata.is_file() {
+                        Some(metadata.len())
+                    } else {
+                        None
+                    },
+                    modified: metadata
+                        .modified()
+                        .ok()
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_secs()),
                 };
@@ -239,7 +294,7 @@ impl ToolExecutor for FileSystemExecutor {
                 Ok(serde_json::to_string_pretty(&file_info)?)
             }
 
-            _ => Err(anyhow!("Unknown file system tool: {}", tool_name))
+            _ => Err(anyhow!("Unknown file system tool: {}", tool_name)),
         }
     }
 
@@ -334,7 +389,7 @@ mod tests {
     async fn test_read_file() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         // Create a test file
         let mut file = fs::File::create(&file_path).await.unwrap();
         file.write_all(b"Hello, world!").await.unwrap();
@@ -342,12 +397,15 @@ mod tests {
 
         let mut config = ToolExecutionConfig::default();
         config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
-        
+
         let executor = FileSystemExecutor::new(config);
-        
+
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(file_path.to_string_lossy().to_string()));
-        
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(file_path.to_string_lossy().to_string()),
+        );
+
         let result = executor.execute_tool("read_file", &params).await.unwrap();
         assert_eq!(result, "Hello, world!");
     }
@@ -356,20 +414,26 @@ mod tests {
     async fn test_write_file() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("test_write.txt");
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
         config.read_only = false;
-        
+
         let executor = FileSystemExecutor::new(config);
-        
+
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(file_path.to_string_lossy().to_string()));
-        params.insert("content".to_string(), serde_json::Value::String("Test content".to_string()));
-        
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(file_path.to_string_lossy().to_string()),
+        );
+        params.insert(
+            "content".to_string(),
+            serde_json::Value::String("Test content".to_string()),
+        );
+
         let result = executor.execute_tool("write_file", &params).await.unwrap();
         assert!(result.contains("Successfully wrote"));
-        
+
         // Verify the file was written
         let content = fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(content, "Test content");
@@ -378,26 +442,38 @@ mod tests {
     #[tokio::test]
     async fn test_list_directory() {
         let temp_dir = tempdir().unwrap();
-        
+
         // Create some test files
-        fs::File::create(temp_dir.path().join("file1.txt")).await.unwrap();
-        fs::File::create(temp_dir.path().join("file2.txt")).await.unwrap();
-        fs::create_dir(temp_dir.path().join("subdir")).await.unwrap();
-        
+        fs::File::create(temp_dir.path().join("file1.txt"))
+            .await
+            .unwrap();
+        fs::File::create(temp_dir.path().join("file2.txt"))
+            .await
+            .unwrap();
+        fs::create_dir(temp_dir.path().join("subdir"))
+            .await
+            .unwrap();
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
-        
+
         let executor = FileSystemExecutor::new(config);
-        
+
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(temp_dir.path().to_string_lossy().to_string()));
-        
-        let result = executor.execute_tool("list_directory", &params).await.unwrap();
-        
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(temp_dir.path().to_string_lossy().to_string()),
+        );
+
+        let result = executor
+            .execute_tool("list_directory", &params)
+            .await
+            .unwrap();
+
         // Parse the JSON result
         let files: Vec<FileInfo> = serde_json::from_str(&result).unwrap();
         assert_eq!(files.len(), 3);
-        
+
         let file_names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
         assert!(file_names.contains(&"file1.txt"));
         assert!(file_names.contains(&"file2.txt"));
@@ -407,41 +483,55 @@ mod tests {
     #[tokio::test]
     async fn test_path_validation() {
         let temp_dir = tempdir().unwrap();
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
-        
+
         let executor = FileSystemExecutor::new(config);
-        
+
         // Test valid path
         let valid_path = temp_dir.path().join("test.txt");
         let mut params = HashMap::new();
-        params.insert("path".to_string(), serde_json::Value::String(valid_path.to_string_lossy().to_string()));
-        
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(valid_path.to_string_lossy().to_string()),
+        );
+
         assert!(executor.validate_tool_request("read_file", &params).is_ok());
-        
+
         // Test invalid path (outside allowed directories)
         let mut invalid_params = HashMap::new();
-        invalid_params.insert("path".to_string(), serde_json::Value::String("/etc/passwd".to_string()));
-        
-        assert!(executor.validate_tool_request("read_file", &invalid_params).is_err());
+        invalid_params.insert(
+            "path".to_string(),
+            serde_json::Value::String("/etc/passwd".to_string()),
+        );
+
+        assert!(executor
+            .validate_tool_request("read_file", &invalid_params)
+            .is_err());
     }
 
     #[tokio::test]
     async fn test_read_only_mode() {
         let temp_dir = tempdir().unwrap();
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
         config.read_only = true;
-        
+
         let executor = FileSystemExecutor::new(config);
-        
+
         // Read operations should work
-        assert!(executor.get_available_tools().contains(&"read_file".to_string()));
-        
+        assert!(executor
+            .get_available_tools()
+            .contains(&"read_file".to_string()));
+
         // Write operations should not be available
-        assert!(!executor.get_available_tools().contains(&"write_file".to_string()));
-        assert!(!executor.get_available_tools().contains(&"create_directory".to_string()));
+        assert!(!executor
+            .get_available_tools()
+            .contains(&"write_file".to_string()));
+        assert!(!executor
+            .get_available_tools()
+            .contains(&"create_directory".to_string()));
     }
 }

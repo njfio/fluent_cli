@@ -9,7 +9,7 @@ impl ResponseParser {
     pub fn parse_openai_chat_response(
         response: &Value,
         model: &str,
-        pricing: Option<(f64, f64)>
+        pricing: Option<(f64, f64)>,
     ) -> anyhow::Result<Response> {
         let content = response["choices"][0]["message"]["content"]
             .as_str()
@@ -56,7 +56,7 @@ impl ResponseParser {
     pub fn parse_anthropic_response(
         response: &Value,
         model: &str,
-        pricing: Option<(f64, f64)>
+        pricing: Option<(f64, f64)>,
     ) -> anyhow::Result<Response> {
         let content = response["content"][0]["text"]
             .as_str()
@@ -89,9 +89,7 @@ impl ResponseParser {
         let mut final_cost = cost;
         final_cost.total_cost = final_cost.prompt_cost + final_cost.completion_cost;
 
-        let finish_reason = response["stop_reason"]
-            .as_str()
-            .map(String::from);
+        let finish_reason = response["stop_reason"].as_str().map(String::from);
 
         Ok(Response {
             content,
@@ -106,7 +104,7 @@ impl ResponseParser {
     pub fn parse_gemini_response(
         response: &Value,
         model: &str,
-        pricing: Option<(f64, f64)>
+        pricing: Option<(f64, f64)>,
     ) -> anyhow::Result<Response> {
         let content = response["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
@@ -114,9 +112,15 @@ impl ResponseParser {
             .to_string();
 
         let usage = Usage {
-            prompt_tokens: response["usageMetadata"]["promptTokenCount"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response["usageMetadata"]["candidatesTokenCount"].as_u64().unwrap_or(0) as u32,
-            total_tokens: response["usageMetadata"]["totalTokenCount"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response["usageMetadata"]["promptTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response["usageMetadata"]["candidatesTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            total_tokens: response["usageMetadata"]["totalTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
         };
 
         let cost = if let Some((prompt_price, completion_price)) = pricing {
@@ -153,10 +157,10 @@ impl ResponseParser {
     pub fn parse_simple_response(
         content: String,
         model: &str,
-        estimated_tokens: Option<u32>
+        estimated_tokens: Option<u32>,
     ) -> Response {
         let tokens = estimated_tokens.unwrap_or(0);
-        
+
         Response {
             content,
             usage: Usage {
@@ -219,11 +223,11 @@ impl ResponseParser {
         if let Some(content) = Self::extract_content_openai(value) {
             return Some(content);
         }
-        
+
         if let Some(content) = Self::extract_content_anthropic(value) {
             return Some(content);
         }
-        
+
         if let Some(content) = Self::extract_content_gemini(value) {
             return Some(content);
         }
@@ -272,10 +276,11 @@ mod tests {
         });
 
         let result = ResponseParser::parse_openai_chat_response(
-            &response, 
-            "gpt-3.5-turbo", 
-            Some((0.001, 0.002))
-        ).unwrap();
+            &response,
+            "gpt-3.5-turbo",
+            Some((0.001, 0.002)),
+        )
+        .unwrap();
 
         assert_eq!(result.content, "Hello, world!");
         assert_eq!(result.usage.prompt_tokens, 10);
@@ -303,7 +308,7 @@ mod tests {
         let response = ResponseParser::parse_simple_response(
             "Simple response".to_string(),
             "test-model",
-            Some(20)
+            Some(20),
         );
 
         assert_eq!(response.content, "Simple response");

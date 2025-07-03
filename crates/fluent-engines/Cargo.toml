@@ -28,16 +28,16 @@ serde_yaml = { workspace = true }
 
 libloading = { workspace = true }
 once_cell = { workspace = true }
-num_cpus = "1.16"
-async-stream = "0.3"
-lru = "0.12"
-lz4_flex = "0.11"
+num_cpus = { workspace = true }
+async-stream = { workspace = true }
+lru = { workspace = true }
+lz4_flex = { workspace = true }
 sha2 = "0.10"
 sled = "0.34"
 chrono = { version = "0.4", features = ["serde"] }
 which = "6.0"
 clap = { version = "4.0", features = ["derive"] }
-hex = "0.4"
+hex = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

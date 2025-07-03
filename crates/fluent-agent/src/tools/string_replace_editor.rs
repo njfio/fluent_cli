@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
 
-use super::{ToolExecutor, validation};
+use super::{validation, ToolExecutor};
 
 /// String replacement editor tool for precise file editing
-/// 
+///
 /// This tool allows for surgical edits to files by replacing specific strings
 /// with new content, similar to Anthropic's string_replace_editor tool.
 pub struct StringReplaceEditor {
@@ -98,7 +98,7 @@ impl StringReplaceEditor {
     pub async fn replace_string(&self, params: StringReplaceParams) -> Result<StringReplaceResult> {
         // Validate file path
         let file_path = validation::validate_path(&params.file_path, &self.config.allowed_paths)?;
-        
+
         // Check if file exists
         if !file_path.exists() {
             return Ok(StringReplaceResult {
@@ -122,32 +122,36 @@ impl StringReplaceEditor {
                 new_content: None,
                 backup_path: None,
                 preview: None,
-                error: Some(format!("File too large: {} bytes (max: {})", 
-                    metadata.len(), self.config.max_file_size)),
+                error: Some(format!(
+                    "File too large: {} bytes (max: {})",
+                    metadata.len(),
+                    self.config.max_file_size
+                )),
             });
         }
 
         // Read file content
         let original_content = fs::read_to_string(&file_path).await?;
-        
+
         // Perform replacement (handle line range within the replacement function)
-        let (new_content, replacements_made) = if let Some((start_line, end_line)) = params.line_range {
-            self.perform_replacement_with_line_range(
-                &original_content,
-                &params.old_str,
-                &params.new_str,
-                params.occurrence.unwrap_or_default(),
-                start_line,
-                end_line,
-            )?
-        } else {
-            self.perform_replacement(
-                &original_content,
-                &params.old_str,
-                &params.new_str,
-                params.occurrence.unwrap_or_default(),
-            )?
-        };
+        let (new_content, replacements_made) =
+            if let Some((start_line, end_line)) = params.line_range {
+                self.perform_replacement_with_line_range(
+                    &original_content,
+                    &params.old_str,
+                    &params.new_str,
+                    params.occurrence.unwrap_or_default(),
+                    start_line,
+                    end_line,
+                )?
+            } else {
+                self.perform_replacement(
+                    &original_content,
+                    &params.old_str,
+                    &params.new_str,
+                    params.occurrence.unwrap_or_default(),
+                )?
+            };
 
         // If no replacements were made
         if replacements_made == 0 {
@@ -199,18 +203,32 @@ impl StringReplaceEditor {
         })
     }
 
-    /// Extract content within specified line range
-    fn extract_line_range(&self, content: &str, start_line: usize, end_line: usize) -> Result<String> {
+    /// Extract content within specified line range (utility method for future features)
+    #[allow(dead_code)]
+    fn extract_line_range(
+        &self,
+        content: &str,
+        start_line: usize,
+        end_line: usize,
+    ) -> Result<String> {
         let lines: Vec<&str> = content.lines().collect();
-        
+
         if start_line == 0 || start_line > lines.len() {
             return Err(anyhow!("Invalid start line: {}", start_line));
         }
-        
-        let end_line = if end_line > lines.len() { lines.len() } else { end_line };
-        
+
+        let end_line = if end_line > lines.len() {
+            lines.len()
+        } else {
+            end_line
+        };
+
         if start_line > end_line {
-            return Err(anyhow!("Start line ({}) cannot be greater than end line ({})", start_line, end_line));
+            return Err(anyhow!(
+                "Start line ({}) cannot be greater than end line ({})",
+                start_line,
+                end_line
+            ));
         }
 
         let selected_lines = &lines[(start_line - 1)..end_line];
@@ -233,22 +251,26 @@ impl StringReplaceEditor {
             return Err(anyhow!("Invalid start line: {}", start_line));
         }
 
-        let end_line = if end_line > lines.len() { lines.len() } else { end_line };
+        let end_line = if end_line > lines.len() {
+            lines.len()
+        } else {
+            end_line
+        };
 
         if start_line > end_line {
-            return Err(anyhow!("Start line ({}) cannot be greater than end line ({})", start_line, end_line));
+            return Err(anyhow!(
+                "Start line ({}) cannot be greater than end line ({})",
+                start_line,
+                end_line
+            ));
         }
 
         // Extract the target range
         let range_content = lines[(start_line - 1)..end_line].join("\n");
 
         // Perform replacement on the range
-        let (replaced_range, replacements_made) = self.perform_replacement(
-            &range_content,
-            old_str,
-            new_str,
-            occurrence,
-        )?;
+        let (replaced_range, replacements_made) =
+            self.perform_replacement(&range_content, old_str, new_str, occurrence)?;
 
         // Reconstruct the full content
         let mut result_lines = Vec::new();
@@ -315,9 +337,13 @@ impl StringReplaceEditor {
             ReplaceOccurrence::Index(index) => {
                 let matches: Vec<_> = search_content.match_indices(&search_str).collect();
                 if index == 0 || index > matches.len() {
-                    return Err(anyhow!("Invalid occurrence index: {} (found {} matches)", index, matches.len()));
+                    return Err(anyhow!(
+                        "Invalid occurrence index: {} (found {} matches)",
+                        index,
+                        matches.len()
+                    ));
                 }
-                
+
                 let (pos, _) = matches[index - 1];
                 let mut new_content = content.to_string();
                 new_content.replace_range(pos..pos + old_str.len(), new_str);
@@ -344,11 +370,12 @@ impl StringReplaceEditor {
 
     /// Create a backup of the original file
     async fn create_backup(&self, file_path: &Path, content: &str) -> Result<String> {
-        let backup_path = format!("{}.backup.{}", 
-            file_path.to_string_lossy(), 
+        let backup_path = format!(
+            "{}.backup.{}",
+            file_path.to_string_lossy(),
             chrono::Utc::now().format("%Y%m%d_%H%M%S")
         );
-        
+
         fs::write(&backup_path, content).await?;
         Ok(backup_path)
     }
@@ -357,14 +384,14 @@ impl StringReplaceEditor {
     fn create_preview(&self, content: &str, search_str: &str) -> String {
         let lines: Vec<&str> = content.lines().collect();
         let mut preview_lines = Vec::new();
-        
+
         for (line_num, line) in lines.iter().enumerate() {
             let search_line = if self.config.case_sensitive {
                 line.to_string()
             } else {
                 line.to_lowercase()
             };
-            
+
             let search_target = if self.config.case_sensitive {
                 search_str.to_string()
             } else {
@@ -391,14 +418,14 @@ impl StringReplaceEditor {
     fn create_diff_preview(&self, original: &str, new: &str) -> String {
         let orig_lines: Vec<&str> = original.lines().collect();
         let new_lines: Vec<&str> = new.lines().collect();
-        
+
         let mut diff = Vec::new();
         let max_lines = orig_lines.len().max(new_lines.len());
-        
+
         for i in 0..max_lines {
             let orig_line = orig_lines.get(i).unwrap_or(&"");
             let new_line = new_lines.get(i).unwrap_or(&"");
-            
+
             if orig_line != new_line {
                 if !orig_line.is_empty() {
                     diff.push(format!("- {}", orig_line));
@@ -408,7 +435,7 @@ impl StringReplaceEditor {
                 }
             }
         }
-        
+
         if diff.is_empty() {
             "No changes".to_string()
         } else {
@@ -427,13 +454,13 @@ impl ToolExecutor for StringReplaceEditor {
         match tool_name {
             "string_replace" => {
                 let params: StringReplaceParams = serde_json::from_value(
-                    serde_json::Value::Object(parameters.clone().into_iter().collect())
+                    serde_json::Value::Object(parameters.clone().into_iter().collect()),
                 )?;
-                
+
                 let result = self.replace_string(params).await?;
                 Ok(serde_json::to_string_pretty(&result)?)
             }
-            _ => Err(anyhow!("Unknown tool: {}", tool_name))
+            _ => Err(anyhow!("Unknown tool: {}", tool_name)),
         }
     }
 
@@ -446,7 +473,8 @@ impl ToolExecutor for StringReplaceEditor {
             "string_replace" => Some(
                 "Replace specific strings in files with surgical precision. \
                 Supports first/last/all/indexed occurrences, line ranges, \
-                case sensitivity, dry runs, and automatic backups.".to_string()
+                case sensitivity, dry runs, and automatic backups."
+                    .to_string(),
             ),
             _ => None,
         }
@@ -477,7 +505,7 @@ impl ToolExecutor for StringReplaceEditor {
 
                 Ok(())
             }
-            _ => Err(anyhow!("Unknown tool: {}", tool_name))
+            _ => Err(anyhow!("Unknown tool: {}", tool_name)),
         }
     }
 }
@@ -492,7 +520,7 @@ mod tests {
     async fn test_string_replace_basic() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         // Create test file
         let original_content = "Hello world\nThis is a test\nHello again";
         fs::write(&file_path, original_content).await.unwrap();
@@ -503,7 +531,7 @@ mod tests {
         };
 
         let editor = StringReplaceEditor::with_config(config);
-        
+
         let params = StringReplaceParams {
             file_path: file_path.to_string_lossy().to_string(),
             old_str: "Hello".to_string(),
@@ -515,10 +543,10 @@ mod tests {
         };
 
         let result = editor.replace_string(params).await.unwrap();
-        
+
         assert!(result.success);
         assert_eq!(result.replacements_made, 1);
-        
+
         let new_content = fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(new_content, "Hi world\nThis is a test\nHello again");
     }
@@ -527,7 +555,7 @@ mod tests {
     async fn test_string_replace_all() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         let original_content = "foo bar foo baz foo";
         fs::write(&file_path, original_content).await.unwrap();
 
@@ -537,7 +565,7 @@ mod tests {
         };
 
         let editor = StringReplaceEditor::with_config(config);
-        
+
         let params = StringReplaceParams {
             file_path: file_path.to_string_lossy().to_string(),
             old_str: "foo".to_string(),
@@ -549,10 +577,10 @@ mod tests {
         };
 
         let result = editor.replace_string(params).await.unwrap();
-        
+
         assert!(result.success);
         assert_eq!(result.replacements_made, 3);
-        
+
         let new_content = fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(new_content, "FOO bar FOO baz FOO");
     }
@@ -561,7 +589,7 @@ mod tests {
     async fn test_dry_run() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         let original_content = "Hello world";
         fs::write(&file_path, original_content).await.unwrap();
 
@@ -571,7 +599,7 @@ mod tests {
         };
 
         let editor = StringReplaceEditor::with_config(config);
-        
+
         let params = StringReplaceParams {
             file_path: file_path.to_string_lossy().to_string(),
             old_str: "Hello".to_string(),
@@ -583,11 +611,11 @@ mod tests {
         };
 
         let result = editor.replace_string(params).await.unwrap();
-        
+
         assert!(result.success);
         assert_eq!(result.replacements_made, 1);
         assert!(result.preview.is_some());
-        
+
         // File should remain unchanged
         let file_content = fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(file_content, original_content);

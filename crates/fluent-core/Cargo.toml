@@ -31,9 +31,3 @@ pdf-extract = { workspace = true }
 sled = { workspace = true }
 sha2 = { workspace = true }
 which = "6.0"
-
-
-#rust-bert = {  version = "0.18.0"  }  #Is not used
-#indicatif = "0.17.8"  #Is not used
-#jetscii = "0.5.3"  #Is not used
-#tokenizers = "0.19.1" #Is not used

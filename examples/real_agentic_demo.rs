@@ -1,45 +1,45 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
+use chrono::Utc;
 use fluent_agent::{
-    config::{AgentEngineConfig, ToolConfig, credentials},
-    goal::{Goal, GoalType},
-    memory::{MemoryItem, MemoryType, MemoryQuery, SqliteMemoryStore, LongTermMemory},
+    config::{credentials, AgentEngineConfig, ToolConfig},
     context::ExecutionContext,
-    tools::{ToolRegistry, FileSystemExecutor, ToolExecutionConfig},
+    goal::{Goal, GoalType},
+    memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType, SqliteMemoryStore},
+    tools::{FileSystemExecutor, ToolExecutionConfig, ToolRegistry},
 };
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use chrono::Utc;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("🤖 Real Agentic System Demo");
     println!("============================");
-    
+
     // Demo 1: Real Memory System
     println!("\n📚 Demo 1: Real SQLite Memory System");
     demo_memory_system().await?;
-    
+
     // Demo 2: Real Goal System
     println!("\n🎯 Demo 2: Real Goal Management");
     demo_goal_system().await?;
-    
+
     // Demo 3: Real Context Management
     println!("\n📋 Demo 3: Real Context Management");
     demo_context_system().await?;
-    
+
     // Demo 4: Real Tool System
     println!("\n🔧 Demo 4: Real Tool System");
     demo_tool_system().await?;
-    
+
     // Demo 5: Real Configuration System
     println!("\n⚙️  Demo 5: Real Configuration System");
     demo_config_system().await?;
-    
+
     println!("\n✅ All demos completed successfully!");
     println!("🚀 The agentic system is fully operational with real implementations!");
-    
+
     Ok(())
 }
 
@@ -47,7 +47,7 @@ async fn demo_memory_system() -> Result<()> {
     // Create real SQLite memory store
     let memory_store = SqliteMemoryStore::new("demo_agent_memory.db")?;
     println!("✅ Created real SQLite database: demo_agent_memory.db");
-    
+
     // Store real memory items
     let experiences = vec![
         MemoryItem {
@@ -64,13 +64,18 @@ async fn demo_memory_system() -> Result<()> {
             created_at: Utc::now(),
             last_accessed: Utc::now(),
             access_count: 1,
-            tags: vec!["rust".to_string(), "compilation".to_string(), "success".to_string()],
+            tags: vec![
+                "rust".to_string(),
+                "compilation".to_string(),
+                "success".to_string(),
+            ],
             embedding: None,
         },
         MemoryItem {
             memory_id: "learn_001".to_string(),
             memory_type: MemoryType::Learning,
-            content: "When using async/await in Rust, always handle Result types properly".to_string(),
+            content: "When using async/await in Rust, always handle Result types properly"
+                .to_string(),
             metadata: {
                 let mut map = HashMap::new();
                 map.insert("language".to_string(), json!("rust"));
@@ -81,17 +86,24 @@ async fn demo_memory_system() -> Result<()> {
             created_at: Utc::now(),
             last_accessed: Utc::now(),
             access_count: 3,
-            tags: vec!["rust".to_string(), "async".to_string(), "best_practice".to_string()],
+            tags: vec![
+                "rust".to_string(),
+                "async".to_string(),
+                "best_practice".to_string(),
+            ],
             embedding: None,
         },
     ];
-    
+
     // Store memories in real database
     for memory in &experiences {
         let stored_id = memory_store.store(memory.clone()).await?;
-        println!("✅ Stored memory: {:?} -> {}", memory.memory_type, stored_id);
+        println!(
+            "✅ Stored memory: {:?} -> {}",
+            memory.memory_type, stored_id
+        );
     }
-    
+
     // Query real memories
     let query = MemoryQuery {
         memory_types: vec![MemoryType::Experience, MemoryType::Learning],
@@ -101,15 +113,18 @@ async fn demo_memory_system() -> Result<()> {
         tags: vec![],
         time_range: None,
     };
-    
+
     let retrieved = memory_store.retrieve(&query).await?;
     println!("✅ Retrieved {} memories from database", retrieved.len());
-    
+
     for memory in retrieved {
         println!("   📝 {:?}: {}", memory.memory_type, memory.content);
-        println!("      Importance: {}, Access count: {}", memory.importance, memory.access_count);
+        println!(
+            "      Importance: {}, Access count: {}",
+            memory.importance, memory.access_count
+        );
     }
-    
+
     Ok(())
 }
 
@@ -118,26 +133,24 @@ async fn demo_goal_system() -> Result<()> {
     let goals = vec![
         Goal::builder(
             "Create a Rust function that calculates fibonacci numbers recursively".to_string(),
-            GoalType::CodeGeneration
+            GoalType::CodeGeneration,
         )
         .max_iterations(10)
         .success_criterion("Function compiles without errors".to_string())
         .success_criterion("Function returns correct fibonacci sequence".to_string())
         .success_criterion("Function includes proper documentation".to_string())
         .build()?,
-        
         Goal::builder(
             "Analyze existing codebase for potential security vulnerabilities".to_string(),
-            GoalType::Analysis
+            GoalType::Analysis,
         )
         .max_iterations(20)
         .success_criterion("Scan all Rust files for unsafe code blocks".to_string())
         .success_criterion("Check for potential buffer overflow conditions".to_string())
         .build()?,
-        
         Goal::builder(
             "Optimize database query performance in the application".to_string(),
-            GoalType::Refactoring
+            GoalType::Refactoring,
         )
         .max_iterations(15)
         .success_criterion("Identify slow queries using EXPLAIN ANALYZE".to_string())
@@ -145,18 +158,18 @@ async fn demo_goal_system() -> Result<()> {
         .success_criterion("Achieve 50% performance improvement".to_string())
         .build()?,
     ];
-    
+
     for goal in goals {
         println!("✅ Created goal: {}", goal.description);
         println!("   Type: {:?}", goal.goal_type);
         println!("   Max iterations: {:?}", goal.max_iterations);
         println!("   Success criteria: {} items", goal.success_criteria.len());
-        
+
         // Demonstrate goal complexity calculation
         let complexity = goal.get_complexity();
         println!("   Calculated complexity: {:?}", complexity);
     }
-    
+
     Ok(())
 }
 
@@ -164,7 +177,7 @@ async fn demo_context_system() -> Result<()> {
     // Create a demo goal for the context
     let demo_goal = Goal::builder(
         "Demonstrate context management capabilities".to_string(),
-        GoalType::Planning
+        GoalType::Planning,
     )
     .success_criterion("Successfully set context variables".to_string())
     .success_criterion("Demonstrate metadata management".to_string())
@@ -228,7 +241,10 @@ async fn demo_tool_system() -> Result<()> {
     println!("✅ Tool registry contains {} tools", available_tools.len());
 
     for tool_info in available_tools {
-        println!("   🔧 Available tool: {} ({})", tool_info.name, tool_info.description);
+        println!(
+            "   🔧 Available tool: {} ({})",
+            tool_info.name, tool_info.description
+        );
     }
 
     Ok(())
@@ -237,13 +253,16 @@ async fn demo_tool_system() -> Result<()> {
 async fn demo_config_system() -> Result<()> {
     // Load real credentials from environment
     let credentials = credentials::load_from_environment();
-    println!("✅ Loaded {} credentials from environment", credentials.len());
-    
+    println!(
+        "✅ Loaded {} credentials from environment",
+        credentials.len()
+    );
+
     // Show available credential keys (without values for security)
     for key in credentials.keys() {
         println!("   🔑 Available credential: {}", key);
     }
-    
+
     // Create real agent configuration
     let agent_config = AgentEngineConfig {
         reasoning_engine: "openai".to_string(),
@@ -262,7 +281,7 @@ async fn demo_config_system() -> Result<()> {
         max_iterations: Some(50),
         timeout_seconds: Some(300),
     };
-    
+
     // Validate configuration
     agent_config.validate()?;
     println!("✅ Agent configuration validated successfully");
@@ -272,12 +291,13 @@ async fn demo_config_system() -> Result<()> {
     println!("   Memory database: {}", agent_config.memory_database);
     println!("   Max iterations: {:?}", agent_config.max_iterations);
     println!("   Timeout: {:?} seconds", agent_config.timeout_seconds);
-    println!("   Tools enabled: file_ops={}, shell={}, rust={}, git={}",
+    println!(
+        "   Tools enabled: file_ops={}, shell={}, rust={}, git={}",
         agent_config.tools.file_operations,
         agent_config.tools.shell_commands,
         agent_config.tools.rust_compiler,
         agent_config.tools.git_operations
     );
-    
+
     Ok(())
 }

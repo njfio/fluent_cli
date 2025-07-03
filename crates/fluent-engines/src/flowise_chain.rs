@@ -5,8 +5,7 @@ use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
 use log::{debug, warn};
 use mime_guess::from_path;
@@ -167,13 +166,14 @@ impl Engine for FlowiseChainEngine {
         _request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Flowise Chain doesn't have a native upsert/embedding API
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "flowise_chain".to_string(),
                 operation: "upsert".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
@@ -242,12 +242,13 @@ impl Engine for FlowiseChainEngine {
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "flowise_chain".to_string(),
                 operation: "file_upload".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 

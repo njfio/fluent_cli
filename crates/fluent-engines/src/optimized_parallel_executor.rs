@@ -1,11 +1,11 @@
-use anyhow::{Result, anyhow};
-use std::sync::Arc;
-use std::collections::HashMap;
-use tokio::sync::{Semaphore, RwLock, Mutex};
-use tokio::time::{Duration, Instant};
+use anyhow::{anyhow, Result};
 use futures::stream::{FuturesUnordered, StreamExt};
-use log::{debug, warn, error, info};
-use serde::{Serialize, Deserialize};
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::time::{Duration, Instant};
 
 /// Configuration for optimized parallel execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ impl Default for ParallelExecutionConfig {
             adaptive_concurrency: true,
             monitoring_interval: Duration::from_secs(1),
             max_memory_mb: 1024, // 1GB
-            cpu_threshold: 0.8, // 80%
+            cpu_threshold: 0.8,  // 80%
         }
     }
 }
@@ -95,7 +95,7 @@ where
     /// Create a new optimized parallel executor
     pub fn new(config: ParallelExecutionConfig) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency));
-        
+
         Self {
             semaphore,
             config,
@@ -124,26 +124,29 @@ where
         Fut: std::future::Future<Output = Result<R>> + Send + 'static,
     {
         info!("Starting parallel execution of {} tasks", tasks.len());
-        
+
         // Start resource monitoring
         let monitor_handle = self.start_resource_monitoring().await;
-        
+
         // Sort tasks by priority and dependencies
         let sorted_tasks = self.sort_tasks_by_priority_and_dependencies(tasks).await?;
-        
+
         // Execute tasks in batches based on dependencies
         let mut all_results = Vec::new();
         let task_batches = self.create_execution_batches(sorted_tasks).await?;
-        
+
         for batch in task_batches {
             let batch_results = self.execute_task_batch(batch, executor_fn.clone()).await?;
             all_results.extend(batch_results);
         }
-        
+
         // Stop monitoring
         monitor_handle.abort();
-        
-        info!("Completed parallel execution of {} tasks", all_results.len());
+
+        info!(
+            "Completed parallel execution of {} tasks",
+            all_results.len()
+        );
         Ok(all_results)
     }
 
@@ -158,37 +161,41 @@ where
         Fut: std::future::Future<Output = Result<R>> + Send + 'static,
     {
         let mut futures = FuturesUnordered::new();
-        
+
         // Update queued tasks count
         {
             let mut metrics = self.metrics.write().await;
             metrics.queued_tasks = tasks.len();
         }
-        
+
         for task in tasks {
             let permit = self.semaphore.clone().acquire_owned().await?;
             let metrics = self.metrics.clone();
             let executor = executor_fn.clone();
             let timeout_duration = self.config.task_timeout;
-            
+
             futures.push(tokio::spawn(async move {
                 let _permit = permit; // Hold permit for task duration
                 let start_time = Instant::now();
-                
+
                 // Update active tasks count
                 {
                     let mut m = metrics.write().await;
                     m.active_tasks += 1;
                     m.queued_tasks = m.queued_tasks.saturating_sub(1);
                 }
-                
+
                 // Execute task with timeout
-                let result = tokio::time::timeout(timeout_duration, executor(task.payload.clone())).await;
-                
+                let result =
+                    tokio::time::timeout(timeout_duration, executor(task.payload.clone())).await;
+
                 let execution_time = start_time.elapsed();
                 let task_result = match result {
                     Ok(Ok(value)) => {
-                        debug!("Task {} completed successfully in {:?}", task.id, execution_time);
+                        debug!(
+                            "Task {} completed successfully in {:?}",
+                            task.id, execution_time
+                        );
                         TaskResult {
                             task_id: task.id.clone(),
                             result: Ok(value),
@@ -215,7 +222,7 @@ where
                         }
                     }
                 };
-                
+
                 // Update metrics
                 {
                     let mut m = metrics.write().await;
@@ -226,11 +233,11 @@ where
                         m.failed_tasks += 1;
                     }
                 }
-                
+
                 task_result
             }));
         }
-        
+
         // Collect results
         let mut results = Vec::new();
         while let Some(result) = futures.next().await {
@@ -248,7 +255,7 @@ where
                 }
             }
         }
-        
+
         Ok(results)
     }
 
@@ -259,7 +266,7 @@ where
     ) -> Result<Vec<ExecutionTask<T>>> {
         // Sort by priority first (higher priority first)
         tasks.sort_by(|a, b| b.priority.cmp(&a.priority));
-        
+
         // TODO: Implement topological sort for dependencies
         // For now, just return priority-sorted tasks
         Ok(tasks)
@@ -274,39 +281,41 @@ where
         let mut batches = Vec::new();
         let mut remaining_tasks = tasks;
         let mut completed_task_ids = std::collections::HashSet::new();
-        
+
         while !remaining_tasks.is_empty() {
             let mut current_batch = Vec::new();
             let mut indices_to_remove = Vec::new();
-            
+
             for (i, task) in remaining_tasks.iter().enumerate() {
                 // Check if all dependencies are satisfied
-                let dependencies_satisfied = task.dependencies.iter()
+                let dependencies_satisfied = task
+                    .dependencies
+                    .iter()
                     .all(|dep| completed_task_ids.contains(dep));
-                
+
                 if dependencies_satisfied {
                     current_batch.push(task.clone());
                     indices_to_remove.push(i);
                 }
             }
-            
+
             if current_batch.is_empty() {
                 return Err(anyhow!("Circular dependency detected in tasks"));
             }
-            
+
             // Mark tasks as completed for dependency resolution
             for task in &current_batch {
                 completed_task_ids.insert(task.id.clone());
             }
-            
+
             // Remove processed tasks
             for &i in indices_to_remove.iter().rev() {
                 remaining_tasks.remove(i);
             }
-            
+
             batches.push(current_batch);
         }
-        
+
         Ok(batches)
     }
 
@@ -314,32 +323,35 @@ where
     async fn start_resource_monitoring(&self) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
         let config = self.config.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.monitoring_interval);
-            
+
             loop {
                 interval.tick().await;
-                
+
                 // Get system metrics (simplified - in real implementation, use system monitoring crates)
                 let cpu_usage = Self::get_cpu_usage().await;
                 let memory_usage = Self::get_memory_usage().await;
-                
+
                 // Update metrics
                 {
                     let mut m = metrics.write().await;
                     m.cpu_usage = cpu_usage;
                     m.memory_usage_mb = memory_usage;
                 }
-                
+
                 // Log resource usage
-                debug!("Resource usage - CPU: {:.1}%, Memory: {}MB", cpu_usage, memory_usage);
-                
+                debug!(
+                    "Resource usage - CPU: {:.1}%, Memory: {}MB",
+                    cpu_usage, memory_usage
+                );
+
                 // TODO: Implement adaptive concurrency based on resource usage
                 if cpu_usage > config.cpu_threshold {
                     warn!("High CPU usage detected: {:.1}%", cpu_usage);
                 }
-                
+
                 if memory_usage > config.max_memory_mb {
                     warn!("High memory usage detected: {}MB", memory_usage);
                 }
@@ -364,6 +376,11 @@ where
         self.metrics.read().await.clone()
     }
 
+    /// Get the number of queued tasks
+    pub async fn get_queue_size(&self) -> usize {
+        self.task_queue.lock().await.len()
+    }
+
     /// Get completed task results
     pub async fn get_completed_tasks(&self) -> HashMap<String, TaskResult<R>> {
         self.completed_tasks.read().await.clone()
@@ -382,9 +399,10 @@ mod tests {
             task_timeout: Duration::from_secs(5),
             ..Default::default()
         };
-        
-        let executor: OptimizedParallelExecutor<String, String> = OptimizedParallelExecutor::new(config);
-        
+
+        let executor: OptimizedParallelExecutor<String, String> =
+            OptimizedParallelExecutor::new(config);
+
         let tasks = vec![
             ExecutionTask {
                 id: "task1".to_string(),
@@ -403,12 +421,15 @@ mod tests {
                 dependencies: vec![],
             },
         ];
-        
-        let results = executor.execute_tasks(tasks, |payload: String| async move {
-            sleep(Duration::from_millis(50)).await;
-            Ok(format!("processed_{}", payload))
-        }).await.unwrap();
-        
+
+        let results = executor
+            .execute_tasks(tasks, |payload: String| async move {
+                sleep(Duration::from_millis(50)).await;
+                Ok(format!("processed_{}", payload))
+            })
+            .await
+            .unwrap();
+
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.result.is_ok()));
     }
@@ -416,7 +437,8 @@ mod tests {
     #[tokio::test]
     async fn test_task_priority_ordering() {
         let config = ParallelExecutionConfig::default();
-        let executor: OptimizedParallelExecutor<String, String> = OptimizedParallelExecutor::new(config);
+        let executor: OptimizedParallelExecutor<String, String> =
+            OptimizedParallelExecutor::new(config);
 
         let tasks = vec![
             ExecutionTask {
@@ -444,9 +466,12 @@ mod tests {
                 dependencies: vec![],
             },
         ];
-        
-        let sorted = executor.sort_tasks_by_priority_and_dependencies(tasks).await.unwrap();
-        
+
+        let sorted = executor
+            .sort_tasks_by_priority_and_dependencies(tasks)
+            .await
+            .unwrap();
+
         // Should be sorted by priority: Critical, High, Low
         assert_eq!(sorted[0].priority, TaskPriority::Critical);
         assert_eq!(sorted[1].priority, TaskPriority::High);

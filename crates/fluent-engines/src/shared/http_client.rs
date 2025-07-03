@@ -21,9 +21,7 @@ impl EngineHttpClient {
 
         let base_url = format!(
             "{}://{}:{}",
-            config.connection.protocol,
-            config.connection.hostname,
-            config.connection.port
+            config.connection.protocol, config.connection.hostname, config.connection.port
         );
 
         let mut default_headers = HashMap::new();
@@ -39,24 +37,24 @@ impl EngineHttpClient {
     /// Send a POST request with JSON payload
     pub async fn post_json(&self, path: &str, payload: &Value) -> Result<Value> {
         let url = format!("{}{}", self.base_url, path);
-        
+
         let mut request = self.client.post(&url);
-        
+
         // Add default headers
         for (key, value) in &self.default_headers {
             request = request.header(key, value);
         }
 
-        let response = request
-            .json(payload)
-            .send()
-            .await?;
+        let response = request.json(payload).send().await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
                 "HTTP request failed with status: {} - {}",
                 response.status(),
-                response.text().await.unwrap_or_else(|_| "Unknown error".to_string())
+                response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string())
             ));
         }
 
@@ -65,20 +63,23 @@ impl EngineHttpClient {
     }
 
     /// Send a POST request with multipart form data
-    pub async fn post_multipart(&self, path: &str, form: reqwest::multipart::Form) -> Result<Value> {
+    pub async fn post_multipart(
+        &self,
+        path: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<Value> {
         let url = format!("{}{}", self.base_url, path);
-        
-        let response = self.client
-            .post(&url)
-            .multipart(form)
-            .send()
-            .await?;
+
+        let response = self.client.post(&url).multipart(form).send().await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
                 "HTTP request failed with status: {} - {}",
                 response.status(),
-                response.text().await.unwrap_or_else(|_| "Unknown error".to_string())
+                response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string())
             ));
         }
 
@@ -140,9 +141,9 @@ impl HttpUtils {
             if let Some(message) = error.get("message") {
                 if let Some(msg_str) = message.as_str() {
                     let msg_lower = msg_str.to_lowercase();
-                    return msg_lower.contains("rate limit") || 
-                           msg_lower.contains("quota") ||
-                           msg_lower.contains("too many requests");
+                    return msg_lower.contains("rate limit")
+                        || msg_lower.contains("quota")
+                        || msg_lower.contains("too many requests");
                 }
             }
         }

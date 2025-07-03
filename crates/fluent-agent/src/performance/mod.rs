@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-pub mod connection_pool;
 pub mod cache;
+pub mod connection_pool;
 
 /// Performance configuration
 #[derive(Debug, Clone)]
@@ -116,7 +116,7 @@ pub mod utils {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Instant;
-    
+
     /// Performance counter for tracking metrics
     pub struct PerformanceCounter {
         requests: AtomicU64,
@@ -124,7 +124,7 @@ pub mod utils {
         total_duration: AtomicU64,
         last_reset: std::sync::Mutex<Instant>,
     }
-    
+
     impl PerformanceCounter {
         pub fn new() -> Self {
             Self {
@@ -134,33 +134,34 @@ pub mod utils {
                 last_reset: std::sync::Mutex::new(Instant::now()),
             }
         }
-        
+
         pub fn record_request(&self, duration: Duration, is_error: bool) {
             self.requests.fetch_add(1, Ordering::Relaxed);
-            self.total_duration.fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
-            
+            self.total_duration
+                .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+
             if is_error {
                 self.errors.fetch_add(1, Ordering::Relaxed);
             }
         }
-        
+
         pub fn get_stats(&self) -> PerformanceStats {
             let requests = self.requests.load(Ordering::Relaxed);
             let errors = self.errors.load(Ordering::Relaxed);
             let total_duration = self.total_duration.load(Ordering::Relaxed);
-            
+
             let avg_duration = if requests > 0 {
                 Duration::from_millis(total_duration / requests)
             } else {
                 Duration::ZERO
             };
-            
+
             let error_rate = if requests > 0 {
                 (errors as f64) / (requests as f64)
             } else {
                 0.0
             };
-            
+
             PerformanceStats {
                 total_requests: requests,
                 total_errors: errors,
@@ -168,7 +169,7 @@ pub mod utils {
                 average_duration: avg_duration,
             }
         }
-        
+
         pub fn reset(&self) {
             self.requests.store(0, Ordering::Relaxed);
             self.errors.store(0, Ordering::Relaxed);
@@ -176,13 +177,13 @@ pub mod utils {
             *self.last_reset.lock().unwrap() = Instant::now();
         }
     }
-    
+
     impl Default for PerformanceCounter {
         fn default() -> Self {
             Self::new()
         }
     }
-    
+
     /// Performance statistics
     #[derive(Debug, Clone)]
     pub struct PerformanceStats {
@@ -191,13 +192,13 @@ pub mod utils {
         pub error_rate: f64,
         pub average_duration: Duration,
     }
-    
+
     /// Memory usage tracker
     pub struct MemoryTracker {
         peak_usage: AtomicU64,
         current_usage: AtomicU64,
     }
-    
+
     impl MemoryTracker {
         pub fn new() -> Self {
             Self {
@@ -205,10 +206,10 @@ pub mod utils {
                 current_usage: AtomicU64::new(0),
             }
         }
-        
+
         pub fn allocate(&self, size: u64) {
             let new_usage = self.current_usage.fetch_add(size, Ordering::Relaxed) + size;
-            
+
             // Update peak usage if necessary
             let mut peak = self.peak_usage.load(Ordering::Relaxed);
             while new_usage > peak {
@@ -223,31 +224,31 @@ pub mod utils {
                 }
             }
         }
-        
+
         pub fn deallocate(&self, size: u64) {
             self.current_usage.fetch_sub(size, Ordering::Relaxed);
         }
-        
+
         pub fn get_current_usage(&self) -> u64 {
             self.current_usage.load(Ordering::Relaxed)
         }
-        
+
         pub fn get_peak_usage(&self) -> u64 {
             self.peak_usage.load(Ordering::Relaxed)
         }
-        
+
         pub fn reset_peak(&self) {
             let current = self.current_usage.load(Ordering::Relaxed);
             self.peak_usage.store(current, Ordering::Relaxed);
         }
     }
-    
+
     impl Default for MemoryTracker {
         fn default() -> Self {
             Self::new()
         }
     }
-    
+
     /// Resource limiter for controlling resource usage
     pub struct ResourceLimiter {
         max_memory: u64,
@@ -255,7 +256,7 @@ pub mod utils {
         current_memory: AtomicU64,
         current_connections: AtomicU64,
     }
-    
+
     impl ResourceLimiter {
         pub fn new(max_memory: u64, max_connections: usize) -> Self {
             Self {
@@ -265,7 +266,7 @@ pub mod utils {
                 current_connections: AtomicU64::new(0),
             }
         }
-        
+
         pub fn try_allocate_memory(&self, size: u64) -> bool {
             let current = self.current_memory.load(Ordering::Relaxed);
             if current + size <= self.max_memory {
@@ -275,11 +276,11 @@ pub mod utils {
                 false
             }
         }
-        
+
         pub fn deallocate_memory(&self, size: u64) {
             self.current_memory.fetch_sub(size, Ordering::Relaxed);
         }
-        
+
         pub fn try_acquire_connection(&self) -> bool {
             let current = self.current_connections.load(Ordering::Relaxed);
             if current < self.max_connections as u64 {
@@ -289,26 +290,29 @@ pub mod utils {
                 false
             }
         }
-        
+
         pub fn release_connection(&self) {
             self.current_connections.fetch_sub(1, Ordering::Relaxed);
         }
-        
+
         pub fn get_memory_usage(&self) -> (u64, u64) {
             (self.current_memory.load(Ordering::Relaxed), self.max_memory)
         }
-        
+
         pub fn get_connection_usage(&self) -> (u64, usize) {
-            (self.current_connections.load(Ordering::Relaxed), self.max_connections)
+            (
+                self.current_connections.load(Ordering::Relaxed),
+                self.max_connections,
+            )
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::utils::*;
-    
+    use super::*;
+
     #[test]
     fn test_performance_config_defaults() {
         let config = PerformanceConfig::default();
@@ -317,53 +321,53 @@ mod tests {
         assert_eq!(config.batch.max_batch_size, 100);
         assert!(config.metrics.enabled);
     }
-    
+
     #[test]
     fn test_performance_counter() {
         let counter = PerformanceCounter::new();
-        
+
         counter.record_request(Duration::from_millis(100), false);
         counter.record_request(Duration::from_millis(200), true);
-        
+
         let stats = counter.get_stats();
         assert_eq!(stats.total_requests, 2);
         assert_eq!(stats.total_errors, 1);
         assert_eq!(stats.error_rate, 0.5);
         assert_eq!(stats.average_duration, Duration::from_millis(150));
     }
-    
+
     #[test]
     fn test_memory_tracker() {
         let tracker = MemoryTracker::new();
-        
+
         tracker.allocate(1000);
         assert_eq!(tracker.get_current_usage(), 1000);
         assert_eq!(tracker.get_peak_usage(), 1000);
-        
+
         tracker.allocate(500);
         assert_eq!(tracker.get_current_usage(), 1500);
         assert_eq!(tracker.get_peak_usage(), 1500);
-        
+
         tracker.deallocate(200);
         assert_eq!(tracker.get_current_usage(), 1300);
         assert_eq!(tracker.get_peak_usage(), 1500);
     }
-    
+
     #[test]
     fn test_resource_limiter() {
         let limiter = ResourceLimiter::new(1000, 5);
-        
+
         assert!(limiter.try_allocate_memory(500));
         assert!(limiter.try_allocate_memory(400));
         assert!(!limiter.try_allocate_memory(200)); // Would exceed limit
-        
+
         assert!(limiter.try_acquire_connection());
         assert!(limiter.try_acquire_connection());
-        
+
         let (memory_used, memory_max) = limiter.get_memory_usage();
         assert_eq!(memory_used, 900);
         assert_eq!(memory_max, 1000);
-        
+
         let (conn_used, conn_max) = limiter.get_connection_usage();
         assert_eq!(conn_used, 2);
         assert_eq!(conn_max, 5);

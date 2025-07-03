@@ -1,17 +1,19 @@
 use crate::cache_manager::global_cache_manager;
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::types::{Request, Response, Cost, Usage, UpsertRequest, UpsertResponse, ExtractedContent};
 use fluent_core::traits::Engine;
-use anyhow::{Result, anyhow};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use std::collections::HashMap;
-use std::path::Path;
 use std::future::Future;
-use log::debug;
-use async_trait::async_trait;
+use std::path::Path;
+use std::sync::Arc;
 
 /// Universal base engine that provides common functionality for all engines
 pub struct UniversalBaseEngine {
@@ -79,17 +81,27 @@ impl UniversalBaseEngine {
     /// Get authentication headers for the engine
     pub fn get_auth_headers(&self) -> Result<HashMap<String, String>> {
         let mut headers = HashMap::new();
-        
+
         match self.engine_type.as_str() {
             "openai" => {
-                if let Some(token) = self.config.parameters.get("bearer_token").and_then(|v| v.as_str()) {
+                if let Some(token) = self
+                    .config
+                    .parameters
+                    .get("bearer_token")
+                    .and_then(|v| v.as_str())
+                {
                     headers.insert("Authorization".to_string(), format!("Bearer {}", token));
                 } else {
                     return Err(anyhow!("Bearer token not found for OpenAI"));
                 }
             }
             "anthropic" => {
-                if let Some(token) = self.config.parameters.get("bearer_token").and_then(|v| v.as_str()) {
+                if let Some(token) = self
+                    .config
+                    .parameters
+                    .get("bearer_token")
+                    .and_then(|v| v.as_str())
+                {
                     headers.insert("x-api-key".to_string(), token.to_string());
                     headers.insert("anthropic-version".to_string(), "2023-06-01".to_string());
                 } else {
@@ -97,7 +109,12 @@ impl UniversalBaseEngine {
                 }
             }
             "google_gemini" => {
-                if let Some(token) = self.config.parameters.get("bearer_token").and_then(|v| v.as_str()) {
+                if let Some(token) = self
+                    .config
+                    .parameters
+                    .get("bearer_token")
+                    .and_then(|v| v.as_str())
+                {
                     headers.insert("Authorization".to_string(), format!("Bearer {}", token));
                 } else {
                     return Err(anyhow!("Bearer token not found for Google Gemini"));
@@ -105,7 +122,12 @@ impl UniversalBaseEngine {
             }
             _ => {
                 // Generic bearer token handling for other engines
-                if let Some(token) = self.config.parameters.get("bearer_token").and_then(|v| v.as_str()) {
+                if let Some(token) = self
+                    .config
+                    .parameters
+                    .get("bearer_token")
+                    .and_then(|v| v.as_str())
+                {
                     headers.insert("Authorization".to_string(), format!("Bearer {}", token));
                 }
             }
@@ -120,9 +142,14 @@ impl UniversalBaseEngine {
         // Check cache first
         let cache_manager = global_cache_manager().await;
         let model = self.get_model_name();
-        
+
         if let Ok(Some(cached_response)) = cache_manager
-            .get_cached_response(&self.engine_type, request, Some(&model), Some(&self.config.parameters))
+            .get_cached_response(
+                &self.engine_type,
+                request,
+                Some(&model),
+                Some(&self.config.parameters),
+            )
             .await
         {
             debug!("Cache hit for {} request", self.engine_type);
@@ -131,16 +158,22 @@ impl UniversalBaseEngine {
 
         // Build payload based on engine type
         let payload = self.build_chat_payload(request)?;
-        
+
         // Send HTTP request
         let response_data = self.send_http_request(&payload).await?;
-        
+
         // Parse response based on engine type
         let response = self.parse_response(&response_data, request)?;
-        
+
         // Cache the response
         if let Err(e) = cache_manager
-            .cache_response(&self.engine_type, request, &response, Some(&model), Some(&self.config.parameters))
+            .cache_response(
+                &self.engine_type,
+                request,
+                &response,
+                Some(&model),
+                Some(&self.config.parameters),
+            )
             .await
         {
             debug!("Failed to cache response: {}", e);
@@ -155,7 +188,7 @@ impl UniversalBaseEngine {
         let headers = self.get_auth_headers()?;
 
         let mut request_builder = self.client.post(&url).json(payload);
-        
+
         // Add authentication headers
         for (key, value) in headers {
             request_builder = request_builder.header(&key, &value);
@@ -164,7 +197,10 @@ impl UniversalBaseEngine {
         let response = request_builder.send().await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow!("{} API error: {}", self.engine_type, error_text));
         }
 
@@ -175,50 +211,44 @@ impl UniversalBaseEngine {
     /// Build chat payload based on engine type
     fn build_chat_payload(&self, request: &Request) -> Result<Value> {
         let model = self.get_model_name();
-        
+
         match self.engine_type.as_str() {
-            "openai" => {
-                Ok(json!({
-                    "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": request.payload
-                        }
-                    ],
-                    "temperature": self.config.parameters.get("temperature").unwrap_or(&json!(0.7)),
-                    "max_tokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
-                }))
-            }
-            "anthropic" => {
-                Ok(json!({
-                    "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": request.payload
-                        }
-                    ],
-                    "max_tokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
-                }))
-            }
-            "google_gemini" => {
-                Ok(json!({
-                    "contents": [
-                        {
-                            "parts": [
-                                {
-                                    "text": request.payload
-                                }
-                            ]
-                        }
-                    ],
-                    "generationConfig": {
-                        "temperature": self.config.parameters.get("temperature").unwrap_or(&json!(0.7)),
-                        "maxOutputTokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
+            "openai" => Ok(json!({
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": request.payload
                     }
-                }))
-            }
+                ],
+                "temperature": self.config.parameters.get("temperature").unwrap_or(&json!(0.7)),
+                "max_tokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
+            })),
+            "anthropic" => Ok(json!({
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": request.payload
+                    }
+                ],
+                "max_tokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
+            })),
+            "google_gemini" => Ok(json!({
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": request.payload
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": self.config.parameters.get("temperature").unwrap_or(&json!(0.7)),
+                    "maxOutputTokens": self.config.parameters.get("max_tokens").unwrap_or(&json!(1000))
+                }
+            })),
             _ => {
                 // Generic payload format
                 Ok(json!({
@@ -249,13 +279,22 @@ impl UniversalBaseEngine {
             .to_string();
 
         let usage = Usage {
-            prompt_tokens: response_data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_data["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_data["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             total_tokens: response_data["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
         };
 
-        let model = response_data["model"].as_str().unwrap_or(&self.default_model).to_string();
-        let finish_reason = response_data["choices"][0]["finish_reason"].as_str().map(String::from);
+        let model = response_data["model"]
+            .as_str()
+            .unwrap_or(&self.default_model)
+            .to_string();
+        let finish_reason = response_data["choices"][0]["finish_reason"]
+            .as_str()
+            .map(String::from);
 
         let cost = self.calculate_cost(&usage);
 
@@ -277,12 +316,19 @@ impl UniversalBaseEngine {
 
         let usage = Usage {
             prompt_tokens: response_data["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_data["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
-            total_tokens: (response_data["usage"]["input_tokens"].as_u64().unwrap_or(0) +
-                response_data["usage"]["output_tokens"].as_u64().unwrap_or(0)) as u32,
+            completion_tokens: response_data["usage"]["output_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            total_tokens: (response_data["usage"]["input_tokens"].as_u64().unwrap_or(0)
+                + response_data["usage"]["output_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)) as u32,
         };
 
-        let model = response_data["model"].as_str().unwrap_or(&self.default_model).to_string();
+        let model = response_data["model"]
+            .as_str()
+            .unwrap_or(&self.default_model)
+            .to_string();
         let finish_reason = response_data["stop_reason"].as_str().map(String::from);
 
         let cost = self.calculate_cost(&usage);
@@ -305,13 +351,21 @@ impl UniversalBaseEngine {
 
         // Gemini doesn't always provide detailed usage stats
         let usage = Usage {
-            prompt_tokens: response_data["usageMetadata"]["promptTokenCount"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_data["usageMetadata"]["candidatesTokenCount"].as_u64().unwrap_or(0) as u32,
-            total_tokens: response_data["usageMetadata"]["totalTokenCount"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_data["usageMetadata"]["promptTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_data["usageMetadata"]["candidatesTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            total_tokens: response_data["usageMetadata"]["totalTokenCount"]
+                .as_u64()
+                .unwrap_or(0) as u32,
         };
 
         let model = self.default_model.clone();
-        let finish_reason = response_data["candidates"][0]["finishReason"].as_str().map(String::from);
+        let finish_reason = response_data["candidates"][0]["finishReason"]
+            .as_str()
+            .map(String::from);
 
         let cost = self.calculate_cost(&usage);
 
@@ -327,7 +381,8 @@ impl UniversalBaseEngine {
     /// Parse generic response format
     fn parse_generic_response(&self, response_data: &Value) -> Result<Response> {
         // Try common response field patterns
-        let content = response_data.get("text")
+        let content = response_data
+            .get("text")
             .or_else(|| response_data.get("content"))
             .or_else(|| response_data.get("response"))
             .and_then(|v| v.as_str())
@@ -396,7 +451,7 @@ impl UniversalBaseEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::config::{EngineConfig, ConnectionConfig};
+    use fluent_core::config::{ConnectionConfig, EngineConfig};
     use serde_json::json;
 
     fn create_test_config() -> EngineConfig {
@@ -431,7 +486,9 @@ mod tests {
             false,
             "test-model".to_string(),
             Some((0.001, 0.002)),
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         assert_eq!(engine.engine_type, "test");
         assert_eq!(engine.default_model, "test-model");
@@ -471,11 +528,12 @@ impl UniversalEngine {
         let base = UniversalBaseEngine::new(
             config,
             "openai".to_string(),
-            true,  // supports_vision
-            true,  // supports_streaming
+            true, // supports_vision
+            true, // supports_streaming
             "gpt-4".to_string(),
             Some((0.01, 0.03)), // OpenAI GPT-4 pricing per 1M tokens
-        ).await?;
+        )
+        .await?;
         Ok(Self { base })
     }
 
@@ -488,7 +546,8 @@ impl UniversalEngine {
             false, // supports_streaming
             "claude-3-5-sonnet-20240620".to_string(),
             Some((0.003, 0.015)), // Anthropic Claude pricing per 1M tokens
-        ).await?;
+        )
+        .await?;
         Ok(Self { base })
     }
 
@@ -497,27 +556,30 @@ impl UniversalEngine {
         let base = UniversalBaseEngine::new(
             config,
             "google_gemini".to_string(),
-            true,  // supports_vision
-            true,  // supports_streaming
+            true, // supports_vision
+            true, // supports_streaming
             "gemini-1.5-flash".to_string(),
             Some((0.00025, 0.00075)), // Gemini pricing per 1M tokens
-        ).await?;
+        )
+        .await?;
         Ok(Self { base })
     }
 }
 
 #[async_trait]
 impl Engine for UniversalEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.base.execute_request(request).await
-        })
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+        Box::new(async move { self.base.execute_request(request).await })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("Upsert not implemented for universal engine"))
-        })
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+        Box::new(async move { Err(anyhow!("Upsert not implemented for universal engine")) })
     }
 
     fn get_neo4j_client(&self) -> Option<&Arc<Neo4jClient>> {
@@ -532,15 +594,22 @@ impl Engine for UniversalEngine {
         None // TODO: Implement content extraction
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("File upload not implemented for universal engine"))
-        })
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move { Err(anyhow!("File upload not implemented for universal engine")) })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File processing not implemented for universal engine"))
+            Err(anyhow!(
+                "File processing not implemented for universal engine"
+            ))
         })
     }
 }

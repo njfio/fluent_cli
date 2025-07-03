@@ -36,5 +36,56 @@ source_compilation.txt
 crates/.DS_Store
 .DS_Store
 crates/.DS_Store
-crates/.DS_Store
-.DS_Store
+
+# Build and test logs
+*.log
+build_output.log
+test_output.log
+
+# Binary artifacts (should not be in version control)
+amber-*
+*-x86_64-*
+*.exe
+
+# Test data and temporary files
+test.txt
+demo_*.db
+demo_*.sh
+*.test
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
+
+# IDE and editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+
+# Node.js (if any frontend dependencies)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files (unless specifically needed)
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories
+.cache/
+cache/

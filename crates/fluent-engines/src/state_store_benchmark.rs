@@ -47,19 +47,22 @@ impl StateStoreBenchmark {
         results.push(file_results);
 
         // Benchmark OptimizedStateStore with different configurations
-        let optimized_results = Self::benchmark_optimized_store(&config, StateStoreConfig::default()).await?;
+        let optimized_results =
+            Self::benchmark_optimized_store(&config, StateStoreConfig::default()).await?;
         results.push(optimized_results);
 
         // Benchmark OptimizedStateStore with write-through disabled
         let mut write_back_config = StateStoreConfig::default();
         write_back_config.write_through = false;
-        let write_back_results = Self::benchmark_optimized_store(&config, write_back_config).await?;
+        let write_back_results =
+            Self::benchmark_optimized_store(&config, write_back_config).await?;
         results.push(write_back_results);
 
         // Benchmark OptimizedStateStore with compression disabled
         let mut no_compression_config = StateStoreConfig::default();
         no_compression_config.enable_compression = false;
-        let no_compression_results = Self::benchmark_optimized_store(&config, no_compression_config).await?;
+        let no_compression_results =
+            Self::benchmark_optimized_store(&config, no_compression_config).await?;
         results.push(no_compression_results);
 
         Ok(results)
@@ -73,11 +76,11 @@ impl StateStoreBenchmark {
         };
 
         let start_time = Instant::now();
-        
+
         for i in 0..config.num_operations {
             let state = Self::create_test_state(i, config.state_size);
             let key = format!("test-key-{}", i);
-            
+
             // Save and then load to simulate real usage
             store.save_state(&key, &state).await?;
             let _loaded = store.load_state(&key).await?;
@@ -105,16 +108,15 @@ impl StateStoreBenchmark {
 
         let store_type = format!(
             "OptimizedStateStore(write_through={}, compression={})",
-            store_config.write_through,
-            store_config.enable_compression
+            store_config.write_through, store_config.enable_compression
         );
 
         let start_time = Instant::now();
-        
+
         for i in 0..config.num_operations {
             let state = Self::create_test_state(i, config.state_size);
             let key = format!("test-key-{}", i);
-            
+
             // Save and then load to simulate real usage
             store.save_state(&key, &state).await?;
             let _loaded = store.load_state(&key).await?;
@@ -136,7 +138,9 @@ impl StateStoreBenchmark {
     }
 
     /// Benchmark concurrent operations
-    pub async fn benchmark_concurrent_operations(config: BenchmarkConfig) -> Result<Vec<BenchmarkResults>> {
+    pub async fn benchmark_concurrent_operations(
+        config: BenchmarkConfig,
+    ) -> Result<Vec<BenchmarkResults>> {
         let mut results = Vec::new();
 
         // Test FileStateStore with concurrent operations
@@ -160,16 +164,16 @@ impl StateStoreBenchmark {
         let mut handles = Vec::new();
 
         let ops_per_task = config.num_operations / config.concurrent_operations;
-        
+
         for task_id in 0..config.concurrent_operations {
             let store_clone = store.clone();
             let state_size = config.state_size;
-            
+
             let handle = tokio::spawn(async move {
                 for i in 0..ops_per_task {
                     let state = Self::create_test_state(task_id * ops_per_task + i, state_size);
                     let key = format!("test-key-{}-{}", task_id, i);
-                    
+
                     store_clone.save_state(&key, &state).await?;
                     let _loaded = store_clone.load_state(&key).await?;
                 }
@@ -188,7 +192,10 @@ impl StateStoreBenchmark {
         let ops_per_second = total_ops as f64 / total_time.as_secs_f64();
 
         Ok(BenchmarkResults {
-            store_type: format!("FileStateStore(concurrent={})", config.concurrent_operations),
+            store_type: format!(
+                "FileStateStore(concurrent={})",
+                config.concurrent_operations
+            ),
             operations: total_ops,
             total_time,
             avg_time_per_op: total_time / total_ops as u32,
@@ -196,9 +203,13 @@ impl StateStoreBenchmark {
         })
     }
 
-    async fn benchmark_optimized_store_concurrent(config: &BenchmarkConfig) -> Result<BenchmarkResults> {
+    async fn benchmark_optimized_store_concurrent(
+        config: &BenchmarkConfig,
+    ) -> Result<BenchmarkResults> {
         let temp_dir = TempDir::new()?;
-        let store = Arc::new(OptimizedStateStore::with_defaults(temp_dir.path().to_path_buf())?);
+        let store = Arc::new(OptimizedStateStore::with_defaults(
+            temp_dir.path().to_path_buf(),
+        )?);
 
         let start_time = Instant::now();
         let mut handles = Vec::new();
@@ -208,12 +219,12 @@ impl StateStoreBenchmark {
         for task_id in 0..config.concurrent_operations {
             let store_clone = Arc::clone(&store);
             let state_size = config.state_size;
-            
+
             let handle = tokio::spawn(async move {
                 for i in 0..ops_per_task {
                     let state = Self::create_test_state(task_id * ops_per_task + i, state_size);
                     let key = format!("test-key-{}-{}", task_id, i);
-                    
+
                     store_clone.save_state(&key, &state).await?;
                     let _loaded = store_clone.load_state(&key).await?;
                 }
@@ -232,7 +243,10 @@ impl StateStoreBenchmark {
         let ops_per_second = total_ops as f64 / total_time.as_secs_f64();
 
         Ok(BenchmarkResults {
-            store_type: format!("OptimizedStateStore(concurrent={})", config.concurrent_operations),
+            store_type: format!(
+                "OptimizedStateStore(concurrent={})",
+                config.concurrent_operations
+            ),
             operations: total_ops,
             total_time,
             avg_time_per_op: total_time / total_ops as u32,
@@ -243,12 +257,9 @@ impl StateStoreBenchmark {
     /// Create a test state with specified size
     fn create_test_state(index: usize, data_size: usize) -> PipelineState {
         let mut data = HashMap::new();
-        
+
         for i in 0..data_size {
-            data.insert(
-                format!("key_{}", i),
-                format!("value_{}_{}", index, i),
-            );
+            data.insert(format!("key_{}", i), format!("value_{}_{}", index, i));
         }
 
         PipelineState {
@@ -265,17 +276,21 @@ impl StateStoreBenchmark {
     /// Print benchmark results in a formatted table
     pub fn print_results(results: &[BenchmarkResults]) {
         println!("\n=== State Store Performance Benchmark Results ===");
-        println!("{:<40} {:<10} {:<12} {:<15} {:<12}", 
-                 "Store Type", "Ops", "Total Time", "Avg Time/Op", "Ops/Sec");
+        println!(
+            "{:<40} {:<10} {:<12} {:<15} {:<12}",
+            "Store Type", "Ops", "Total Time", "Avg Time/Op", "Ops/Sec"
+        );
         println!("{}", "-".repeat(90));
 
         for result in results {
-            println!("{:<40} {:<10} {:<12.2?} {:<15.2?} {:<12.1}",
-                     result.store_type,
-                     result.operations,
-                     result.total_time,
-                     result.avg_time_per_op,
-                     result.ops_per_second);
+            println!(
+                "{:<40} {:<10} {:<12.2?} {:<15.2?} {:<12.1}",
+                result.store_type,
+                result.operations,
+                result.total_time,
+                result.avg_time_per_op,
+                result.ops_per_second
+            );
         }
         println!();
     }
@@ -310,7 +325,7 @@ mod tests {
 
         let results = StateStoreBenchmark::run_comparison(config).await.unwrap();
         assert!(!results.is_empty());
-        
+
         // Verify all benchmarks completed
         for result in &results {
             assert!(result.operations > 0);
@@ -327,7 +342,9 @@ mod tests {
             concurrent_operations: 4,
         };
 
-        let results = StateStoreBenchmark::benchmark_concurrent_operations(config).await.unwrap();
+        let results = StateStoreBenchmark::benchmark_concurrent_operations(config)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2); // FileStateStore + OptimizedStateStore
     }
 }

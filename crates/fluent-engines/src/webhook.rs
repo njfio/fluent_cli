@@ -1,20 +1,19 @@
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
-use serde_json::{json, Value};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use fluent_core::config::EngineConfig;
 use fluent_core::input_validator::InputValidator;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use log::debug;
 use reqwest::Client;
 
@@ -74,7 +73,10 @@ impl WebhookEngine {
 
 #[async_trait]
 impl Engine for WebhookEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             // Validate request payload
             let validated_payload = InputValidator::validate_request_payload(&request.payload)?;
@@ -84,7 +86,7 @@ impl Engine for WebhookEngine {
                 &self.config.connection.protocol,
                 &self.config.connection.hostname,
                 self.config.connection.port,
-                &self.config.connection.request_path
+                &self.config.connection.request_path,
             )?;
 
             // Create a validated request
@@ -100,15 +102,23 @@ impl Engine for WebhookEngine {
 
             debug!("Webhook Payload: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let timeout = self.config.parameters.get("timeout_ms")
+            let timeout = self
+                .config
+                .parameters
+                .get("timeout_ms")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(60000);
             debug!("url: {}, payload: {}, timeout: {}", url, payload, timeout);
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .timeout(std::time::Duration::from_millis(timeout))
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
@@ -124,8 +134,8 @@ impl Engine for WebhookEngine {
                 return Err(anyhow!("Webhook error: {:?}", error));
             }
 
-            let content = serde_json::to_string(&response)
-                .context("Failed to serialize webhook response")?;
+            let content =
+                serde_json::to_string(&response).context("Failed to serialize webhook response")?;
 
             Ok(Response {
                 content,
@@ -145,7 +155,10 @@ impl Engine for WebhookEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             Ok(UpsertResponse {
                 processed_files: vec![],
@@ -159,7 +172,11 @@ impl Engine for WebhookEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionId").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionId")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
@@ -172,7 +189,10 @@ impl Engine for WebhookEngine {
         })
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
             // Security validation
             InputValidator::validate_file_upload(file_path).await?;
@@ -184,31 +204,44 @@ impl Engine for WebhookEngine {
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let file_content = Pin::from(self.upload_file(file_path)).await?;
 
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = self.prepare_payload(request, Some(file_content)).await;
 
             debug!("Webhook Payload with file: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let timeout = self.config.parameters.get("timeout_ms")
+            let timeout = self
+                .config
+                .parameters
+                .get("timeout_ms")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(60000);
 
             debug!("Url: {}, payload: {:?}, timeout: {}", url, payload, timeout);
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .timeout(std::time::Duration::from_millis(timeout))
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .header("Content-Type", "application/json")
@@ -224,8 +257,8 @@ impl Engine for WebhookEngine {
                 return Err(anyhow!("Webhook error: {:?}", error));
             }
 
-            let content = serde_json::to_string(&response)
-                .context("Failed to serialize webhook response")?;
+            let content =
+                serde_json::to_string(&response).context("Failed to serialize webhook response")?;
 
             Ok(Response {
                 content,
@@ -244,5 +277,4 @@ impl Engine for WebhookEngine {
             })
         })
     }
-
 }

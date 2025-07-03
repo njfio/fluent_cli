@@ -172,7 +172,10 @@ pub fn load_config(
                 Ok(f) => match serde_json::Number::from_f64(f) {
                     Some(num) => (k, serde_json::Value::Number(num)),
                     None => {
-                        debug!("Invalid f64 value for key '{}': {}, treating as string", k, f);
+                        debug!(
+                            "Invalid f64 value for key '{}': {}, treating as string",
+                            k, f
+                        );
                         (k, serde_json::Value::String(v.clone()))
                     }
                 },
@@ -199,7 +202,11 @@ impl VariableResolver for CredentialResolver {
         debug!("Looking up credential: {}", credential_key);
         match self.credentials.get(credential_key) {
             Some(credential_value) => {
-                debug!("Credential found for: {} (length: {})", credential_key, credential_value.len());
+                debug!(
+                    "Credential found for: {} (length: {})",
+                    credential_key,
+                    credential_value.len()
+                );
                 Ok(credential_value.clone())
             }
             None => {
@@ -220,8 +227,8 @@ impl VariableResolver for AmberVarResolver {
         }
 
         // Use absolute path and validate amber command exists
-        let amber_path = which::which("amber")
-            .map_err(|_| anyhow!("amber command not found in PATH"))?;
+        let amber_path =
+            which::which("amber").map_err(|_| anyhow!("amber command not found in PATH"))?;
 
         let output = Command::new(amber_path)
             .arg("print")
@@ -322,7 +329,9 @@ impl VariableResolverProcessor {
                         let resolved = resolver.resolve(s)?;
                         // Security fix: Do not set decrypted secrets as environment variables
                         // This prevents secrets from being exposed to child processes
-                        debug!("Resolved variable without setting environment variable for security");
+                        debug!(
+                            "Resolved variable without setting environment variable for security"
+                        );
                         *s = resolved;
                         return Ok(());
                     }

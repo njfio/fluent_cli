@@ -7,19 +7,19 @@ use std::sync::Arc;
 
 use crate::context::ExecutionContext;
 use crate::orchestrator::{ReasoningResult, ReasoningType};
-use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Usage, Cost};
 use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{Cost, Request, Usage};
 
 /// Trait for reasoning engines that can analyze context and plan actions
 #[async_trait]
 pub trait ReasoningEngine: Send + Sync {
     /// Analyze the current execution context and generate reasoning output
     async fn reason(&self, context: &ExecutionContext) -> Result<ReasoningResult>;
-    
+
     /// Get the reasoning capabilities of this engine
     fn get_capabilities(&self) -> Vec<ReasoningCapability>;
-    
+
     /// Validate if this engine can handle the given reasoning type
     fn can_handle(&self, reasoning_type: &ReasoningType) -> bool;
 }
@@ -97,7 +97,7 @@ impl LLMReasoningEngine {
     async fn analyze_goal(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         let prompt = self.build_goal_analysis_prompt(context);
         let response = self.execute_reasoning(&prompt).await?;
-        
+
         Ok(ReasoningResult {
             reasoning_type: ReasoningType::GoalAnalysis,
             input_context: format!("Goal: {:?}", context.get_current_goal()),
@@ -112,7 +112,7 @@ impl LLMReasoningEngine {
     async fn decompose_task(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         let prompt = self.build_task_decomposition_prompt(context);
         let response = self.execute_reasoning(&prompt).await?;
-        
+
         Ok(ReasoningResult {
             reasoning_type: ReasoningType::TaskDecomposition,
             input_context: format!("Current task: {:?}", context.get_current_task()),
@@ -127,7 +127,7 @@ impl LLMReasoningEngine {
     async fn plan_action(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         let prompt = self.build_action_planning_prompt(context);
         let response = self.execute_reasoning(&prompt).await?;
-        
+
         Ok(ReasoningResult {
             reasoning_type: ReasoningType::ActionPlanning,
             input_context: format!("Context: {:?}", context.get_summary()),
@@ -142,7 +142,7 @@ impl LLMReasoningEngine {
     async fn analyze_context(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         let prompt = self.build_context_analysis_prompt(context);
         let response = self.execute_reasoning(&prompt).await?;
-        
+
         Ok(ReasoningResult {
             reasoning_type: ReasoningType::ContextAnalysis,
             input_context: format!("Full context: {:?}", context),
@@ -157,7 +157,7 @@ impl LLMReasoningEngine {
     async fn self_reflect(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         let prompt = self.build_self_reflection_prompt(context);
         let response = self.execute_reasoning(&prompt).await?;
-        
+
         Ok(ReasoningResult {
             reasoning_type: ReasoningType::SelfReflection,
             input_context: format!("Progress: {:?}", context.get_progress_summary()),
@@ -235,8 +235,8 @@ impl LLMReasoningEngine {
     fn extract_confidence(&self, response: &str) -> f64 {
         // Simple regex-based extraction - could be enhanced with more sophisticated parsing
         let patterns = vec![
-            r"confidence[:\s]*([0-9]*\.?[0-9]+)",  // "confidence: 0.85" or "confidence 0.85"
-            r"confidence\s+(?:score\s+)?(?:is\s+)?([0-9]*\.?[0-9]+)",  // "confidence score is 0.85"
+            r"confidence[:\s]*([0-9]*\.?[0-9]+)", // "confidence: 0.85" or "confidence 0.85"
+            r"confidence\s+(?:score\s+)?(?:is\s+)?([0-9]*\.?[0-9]+)", // "confidence score is 0.85"
         ];
 
         for pattern in patterns {
@@ -261,14 +261,14 @@ impl LLMReasoningEngine {
                 }
             }
         }
-        
+
         // Check for completion indicators
         let completion_indicators = ["completed", "achieved", "finished", "done", "success"];
         let completion_count = completion_indicators
             .iter()
             .filter(|&indicator| response.to_lowercase().contains(indicator))
             .count();
-        
+
         if completion_count > 0 {
             0.8_f64 // High confidence if completion indicators found
         } else {
@@ -279,24 +279,27 @@ impl LLMReasoningEngine {
     /// Extract next actions from reasoning response
     fn extract_next_actions(&self, response: &str) -> Vec<String> {
         let mut actions = Vec::new();
-        
+
         // Look for numbered lists or bullet points
         for line in response.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("1.") || trimmed.starts_with("2.") || 
-               trimmed.starts_with("3.") || trimmed.starts_with("-") || 
-               trimmed.starts_with("*") {
+            if trimmed.starts_with("1.")
+                || trimmed.starts_with("2.")
+                || trimmed.starts_with("3.")
+                || trimmed.starts_with("-")
+                || trimmed.starts_with("*")
+            {
                 if let Some(action) = trimmed.split_once('.').or_else(|| trimmed.split_once(' ')) {
                     actions.push(action.1.trim().to_string());
                 }
             }
         }
-        
+
         // If no structured actions found, return the whole response as a single action
         if actions.is_empty() {
             actions.push(response.to_string());
         }
-        
+
         actions
     }
 }
@@ -306,7 +309,7 @@ impl ReasoningEngine for LLMReasoningEngine {
     async fn reason(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         // Determine the most appropriate reasoning type based on context
         let reasoning_type = self.determine_reasoning_type(context);
-        
+
         match reasoning_type {
             ReasoningType::GoalAnalysis => self.analyze_goal(context).await,
             ReasoningType::TaskDecomposition => self.decompose_task(context).await,
@@ -381,13 +384,13 @@ mod tests {
     #[test]
     fn test_extract_confidence() {
         let engine = LLMReasoningEngine::new(Arc::new(Box::new(MockEngine)));
-        
+
         let response1 = "The confidence score is 0.85 for this analysis.";
         assert_eq!(engine.extract_confidence(response1), 0.85);
-        
+
         let response2 = "Confidence: 0.7";
         assert_eq!(engine.extract_confidence(response2), 0.7);
-        
+
         let response3 = "No confidence mentioned";
         assert_eq!(engine.extract_confidence(response3), 0.5);
     }
@@ -395,7 +398,7 @@ mod tests {
     #[test]
     fn test_extract_next_actions() {
         let engine = LLMReasoningEngine::new(Arc::new(Box::new(MockEngine)));
-        
+
         let response = "Next actions:\n1. Analyze the code\n2. Write tests\n3. Deploy changes";
         let actions = engine.extract_next_actions(response);
         assert_eq!(actions.len(), 3);
@@ -409,7 +412,11 @@ struct MockEngine;
 
 #[async_trait]
 impl Engine for MockEngine {
-    fn execute<'a>(&'a self, _request: &'a Request) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a Request,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a>
+    {
         Box::new(async move {
             Ok(fluent_core::types::Response {
                 content: "Mock response".to_string(),
@@ -429,7 +436,11 @@ impl Engine for MockEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a fluent_core::types::UpsertRequest) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a fluent_core::types::UpsertRequest,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::UpsertResponse>> + Send + 'a>
+    {
         Box::new(async move {
             Ok(fluent_core::types::UpsertResponse {
                 processed_files: vec!["mock_file.txt".to_string()],
@@ -446,17 +457,26 @@ impl Engine for MockEngine {
         None
     }
 
-    fn extract_content(&self, _value: &serde_json::Value) -> Option<fluent_core::types::ExtractedContent> {
+    fn extract_content(
+        &self,
+        _value: &serde_json::Value,
+    ) -> Option<fluent_core::types::ExtractedContent> {
         None
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a std::path::Path) -> Box<dyn std::future::Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Ok("Mock upload".to_string())
-        })
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move { Ok("Mock upload".to_string()) })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a std::path::Path) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a>
+    {
         Box::new(async move {
             Ok(fluent_core::types::Response {
                 content: "Mock response with file".to_string(),

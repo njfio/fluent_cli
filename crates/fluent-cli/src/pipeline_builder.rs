@@ -1,17 +1,21 @@
-use std::io::stdout;
 use anyhow::Result;
-use termimad::crossterm::{execute, terminal::{Clear, ClearType}};
-use dialoguer::{Select, Input, Confirm};
+use dialoguer::{Confirm, Input, Select};
+use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor, PipelineStep};
+use std::io::stdout;
 use std::path::PathBuf;
-use fluent_engines::pipeline_executor::{Pipeline, PipelineStep, FileStateStore, PipelineExecutor};
+use termimad::crossterm::{
+    execute,
+    terminal::{Clear, ClearType},
+};
 
 pub async fn build_interactively() -> Result<()> {
     execute!(stdout(), Clear(ClearType::All))?;
-    let name: String = Input::new()
-        .with_prompt("Pipeline name")
-        .interact_text()?;
+    let name: String = Input::new().with_prompt("Pipeline name").interact_text()?;
 
-    let mut pipeline = Pipeline { name, steps: Vec::new() };
+    let mut pipeline = Pipeline {
+        name,
+        steps: Vec::new(),
+    };
 
     loop {
         execute!(stdout(), Clear(ClearType::All))?;
@@ -24,7 +28,9 @@ pub async fn build_interactively() -> Result<()> {
             .items(&["Add step", "Finish"])
             .default(0)
             .interact()?;
-        if action == 1 { break; }
+        if action == 1 {
+            break;
+        }
 
         let step_type = Select::new()
             .with_prompt("Step type")
@@ -36,7 +42,10 @@ pub async fn build_interactively() -> Result<()> {
             0 => {
                 let name: String = Input::new().with_prompt("Step name").interact_text()?;
                 let command: String = Input::new().with_prompt("Command").interact_text()?;
-                let save: String = Input::new().with_prompt("Save output variable (optional)").allow_empty(true).interact_text()?;
+                let save: String = Input::new()
+                    .with_prompt("Save output variable (optional)")
+                    .allow_empty(true)
+                    .interact_text()?;
                 pipeline.steps.push(PipelineStep::Command {
                     name,
                     command,
@@ -47,7 +56,10 @@ pub async fn build_interactively() -> Result<()> {
             1 => {
                 let name: String = Input::new().with_prompt("Step name").interact_text()?;
                 let command: String = Input::new().with_prompt("Shell command").interact_text()?;
-                let save: String = Input::new().with_prompt("Save output variable (optional)").allow_empty(true).interact_text()?;
+                let save: String = Input::new()
+                    .with_prompt("Save output variable (optional)")
+                    .allow_empty(true)
+                    .interact_text()?;
                 pipeline.steps.push(PipelineStep::ShellCommand {
                     name,
                     command,
@@ -58,13 +70,17 @@ pub async fn build_interactively() -> Result<()> {
             2 => {
                 let name: String = Input::new().with_prompt("Step name").interact_text()?;
                 let value: String = Input::new().with_prompt("Value").interact_text()?;
-                pipeline.steps.push(PipelineStep::PrintOutput { name, value });
+                pipeline
+                    .steps
+                    .push(PipelineStep::PrintOutput { name, value });
             }
             _ => {}
         }
     }
 
-    let file: String = Input::new().with_prompt("Save pipeline to file").interact_text()?;
+    let file: String = Input::new()
+        .with_prompt("Save pipeline to file")
+        .interact_text()?;
     let yaml = serde_yaml::to_string(&pipeline)?;
     std::fs::write(&file, yaml)?;
     println!("Pipeline saved to {}", file);
@@ -73,7 +89,9 @@ pub async fn build_interactively() -> Result<()> {
         let input: String = Input::new().with_prompt("Pipeline input").interact_text()?;
         let state_store_dir = PathBuf::from("./pipeline_states");
         tokio::fs::create_dir_all(&state_store_dir).await?;
-        let state_store = FileStateStore { directory: state_store_dir };
+        let state_store = FileStateStore {
+            directory: state_store_dir,
+        };
         let executor = PipelineExecutor::new(state_store, false);
         executor.execute(&pipeline, &input, false, None).await?;
     }

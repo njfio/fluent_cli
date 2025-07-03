@@ -5,7 +5,9 @@ use async_trait::async_trait;
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, Usage, Cost, UpsertRequest, UpsertResponse, ExtractedContent};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
@@ -41,17 +43,16 @@ impl PooledOpenAIEngine {
         let payload = PayloadBuilder::build_chat_payload(request, None);
 
         // Send request
-        let response = client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = client.post(&url).json(&payload).send().await?;
 
         // Return client to pool for reuse
         return_pooled_client(&self.config, client).await;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow!("OpenAI API error: {}", error_text));
         }
 
@@ -63,8 +64,12 @@ impl PooledOpenAIEngine {
 
         // Extract usage information
         let usage = Usage {
-            prompt_tokens: response_json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_json["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_json["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             total_tokens: response_json["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
         };
 
@@ -75,7 +80,10 @@ impl PooledOpenAIEngine {
             content: content.main_content,
             usage,
             cost,
-            model: self.config.parameters.get("model")
+            model: self
+                .config
+                .parameters
+                .get("model")
                 .and_then(|v| v.as_str())
                 .unwrap_or("gpt-3.5-turbo")
                 .to_string(),
@@ -88,7 +96,11 @@ impl PooledOpenAIEngine {
     }
 
     /// Process file request using pooled connection
-    async fn process_file_with_pool(&self, request: &Request, file_path: &Path) -> Result<Response> {
+    async fn process_file_with_pool(
+        &self,
+        request: &Request,
+        file_path: &Path,
+    ) -> Result<Response> {
         // Get a client from the connection pool
         let client = get_pooled_client(&self.config).await?;
 
@@ -98,23 +110,23 @@ impl PooledOpenAIEngine {
         let image_format = FileHandler::get_image_format(file_path);
 
         // Build vision payload
-        let payload = PayloadBuilder::build_vision_payload(&request.payload, &base64_data, &image_format);
+        let payload =
+            PayloadBuilder::build_vision_payload(&request.payload, &base64_data, &image_format);
 
         // Build URL
         let url = UrlBuilder::build_default_url(&self.config);
 
         // Send request
-        let response = client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = client.post(&url).json(&payload).send().await?;
 
         // Return client to pool for reuse
         return_pooled_client(&self.config, client).await;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow!("OpenAI API error: {}", error_text));
         }
 
@@ -126,8 +138,12 @@ impl PooledOpenAIEngine {
 
         // Extract usage and calculate cost
         let usage = Usage {
-            prompt_tokens: response_json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_json["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_json["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             total_tokens: response_json["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
         };
 
@@ -147,7 +163,10 @@ impl PooledOpenAIEngine {
     }
 
     fn calculate_cost(&self, usage: &Usage) -> Cost {
-        let model = self.config.parameters.get("model")
+        let model = self
+            .config
+            .parameters
+            .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("gpt-3.5-turbo");
 
@@ -175,9 +194,7 @@ impl Engine for PooledOpenAIEngine {
         &'a self,
         request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.execute_with_pool(request).await
-        })
+        Box::new(async move { self.execute_with_pool(request).await })
     }
 
     fn process_request_with_file<'a>(
@@ -185,18 +202,14 @@ impl Engine for PooledOpenAIEngine {
         request: &'a Request,
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.process_file_with_pool(request, file_path).await
-        })
+        Box::new(async move { self.process_file_with_pool(request, file_path).await })
     }
 
     fn upload_file<'a>(
         &'a self,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("File upload not supported for OpenAI engine"))
-        })
+        Box::new(async move { Err(anyhow!("File upload not supported for OpenAI engine")) })
     }
 
     fn upsert<'a>(
@@ -261,15 +274,15 @@ mod tests {
     #[tokio::test]
     async fn test_connection_pool_usage() {
         let config = create_test_config();
-        
+
         // Get initial pool stats
         let initial_stats = global_pool().get_stats();
-        
+
         // Create engine and simulate getting a client
         let _engine = PooledOpenAIEngine::new(config.clone()).await.unwrap();
         let client = get_pooled_client(&config).await.unwrap();
         return_pooled_client(&config, client).await;
-        
+
         // Check that pool stats changed
         let final_stats = global_pool().get_stats();
         assert!(final_stats.total_clients_created >= initial_stats.total_clients_created);
@@ -284,7 +297,7 @@ mod tests {
         };
 
         let usage = Usage {
-            prompt_tokens: 1000000, // 1M tokens
+            prompt_tokens: 1000000,    // 1M tokens
             completion_tokens: 500000, // 0.5M tokens
             total_tokens: 1500000,
         };

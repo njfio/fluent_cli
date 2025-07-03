@@ -33,9 +33,15 @@ impl OutputProcessor {
 
         // Block localhost and private IP ranges
         if let Some(host) = parsed_url.host_str() {
-            if host == "localhost" || host == "127.0.0.1" || host.starts_with("192.168.")
-                || host.starts_with("10.") || host.starts_with("172.") {
-                return Err(anyhow!("Downloads from private/local addresses are not allowed"));
+            if host == "localhost"
+                || host == "127.0.0.1"
+                || host.starts_with("192.168.")
+                || host.starts_with("10.")
+                || host.starts_with("172.")
+            {
+                return Err(anyhow!(
+                    "Downloads from private/local addresses are not allowed"
+                ));
             }
         }
 
@@ -67,7 +73,8 @@ impl OutputProcessor {
     /// Creates a secure temporary file with restricted permissions
     async fn create_secure_temp_file(content: &[u8], extension: &str) -> Result<PathBuf> {
         let temp_dir = env::temp_dir();
-        let file_name = format!("fluent_{}_{}.{}",
+        let file_name = format!(
+            "fluent_{}_{}.{}",
             std::process::id(),
             Uuid::new_v4(),
             Self::sanitize_filename(extension)
@@ -137,7 +144,8 @@ impl OutputProcessor {
 
         // Check content length to prevent excessive downloads
         if let Some(content_length) = response.content_length() {
-            if content_length > 100 * 1024 * 1024 { // 100MB limit
+            if content_length > 100 * 1024 * 1024 {
+                // 100MB limit
                 return Err(anyhow!("File too large: {} bytes", content_length));
             }
         }
@@ -201,13 +209,11 @@ impl OutputProcessor {
 
     pub fn parse_code(content: &str) -> Vec<String> {
         match Regex::new(r"```(?:\w+)?\n([\s\S]*?)\n```") {
-            Ok(code_block_regex) => {
-                code_block_regex
-                    .captures_iter(content)
-                    .filter_map(|cap| cap.get(1))
-                    .map(|m| m.as_str().trim().to_string())
-                    .collect()
-            }
+            Ok(code_block_regex) => code_block_regex
+                .captures_iter(content)
+                .filter_map(|cap| cap.get(1))
+                .map(|m| m.as_str().trim().to_string())
+                .collect(),
             Err(e) => {
                 debug!("Failed to create regex for code block parsing: {}", e);
                 Vec::new()
@@ -254,8 +260,9 @@ impl OutputProcessor {
         {
             let temp_file = Self::create_secure_temp_file(
                 _script.as_bytes(),
-                if cfg!(windows) { "bat" } else { "sh" }
-            ).await?;
+                if cfg!(windows) { "bat" } else { "sh" },
+            )
+            .await?;
 
             // Set executable permissions on Unix-like systems
             #[cfg(unix)]
@@ -272,8 +279,9 @@ impl OutputProcessor {
                     Command::new("cmd").arg("/C").arg(&temp_file).output()
                 } else {
                     Command::new("sh").arg(&temp_file).output()
-                }
-            ).await
+                },
+            )
+            .await
             .context("Script execution timed out")?
             .context("Failed to execute script")?;
 
@@ -321,8 +329,9 @@ impl OutputProcessor {
 
                 let result = tokio::time::timeout(
                     std::time::Duration::from_secs(10),
-                    Command::new("sh").arg("-c").arg(trimmed).output()
-                ).await
+                    Command::new("sh").arg("-c").arg(trimmed).output(),
+                )
+                .await
                 .context("Command execution timed out")?
                 .context("Failed to execute command")?;
 
@@ -465,7 +474,10 @@ impl MarkdownFormatter {
                 });
                 Ok(())
             } else {
-                Err(anyhow::anyhow!("Theme '{}' has no foreground color defined", theme_name))
+                Err(anyhow::anyhow!(
+                    "Theme '{}' has no foreground color defined",
+                    theme_name
+                ))
             }
         } else {
             Err(anyhow::anyhow!("Theme '{}' not found", theme_name))

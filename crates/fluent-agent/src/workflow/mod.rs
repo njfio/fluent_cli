@@ -81,9 +81,16 @@ pub struct RetryConfig {
 /// Backoff strategy for retries
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BackoffStrategy {
-    Fixed { delay: String },
-    Exponential { initial_delay: String, max_delay: String },
-    Linear { increment: String },
+    Fixed {
+        delay: String,
+    },
+    Exponential {
+        initial_delay: String,
+        max_delay: String,
+    },
+    Linear {
+        increment: String,
+    },
 }
 
 /// Error handling configuration
@@ -216,32 +223,32 @@ impl WorkflowContext {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn set_step_status(&mut self, step_id: &str, status: StepStatus) {
         self.step_status.insert(step_id.to_string(), status);
     }
-    
+
     pub fn get_step_status(&self, step_id: &str) -> Option<&StepStatus> {
         self.step_status.get(step_id)
     }
-    
+
     pub fn set_step_output(&mut self, step_id: &str, key: &str, value: serde_json::Value) {
         self.step_outputs
             .entry(step_id.to_string())
             .or_insert_with(HashMap::new)
             .insert(key.to_string(), value);
     }
-    
+
     pub fn get_step_output(&self, step_id: &str, key: &str) -> Option<&serde_json::Value> {
         self.step_outputs
             .get(step_id)
             .and_then(|outputs| outputs.get(key))
     }
-    
+
     pub fn set_variable(&mut self, key: &str, value: serde_json::Value) {
         self.variables.insert(key.to_string(), value);
     }
-    
+
     pub fn get_variable(&self, key: &str) -> Option<&serde_json::Value> {
         self.variables.get(key)
     }
@@ -268,10 +275,10 @@ impl Default for RetryConfig {
 pub mod utils {
     use super::*;
     use std::time::Duration;
-    
+
     pub fn parse_duration(duration_str: &str) -> Result<Duration> {
         let duration_str = duration_str.trim();
-        
+
         if duration_str.ends_with("ms") {
             let ms: u64 = duration_str[..duration_str.len() - 2].parse()?;
             Ok(Duration::from_millis(ms))
@@ -290,11 +297,12 @@ pub mod utils {
             Ok(Duration::from_secs(secs))
         }
     }
-    
+
     pub fn validate_workflow_definition(definition: &WorkflowDefinition) -> Result<()> {
         // Validate step dependencies
-        let step_ids: std::collections::HashSet<_> = definition.steps.iter().map(|s| &s.id).collect();
-        
+        let step_ids: std::collections::HashSet<_> =
+            definition.steps.iter().map(|s| &s.id).collect();
+
         for step in &definition.steps {
             if let Some(ref deps) = step.depends_on {
                 for dep in deps {
@@ -308,10 +316,10 @@ pub mod utils {
                 }
             }
         }
-        
+
         // Check for circular dependencies (simplified check)
         // TODO: Implement proper topological sort validation
-        
+
         Ok(())
     }
 }
@@ -319,31 +327,43 @@ pub mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_workflow_context_creation() {
         let mut inputs = HashMap::new();
         inputs.insert("test_input".to_string(), serde_json::json!("test_value"));
-        
+
         let context = WorkflowContext::new(
             "workflow_123".to_string(),
             "execution_456".to_string(),
             inputs,
         );
-        
+
         assert_eq!(context.workflow_id, "workflow_123");
         assert_eq!(context.execution_id, "execution_456");
-        assert_eq!(context.inputs.get("test_input"), Some(&serde_json::json!("test_value")));
+        assert_eq!(
+            context.inputs.get("test_input"),
+            Some(&serde_json::json!("test_value"))
+        );
     }
-    
+
     #[test]
     fn test_duration_parsing() {
         assert_eq!(utils::parse_duration("5s").unwrap(), Duration::from_secs(5));
-        assert_eq!(utils::parse_duration("100ms").unwrap(), Duration::from_millis(100));
-        assert_eq!(utils::parse_duration("2m").unwrap(), Duration::from_secs(120));
-        assert_eq!(utils::parse_duration("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(
+            utils::parse_duration("100ms").unwrap(),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            utils::parse_duration("2m").unwrap(),
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            utils::parse_duration("1h").unwrap(),
+            Duration::from_secs(3600)
+        );
     }
-    
+
     #[test]
     fn test_workflow_validation() {
         let definition = WorkflowDefinition {
@@ -383,7 +403,7 @@ mod tests {
             error_handling: None,
             metadata: None,
         };
-        
+
         assert!(utils::validate_workflow_definition(&definition).is_ok());
     }
 }

@@ -1,16 +1,16 @@
-use crate::streaming_engine::{StreamingEngine, OpenAIStreaming, StreamingUtils, ResponseStream};
-use fluent_core::config::EngineConfig;
-use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
-use fluent_core::neo4j_client::Neo4jClient;
-use anyhow::{Result, anyhow};
-use serde_json::Value;
-use std::sync::Arc;
-use std::path::Path;
-use std::future::Future;
+use crate::streaming_engine::{OpenAIStreaming, ResponseStream, StreamingEngine, StreamingUtils};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use reqwest::Client;
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use log::debug;
+use reqwest::Client;
+use serde_json::Value;
+use std::future::Future;
+use std::path::Path;
+use std::sync::Arc;
 
 /// OpenAI engine with streaming support
 pub struct OpenAIStreamingEngine {
@@ -63,8 +63,17 @@ impl OpenAIStreamingEngine {
         StreamingUtils::collect_stream(stream).await
     }
 
+    /// Get the underlying HTTP client for advanced usage
+    pub fn get_client(&self) -> &Client {
+        &self.client
+    }
+
     /// Execute request with progress callback
-    pub async fn execute_with_progress<F>(&self, request: &Request, mut progress_callback: F) -> Result<Response>
+    pub async fn execute_with_progress<F>(
+        &self,
+        request: &Request,
+        mut progress_callback: F,
+    ) -> Result<Response>
     where
         F: FnMut(&str) + Send + 'static,
     {
@@ -77,12 +86,12 @@ impl OpenAIStreamingEngine {
 
         while let Some(chunk_result) = futures::StreamExt::next(&mut stream).await {
             let chunk = chunk_result?;
-            
+
             if !chunk.content.is_empty() {
                 content.push_str(&chunk.content);
                 progress_callback(&chunk.content);
             }
-            
+
             if let Some(usage) = chunk.token_usage {
                 if let Some(prompt) = usage.prompt_tokens {
                     total_prompt_tokens = prompt;
@@ -91,11 +100,11 @@ impl OpenAIStreamingEngine {
                     total_completion_tokens += completion;
                 }
             }
-            
+
             if let Some(chunk_model) = chunk.model {
                 model = chunk_model;
             }
-            
+
             if chunk.is_final {
                 finish_reason = chunk.finish_reason;
                 break;
@@ -103,7 +112,7 @@ impl OpenAIStreamingEngine {
         }
 
         let total_tokens = total_prompt_tokens + total_completion_tokens;
-        
+
         Ok(Response {
             content,
             usage: fluent_core::types::Usage {
@@ -123,7 +132,9 @@ impl OpenAIStreamingEngine {
 
     /// Check if streaming is enabled in configuration
     pub fn is_streaming_enabled(&self) -> bool {
-        self.config.parameters.get("stream")
+        self.config
+            .parameters
+            .get("stream")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
     }
@@ -131,7 +142,10 @@ impl OpenAIStreamingEngine {
 
 #[async_trait]
 impl Engine for OpenAIStreamingEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             if self.is_streaming_enabled() {
                 // Use streaming and collect the result
@@ -143,9 +157,14 @@ impl Engine for OpenAIStreamingEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("Upsert not implemented for OpenAI streaming engine"))
+            Err(anyhow!(
+                "Upsert not implemented for OpenAI streaming engine"
+            ))
         })
     }
 
@@ -161,15 +180,26 @@ impl Engine for OpenAIStreamingEngine {
         None // TODO: Implement content extraction
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File upload not implemented for OpenAI streaming engine"))
+            Err(anyhow!(
+                "File upload not implemented for OpenAI streaming engine"
+            ))
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File processing not implemented for OpenAI streaming engine"))
+            Err(anyhow!(
+                "File processing not implemented for OpenAI streaming engine"
+            ))
         })
     }
 }
@@ -192,7 +222,7 @@ impl StreamingEngine for OpenAIStreamingEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::config::{EngineConfig, ConnectionConfig};
+    use fluent_core::config::{ConnectionConfig, EngineConfig};
     use serde_json::json;
 
     fn create_openai_config() -> EngineConfig {
@@ -222,7 +252,7 @@ mod tests {
     async fn test_openai_streaming_engine_creation() {
         let config = create_openai_config();
         let engine = OpenAIStreamingEngine::new(config).await.unwrap();
-        
+
         assert!(engine.supports_streaming());
         assert!(engine.is_streaming_enabled());
     }
@@ -231,7 +261,7 @@ mod tests {
     async fn test_streaming_config() {
         let config = create_openai_config();
         let engine = OpenAIStreamingEngine::new(config).await.unwrap();
-        
+
         let streaming_config = engine.get_streaming_config();
         assert!(streaming_config.enabled);
         assert_eq!(streaming_config.buffer_size, 8192);
@@ -240,12 +270,12 @@ mod tests {
     #[test]
     fn test_streaming_enabled_detection() {
         let mut config = create_openai_config();
-        
+
         // Test with streaming enabled
         config.parameters.insert("stream".to_string(), json!(true));
         let engine = tokio_test::block_on(OpenAIStreamingEngine::new(config.clone())).unwrap();
         assert!(engine.is_streaming_enabled());
-        
+
         // Test with streaming disabled
         config.parameters.insert("stream".to_string(), json!(false));
         let engine = tokio_test::block_on(OpenAIStreamingEngine::new(config)).unwrap();
@@ -254,11 +284,11 @@ mod tests {
 }
 
 /// Usage examples for the streaming engine
-/// 
+///
 /// ```rust
 /// use fluent_engines::openai_streaming::OpenAIStreamingEngine;
 /// use fluent_core::types::Request;
-/// 
+///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let config = create_openai_config();

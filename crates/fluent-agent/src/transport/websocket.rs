@@ -1,4 +1,7 @@
-use super::{JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, McpTransport, AuthConfig, AuthType, TimeoutConfig, RetryConfig};
+use super::{
+    AuthConfig, AuthType, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpTransport,
+    RetryConfig, TimeoutConfig,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -7,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::timeout;
-use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
 #[allow(dead_code)]
@@ -33,15 +36,19 @@ impl WebSocketTransport {
     ) -> Result<Self> {
         // Validate WebSocket URL
         let mut url = Url::parse(&ws_url)?;
-        
+
         // Add authentication to URL or headers if needed
         if let Some(ref auth) = auth_config {
             match auth.auth_type {
                 AuthType::Basic => {
-                    if let (Some(username), Some(password)) = 
-                        (auth.credentials.get("username"), auth.credentials.get("password")) {
-                        url.set_username(username).map_err(|_| anyhow::anyhow!("Invalid username"))?;
-                        url.set_password(Some(password)).map_err(|_| anyhow::anyhow!("Invalid password"))?;
+                    if let (Some(username), Some(password)) = (
+                        auth.credentials.get("username"),
+                        auth.credentials.get("password"),
+                    ) {
+                        url.set_username(username)
+                            .map_err(|_| anyhow::anyhow!("Invalid username"))?;
+                        url.set_password(Some(password))
+                            .map_err(|_| anyhow::anyhow!("Invalid password"))?;
                     }
                 }
                 _ => {
@@ -50,7 +57,7 @@ impl WebSocketTransport {
                 }
             }
         }
-        
+
         let transport = Self {
             ws_url: url.to_string(),
             auth_config,
@@ -62,46 +69,48 @@ impl WebSocketTransport {
             is_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             message_tx: Arc::new(Mutex::new(None)),
         };
-        
+
         transport.connect().await?;
         Ok(transport)
     }
-    
+
     async fn connect(&self) -> Result<()> {
         let url = Url::parse(&self.ws_url)?;
-        
+
         // TODO: Add custom headers support for authentication
         let (ws_stream, _) = timeout(
             Duration::from_millis(self.timeout_config.connect_timeout_ms),
-            connect_async(url)
-        ).await??;
-        
+            connect_async(url),
+        )
+        .await??;
+
         *self.connection.lock().await = Some(ws_stream);
-        self.is_connected.store(true, std::sync::atomic::Ordering::Relaxed);
-        
+        self.is_connected
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
         // Start message handling loops
         self.start_message_loops().await?;
-        
+
         Ok(())
     }
-    
+
     async fn start_message_loops(&self) -> Result<()> {
         let connection = self.connection.clone();
         let response_handlers = self.response_handlers.clone();
         let notification_tx = self.notification_tx.clone();
         let is_connected = self.is_connected.clone();
         let message_tx = self.message_tx.clone();
-        
+
         // Create message sending channel
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         *message_tx.lock().await = Some(tx);
-        
+
         // Spawn message reading task
         let connection_read = connection.clone();
         let response_handlers_read = response_handlers.clone();
         let notification_tx_read = notification_tx.clone();
         let is_connected_read = is_connected.clone();
-        
+
         tokio::spawn(async move {
             let mut conn_guard = connection_read.lock().await;
             if let Some(ref mut ws_stream) = *conn_guard {
@@ -111,7 +120,9 @@ impl WebSocketTransport {
                             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                                 if value.get("id").is_some() {
                                     // This is a response
-                                    if let Ok(response) = serde_json::from_value::<JsonRpcResponse>(value) {
+                                    if let Ok(response) =
+                                        serde_json::from_value::<JsonRpcResponse>(value)
+                                    {
                                         let id = response.id.to_string();
                                         let handlers = response_handlers_read.read().await;
                                         if let Some(sender) = handlers.get(&id) {
@@ -120,7 +131,9 @@ impl WebSocketTransport {
                                     }
                                 } else {
                                     // This is a notification
-                                    if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(value) {
+                                    if let Ok(notification) =
+                                        serde_json::from_value::<JsonRpcNotification>(value)
+                                    {
                                         let tx_guard = notification_tx_read.lock().await;
                                         if let Some(ref sender) = *tx_guard {
                                             let _ = sender.send(notification);
@@ -136,14 +149,14 @@ impl WebSocketTransport {
                     }
                 }
             }
-            
+
             is_connected_read.store(false, std::sync::atomic::Ordering::Relaxed);
         });
-        
+
         // Spawn message writing task
         let connection_write = connection.clone();
         let is_connected_write = is_connected.clone();
-        
+
         tokio::spawn(async move {
             while is_connected_write.load(std::sync::atomic::Ordering::Relaxed) {
                 if let Some(message) = rx.recv().await {
@@ -159,13 +172,13 @@ impl WebSocketTransport {
                     break;
                 }
             }
-            
+
             is_connected_write.store(false, std::sync::atomic::Ordering::Relaxed);
         });
-        
+
         Ok(())
     }
-    
+
     async fn send_message(&self, message: Message) -> Result<()> {
         let tx_guard = self.message_tx.lock().await;
         if let Some(ref sender) = *tx_guard {
@@ -183,25 +196,26 @@ impl McpTransport for WebSocketTransport {
         if !self.is_connected().await {
             return Err(anyhow::anyhow!("Transport not connected"));
         }
-        
+
         let id = request.id.to_string();
         let (tx, mut rx) = mpsc::unbounded_channel();
-        
+
         // Register response handler
         {
             let mut handlers = self.response_handlers.write().await;
             handlers.insert(id.clone(), tx);
         }
-        
+
         // Send request
         let request_json = serde_json::to_string(&request)?;
         self.send_message(Message::Text(request_json)).await?;
-        
+
         // Wait for response with timeout
         let response_option = timeout(
             Duration::from_millis(self.timeout_config.request_timeout_ms),
             rx.recv(),
-        ).await?;
+        )
+        .await?;
 
         // Clean up handler
         {
@@ -212,41 +226,48 @@ impl McpTransport for WebSocketTransport {
         let response = response_option.ok_or_else(|| anyhow::anyhow!("No response received"))?;
         Ok(response)
     }
-    
+
     async fn start_listening(&self) -> Result<mpsc::UnboundedReceiver<JsonRpcNotification>> {
         let (tx, rx) = mpsc::unbounded_channel();
         *self.notification_tx.lock().await = Some(tx);
         Ok(rx)
     }
-    
+
     async fn close(&self) -> Result<()> {
-        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
-        
+        self.is_connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+
         // Send close message
         let _ = self.send_message(Message::Close(None)).await;
-        
+
         // Clear connection
         *self.connection.lock().await = None;
-        
+
         Ok(())
     }
-    
+
     async fn is_connected(&self) -> bool {
         self.is_connected.load(std::sync::atomic::Ordering::Relaxed)
     }
-    
+
     fn get_metadata(&self) -> HashMap<String, String> {
         let mut metadata = HashMap::new();
         metadata.insert("transport_type".to_string(), "websocket".to_string());
         metadata.insert("ws_url".to_string(), self.ws_url.clone());
-        
+
         if let Some(ref auth) = self.auth_config {
             metadata.insert("auth_type".to_string(), format!("{:?}", auth.auth_type));
         }
-        
-        metadata.insert("connect_timeout_ms".to_string(), self.timeout_config.connect_timeout_ms.to_string());
-        metadata.insert("request_timeout_ms".to_string(), self.timeout_config.request_timeout_ms.to_string());
-        
+
+        metadata.insert(
+            "connect_timeout_ms".to_string(),
+            self.timeout_config.connect_timeout_ms.to_string(),
+        );
+        metadata.insert(
+            "request_timeout_ms".to_string(),
+            self.timeout_config.request_timeout_ms.to_string(),
+        );
+
         metadata
     }
 }
@@ -254,7 +275,7 @@ impl McpTransport for WebSocketTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_websocket_transport_creation() {
         // Test with a mock WebSocket URL (this will fail connection but tests creation logic)
@@ -268,12 +289,13 @@ mod tests {
                 idle_timeout_ms: 30000,
             },
             RetryConfig::default(),
-        ).await;
-        
+        )
+        .await;
+
         // This will likely fail due to connection test, but validates the creation logic
         assert!(result.is_err()); // Expected to fail connection test
     }
-    
+
     #[test]
     fn test_metadata() {
         let transport = WebSocketTransport {
@@ -290,9 +312,15 @@ mod tests {
             is_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             message_tx: Arc::new(Mutex::new(None)),
         };
-        
+
         let metadata = transport.get_metadata();
-        assert_eq!(metadata.get("transport_type"), Some(&"websocket".to_string()));
-        assert_eq!(metadata.get("ws_url"), Some(&"ws://example.com/mcp".to_string()));
+        assert_eq!(
+            metadata.get("transport_type"),
+            Some(&"websocket".to_string())
+        );
+        assert_eq!(
+            metadata.get("ws_url"),
+            Some(&"ws://example.com/mcp".to_string())
+        );
     }
 }

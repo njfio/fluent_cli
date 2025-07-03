@@ -1,9 +1,6 @@
 // Frogger-like Game in Rust - Terminal Based
 // This demonstrates what the agentic system would create
 
-use std::io::{self, stdout, Write};
-use std::time::{Duration, Instant};
-use std::thread;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent},
@@ -11,6 +8,9 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor},
     terminal::{self, ClearType},
 };
+use std::io::{self, stdout, Write};
+use std::thread;
+use std::time::{Duration, Instant};
 
 const GAME_WIDTH: usize = 40;
 const GAME_HEIGHT: usize = 20;
@@ -44,9 +44,9 @@ struct Game {
 impl Game {
     fn new() -> Self {
         let mut cars = Vec::new();
-        
+
         // Create cars on different rows with different speeds and directions
-        for row in 3..GAME_HEIGHT-3 {
+        for row in 3..GAME_HEIGHT - 3 {
             if row % 2 == 0 {
                 // Cars moving right
                 for i in 0..3 {
@@ -61,7 +61,10 @@ impl Game {
                 // Cars moving left
                 for i in 0..3 {
                     cars.push(Car {
-                        pos: Position { x: GAME_WIDTH - 1 - (i * 15), y: row },
+                        pos: Position {
+                            x: GAME_WIDTH - 1 - (i * 15),
+                            y: row,
+                        },
                         direction: -1,
                         speed: 150 + (row as u64 * 30),
                         last_move: Instant::now(),
@@ -71,7 +74,10 @@ impl Game {
         }
 
         Game {
-            frog: Position { x: GAME_WIDTH / 2, y: START_ROW },
+            frog: Position {
+                x: GAME_WIDTH / 2,
+                y: START_ROW,
+            },
             cars,
             score: 0,
             lives: 3,
@@ -83,7 +89,7 @@ impl Game {
 
     fn update(&mut self) {
         let now = Instant::now();
-        
+
         // Update car positions
         for car in &mut self.cars {
             if now.duration_since(car.last_move).as_millis() >= car.speed as u128 {
@@ -100,7 +106,10 @@ impl Game {
                     self.game_over = true;
                 } else {
                     // Reset frog position
-                    self.frog = Position { x: GAME_WIDTH / 2, y: START_ROW };
+                    self.frog = Position {
+                        x: GAME_WIDTH / 2,
+                        y: START_ROW,
+                    };
                 }
                 break;
             }
@@ -118,13 +127,17 @@ impl Game {
     fn move_frog(&mut self, dx: i32, dy: i32) {
         let new_x = (self.frog.x as i32 + dx).max(0).min(GAME_WIDTH as i32 - 1) as usize;
         let new_y = (self.frog.y as i32 + dy).max(1).min(GAME_HEIGHT as i32 - 2) as usize;
-        
+
         self.frog.x = new_x;
         self.frog.y = new_y;
     }
 
     fn draw(&self) -> io::Result<()> {
-        execute!(stdout(), terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+        execute!(
+            stdout(),
+            terminal::Clear(ClearType::All),
+            cursor::MoveTo(0, 0)
+        )?;
 
         // Draw game border and field
         for y in 0..GAME_HEIGHT {
@@ -181,7 +194,10 @@ impl Game {
             stdout(),
             cursor::MoveTo(0, GAME_HEIGHT as u16 + 1),
             SetForegroundColor(Color::White),
-            Print(format!("Score: {} | Lives: {} | Use WASD to move, Q to quit", self.score, self.lives))
+            Print(format!(
+                "Score: {} | Lives: {} | Use WASD to move, Q to quit",
+                self.score, self.lives
+            ))
         )?;
 
         if self.game_over {
@@ -211,7 +227,7 @@ impl Game {
 fn main() -> io::Result<()> {
     println!("🎮 Frogger-like Game - Created by Agentic System Demo");
     println!("Press any key to start...");
-    
+
     // Wait for user input to start
     let _ = io::stdin().read_line(&mut String::new());
 
@@ -275,7 +291,11 @@ fn main() -> io::Result<()> {
 
     // Cleanup
     terminal::disable_raw_mode()?;
-    execute!(stdout(), terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+    execute!(
+        stdout(),
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0)
+    )?;
     println!("Thanks for playing! Game created by the Agentic System.");
 
     Ok(())

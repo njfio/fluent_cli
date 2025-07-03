@@ -1,22 +1,21 @@
 use std::future::Future;
 use std::path::Path;
 
-use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use serde_json::{json, Value};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use log::debug;
 use reqwest::Client;
+use serde_json::{json, Value};
+use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 pub struct GoogleGeminiEngine {
     config: EngineConfig,
@@ -60,23 +59,34 @@ impl GoogleGeminiEngine {
     async fn encode_image(&self, file_path: &Path) -> Result<String> {
         let mut file = File::open(file_path).await.context("Failed to open file")?;
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+        file.read_to_end(&mut buffer)
+            .await
+            .context("Failed to read file")?;
         Ok(STANDARD.encode(&buffer))
     }
 
-    async fn send_gemini_request(&self, prompt: &str, encoded_image: Option<String>) -> Result<Value> {
-        let api_key = self.config.parameters.get("bearer_token")
+    async fn send_gemini_request(
+        &self,
+        prompt: &str,
+        encoded_image: Option<String>,
+    ) -> Result<Value> {
+        let api_key = self
+            .config
+            .parameters
+            .get("bearer_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("API key not found in configuration"))?;
 
-        let model = self.config.parameters.get("modelName")
+        let model = self
+            .config
+            .parameters
+            .get("modelName")
             .and_then(|v| v.as_str())
             .unwrap_or("gemini-1.5-pro-latest");
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model,
-            api_key
+            model, api_key
         );
 
         let mut content = vec![json!({
@@ -106,7 +116,9 @@ impl GoogleGeminiEngine {
 
         debug!("Google Gemini Request: {:?}", request_body);
 
-        let response = self.client.post(&url)
+        let response = self
+            .client
+            .post(&url)
             .header("Content-Type", "application/json")
             .json(&request_body)
             .send()
@@ -128,7 +140,10 @@ impl GoogleGeminiEngine {
 
 #[async_trait]
 impl Engine for GoogleGeminiEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let response = self.send_gemini_request(&request.payload, None).await?;
 
@@ -138,12 +153,21 @@ impl Engine for GoogleGeminiEngine {
                 .to_string();
 
             let usage = Usage {
-                prompt_tokens: response["usageMetadata"]["promptTokenCount"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: response["usageMetadata"]["candidatesTokenCount"].as_u64().unwrap_or(0) as u32,
-                total_tokens: response["usageMetadata"]["totalTokenCount"].as_u64().unwrap_or(0) as u32,
+                prompt_tokens: response["usageMetadata"]["promptTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
+                completion_tokens: response["usageMetadata"]["candidatesTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
+                total_tokens: response["usageMetadata"]["totalTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
             };
 
-            let model = self.config.parameters.get("modelName")
+            let model = self
+                .config
+                .parameters
+                .get("modelName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("gemini-1.5-pro-latest")
                 .to_string();
@@ -171,7 +195,10 @@ impl Engine for GoogleGeminiEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             Ok(UpsertResponse {
                 processed_files: vec![],
@@ -185,7 +212,11 @@ impl Engine for GoogleGeminiEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionId").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionId")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
@@ -200,16 +231,23 @@ impl Engine for GoogleGeminiEngine {
             })
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            self.encode_image(file_path).await
-        })
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move { self.encode_image(file_path).await })
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let encoded_image = self.encode_image(file_path).await?;
-            let response = self.send_gemini_request(&request.payload, Some(encoded_image)).await?;
+            let response = self
+                .send_gemini_request(&request.payload, Some(encoded_image))
+                .await?;
 
             let generated_text = response["candidates"][0]["content"]["parts"][0]["text"]
                 .as_str()
@@ -217,12 +255,21 @@ impl Engine for GoogleGeminiEngine {
                 .to_string();
 
             let usage = Usage {
-                prompt_tokens: response["usageMetadata"]["promptTokenCount"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: response["usageMetadata"]["candidatesTokenCount"].as_u64().unwrap_or(0) as u32,
-                total_tokens: response["usageMetadata"]["totalTokenCount"].as_u64().unwrap_or(0) as u32,
+                prompt_tokens: response["usageMetadata"]["promptTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
+                completion_tokens: response["usageMetadata"]["candidatesTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
+                total_tokens: response["usageMetadata"]["totalTokenCount"]
+                    .as_u64()
+                    .unwrap_or(0) as u32,
             };
 
-            let model = self.config.parameters.get("modelName")
+            let model = self
+                .config
+                .parameters
+                .get("modelName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("gemini-1.5-pro-latest")
                 .to_string();

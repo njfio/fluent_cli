@@ -78,46 +78,57 @@ impl AuthManager {
             token: SecureString::new(token),
         })
     }
-    
+
     /// Creates authentication manager for bearer token
     pub fn bearer_token(config_params: &HashMap<String, Value>) -> Result<Self> {
         Self::new(config_params, AuthType::Bearer)
     }
-    
+
     /// Creates authentication manager for API key with custom header
     pub fn api_key(config_params: &HashMap<String, Value>, header_name: &str) -> Result<Self> {
         Self::new(config_params, AuthType::ApiKey(header_name.to_string()))
     }
-    
+
     /// Creates authentication manager for basic auth
     pub fn basic_auth(config_params: &HashMap<String, Value>) -> Result<Self> {
-        let username = config_params.get("username")
+        let username = config_params
+            .get("username")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Username not found in configuration"))?
             .to_string();
-            
-        let password = config_params.get("password")
+
+        let password = config_params
+            .get("password")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Password not found in configuration"))?
             .to_string();
-            
+
         Self::validate_credentials(&username, &password)?;
-        
+
         // For basic auth, we store the base64 encoded credentials as the token
         let credentials = format!("{}:{}", username, password);
-        let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, credentials.as_bytes());
-        
+        let encoded = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            credentials.as_bytes(),
+        );
+
         Ok(Self {
             auth_type: AuthType::Basic { username, password },
             token: SecureString::new(encoded),
         })
     }
-    
+
     /// Extracts token securely from configuration
     fn extract_token_securely(config_params: &HashMap<String, Value>) -> Result<String> {
         // Try multiple possible token parameter names
-        let token_keys = ["bearer_token", "api_token", "api_key", "token", "auth_token"];
-        
+        let token_keys = [
+            "bearer_token",
+            "api_token",
+            "api_key",
+            "token",
+            "auth_token",
+        ];
+
         for key in &token_keys {
             if let Some(token_value) = config_params.get(*key) {
                 if let Some(token_str) = token_value.as_str() {
@@ -128,54 +139,61 @@ impl AuthManager {
                 }
             }
         }
-        
-        Err(anyhow!("No valid authentication token found in configuration. Expected one of: {:?}", token_keys))
+
+        Err(anyhow!(
+            "No valid authentication token found in configuration. Expected one of: {:?}",
+            token_keys
+        ))
     }
-    
+
     /// Validates token format and security
     fn validate_token(token: &str) -> Result<()> {
         if token.is_empty() {
             return Err(anyhow!("Authentication token cannot be empty"));
         }
-        
+
         if token.len() < 8 {
-            return Err(anyhow!("Authentication token too short (minimum 8 characters)"));
+            return Err(anyhow!(
+                "Authentication token too short (minimum 8 characters)"
+            ));
         }
-        
+
         if token.len() > 2048 {
-            return Err(anyhow!("Authentication token too long (maximum 2048 characters)"));
+            return Err(anyhow!(
+                "Authentication token too long (maximum 2048 characters)"
+            ));
         }
-        
+
         // Check for suspicious patterns
         if token.contains(' ') || token.contains('\n') || token.contains('\r') {
             return Err(anyhow!("Authentication token contains invalid characters"));
         }
-        
+
         // Warn about potentially insecure tokens
         if token.starts_with("test") || token.starts_with("demo") || token == "placeholder" {
             warn!("Authentication token appears to be a test/demo token");
         }
-        
+
         Ok(())
     }
-    
+
     /// Validates basic auth credentials
     fn validate_credentials(username: &str, password: &str) -> Result<()> {
         if username.is_empty() {
             return Err(anyhow!("Username cannot be empty"));
         }
-        
+
         if password.is_empty() {
             return Err(anyhow!("Password cannot be empty"));
         }
-        
+
         if password.len() < 8 {
             warn!("Password is shorter than recommended minimum (8 characters)");
         }
-        
+
         Ok(())
     }
-    
+
     /// Adds authentication headers to a request
     pub fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<()> {
         match &self.auth_type {
@@ -193,14 +211,14 @@ impl AuthManager {
                     .map_err(|e| anyhow!("Invalid header name: {}", e))?;
                 headers.insert(header_name, header_value);
             }
-            
+
             AuthType::Basic { .. } => {
                 let auth_value = format!("Basic {}", self.token.as_str());
                 let header_value = HeaderValue::from_str(&auth_value)
                     .map_err(|e| anyhow!("Invalid basic auth format: {}", e))?;
                 headers.insert(AUTHORIZATION, header_value);
             }
-            
+
             AuthType::Custom { header, value } => {
                 let header_value = HeaderValue::from_str(value)
                     .map_err(|e| anyhow!("Invalid custom header value: {}", e))?;
@@ -209,26 +227,28 @@ impl AuthManager {
                 headers.insert(header_name, header_value);
             }
         }
-        
-        debug!("Added authentication headers for type: {:?}", 
-               std::mem::discriminant(&self.auth_type));
+
+        debug!(
+            "Added authentication headers for type: {:?}",
+            std::mem::discriminant(&self.auth_type)
+        );
         Ok(())
     }
-    
+
     /// Creates a pre-configured reqwest client with authentication
     pub fn create_authenticated_client(&self) -> Result<reqwest::Client> {
         let mut headers = HeaderMap::new();
         self.add_auth_headers(&mut headers)?;
-        
+
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
-            
+
         Ok(client)
     }
-    
+
     /// Gets the authentication type (for logging/debugging)
     pub fn auth_type_name(&self) -> &'static str {
         match self.auth_type {
@@ -238,7 +258,7 @@ impl AuthManager {
             AuthType::Custom { .. } => "Custom Auth",
         }
     }
-    
+
     /// Validates that the token is still valid (basic checks)
     pub fn validate_current_token(&self) -> Result<()> {
         Self::validate_token(self.token.as_str())
@@ -253,37 +273,37 @@ impl EngineAuth {
     pub fn openai(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
     }
-    
+
     /// Creates authentication for Anthropic API
     pub fn anthropic(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::api_key(config_params, "x-api-key")
     }
-    
+
     /// Creates authentication for Cohere API
     pub fn cohere(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
     }
-    
+
     /// Creates authentication for Mistral API
     pub fn mistral(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
     }
-    
+
     /// Creates authentication for Stability AI
     pub fn stability_ai(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
     }
-    
+
     /// Creates authentication for Google Gemini
     pub fn google_gemini(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::api_key(config_params, "x-goog-api-key")
     }
-    
+
     /// Creates authentication for Replicate
     pub fn replicate(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
     }
-    
+
     /// Creates authentication for webhook/generic APIs
     pub fn webhook(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
@@ -294,24 +314,24 @@ impl EngineAuth {
 mod tests {
     use super::*;
     use serde_json::json;
-    
+
     #[test]
     fn test_bearer_token_validation() {
         let mut config = HashMap::new();
         config.insert("bearer_token".to_string(), json!("valid_token_12345"));
-        
+
         let auth = AuthManager::bearer_token(&config).unwrap();
         assert_eq!(auth.auth_type_name(), "Bearer Token");
     }
-    
+
     #[test]
     fn test_invalid_token() {
         let mut config = HashMap::new();
         config.insert("bearer_token".to_string(), json!("short"));
-        
+
         assert!(AuthManager::bearer_token(&config).is_err());
     }
-    
+
     #[test]
     fn test_missing_token() {
         let config = HashMap::new();

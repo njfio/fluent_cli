@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 /// Modular pipeline execution architecture with improved testability and maintainability
-/// 
+///
 /// Key improvements:
 /// - Separation of concerns with dedicated step executors
 /// - Dependency injection for better testability
@@ -116,11 +116,15 @@ pub enum EventType {
 #[async_trait]
 pub trait StepExecutor: Send + Sync {
     /// Execute a step with the given context
-    async fn execute(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<StepResult>;
-    
+    async fn execute(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<StepResult>;
+
     /// Get the step types this executor can handle
     fn supported_types(&self) -> Vec<String>;
-    
+
     /// Validate step configuration
     fn validate_config(&self, step: &PipelineStep) -> Result<()>;
 }
@@ -151,7 +155,11 @@ pub trait StateStore: Send + Sync {
 #[async_trait]
 pub trait VariableExpander: Send + Sync {
     async fn expand(&self, template: &str, variables: &HashMap<String, String>) -> Result<String>;
-    async fn evaluate_condition(&self, condition: &str, variables: &HashMap<String, String>) -> Result<bool>;
+    async fn evaluate_condition(
+        &self,
+        condition: &str,
+        variables: &HashMap<String, String>,
+    ) -> Result<bool>;
 }
 
 /// Modular pipeline executor with dependency injection
@@ -221,7 +229,7 @@ impl ModularPipelineExecutor {
         resume_run_id: Option<String>,
     ) -> Result<ExecutionContext> {
         let run_id = resume_run_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-        
+
         // Load or create execution context
         let mut context = match self.state_store.load_context(&run_id).await? {
             Some(ctx) => ctx,
@@ -243,7 +251,8 @@ impl ModularPipelineExecutor {
             run_id: run_id.clone(),
             step_name: None,
             data: HashMap::new(),
-        }).await?;
+        })
+        .await?;
 
         // Validate pipeline
         self.validate_pipeline(pipeline).await?;
@@ -266,7 +275,8 @@ impl ModularPipelineExecutor {
             run_id: run_id.clone(),
             step_name: None,
             data: HashMap::new(),
-        }).await?;
+        })
+        .await?;
 
         // Save final context
         self.state_store.save_context(&context).await?;
@@ -275,9 +285,13 @@ impl ModularPipelineExecutor {
     }
 
     /// Execute pipeline steps with dependency resolution and parallel execution
-    async fn execute_steps(&self, pipeline: &Pipeline, context: &mut ExecutionContext) -> Result<ExecutionContext> {
+    async fn execute_steps(
+        &self,
+        pipeline: &Pipeline,
+        context: &mut ExecutionContext,
+    ) -> Result<ExecutionContext> {
         let steps_to_execute = self.resolve_step_dependencies(&pipeline.steps)?;
-        
+
         for step_group in steps_to_execute {
             if step_group.len() == 1 {
                 // Sequential execution
@@ -286,7 +300,7 @@ impl ModularPipelineExecutor {
                 // Parallel execution
                 self.execute_parallel_steps(&step_group, context).await?;
             }
-            
+
             // Save context after each step group
             self.state_store.save_context(context).await?;
         }
@@ -295,11 +309,17 @@ impl ModularPipelineExecutor {
     }
 
     /// Execute a single step with retry logic and monitoring
-    async fn execute_single_step(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<()> {
+    async fn execute_single_step(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<()> {
         // Check condition if specified
         if let Some(condition) = &step.condition {
-            let should_execute = self.variable_expander
-                .evaluate_condition(condition, &context.variables).await?;
+            let should_execute = self
+                .variable_expander
+                .evaluate_condition(condition, &context.variables)
+                .await?;
             if !should_execute {
                 self.record_step_skipped(step, context).await?;
                 return Ok(());
@@ -307,7 +327,9 @@ impl ModularPipelineExecutor {
         }
 
         // Find appropriate executor
-        let executor = self.step_executors.get(&step.step_type)
+        let executor = self
+            .step_executors
+            .get(&step.step_type)
             .ok_or_else(|| anyhow!("No executor found for step type: {}", step.step_type))?;
 
         // Execute with retry logic
@@ -317,33 +339,36 @@ impl ModularPipelineExecutor {
 
         loop {
             attempt += 1;
-            
+
             // Record step start
             self.record_step_started(step, context, attempt).await?;
-            
+
             // Execute step
             match executor.execute(step, context).await {
                 Ok(result) => {
                     // Update context with results
                     if let Some(output) = result.output {
-                        context.variables.insert(format!("{}_output", step.name), output);
+                        context
+                            .variables
+                            .insert(format!("{}_output", step.name), output);
                     }
                     context.variables.extend(result.variables);
                     context.metadata.extend(result.metadata);
-                    
+
                     // Record success
                     self.record_step_completed(step, context).await?;
-                    self.update_step_metrics(&step.step_type, true, attempt).await;
+                    self.update_step_metrics(&step.step_type, true, attempt)
+                        .await;
                     return Ok(());
                 }
                 Err(e) => {
                     _last_error = Some(anyhow::anyhow!("{}", e));
-                    
+
                     // Check if we should retry
                     if attempt < retry_config.max_attempts && self.should_retry(&e, &retry_config) {
                         // Record retry
                         self.record_step_retrying(step, context, &e).await?;
-                        
+
                         // Calculate delay
                         let delay = self.calculate_retry_delay(attempt, &retry_config);
                         tokio::time::sleep(delay).await;
@@ -351,7 +376,8 @@ impl ModularPipelineExecutor {
                     } else {
                         // Record failure
                         self.record_step_failed(step, context, &e).await?;
-                        self.update_step_metrics(&step.step_type, false, attempt).await;
+                        self.update_step_metrics(&step.step_type, false, attempt)
+                            .await;
                         return Err(e);
                     }
                 }
@@ -360,14 +386,20 @@ impl ModularPipelineExecutor {
     }
 
     /// Execute multiple steps in parallel
-    async fn execute_parallel_steps(&self, steps: &[PipelineStep], context: &mut ExecutionContext) -> Result<()> {
+    async fn execute_parallel_steps(
+        &self,
+        steps: &[PipelineStep],
+        context: &mut ExecutionContext,
+    ) -> Result<()> {
         let context_arc = Arc::new(Mutex::new(context.clone()));
         let mut handles = Vec::new();
 
         for step in steps {
             let step = step.clone();
             let context_clone = Arc::clone(&context_arc);
-            let executor = self.step_executors.get(&step.step_type)
+            let executor = self
+                .step_executors
+                .get(&step.step_type)
                 .ok_or_else(|| anyhow!("No executor found for step type: {}", step.step_type))?
                 .clone();
 
@@ -375,13 +407,13 @@ impl ModularPipelineExecutor {
                 let mut ctx = context_clone.lock().await;
                 executor.execute(&step, &mut ctx).await
             });
-            
+
             handles.push(handle);
         }
 
         // Wait for all steps to complete
         let results = futures::future::try_join_all(handles).await?;
-        
+
         // Collect results
         for result in results {
             result?; // Propagate any step errors
@@ -407,7 +439,10 @@ impl ModularPipelineExecutor {
             for (i, step) in remaining_steps.iter().enumerate() {
                 // Check if all dependencies are satisfied
                 let dependencies_satisfied = step.depends_on.iter().all(|dep| {
-                    groups.iter().flatten().any(|executed_step: &PipelineStep| executed_step.name == *dep)
+                    groups
+                        .iter()
+                        .flatten()
+                        .any(|executed_step: &PipelineStep| executed_step.name == *dep)
                 });
 
                 if dependencies_satisfied {
@@ -446,7 +481,11 @@ impl ModularPipelineExecutor {
         for step in &pipeline.steps {
             for dep in &step.depends_on {
                 if !pipeline.steps.iter().any(|s| s.name == *dep) {
-                    return Err(anyhow!("Step '{}' depends on non-existent step '{}'", step.name, dep));
+                    return Err(anyhow!(
+                        "Step '{}' depends on non-existent step '{}'",
+                        step.name,
+                        dep
+                    ));
                 }
             }
         }
@@ -462,7 +501,12 @@ impl ModularPipelineExecutor {
         Ok(())
     }
 
-    async fn record_step_started(&self, step: &PipelineStep, context: &mut ExecutionContext, attempt: u32) -> Result<()> {
+    async fn record_step_started(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+        attempt: u32,
+    ) -> Result<()> {
         let execution = StepExecution {
             step_name: step.name.clone(),
             step_type: step.step_type.clone(),
@@ -473,50 +517,66 @@ impl ModularPipelineExecutor {
             error: None,
             retry_count: attempt - 1,
         };
-        
+
         context.step_history.push(execution);
-        
+
         self.emit_event(ExecutionEvent {
             event_type: EventType::StepStarted,
             timestamp: SystemTime::now(),
             run_id: context.run_id.clone(),
             step_name: Some(step.name.clone()),
             data: HashMap::new(),
-        }).await
+        })
+        .await
     }
 
-    async fn record_step_completed(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<()> {
+    async fn record_step_completed(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<()> {
         if let Some(execution) = context.step_history.last_mut() {
             execution.end_time = Some(SystemTime::now());
             execution.status = ExecutionStatus::Completed;
         }
-        
+
         self.emit_event(ExecutionEvent {
             event_type: EventType::StepCompleted,
             timestamp: SystemTime::now(),
             run_id: context.run_id.clone(),
             step_name: Some(step.name.clone()),
             data: HashMap::new(),
-        }).await
+        })
+        .await
     }
 
-    async fn record_step_failed(&self, step: &PipelineStep, context: &mut ExecutionContext, error: &anyhow::Error) -> Result<()> {
+    async fn record_step_failed(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+        error: &anyhow::Error,
+    ) -> Result<()> {
         if let Some(execution) = context.step_history.last_mut() {
             execution.end_time = Some(SystemTime::now());
             execution.status = ExecutionStatus::Failed;
             execution.error = Some(error.to_string());
         }
-        
+
         self.emit_event(ExecutionEvent {
             event_type: EventType::StepFailed,
             timestamp: SystemTime::now(),
             run_id: context.run_id.clone(),
             step_name: Some(step.name.clone()),
             data: HashMap::new(),
-        }).await
+        })
+        .await
     }
 
-    async fn record_step_skipped(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<()> {
+    async fn record_step_skipped(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<()> {
         let execution = StepExecution {
             step_name: step.name.clone(),
             step_type: step.step_type.clone(),
@@ -527,39 +587,52 @@ impl ModularPipelineExecutor {
             error: None,
             retry_count: 0,
         };
-        
+
         context.step_history.push(execution);
         Ok(())
     }
 
-    async fn record_step_retrying(&self, step: &PipelineStep, _context: &mut ExecutionContext, error: &anyhow::Error) -> Result<()> {
+    async fn record_step_retrying(
+        &self,
+        step: &PipelineStep,
+        _context: &mut ExecutionContext,
+        error: &anyhow::Error,
+    ) -> Result<()> {
         self.emit_event(ExecutionEvent {
             event_type: EventType::StepRetrying,
             timestamp: SystemTime::now(),
             run_id: _context.run_id.clone(),
             step_name: Some(step.name.clone()),
-            data: [("error".to_string(), serde_json::json!(error.to_string()))].into_iter().collect(),
-        }).await
+            data: [("error".to_string(), serde_json::json!(error.to_string()))]
+                .into_iter()
+                .collect(),
+        })
+        .await
     }
 
     fn should_retry(&self, error: &anyhow::Error, retry_config: &RetryConfig) -> bool {
         if retry_config.retry_on.is_empty() {
             return true; // Retry on all errors if no specific patterns
         }
-        
+
         let error_str = error.to_string();
-        retry_config.retry_on.iter().any(|pattern| error_str.contains(pattern))
+        retry_config
+            .retry_on
+            .iter()
+            .any(|pattern| error_str.contains(pattern))
     }
 
     fn calculate_retry_delay(&self, attempt: u32, retry_config: &RetryConfig) -> Duration {
-        let delay_ms = (retry_config.base_delay_ms as f64 * retry_config.backoff_multiplier.powi(attempt as i32 - 1)) as u64;
+        let delay_ms = (retry_config.base_delay_ms as f64
+            * retry_config.backoff_multiplier.powi(attempt as i32 - 1))
+            as u64;
         Duration::from_millis(delay_ms.min(retry_config.max_delay_ms))
     }
 
     async fn update_pipeline_metrics(&self, result: &Result<ExecutionContext>) -> () {
         let mut metrics = self.metrics.write().await;
         metrics.total_pipelines += 1;
-        
+
         match result {
             Ok(_) => metrics.successful_pipelines += 1,
             Err(_) => metrics.failed_pipelines += 1,
@@ -569,17 +642,20 @@ impl ModularPipelineExecutor {
     async fn update_step_metrics(&self, step_type: &str, success: bool, attempts: u32) -> () {
         let mut metrics = self.metrics.write().await;
         metrics.total_steps += 1;
-        
+
         if success {
             metrics.successful_steps += 1;
         } else {
             metrics.failed_steps += 1;
         }
-        
-        let step_metrics = metrics.step_type_metrics.entry(step_type.to_string()).or_default();
+
+        let step_metrics = metrics
+            .step_type_metrics
+            .entry(step_type.to_string())
+            .or_default();
         step_metrics.total_executions += 1;
         step_metrics.retry_count += attempts as u64 - 1;
-        
+
         if success {
             step_metrics.successful_executions += 1;
         } else {
@@ -621,7 +697,7 @@ mod tests {
             start_time: SystemTime::now(),
             step_history: Vec::new(),
         };
-        
+
         assert_eq!(context.run_id, "test-run");
         assert_eq!(context.pipeline_name, "test-pipeline");
         assert_eq!(context.current_step, 0);
@@ -639,7 +715,7 @@ mod tests {
             condition: Some("${success} == true".to_string()),
             parallel_group: None,
         };
-        
+
         assert_eq!(step.name, "test-step");
         assert_eq!(step.step_type, "command");
         assert!(step.timeout.is_some());

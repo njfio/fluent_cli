@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 
 /// Enhanced error handling system with recovery strategies and detailed context
-/// 
+///
 /// This system provides:
 /// - Structured error context and metadata
 /// - Error recovery strategies and retry mechanisms
@@ -37,19 +37,19 @@ pub struct ErrorContext {
 /// Error severity levels
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ErrorSeverity {
-    Low,        // Minor issues, system continues normally
-    Medium,     // Noticeable issues, some functionality affected
-    High,       // Significant issues, major functionality affected
-    Critical,   // System-threatening issues, immediate attention required
+    Low,      // Minor issues, system continues normally
+    Medium,   // Noticeable issues, some functionality affected
+    High,     // Significant issues, major functionality affected
+    Critical, // System-threatening issues, immediate attention required
 }
 
 /// Error categories for better organization
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ErrorCategory {
-    UserError,      // User input or configuration issues
-    SystemError,    // Internal system failures
-    ExternalError,  // Third-party service failures
-    SecurityError,  // Security-related issues
+    UserError,        // User input or configuration issues
+    SystemError,      // Internal system failures
+    ExternalError,    // Third-party service failures
+    SecurityError,    // Security-related issues
     PerformanceError, // Performance degradation
 }
 
@@ -242,7 +242,10 @@ impl EnhancedError {
     /// Get technical error details
     pub fn technical_details(&self) -> String {
         if !self.context.technical_details.is_empty() {
-            format!("{}\n\nOriginal error: {}", self.context.technical_details, self.base_error)
+            format!(
+                "{}\n\nOriginal error: {}",
+                self.context.technical_details, self.base_error
+            )
         } else {
             self.base_error.to_string()
         }
@@ -250,7 +253,8 @@ impl EnhancedError {
 
     /// Check if error is recoverable
     pub fn is_recoverable(&self) -> bool {
-        self.recovery_strategy.is_some() && matches!(self.severity, ErrorSeverity::Low | ErrorSeverity::Medium)
+        self.recovery_strategy.is_some()
+            && matches!(self.severity, ErrorSeverity::Low | ErrorSeverity::Medium)
     }
 
     /// Convert to serializable format
@@ -284,7 +288,11 @@ impl ErrorAggregator {
 
     /// Record an error
     pub async fn record_error(&self, error: EnhancedError) {
-        let error_type = format!("{}::{}", error.category.clone() as u8, error.context.component.clone());
+        let error_type = format!(
+            "{}::{}",
+            error.category.clone() as u8,
+            error.context.component.clone()
+        );
 
         // Update error counts
         {
@@ -317,15 +325,22 @@ impl ErrorAggregator {
     }
 
     /// Update recovery statistics
-    pub async fn update_recovery_stats(&self, strategy_type: &str, success: bool, duration_ms: u64) {
+    pub async fn update_recovery_stats(
+        &self,
+        strategy_type: &str,
+        success: bool,
+        duration_ms: u64,
+    ) {
         let mut stats = self.recovery_stats.write().await;
-        let recovery_stats = stats.entry(strategy_type.to_string()).or_insert(RecoveryStats {
-            total_attempts: 0,
-            successful_recoveries: 0,
-            failed_recoveries: 0,
-            average_recovery_time_ms: 0.0,
-            last_recovery_attempt: None,
-        });
+        let recovery_stats = stats
+            .entry(strategy_type.to_string())
+            .or_insert(RecoveryStats {
+                total_attempts: 0,
+                successful_recoveries: 0,
+                failed_recoveries: 0,
+                average_recovery_time_ms: 0.0,
+                last_recovery_attempt: None,
+            });
 
         recovery_stats.total_attempts += 1;
         if success {
@@ -335,8 +350,10 @@ impl ErrorAggregator {
         }
 
         // Update average recovery time
-        let total_time = recovery_stats.average_recovery_time_ms * (recovery_stats.total_attempts - 1) as f64;
-        recovery_stats.average_recovery_time_ms = (total_time + duration_ms as f64) / recovery_stats.total_attempts as f64;
+        let total_time =
+            recovery_stats.average_recovery_time_ms * (recovery_stats.total_attempts - 1) as f64;
+        recovery_stats.average_recovery_time_ms =
+            (total_time + duration_ms as f64) / recovery_stats.total_attempts as f64;
         recovery_stats.last_recovery_attempt = Some(chrono::Utc::now().to_rfc3339());
     }
 }
@@ -352,7 +369,10 @@ impl ErrorHandler {
     }
 
     /// Handle an error with potential recovery
-    pub async fn handle_error(&self, error: EnhancedError) -> Result<Option<String>, EnhancedError> {
+    pub async fn handle_error(
+        &self,
+        error: EnhancedError,
+    ) -> Result<Option<String>, EnhancedError> {
         // Record the error
         self.aggregator.record_error(error.clone()).await;
 
@@ -368,24 +388,56 @@ impl ErrorHandler {
     }
 
     /// Attempt error recovery based on strategy
-    async fn attempt_recovery(&self, error: EnhancedError, strategy: &RecoveryStrategy) -> Result<Option<String>, EnhancedError> {
+    async fn attempt_recovery(
+        &self,
+        error: EnhancedError,
+        strategy: &RecoveryStrategy,
+    ) -> Result<Option<String>, EnhancedError> {
         let start_time = SystemTime::now();
-        
+
         let result = match strategy {
-            RecoveryStrategy::Retry { max_attempts, base_delay_ms, max_delay_ms, backoff_multiplier } => {
-                self.retry_with_backoff(*max_attempts, *base_delay_ms, *max_delay_ms, *backoff_multiplier).await
+            RecoveryStrategy::Retry {
+                max_attempts,
+                base_delay_ms,
+                max_delay_ms,
+                backoff_multiplier,
+            } => {
+                self.retry_with_backoff(
+                    *max_attempts,
+                    *base_delay_ms,
+                    *max_delay_ms,
+                    *backoff_multiplier,
+                )
+                .await
             }
-            RecoveryStrategy::Fallback { fallback_component, fallback_config } => {
-                self.fallback_recovery(fallback_component, fallback_config).await
+            RecoveryStrategy::Fallback {
+                fallback_component,
+                fallback_config,
+            } => {
+                self.fallback_recovery(fallback_component, fallback_config)
+                    .await
             }
-            RecoveryStrategy::CircuitBreaker { failure_threshold, timeout_ms, recovery_timeout_ms } => {
-                self.circuit_breaker_recovery(*failure_threshold, *timeout_ms, *recovery_timeout_ms).await
+            RecoveryStrategy::CircuitBreaker {
+                failure_threshold,
+                timeout_ms,
+                recovery_timeout_ms,
+            } => {
+                self.circuit_breaker_recovery(*failure_threshold, *timeout_ms, *recovery_timeout_ms)
+                    .await
             }
-            RecoveryStrategy::Degrade { reduced_functionality, degradation_level } => {
-                self.graceful_degradation(reduced_functionality, *degradation_level).await
+            RecoveryStrategy::Degrade {
+                reduced_functionality,
+                degradation_level,
+            } => {
+                self.graceful_degradation(reduced_functionality, *degradation_level)
+                    .await
             }
-            RecoveryStrategy::Manual { escalation_contact, urgency_level } => {
-                self.manual_escalation(escalation_contact, *urgency_level).await
+            RecoveryStrategy::Manual {
+                escalation_contact,
+                urgency_level,
+            } => {
+                self.manual_escalation(escalation_contact, *urgency_level)
+                    .await
             }
         };
 
@@ -398,18 +450,26 @@ impl ErrorHandler {
             RecoveryStrategy::Degrade { .. } => "degrade",
             RecoveryStrategy::Manual { .. } => "manual",
         };
-        
-        self.aggregator.update_recovery_stats(strategy_type, result.is_ok(), duration).await;
+
+        self.aggregator
+            .update_recovery_stats(strategy_type, result.is_ok(), duration)
+            .await;
 
         result.map_err(|_| error)
     }
 
-    async fn retry_with_backoff(&self, max_attempts: u32, base_delay_ms: u64, max_delay_ms: u64, backoff_multiplier: f64) -> Result<Option<String>, ()> {
+    async fn retry_with_backoff(
+        &self,
+        max_attempts: u32,
+        base_delay_ms: u64,
+        max_delay_ms: u64,
+        backoff_multiplier: f64,
+    ) -> Result<Option<String>, ()> {
         for attempt in 1..=max_attempts {
             if attempt > 1 {
                 let delay = std::cmp::min(
                     (base_delay_ms as f64 * backoff_multiplier.powi(attempt as i32 - 1)) as u64,
-                    max_delay_ms
+                    max_delay_ms,
                 );
                 tokio::time::sleep(Duration::from_millis(delay)).await;
             }
@@ -422,22 +482,39 @@ impl ErrorHandler {
         Err(())
     }
 
-    async fn fallback_recovery(&self, _fallback_component: &str, _fallback_config: &HashMap<String, String>) -> Result<Option<String>, ()> {
+    async fn fallback_recovery(
+        &self,
+        _fallback_component: &str,
+        _fallback_config: &HashMap<String, String>,
+    ) -> Result<Option<String>, ()> {
         // Simulate fallback logic
         Ok(Some("Fallback recovery successful".to_string()))
     }
 
-    async fn circuit_breaker_recovery(&self, _failure_threshold: u32, _timeout_ms: u64, _recovery_timeout_ms: u64) -> Result<Option<String>, ()> {
+    async fn circuit_breaker_recovery(
+        &self,
+        _failure_threshold: u32,
+        _timeout_ms: u64,
+        _recovery_timeout_ms: u64,
+    ) -> Result<Option<String>, ()> {
         // Simulate circuit breaker logic
         Ok(Some("Circuit breaker recovery successful".to_string()))
     }
 
-    async fn graceful_degradation(&self, _reduced_functionality: &[String], _degradation_level: u32) -> Result<Option<String>, ()> {
+    async fn graceful_degradation(
+        &self,
+        _reduced_functionality: &[String],
+        _degradation_level: u32,
+    ) -> Result<Option<String>, ()> {
         // Simulate graceful degradation
         Ok(Some("Graceful degradation applied".to_string()))
     }
 
-    async fn manual_escalation(&self, _escalation_contact: &str, _urgency_level: ErrorSeverity) -> Result<Option<String>, ()> {
+    async fn manual_escalation(
+        &self,
+        _escalation_contact: &str,
+        _urgency_level: ErrorSeverity,
+    ) -> Result<Option<String>, ()> {
         // Simulate manual escalation
         Ok(Some("Manual escalation initiated".to_string()))
     }
@@ -446,7 +523,7 @@ impl ErrorHandler {
     pub async fn get_stats(&self) -> ErrorHandlerStats {
         let error_stats = self.aggregator.get_error_stats().await;
         let recovery_stats = self.aggregator.recovery_stats.read().await.clone();
-        
+
         ErrorHandlerStats {
             total_errors: error_stats.values().sum(),
             error_breakdown: error_stats,
@@ -469,10 +546,13 @@ pub struct ErrorHandlerStats {
 
 impl fmt::Display for EnhancedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: {}", 
-               self.context.error_id, 
-               self.context.component, 
-               self.user_message())
+        write!(
+            f,
+            "[{}] {}: {}",
+            self.context.error_id,
+            self.context.component,
+            self.user_message()
+        )
     }
 }
 
@@ -531,14 +611,15 @@ macro_rules! user_error {
             $operation,
             ErrorSeverity::Low,
             ErrorCategory::UserError
-        ).with_user_message($message)
+        )
+        .with_user_message($message)
     };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::error::{ValidationError, FluentError};
+    use fluent_core::error::{FluentError, ValidationError};
 
     #[test]
     fn test_error_context_creation() {
@@ -555,7 +636,10 @@ mod tests {
         assert_eq!(context.technical_details, "Test technical details");
         assert_eq!(context.recovery_suggestions, vec!["Try again later"]);
         assert_eq!(context.metadata.get("key"), Some(&"value".to_string()));
-        assert_eq!(context.correlation_id, Some("test-correlation-id".to_string()));
+        assert_eq!(
+            context.correlation_id,
+            Some("test-correlation-id".to_string())
+        );
     }
 
     #[test]
@@ -565,7 +649,12 @@ mod tests {
             expected: "valid".to_string(),
         });
         let context = ErrorContext::new("test", "test");
-        let error = EnhancedError::new(base_error, context, ErrorSeverity::Medium, ErrorCategory::UserError);
+        let error = EnhancedError::new(
+            base_error,
+            context,
+            ErrorSeverity::Medium,
+            ErrorCategory::UserError,
+        );
 
         assert_eq!(error.severity, ErrorSeverity::Medium);
         assert_eq!(error.category, ErrorCategory::UserError);
@@ -580,7 +669,12 @@ mod tests {
             expected: "valid".to_string(),
         });
         let context = ErrorContext::new("test", "test");
-        let error = EnhancedError::new(base_error, context, ErrorSeverity::Low, ErrorCategory::UserError);
+        let error = EnhancedError::new(
+            base_error,
+            context,
+            ErrorSeverity::Low,
+            ErrorCategory::UserError,
+        );
 
         aggregator.record_error(error).await;
         let stats = aggregator.get_error_stats().await;
@@ -595,13 +689,18 @@ mod tests {
             expected: "valid".to_string(),
         });
         let context = ErrorContext::new("test", "test");
-        let error = EnhancedError::new(base_error, context, ErrorSeverity::Low, ErrorCategory::UserError)
-            .with_recovery_strategy(RecoveryStrategy::Retry {
-                max_attempts: 3,
-                base_delay_ms: 100,
-                max_delay_ms: 1000,
-                backoff_multiplier: 2.0,
-            });
+        let error = EnhancedError::new(
+            base_error,
+            context,
+            ErrorSeverity::Low,
+            ErrorCategory::UserError,
+        )
+        .with_recovery_strategy(RecoveryStrategy::Retry {
+            max_attempts: 3,
+            base_delay_ms: 100,
+            max_delay_ms: 1000,
+            backoff_multiplier: 2.0,
+        });
 
         let result = handler.handle_error(error).await;
         assert!(result.is_ok());

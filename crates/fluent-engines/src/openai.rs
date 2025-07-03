@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Context, Result};
 use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine as Base64Engine;
-use fluent_core::cache::{cache_key, RequestCache};
 use fluent_core::auth::EngineAuth;
+use fluent_core::cache::{cache_key, RequestCache};
 use fluent_core::config::EngineConfig;
 use fluent_core::input_validator::InputValidator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::{Engine, EngineConfigProcessor, OpenAIConfigProcessor};
 use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
 use log::debug;
 use reqwest::multipart::{Form, Part};
@@ -39,15 +38,15 @@ impl OpenAIEngine {
         };
 
         let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {
-            let path = std::env::var("FLUENT_CACHE_DIR").unwrap_or_else(|_| "fluent_cache".to_string());
+            let path =
+                std::env::var("FLUENT_CACHE_DIR").unwrap_or_else(|_| "fluent_cache".to_string());
             Some(RequestCache::new(std::path::Path::new(&path))?)
         } else {
             None
         };
 
         // Create authenticated client
-        let auth_client = EngineAuth::openai(&config.parameters)?
-            .create_authenticated_client()?;
+        let auth_client = EngineAuth::openai(&config.parameters)?.create_authenticated_client()?;
 
         Ok(Self {
             config,
@@ -93,13 +92,14 @@ impl Engine for OpenAIEngine {
             // 3. Store them in a vector database
             // 4. Return proper status
 
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // For now, return an error indicating this needs proper implementation
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "openai".to_string(),
                 operation: "upsert - requires embeddings API integration".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
@@ -152,7 +152,8 @@ impl Engine for OpenAIEngine {
             );
 
             // Use the pre-authenticated client (no need to extract token manually)
-            let res = self.auth_client
+            let res = self
+                .auth_client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -189,14 +190,12 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
-
             let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
             let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
             let completion_cost = usage.completion_tokens as f64 * completion_rate;
             let total_cost = prompt_cost + completion_cost;
 
             Ok(Response {
-
                 content,
                 usage,
                 model,
@@ -208,7 +207,6 @@ impl Engine for OpenAIEngine {
                     total_cost,
                 },
             })
-
         })
     }
 
@@ -241,11 +239,7 @@ impl Engine for OpenAIEngine {
                 .text("purpose", "assistants");
 
             // Use the pre-authenticated client
-            let response = self.auth_client
-                .post(url)
-                .multipart(form)
-                .send()
-                .await?;
+            let response = self.auth_client.post(url).multipart(form).send().await?;
 
             let response_body = response.json::<serde_json::Value>().await?;
 
@@ -307,7 +301,8 @@ impl Engine for OpenAIEngine {
             });
 
             // Use the pre-authenticated client
-            let response = self.auth_client
+            let response = self
+                .auth_client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -346,14 +341,12 @@ impl Engine for OpenAIEngine {
                 .as_str()
                 .map(String::from);
 
-
             let (prompt_rate, completion_rate) = OpenAIEngine::pricing(&model);
             let prompt_cost = usage.prompt_tokens as f64 * prompt_rate;
             let completion_cost = usage.completion_tokens as f64 * completion_rate;
             let total_cost = prompt_cost + completion_cost;
 
             Ok(Response {
-
                 content,
                 usage,
                 model,
@@ -365,7 +358,6 @@ impl Engine for OpenAIEngine {
                     total_cost,
                 },
             })
-
         })
     }
 }

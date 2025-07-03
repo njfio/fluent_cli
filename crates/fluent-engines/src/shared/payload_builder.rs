@@ -27,9 +27,9 @@ impl PayloadBuilder {
 
     /// Build payload with additional parameters from config
     pub fn build_chat_payload_with_config(
-        request: &Request, 
+        request: &Request,
         config: &EngineConfig,
-        model: Option<&str>
+        model: Option<&str>,
     ) -> Value {
         let mut payload = Self::build_chat_payload(request, model);
 
@@ -92,11 +92,7 @@ impl PayloadBuilder {
     }
 
     /// Build vision payload with image
-    pub fn build_vision_payload(
-        text: &str, 
-        image_data: &str, 
-        image_format: &str
-    ) -> Value {
+    pub fn build_vision_payload(text: &str, image_data: &str, image_format: &str) -> Value {
         json!({
             "messages": [
                 {
@@ -122,7 +118,7 @@ impl PayloadBuilder {
     pub fn build_webhook_payload(
         request: &Request,
         config: &EngineConfig,
-        file_content: Option<&str>
+        file_content: Option<&str>,
     ) -> Value {
         let mut payload = json!({
             "input": request.payload,
@@ -147,10 +143,7 @@ impl PayloadBuilder {
     }
 
     /// Merge additional parameters into payload
-    pub fn merge_parameters(
-        mut payload: Value, 
-        parameters: &HashMap<String, Value>
-    ) -> Value {
+    pub fn merge_parameters(mut payload: Value, parameters: &HashMap<String, Value>) -> Value {
         if let Some(obj) = payload.as_object_mut() {
             for (key, value) in parameters {
                 obj.insert(key.clone(), value.clone());
@@ -161,7 +154,8 @@ impl PayloadBuilder {
 
     /// Extract model name from config with fallback
     pub fn get_model_name(config: &EngineConfig, default: &str) -> String {
-        config.parameters
+        config
+            .parameters
             .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or(default)
@@ -172,7 +166,7 @@ impl PayloadBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::config::{EngineConfig, ConnectionConfig};
+    use fluent_core::config::{ConnectionConfig, EngineConfig};
 
     fn create_test_request() -> Request {
         Request {
@@ -207,7 +201,7 @@ mod tests {
     fn test_build_chat_payload() {
         let request = create_test_request();
         let payload = PayloadBuilder::build_chat_payload(&request, Some("gpt-4"));
-        
+
         assert_eq!(payload["model"], "gpt-4");
         assert_eq!(payload["messages"][0]["role"], "user");
         assert_eq!(payload["messages"][0]["content"], "Hello, world!");
@@ -218,7 +212,7 @@ mod tests {
         let request = create_test_request();
         let config = create_test_config();
         let payload = PayloadBuilder::build_chat_payload_with_config(&request, &config, None);
-        
+
         assert_eq!(payload["temperature"], 0.7);
         assert_eq!(payload["max_tokens"], 100);
         assert_eq!(payload["messages"][0]["content"], "Hello, world!");

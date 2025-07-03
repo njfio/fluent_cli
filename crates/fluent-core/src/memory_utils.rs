@@ -1,6 +1,6 @@
+use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use serde_json::Value;
 
 /// Memory-efficient string handling utilities
 pub struct StringUtils;
@@ -10,15 +10,16 @@ impl StringUtils {
     pub fn extract_str<'a>(value: &'a Value, key: &str) -> Option<Cow<'a, str>> {
         value.get(key)?.as_str().map(Cow::Borrowed)
     }
-    
+
     /// Extract string value with fallback
     pub fn extract_str_or<'a>(value: &'a Value, key: &str, default: &'a str) -> Cow<'a, str> {
-        value.get(key)
+        value
+            .get(key)
             .and_then(|v| v.as_str())
             .map(Cow::Borrowed)
             .unwrap_or(Cow::Borrowed(default))
     }
-    
+
     /// Build string efficiently using references when possible
     pub fn build_url(protocol: &str, hostname: &str, port: u16, path: &str) -> String {
         let default_port = match protocol {
@@ -26,23 +27,23 @@ impl StringUtils {
             "https" => 443,
             _ => 0,
         };
-        
+
         if port == default_port {
             format!("{}://{}{}", protocol, hostname, path)
         } else {
             format!("{}://{}:{}{}", protocol, hostname, port, path)
         }
     }
-    
+
     /// Efficiently concatenate strings with minimal allocations
     pub fn concat_with_separator(parts: &[&str], separator: &str) -> String {
         if parts.is_empty() {
             return String::new();
         }
-        
-        let total_len = parts.iter().map(|s| s.len()).sum::<usize>() 
-            + separator.len() * (parts.len() - 1);
-        
+
+        let total_len =
+            parts.iter().map(|s| s.len()).sum::<usize>() + separator.len() * (parts.len() - 1);
+
         let mut result = String::with_capacity(total_len);
         for (i, part) in parts.iter().enumerate() {
             if i > 0 {
@@ -62,7 +63,7 @@ impl ParamUtils {
     pub fn get_param<'a>(params: &'a HashMap<String, Value>, key: &str) -> Option<Cow<'a, str>> {
         params.get(key)?.as_str().map(Cow::Borrowed)
     }
-    
+
     /// Extract parameter with type conversion
     pub fn get_param_as<T>(params: &HashMap<String, Value>, key: &str) -> Option<T>
     where
@@ -71,19 +72,20 @@ impl ParamUtils {
         let value = params.get(key)?;
         serde_json::from_value(value.clone()).ok()
     }
-    
+
     /// Extract parameter with default value
     pub fn get_param_or<'a>(
-        params: &'a HashMap<String, Value>, 
-        key: &str, 
-        default: &'a str
+        params: &'a HashMap<String, Value>,
+        key: &str,
+        default: &'a str,
     ) -> Cow<'a, str> {
-        params.get(key)
+        params
+            .get(key)
             .and_then(|v| v.as_str())
             .map(Cow::Borrowed)
             .unwrap_or(Cow::Borrowed(default))
     }
-    
+
     /// Build parameters map efficiently
     pub fn build_params(pairs: &[(&str, &str)]) -> HashMap<String, Value> {
         let mut params = HashMap::with_capacity(pairs.len());
@@ -107,7 +109,7 @@ impl<T> ObjectPool<T> {
             max_size,
         }
     }
-    
+
     /// Get an object from the pool or create a new one
     pub fn get<F>(&mut self, factory: F) -> T
     where
@@ -115,14 +117,14 @@ impl<T> ObjectPool<T> {
     {
         self.objects.pop().unwrap_or_else(factory)
     }
-    
+
     /// Return an object to the pool
     pub fn return_object(&mut self, obj: T) {
         if self.objects.len() < self.max_size {
             self.objects.push(obj);
         }
     }
-    
+
     /// Get current pool size
     pub fn size(&self) -> usize {
         self.objects.len()
@@ -140,44 +142,44 @@ impl StringBuffer {
             buffer: String::with_capacity(1024),
         }
     }
-    
+
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             buffer: String::with_capacity(capacity),
         }
     }
-    
+
     /// Clear the buffer for reuse
     pub fn clear(&mut self) {
         self.buffer.clear();
     }
-    
+
     /// Get the buffer as a string slice
     pub fn as_str(&self) -> &str {
         &self.buffer
     }
-    
+
     /// Write to the buffer
     pub fn write_str(&mut self, s: &str) {
         self.buffer.push_str(s);
     }
-    
+
     /// Write formatted content to the buffer
     pub fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
         use std::fmt::Write;
         let _ = write!(self.buffer, "{}", args);
     }
-    
+
     /// Take the string, leaving an empty buffer
     pub fn take(&mut self) -> String {
         std::mem::take(&mut self.buffer)
     }
-    
+
     /// Get the current length
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
-    
+
     /// Check if the buffer is empty
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
@@ -200,15 +202,15 @@ impl ResponseUtils {
         if let Some(content) = response.get("content").and_then(|v| v.as_str()) {
             return Some(Cow::Borrowed(content));
         }
-        
+
         if let Some(content) = response.get("text").and_then(|v| v.as_str()) {
             return Some(Cow::Borrowed(content));
         }
-        
+
         if let Some(content) = response.get("message").and_then(|v| v.as_str()) {
             return Some(Cow::Borrowed(content));
         }
-        
+
         // Try nested structures
         if let Some(content) = response
             .get("choices")
@@ -220,17 +222,19 @@ impl ResponseUtils {
         {
             return Some(Cow::Borrowed(content));
         }
-        
+
         None
     }
-    
+
     /// Extract error message efficiently
     pub fn extract_error<'a>(response: &'a Value) -> Option<Cow<'a, str>> {
-        response.get("error")
+        response
+            .get("error")
             .and_then(|v| v.as_str())
             .map(Cow::Borrowed)
             .or_else(|| {
-                response.get("error")
+                response
+                    .get("error")
                     .and_then(|v| v.get("message"))
                     .and_then(|v| v.as_str())
                     .map(Cow::Borrowed)
@@ -246,10 +250,10 @@ mod tests {
     #[test]
     fn test_string_utils() {
         let value = json!({"key": "value", "number": 42});
-        
+
         let extracted = StringUtils::extract_str(&value, "key");
         assert_eq!(extracted, Some(Cow::Borrowed("value")));
-        
+
         let with_default = StringUtils::extract_str_or(&value, "missing", "default");
         assert_eq!(with_default, Cow::Borrowed("default"));
     }
@@ -257,10 +261,10 @@ mod tests {
     #[test]
     fn test_object_pool() {
         let mut pool = ObjectPool::new(2);
-        
+
         let obj1 = pool.get(|| String::from("test"));
         assert_eq!(obj1, "test");
-        
+
         pool.return_object(String::from("reused"));
         let obj2 = pool.get(|| String::from("new"));
         assert_eq!(obj2, "reused");
@@ -271,10 +275,10 @@ mod tests {
         let mut buffer = StringBuffer::new();
         buffer.write_str("Hello");
         buffer.write_str(" World");
-        
+
         assert_eq!(buffer.as_str(), "Hello World");
         assert_eq!(buffer.len(), 11);
-        
+
         buffer.clear();
         assert!(buffer.is_empty());
     }

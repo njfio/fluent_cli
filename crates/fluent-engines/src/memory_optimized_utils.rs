@@ -101,7 +101,7 @@ impl PayloadBuilder {
     pub fn build_anthropic_payload(&mut self, content: &str, model: Option<&str>) -> &Value {
         self.message_buffer.clear();
         self.message_buffer.push(json!({
-            "role": "user", 
+            "role": "user",
             "content": content
         }));
 
@@ -119,10 +119,10 @@ impl PayloadBuilder {
 
     /// Build vision payload with image data
     pub fn build_vision_payload(
-        &mut self, 
-        text: &str, 
-        image_data: &str, 
-        image_format: &str
+        &mut self,
+        text: &str,
+        image_data: &str,
+        image_format: &str,
     ) -> &Value {
         self.message_buffer.clear();
         self.message_buffer.push(json!({
@@ -152,7 +152,8 @@ impl PayloadBuilder {
     pub fn add_config_params(&mut self, params: &HashMap<String, Value>) {
         for (key, value) in params {
             match key.as_str() {
-                "temperature" | "max_tokens" | "top_p" | "frequency_penalty" | "presence_penalty" => {
+                "temperature" | "max_tokens" | "top_p" | "frequency_penalty"
+                | "presence_penalty" => {
                     self.base_payload[key] = value.clone();
                 }
                 _ => {} // Skip unknown parameters
@@ -193,7 +194,7 @@ impl FileBuffer {
     /// Read file into buffer, reusing existing allocation
     pub async fn read_file(&mut self, file_path: &std::path::Path) -> Result<&[u8]> {
         use tokio::io::AsyncReadExt;
-        
+
         self.buffer.clear();
         let mut file = tokio::fs::File::open(file_path).await?;
         file.read_to_end(&mut self.buffer).await?;
@@ -305,14 +306,17 @@ impl MemoryPool {
     /// Return a string buffer to the pool
     pub fn return_string_buffer(&mut self, mut buffer: StringBuffer) {
         buffer.clear();
-        if self.string_buffers.len() < 10 { // Limit pool size
+        if self.string_buffers.len() < 10 {
+            // Limit pool size
             self.string_buffers.push(buffer);
         }
     }
 
     /// Get a payload builder from the pool
     pub fn get_payload_builder(&mut self) -> PayloadBuilder {
-        self.payload_builders.pop().unwrap_or_else(PayloadBuilder::new)
+        self.payload_builders
+            .pop()
+            .unwrap_or_else(PayloadBuilder::new)
     }
 
     /// Return a payload builder to the pool
@@ -337,7 +341,9 @@ impl MemoryPool {
 
     /// Get a response parser from the pool
     pub fn get_response_parser(&mut self) -> ResponseParser {
-        self.response_parsers.pop().unwrap_or_else(ResponseParser::new)
+        self.response_parsers
+            .pop()
+            .unwrap_or_else(ResponseParser::new)
     }
 
     /// Return a response parser to the pool
@@ -388,7 +394,7 @@ mod tests {
         let mut buffer = StringBuffer::new();
         let url = buffer.build_url("https", "api.openai.com", 443, "/v1/chat/completions");
         assert_eq!(url, "https://api.openai.com:443/v1/chat/completions");
-        
+
         let cache_key = buffer.build_cache_key("test payload", Some("file.txt"));
         assert_eq!(cache_key, "test payload:file.txt");
     }
@@ -397,7 +403,7 @@ mod tests {
     fn test_payload_builder() {
         let mut builder = PayloadBuilder::new();
         let payload = builder.build_openai_payload("Hello", Some("gpt-4"));
-        
+
         assert_eq!(payload["model"], "gpt-4");
         assert_eq!(payload["messages"][0]["content"], "Hello");
     }
@@ -406,12 +412,12 @@ mod tests {
     async fn test_file_buffer() {
         use tempfile::NamedTempFile;
         use tokio::io::AsyncWriteExt;
-        
+
         let temp_file = NamedTempFile::new().unwrap();
         let mut file = tokio::fs::File::create(temp_file.path()).await.unwrap();
         file.write_all(b"test content").await.unwrap();
         file.flush().await.unwrap();
-        
+
         let mut buffer = FileBuffer::new();
         let content = buffer.read_file(temp_file.path()).await.unwrap();
         assert_eq!(content, b"test content");
@@ -420,17 +426,17 @@ mod tests {
     #[test]
     fn test_memory_pool() {
         let mut pool = MemoryPool::new();
-        
+
         let buffer1 = pool.get_string_buffer();
         let buffer2 = pool.get_string_buffer();
-        
+
         pool.return_string_buffer(buffer1);
         pool.return_string_buffer(buffer2);
-        
+
         // Should reuse buffers
         let _buffer3 = pool.get_string_buffer();
         let _buffer4 = pool.get_string_buffer();
-        
+
         assert_eq!(pool.string_buffers.len(), 0); // Both buffers taken from pool
     }
 
@@ -438,10 +444,10 @@ mod tests {
     fn test_zero_copy_utils() {
         let mut params = HashMap::new();
         params.insert("model".to_string(), Value::String("gpt-4".to_string()));
-        
+
         let model = ZeroCopyUtils::get_param(&params, "model").unwrap();
         assert_eq!(model, "gpt-4");
-        
+
         let url = ZeroCopyUtils::build_url_borrowed("https", "api.openai.com", 443, "/v1/chat");
         assert_eq!(url, "https://api.openai.com/v1/chat");
     }

@@ -9,7 +9,7 @@ default-run = "fluent-cli"
 clap = { workspace = true, features = ["derive"] }
 fluent-core = { workspace = true }
 fluent-engines = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
@@ -24,7 +24,3 @@ dialoguer = { workspace = true }
 
 fluent-agent = { path = "../fluent-agent" }
 rmcp = { workspace = true }
-
-#fluent-storage = { path = "../fluent-storage" }  # is not used
-#clap_complete = "4.5.1"  #is not used
-#atty = "0.2.14" "use standard std::io::IsTerminal"

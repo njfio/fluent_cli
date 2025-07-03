@@ -242,7 +242,8 @@ impl DocumentProcessor for DocxProcessor {
         let metadata = vec![
             format!(
                 "filename:{}",
-                file_path.file_name()
+                file_path
+                    .file_name()
                     .map(|name| name.to_string_lossy())
                     .unwrap_or_else(|| "unknown".into())
             ),

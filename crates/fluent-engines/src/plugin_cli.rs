@@ -1,6 +1,6 @@
 use crate::secure_plugin_system::{
-    PluginRuntime, PluginManifest, PluginCapability, PluginPermissions,
-    DefaultSignatureVerifier, DefaultAuditLogger
+    DefaultAuditLogger, DefaultSignatureVerifier, PluginCapability, PluginManifest,
+    PluginPermissions, PluginRuntime,
 };
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
@@ -83,7 +83,7 @@ impl PluginCli {
     /// Run the CLI application
     pub async fn run() -> Result<()> {
         let cli = PluginCli::parse();
-        
+
         // Ensure plugin directory exists
         tokio::fs::create_dir_all(&cli.plugin_dir).await?;
 
@@ -93,39 +93,27 @@ impl PluginCli {
         let runtime = PluginRuntime::new(cli.plugin_dir.clone(), signature_verifier, audit_logger);
 
         match cli.command {
-            Commands::List => {
-                Self::list_plugins(&runtime).await
-            }
-            Commands::Load { path } => {
-                Self::load_plugin(&runtime, &path).await
-            }
-            Commands::Unload { plugin_id } => {
-                Self::unload_plugin(&runtime, &plugin_id).await
-            }
-            Commands::Show { plugin_id } => {
-                Self::show_plugin(&runtime, &plugin_id).await
-            }
-            Commands::Stats { plugin_id } => {
-                Self::show_stats(&runtime, &plugin_id).await
-            }
-            Commands::Validate { path } => {
-                Self::validate_plugin(&path).await
-            }
-            Commands::Create { name, engine_type, output } => {
-                Self::create_plugin_template(&name, &engine_type, &output).await
-            }
+            Commands::List => Self::list_plugins(&runtime).await,
+            Commands::Load { path } => Self::load_plugin(&runtime, &path).await,
+            Commands::Unload { plugin_id } => Self::unload_plugin(&runtime, &plugin_id).await,
+            Commands::Show { plugin_id } => Self::show_plugin(&runtime, &plugin_id).await,
+            Commands::Stats { plugin_id } => Self::show_stats(&runtime, &plugin_id).await,
+            Commands::Validate { path } => Self::validate_plugin(&path).await,
+            Commands::Create {
+                name,
+                engine_type,
+                output,
+            } => Self::create_plugin_template(&name, &engine_type, &output).await,
             Commands::Audit { plugin_id, limit } => {
                 Self::show_audit_logs(&runtime, &plugin_id, limit).await
             }
-            Commands::SecurityTest { path } => {
-                Self::security_test(&path).await
-            }
+            Commands::SecurityTest { path } => Self::security_test(&path).await,
         }
     }
 
     async fn list_plugins(runtime: &PluginRuntime) -> Result<()> {
         let plugins = runtime.list_plugins().await;
-        
+
         if plugins.is_empty() {
             println!("No plugins loaded.");
             return Ok(());
@@ -133,19 +121,22 @@ impl PluginCli {
 
         println!("🔌 Loaded plugins:");
         for plugin in plugins {
-            println!("  • {} v{} ({})", plugin.name, plugin.version, plugin.engine_type);
+            println!(
+                "  • {} v{} ({})",
+                plugin.name, plugin.version, plugin.engine_type
+            );
             println!("    Author: {}", plugin.author);
             println!("    Description: {}", plugin.description);
             println!("    Capabilities: {:?}", plugin.capabilities);
             println!();
         }
-        
+
         Ok(())
     }
 
     async fn load_plugin(runtime: &PluginRuntime, path: &PathBuf) -> Result<()> {
         println!("🔄 Loading plugin from {}...", path.display());
-        
+
         match runtime.load_plugin(path).await {
             Ok(plugin_id) => {
                 println!("✅ Successfully loaded plugin: {}", plugin_id);
@@ -155,13 +146,13 @@ impl PluginCli {
                 return Err(e);
             }
         }
-        
+
         Ok(())
     }
 
     async fn unload_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Result<()> {
         println!("🔄 Unloading plugin: {}...", plugin_id);
-        
+
         match runtime.unload_plugin(plugin_id).await {
             Ok(()) => {
                 println!("✅ Successfully unloaded plugin: {}", plugin_id);
@@ -171,13 +162,14 @@ impl PluginCli {
                 return Err(e);
             }
         }
-        
+
         Ok(())
     }
 
     async fn show_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Result<()> {
         let plugins = runtime.list_plugins().await;
-        let plugin = plugins.iter()
+        let plugin = plugins
+            .iter()
             .find(|p| p.name == plugin_id)
             .ok_or_else(|| anyhow!("Plugin '{}' not found", plugin_id))?;
 
@@ -187,7 +179,7 @@ impl PluginCli {
         println!("Author: {}", plugin.author);
         println!("Description: {}", plugin.description);
         println!("Created: {}", plugin.created_at);
-        
+
         if let Some(expires_at) = &plugin.expires_at {
             println!("Expires: {}", expires_at);
         }
@@ -199,22 +191,34 @@ impl PluginCli {
 
         println!("\n⚙️  Permissions:");
         println!("  Max Memory: {} MB", plugin.permissions.max_memory_mb);
-        println!("  Max Execution Time: {} ms", plugin.permissions.max_execution_time_ms);
-        println!("  Max Network Requests: {}", plugin.permissions.max_network_requests);
-        println!("  Rate Limit: {} req/min", plugin.permissions.rate_limit_requests_per_minute);
-        
+        println!(
+            "  Max Execution Time: {} ms",
+            plugin.permissions.max_execution_time_ms
+        );
+        println!(
+            "  Max Network Requests: {}",
+            plugin.permissions.max_network_requests
+        );
+        println!(
+            "  Rate Limit: {} req/min",
+            plugin.permissions.rate_limit_requests_per_minute
+        );
+
         if !plugin.permissions.allowed_hosts.is_empty() {
             println!("  Allowed Hosts: {:?}", plugin.permissions.allowed_hosts);
         }
-        
+
         if !plugin.permissions.allowed_file_paths.is_empty() {
-            println!("  Allowed File Paths: {:?}", plugin.permissions.allowed_file_paths);
+            println!(
+                "  Allowed File Paths: {:?}",
+                plugin.permissions.allowed_file_paths
+            );
         }
 
         println!("\n🔒 Security:");
         println!("  Signed: {}", plugin.signature.is_some());
         println!("  Checksum: {}", plugin.checksum);
-        
+
         Ok(())
     }
 
@@ -228,13 +232,13 @@ impl PluginCli {
         println!("Uptime: {} seconds", stats.uptime_seconds);
         println!("Use Count: {}", stats.use_count);
         println!("Last Used: {:?}", stats.last_used);
-        
+
         Ok(())
     }
 
     async fn validate_plugin(path: &PathBuf) -> Result<()> {
         println!("🔍 Validating plugin at {}...", path.display());
-        
+
         // Check manifest exists
         let manifest_path = path.join("manifest.json");
         if !manifest_path.exists() {
@@ -244,7 +248,7 @@ impl PluginCli {
         // Parse manifest
         let manifest_content = tokio::fs::read_to_string(&manifest_path).await?;
         let manifest: PluginManifest = serde_json::from_str(&manifest_content)?;
-        
+
         println!("✅ Manifest is valid");
 
         // Check WASM file exists
@@ -257,11 +261,11 @@ impl PluginCli {
         let wasm_bytes = tokio::fs::read(&wasm_path).await?;
         let actual_checksum = sha2::Sha256::digest(&wasm_bytes);
         let expected_checksum = hex::decode(&manifest.checksum)?;
-        
+
         if actual_checksum.as_slice() != expected_checksum {
             return Err(anyhow!("Checksum verification failed"));
         }
-        
+
         println!("✅ Checksum is valid");
 
         // Check expiration
@@ -274,7 +278,7 @@ impl PluginCli {
         }
 
         println!("✅ Plugin validation successful");
-        
+
         Ok(())
     }
 
@@ -304,7 +308,8 @@ impl PluginCli {
         tokio::fs::write(plugin_dir.join("manifest.json"), manifest_json).await?;
 
         // Create README template
-        let readme = format!(r#"# {} Plugin
+        let readme = format!(
+            r#"# {} Plugin
 
 ## Description
 {}
@@ -332,7 +337,9 @@ sha256sum plugin.wasm
 ```bash
 fluent-plugin load .
 ```
-"#, name, manifest.description, engine_type, name);
+"#,
+            name, manifest.description, engine_type, name
+        );
 
         tokio::fs::write(plugin_dir.join("README.md"), readme).await?;
 
@@ -343,62 +350,84 @@ fluent-plugin load .
         println!("  3. Build the WASM binary");
         println!("  4. Update the checksum in manifest.json");
         println!("  5. Sign the plugin (optional but recommended)");
-        println!("  6. Load the plugin: fluent-plugin load {}", plugin_dir.display());
-        
+        println!(
+            "  6. Load the plugin: fluent-plugin load {}",
+            plugin_dir.display()
+        );
+
         Ok(())
     }
 
-    async fn show_audit_logs(_runtime: &PluginRuntime, plugin_id: &str, limit: usize) -> Result<()> {
+    async fn show_audit_logs(
+        _runtime: &PluginRuntime,
+        plugin_id: &str,
+        limit: usize,
+    ) -> Result<()> {
         // This would require access to the audit logger from the runtime
         // For now, just show a placeholder
-        println!("📋 Audit logs for plugin '{}' (last {} entries):", plugin_id, limit);
+        println!(
+            "📋 Audit logs for plugin '{}' (last {} entries):",
+            plugin_id, limit
+        );
         println!("  [Audit log display not yet implemented]");
-        
+
         Ok(())
     }
 
     async fn security_test(path: &PathBuf) -> Result<()> {
-        println!("🔒 Running security tests for plugin at {}...", path.display());
-        
+        println!(
+            "🔒 Running security tests for plugin at {}...",
+            path.display()
+        );
+
         // Validate plugin first
         Self::validate_plugin(path).await?;
-        
+
         // Additional security checks
         println!("🔍 Checking for security vulnerabilities...");
-        
+
         // Check manifest for suspicious permissions
         let manifest_path = path.join("manifest.json");
         let manifest_content = tokio::fs::read_to_string(&manifest_path).await?;
         let manifest: PluginManifest = serde_json::from_str(&manifest_content)?;
-        
+
         // Warn about dangerous capabilities
         let dangerous_capabilities = [
             PluginCapability::FileSystemWrite,
             PluginCapability::EnvironmentAccess,
         ];
-        
+
         for capability in &manifest.capabilities {
             if dangerous_capabilities.contains(capability) {
-                println!("⚠️  Warning: Plugin requests dangerous capability: {:?}", capability);
+                println!(
+                    "⚠️  Warning: Plugin requests dangerous capability: {:?}",
+                    capability
+                );
             }
         }
-        
+
         // Check for excessive permissions
         if manifest.permissions.max_memory_mb > 512 {
-            println!("⚠️  Warning: Plugin requests high memory limit: {} MB", manifest.permissions.max_memory_mb);
+            println!(
+                "⚠️  Warning: Plugin requests high memory limit: {} MB",
+                manifest.permissions.max_memory_mb
+            );
         }
-        
+
         if manifest.permissions.max_execution_time_ms > 60000 {
-            println!("⚠️  Warning: Plugin requests long execution time: {} ms", manifest.permissions.max_execution_time_ms);
+            println!(
+                "⚠️  Warning: Plugin requests long execution time: {} ms",
+                manifest.permissions.max_execution_time_ms
+            );
         }
-        
+
         // Check if plugin is signed
         if manifest.signature.is_none() {
             println!("⚠️  Warning: Plugin is not signed");
         }
-        
+
         println!("✅ Security test completed");
-        
+
         Ok(())
     }
 }

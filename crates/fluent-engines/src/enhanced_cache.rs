@@ -46,7 +46,7 @@ impl Default for CacheConfig {
 
 /// Cache entry with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct CacheEntry {
+pub struct CacheEntry {
     response: Response,
     created_at: u64, // Unix timestamp
     access_count: u64,
@@ -60,7 +60,7 @@ impl CacheEntry {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let size_bytes = serde_json::to_string(&response)
             .map(|s| s.len())
             .unwrap_or(0);
@@ -79,7 +79,7 @@ impl CacheEntry {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         now - self.created_at > ttl.as_secs()
     }
 
@@ -121,10 +121,8 @@ impl CacheKey {
     pub fn with_file(mut self, file_path: &Path) -> Result<Self> {
         // For files, we hash the file path and modification time
         let metadata = std::fs::metadata(file_path)?;
-        let modified = metadata.modified()?
-            .duration_since(UNIX_EPOCH)?
-            .as_secs();
-        
+        let modified = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
+
         let file_key = format!("{}:{}", file_path.display(), modified);
         self.file_hash = Some(Self::hash_string(&file_key));
         Ok(self)
@@ -143,10 +141,7 @@ impl CacheKey {
     }
 
     pub fn to_string(&self) -> String {
-        let mut parts = vec![
-            self.engine.clone(),
-            self.payload_hash.clone(),
-        ];
+        let mut parts = vec![self.engine.clone(), self.payload_hash.clone()];
 
         if let Some(model) = &self.model {
             parts.push(format!("model:{}", model));
@@ -182,7 +177,7 @@ impl CacheStats {
     pub fn hit_rate(&self) -> f64 {
         let total_hits = self.memory_hits + self.disk_hits;
         let total_requests = total_hits + self.memory_misses + self.disk_misses;
-        
+
         if total_requests == 0 {
             0.0
         } else {
@@ -192,7 +187,7 @@ impl CacheStats {
 
     pub fn memory_hit_rate(&self) -> f64 {
         let total_requests = self.memory_hits + self.memory_misses;
-        
+
         if total_requests == 0 {
             0.0
         } else {
@@ -212,14 +207,12 @@ pub struct EnhancedCache {
 impl EnhancedCache {
     /// Create a new enhanced cache
     pub fn new(config: CacheConfig) -> Result<Self> {
-        let memory_cache = Arc::new(RwLock::new(
-            LruCache::new(NonZeroUsize::new(config.memory_cache_size).unwrap())
-        ));
+        let memory_cache = Arc::new(RwLock::new(LruCache::new(
+            NonZeroUsize::new(config.memory_cache_size).unwrap(),
+        )));
 
         let disk_cache = if config.enable_disk_cache {
-            let cache_dir = config.disk_cache_dir
-                .as_deref()
-                .unwrap_or("fluent_cache");
+            let cache_dir = config.disk_cache_dir.as_deref().unwrap_or("fluent_cache");
             Some(sled::open(cache_dir)?)
         } else {
             None
@@ -270,7 +263,7 @@ impl EnhancedCache {
                     Ok(mut entry) => {
                         if !entry.is_expired(self.config.ttl) {
                             entry.mark_accessed();
-                            
+
                             // Promote to memory cache
                             {
                                 let mut memory_cache = self.memory_cache.write().await;
@@ -466,8 +459,7 @@ pub fn start_cache_cleanup_task(cache: Arc<EnhancedCache>) -> tokio::task::JoinH
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::types::{Usage, Cost};
-
+    use fluent_core::types::{Cost, Usage};
 
     fn create_test_response() -> Response {
         Response {
@@ -508,11 +500,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_key_generation() {
-        let key1 = CacheKey::new("test", "openai")
-            .with_model("gpt-4");
-        
-        let key2 = CacheKey::new("test", "openai")
-            .with_model("gpt-3.5-turbo");
+        let key1 = CacheKey::new("test", "openai").with_model("gpt-4");
+
+        let key2 = CacheKey::new("test", "openai").with_model("gpt-3.5-turbo");
 
         assert_ne!(key1.to_string(), key2.to_string());
     }
@@ -522,7 +512,7 @@ mod tests {
     async fn test_cache_expiration() {
         let config = CacheConfig {
             ttl: Duration::from_millis(1), // Very short TTL
-            enable_disk_cache: false, // Disable disk cache for simpler test
+            enable_disk_cache: false,      // Disable disk cache for simpler test
             ..Default::default()
         };
 

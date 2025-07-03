@@ -17,13 +17,13 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use tokio::process::Command;
 
+use schemars::JsonSchema;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
-use schemars::JsonSchema;
 
-use serde_yaml;
 use serde_json;
+use serde_yaml;
 
 // Security: Import input validator for pipeline security
 use fluent_core::input_validator::InputValidator;
@@ -131,7 +131,8 @@ pub fn validate_pipeline_yaml(yaml: &str) -> Result<(), Error> {
         return Err(anyhow!("Pipeline YAML cannot be empty"));
     }
 
-    if yaml.len() > 1_000_000 { // 1MB limit
+    if yaml.len() > 1_000_000 {
+        // 1MB limit
         return Err(anyhow!("Pipeline YAML too large: {} bytes", yaml.len()));
     }
 
@@ -139,11 +140,11 @@ pub fn validate_pipeline_yaml(yaml: &str) -> Result<(), Error> {
     InputValidator::validate_request_payload(yaml)?;
 
     // Parse YAML structure
-    let _value: serde_yaml::Value = serde_yaml::from_str(yaml)
-        .map_err(|e| anyhow!("Invalid YAML syntax: {}", e))?;
+    let _value: serde_yaml::Value =
+        serde_yaml::from_str(yaml).map_err(|e| anyhow!("Invalid YAML syntax: {}", e))?;
 
-    let pipeline: Pipeline = serde_yaml::from_str(yaml)
-        .map_err(|e| anyhow!("Invalid pipeline structure: {}", e))?;
+    let pipeline: Pipeline =
+        serde_yaml::from_str(yaml).map_err(|e| anyhow!("Invalid pipeline structure: {}", e))?;
 
     // Security validation of pipeline content
     validate_pipeline_security(&pipeline)?;
@@ -174,7 +175,10 @@ fn validate_pipeline_security(pipeline: &Pipeline) -> Result<(), Error> {
     }
 
     if pipeline.steps.len() > 1000 {
-        return Err(anyhow!("Pipeline has too many steps: {}", pipeline.steps.len()));
+        return Err(anyhow!(
+            "Pipeline has too many steps: {}",
+            pipeline.steps.len()
+        ));
     }
 
     // Validate each step for security
@@ -188,8 +192,7 @@ fn validate_pipeline_security(pipeline: &Pipeline) -> Result<(), Error> {
 /// Validates individual pipeline steps for security issues
 fn validate_step_security(step: &PipelineStep) -> Result<(), Error> {
     match step {
-        PipelineStep::Command { command, .. } |
-        PipelineStep::ShellCommand { command, .. } => {
+        PipelineStep::Command { command, .. } | PipelineStep::ShellCommand { command, .. } => {
             // SECURITY: Disable command execution entirely for safety
             return Err(anyhow!(
                 "Command execution is disabled for security reasons. \
@@ -234,11 +237,18 @@ fn validate_step_security(step: &PipelineStep) -> Result<(), Error> {
             }
         }
 
-        PipelineStep::TryCatch { try_steps, catch_steps, finally_steps, .. } => {
+        PipelineStep::TryCatch {
+            try_steps,
+            catch_steps,
+            finally_steps,
+            ..
+        } => {
             // Recursively validate all nested steps
-            for nested_step in try_steps.iter()
+            for nested_step in try_steps
+                .iter()
                 .chain(catch_steps.iter())
-                .chain(finally_steps.iter()) {
+                .chain(finally_steps.iter())
+            {
                 validate_step_security(nested_step)?;
             }
         }
@@ -252,7 +262,8 @@ fn validate_step_security(step: &PipelineStep) -> Result<(), Error> {
 
         PipelineStep::Timeout { step, duration, .. } => {
             // Validate timeout duration
-            if *duration > 3600 { // 1 hour max
+            if *duration > 3600 {
+                // 1 hour max
                 return Err(anyhow!("Timeout duration too long: {} seconds", duration));
             }
 
@@ -922,8 +933,10 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                                 combined_results.extend(step_result);
                             }
                             Ok(Err(e)) => {
-                                combined_results
-                                    .insert(format!("error_{}", combined_results.len()), e.to_string());
+                                combined_results.insert(
+                                    format!("error_{}", combined_results.len()),
+                                    e.to_string(),
+                                );
                             }
                             Err(e) => {
                                 combined_results.insert(
@@ -1072,17 +1085,20 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         debug!("Running shell command from file: {:?}", script_path);
 
         // Validate script path to prevent path traversal
-        let canonical_path = script_path.canonicalize()
+        let canonical_path = script_path
+            .canonicalize()
             .map_err(|e| anyhow!("Invalid script path: {}", e))?;
 
         // Ensure script is in a safe location (temp directory)
         if !canonical_path.starts_with(std::env::temp_dir()) {
-            return Err(anyhow!("Script must be in temporary directory for security"));
+            return Err(anyhow!(
+                "Script must be in temporary directory for security"
+            ));
         }
 
         // Use absolute path to bash and clear environment
-        let bash_path = which::which("bash")
-            .map_err(|_| anyhow!("bash command not found in PATH"))?;
+        let bash_path =
+            which::which("bash").map_err(|_| anyhow!("bash command not found in PATH"))?;
 
         let output = TokioCommand::new(bash_path)
             .arg(&canonical_path)
@@ -1194,7 +1210,9 @@ mod tests {
 
     fn test_executor() -> PipelineExecutor<FileStateStore> {
         let dir = tempdir().unwrap();
-        let store = FileStateStore { directory: dir.path().to_path_buf() };
+        let store = FileStateStore {
+            directory: dir.path().to_path_buf(),
+        };
         PipelineExecutor::new(store, false)
     }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use fluent_agent::{Goal, GoalType, GoalPriority, GoalTemplates};
+use fluent_agent::{Goal, GoalPriority, GoalTemplates, GoalType};
 use std::time::Duration;
 
 /// Example demonstrating the new agentic capabilities of fluent_cli
@@ -29,12 +29,19 @@ async fn main() -> Result<()> {
     println!("📝 Code Generation Goal:");
     println!("   {}", code_goal.get_summary());
     println!("   Complexity: {:?}", code_goal.get_complexity());
-    println!("   Estimated Duration: {:?}", code_goal.get_estimated_duration());
+    println!(
+        "   Estimated Duration: {:?}",
+        code_goal.get_estimated_duration()
+    );
 
     // Code review goal
     let review_goal = GoalTemplates::code_review(
         "src/fibonacci.rs".to_string(),
-        vec!["Performance".to_string(), "Security".to_string(), "Best Practices".to_string()],
+        vec![
+            "Performance".to_string(),
+            "Security".to_string(),
+            "Best Practices".to_string(),
+        ],
     );
 
     println!("\n🔍 Code Review Goal:");
@@ -54,7 +61,11 @@ async fn main() -> Result<()> {
     // Testing goal
     let test_goal = GoalTemplates::testing(
         "fibonacci module".to_string(),
-        vec!["Unit tests".to_string(), "Integration tests".to_string(), "Property tests".to_string()],
+        vec![
+            "Unit tests".to_string(),
+            "Integration tests".to_string(),
+            "Property tests".to_string(),
+        ],
     );
 
     println!("\n🧪 Testing Goal:");

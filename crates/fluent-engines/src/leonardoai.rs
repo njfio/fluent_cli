@@ -1,21 +1,20 @@
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
+use reqwest::Client;
+use serde_json::{json, Map, Value};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
-use serde_json::{json, Map, Value};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
-use log::debug;
-use reqwest::Client;
 
 pub struct LeonardoAIEngine {
     config: EngineConfig,
@@ -51,16 +50,22 @@ impl LeonardoAIEngine {
     async fn upload_file_internal(&self, file_path: &Path) -> Result<String> {
         let mut file = File::open(file_path).await.context("Failed to open file")?;
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+        file.read_to_end(&mut buffer)
+            .await
+            .context("Failed to read file")?;
         let base64_image = STANDARD.encode(&buffer);
 
-        let url = format!("{}://{}:{}/api/rest/v1/init-image",
-                          self.config.connection.protocol,
-                          self.config.connection.hostname,
-                          self.config.connection.port
+        let url = format!(
+            "{}://{}:{}/api/rest/v1/init-image",
+            self.config.connection.protocol,
+            self.config.connection.hostname,
+            self.config.connection.port
         );
 
-        let auth_token = self.config.parameters.get("bearer_token")
+        let auth_token = self
+            .config
+            .parameters
+            .get("bearer_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
@@ -69,7 +74,9 @@ impl LeonardoAIEngine {
             "file": base64_image,
         });
 
-        let response = self.client.post(&url)
+        let response = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", auth_token))
             .json(&payload)
             .send()
@@ -84,9 +91,11 @@ impl LeonardoAIEngine {
     }
 
     fn create_payload(&self, request: &Request, image_id: Option<String>) -> Value {
-        let mut payload: Map<String, Value> = self.config.parameters
+        let mut payload: Map<String, Value> = self
+            .config
+            .parameters
             .iter()
-            .filter(|(k, _)| *k != "bearer_token" && *k != "sessionID" && *k != "user")  // Exclude bearer_token
+            .filter(|(k, _)| *k != "bearer_token" && *k != "sessionID" && *k != "user") // Exclude bearer_token
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
@@ -102,7 +111,6 @@ impl LeonardoAIEngine {
         let payload_value = Value::Object(payload);
         remove_null_values(payload_value)
     }
-
 }
 
 fn remove_null_values(value: Value) -> Value {
@@ -131,24 +139,33 @@ fn remove_null_values(value: Value) -> Value {
 
 #[async_trait]
 impl Engine for LeonardoAIEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = self.create_payload(request, None);
 
             debug!("Leonardo AI Payload: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .json(&payload)
                 .send()
@@ -164,21 +181,27 @@ impl Engine for LeonardoAIEngine {
 
             let generation_id = response["sdGenerationJob"]["generationId"]
                 .as_str()
-                .ok_or_else(|| anyhow!("Failed to extract generation ID from Leonardo AI response"))?;
+                .ok_or_else(|| {
+                    anyhow!("Failed to extract generation ID from Leonardo AI response")
+                })?;
 
             // Poll for results
             let mut image_urls = Vec::new();
-            for _ in 0..60 { // Poll for up to 5 minutes
+            for _ in 0..60 {
+                // Poll for up to 5 minutes
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-                let status_url = format!("{}://{}:{}/api/rest/v1/generations/{}",
-                                         self.config.connection.protocol,
-                                         self.config.connection.hostname,
-                                         self.config.connection.port,
-                                         generation_id
+                let status_url = format!(
+                    "{}://{}:{}/api/rest/v1/generations/{}",
+                    self.config.connection.protocol,
+                    self.config.connection.hostname,
+                    self.config.connection.port,
+                    generation_id
                 );
 
-                let status_response = self.client.get(&status_url)
+                let status_response = self
+                    .client
+                    .get(&status_url)
                     .header("Authorization", format!("Bearer {}", auth_token))
                     .send()
                     .await?
@@ -198,12 +221,18 @@ impl Engine for LeonardoAIEngine {
             }
 
             if image_urls.is_empty() {
-                return Err(anyhow!("Timed out waiting for Leonardo AI to generate images"));
+                return Err(anyhow!(
+                    "Timed out waiting for Leonardo AI to generate images"
+                ));
             }
 
             Ok(Response {
                 content: image_urls.join("\n"),
-                usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                usage: Usage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
                 model: "leonardo-ai".to_string(),
                 finish_reason: Some("success".to_string()),
                 cost: Cost {
@@ -215,7 +244,10 @@ impl Engine for LeonardoAIEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             Ok(UpsertResponse {
                 processed_files: vec![],
@@ -229,14 +261,19 @@ impl Engine for LeonardoAIEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
         value["generations_by_pk"]["generated_images"]
             .as_array()
             .and_then(|images| {
-                let urls: Vec<String> = images.iter()
+                let urls: Vec<String> = images
+                    .iter()
                     .filter_map(|img| img["url"].as_str().map(String::from))
                     .collect();
                 if urls.is_empty() {
@@ -253,35 +290,43 @@ impl Engine for LeonardoAIEngine {
             })
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            self.upload_file_internal(file_path).await
-        })
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move { self.upload_file_internal(file_path).await })
     }
 
-
-
-
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let _image_id = self.upload_file_internal(file_path).await?;
 
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = self.create_payload(request, None);
 
             debug!("Leonardo AI Payload with file: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .json(&payload)
                 .send()
@@ -297,21 +342,27 @@ impl Engine for LeonardoAIEngine {
 
             let generation_id = response["sdGenerationJob"]["generationId"]
                 .as_str()
-                .ok_or_else(|| anyhow!("Failed to extract generation ID from Leonardo AI response"))?;
+                .ok_or_else(|| {
+                    anyhow!("Failed to extract generation ID from Leonardo AI response")
+                })?;
 
             // Poll for results
             let mut image_urls = Vec::new();
-            for _ in 0..60 { // Poll for up to 5 minutes
+            for _ in 0..60 {
+                // Poll for up to 5 minutes
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-                let status_url = format!("{}://{}:{}/api/rest/v1/generations/{}",
-                                         self.config.connection.protocol,
-                                         self.config.connection.hostname,
-                                         self.config.connection.port,
-                                         generation_id
+                let status_url = format!(
+                    "{}://{}:{}/api/rest/v1/generations/{}",
+                    self.config.connection.protocol,
+                    self.config.connection.hostname,
+                    self.config.connection.port,
+                    generation_id
                 );
 
-                let status_response = self.client.get(&status_url)
+                let status_response = self
+                    .client
+                    .get(&status_url)
                     .header("Authorization", format!("Bearer {}", auth_token))
                     .send()
                     .await?
@@ -331,12 +382,18 @@ impl Engine for LeonardoAIEngine {
             }
 
             if image_urls.is_empty() {
-                return Err(anyhow!("Timed out waiting for Leonardo AI to generate images"));
+                return Err(anyhow!(
+                    "Timed out waiting for Leonardo AI to generate images"
+                ));
             }
 
             Ok(Response {
                 content: image_urls.join("\n"),
-                usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                usage: Usage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
                 model: "leonardo-ai".to_string(),
                 finish_reason: Some("success".to_string()),
                 cost: Cost {
@@ -348,5 +405,3 @@ impl Engine for LeonardoAIEngine {
         })
     }
 }
-
-

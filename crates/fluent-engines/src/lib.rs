@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use log::debug;
+use std::str::FromStr;
 
 use anthropic::AnthropicEngine;
 use cohere::CohereEngine;
@@ -39,34 +39,35 @@ pub mod pipeline_executor;
 pub mod stabilityai;
 pub mod webhook;
 
-pub mod replicate;
-pub mod plugin;
-pub mod shared;
-pub mod optimized_state_store;
-pub mod state_store_benchmark;
-pub mod memory_optimized_utils;
-pub mod optimized_openai;
-pub mod connection_pool;
-pub mod pooled_openai_example;
-pub mod enhanced_cache;
-pub mod cache_manager;
-pub mod base_engine;
-pub mod universal_base_engine;
 pub mod anthropic_universal;
-pub mod optimized_parallel_executor;
-pub mod streaming_engine;
-pub mod openai_streaming;
-pub mod simplified_engine;
-pub mod enhanced_config;
+pub mod base_engine;
+pub mod cache_manager;
 pub mod config_cli;
-pub mod secure_plugin_system;
-pub mod plugin_cli;
+pub mod connection_pool;
+pub mod enhanced_cache;
+pub mod enhanced_config;
 pub mod enhanced_error_handling;
+pub mod enhanced_pipeline_executor;
 pub mod error_cli;
+pub mod memory_optimized_utils;
 pub mod modular_pipeline_executor;
-pub mod pipeline_step_executors;
-pub mod pipeline_infrastructure;
+pub mod openai_streaming;
+pub mod optimized_openai;
+pub mod optimized_parallel_executor;
+pub mod optimized_state_store;
 pub mod pipeline_cli;
+pub mod pipeline_infrastructure;
+pub mod pipeline_step_executors;
+pub mod plugin;
+pub mod plugin_cli;
+pub mod pooled_openai_example;
+pub mod replicate;
+pub mod secure_plugin_system;
+pub mod shared;
+pub mod simplified_engine;
+pub mod state_store_benchmark;
+pub mod streaming_engine;
+pub mod universal_base_engine;
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
@@ -131,25 +132,39 @@ pub enum EngineType {
 pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<dyn Engine>> {
     let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str()) {
         Ok(et) => match et {
-        EngineType::OpenAI => Box::new(OpenAIEngine::new(engine_config.clone()).await?),
-        EngineType::Anthropic => Box::new(AnthropicEngine::new(engine_config.clone()).await?),
-        EngineType::Cohere => Box::new(CohereEngine::new(engine_config.clone()).await?),
-        EngineType::GoogleGemini => Box::new(GoogleGeminiEngine::new(engine_config.clone()).await?),
-        EngineType::Perplexity => Box::new(PerplexityEngine::new(engine_config.clone()).await?),
-        EngineType::GroqLpu => Box::new(GroqLPUEngine::new(engine_config.clone()).await?),
-        EngineType::Mistral => Box::new(MistralEngine::new(engine_config.clone()).await?),
-        EngineType::FlowiseChain => Box::new(FlowiseChainEngine::new(engine_config.clone()).await?),
-        EngineType::LangflowChain => Box::new(LangflowEngine::new(engine_config.clone()).await?),
-        EngineType::Webhook => Box::new(WebhookEngine::new(engine_config.clone()).await?),
-        EngineType::StabilityAI => Box::new(StabilityAIEngine::new(engine_config.clone()).await?),
-        EngineType::ImaginePro => Box::new(ImagineProEngine::new(engine_config.clone()).await?),
-        EngineType::LeonardoAI => Box::new(LeonardoAIEngine::new(engine_config.clone()).await?),
-        EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
+            EngineType::OpenAI => Box::new(OpenAIEngine::new(engine_config.clone()).await?),
+            EngineType::Anthropic => Box::new(AnthropicEngine::new(engine_config.clone()).await?),
+            EngineType::Cohere => Box::new(CohereEngine::new(engine_config.clone()).await?),
+            EngineType::GoogleGemini => {
+                Box::new(GoogleGeminiEngine::new(engine_config.clone()).await?)
+            }
+            EngineType::Perplexity => Box::new(PerplexityEngine::new(engine_config.clone()).await?),
+            EngineType::GroqLpu => Box::new(GroqLPUEngine::new(engine_config.clone()).await?),
+            EngineType::Mistral => Box::new(MistralEngine::new(engine_config.clone()).await?),
+            EngineType::FlowiseChain => {
+                Box::new(FlowiseChainEngine::new(engine_config.clone()).await?)
+            }
+            EngineType::LangflowChain => {
+                Box::new(LangflowEngine::new(engine_config.clone()).await?)
+            }
+            EngineType::Webhook => Box::new(WebhookEngine::new(engine_config.clone()).await?),
+            EngineType::StabilityAI => {
+                Box::new(StabilityAIEngine::new(engine_config.clone()).await?)
+            }
+            EngineType::ImaginePro => Box::new(ImagineProEngine::new(engine_config.clone()).await?),
+            EngineType::LeonardoAI => Box::new(LeonardoAIEngine::new(engine_config.clone()).await?),
+            EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
         },
         Err(_) => {
             // Plugin support disabled for security reasons
-            debug!("Unknown engine type '{}' - plugins are disabled", engine_config.engine);
-            return Err(anyhow::anyhow!(format!("Unknown engine type: {}", engine_config.engine)));
+            debug!(
+                "Unknown engine type '{}' - plugins are disabled",
+                engine_config.engine
+            );
+            return Err(anyhow::anyhow!(format!(
+                "Unknown engine type: {}",
+                engine_config.engine
+            )));
         }
     };
     Ok(engine)

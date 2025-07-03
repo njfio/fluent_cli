@@ -1,8 +1,7 @@
+use crate::neo4j_client::VoyageAIConfig;
+use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use crate::neo4j_client::VoyageAIConfig;
-
 
 pub const EMBEDDING_DIMENSION: usize = 1536;
 
@@ -30,7 +29,8 @@ pub async fn get_voyage_embedding(text: &str, config: &VoyageAIConfig) -> Result
         model: config.model.clone(),
     };
 
-    let response: VoyageAIResponse = client.post("https://api.voyageai.com/v1/embeddings")
+    let response: VoyageAIResponse = client
+        .post("https://api.voyageai.com/v1/embeddings")
         .header("Authorization", format!("Bearer {}", config.api_key))
         .json(&request_body)
         .send()
@@ -40,4 +40,3 @@ pub async fn get_voyage_embedding(text: &str, config: &VoyageAIConfig) -> Result
 
     Ok(response.data[0].embedding.clone())
 }
-

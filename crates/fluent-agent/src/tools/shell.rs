@@ -1,4 +1,4 @@
-use super::{ToolExecutor, ToolExecutionConfig, validation};
+use super::{validation, ToolExecutionConfig, ToolExecutor};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -46,9 +46,15 @@ impl ShellExecutor {
             .stdin(Stdio::null());
 
         let timeout_duration = Duration::from_secs(self.config.timeout_seconds);
-        
-        let output = timeout(timeout_duration, cmd.output()).await
-            .map_err(|_| anyhow!("Command timed out after {} seconds", self.config.timeout_seconds))?
+
+        let output = timeout(timeout_duration, cmd.output())
+            .await
+            .map_err(|_| {
+                anyhow!(
+                    "Command timed out after {} seconds",
+                    self.config.timeout_seconds
+                )
+            })?
             .map_err(|e| anyhow!("Failed to execute command: {}", e))?;
 
         let execution_time = start_time.elapsed();
@@ -71,7 +77,7 @@ impl ShellExecutor {
     /// Parse a command string into command and arguments
     fn parse_command(&self, command_str: &str) -> Result<(String, Vec<String>)> {
         let parts: Vec<&str> = command_str.split_whitespace().collect();
-        
+
         if parts.is_empty() {
             return Err(anyhow!("Empty command"));
         }
@@ -92,7 +98,8 @@ impl ToolExecutor for ShellExecutor {
     ) -> Result<String> {
         match tool_name {
             "run_command" => {
-                let command_str = parameters.get("command")
+                let command_str = parameters
+                    .get("command")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'command' parameter"))?;
 
@@ -105,7 +112,8 @@ impl ToolExecutor for ShellExecutor {
             }
 
             "run_script" => {
-                let script = parameters.get("script")
+                let script = parameters
+                    .get("script")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'script' parameter"))?;
 
@@ -118,31 +126,38 @@ impl ToolExecutor for ShellExecutor {
                     }
                 }
 
-                let result = self.execute_command_safe("sh", &["-c".to_string(), script.to_string()]).await?;
+                let result = self
+                    .execute_command_safe("sh", &["-c".to_string(), script.to_string()])
+                    .await?;
                 Ok(serde_json::to_string_pretty(&result)?)
             }
 
-            "get_working_directory" => {
-                Ok(self.working_directory.to_string_lossy().to_string())
-            }
+            "get_working_directory" => Ok(self.working_directory.to_string_lossy().to_string()),
 
             "check_command_available" => {
-                let command = parameters.get("command")
+                let command = parameters
+                    .get("command")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'command' parameter"))?;
 
-                let result = self.execute_command_safe("which", &[command.to_string()]).await?;
-                
+                let result = self
+                    .execute_command_safe("which", &[command.to_string()])
+                    .await?;
+
                 let available = CommandAvailability {
                     command: command.to_string(),
                     available: result.success,
-                    path: if result.success { Some(result.stdout.trim().to_string()) } else { None },
+                    path: if result.success {
+                        Some(result.stdout.trim().to_string())
+                    } else {
+                        None
+                    },
                 };
 
                 Ok(serde_json::to_string_pretty(&available)?)
             }
 
-            _ => Err(anyhow!("Unknown shell tool: {}", tool_name))
+            _ => Err(anyhow!("Unknown shell tool: {}", tool_name)),
         }
     }
 
@@ -247,18 +262,25 @@ mod tests {
     #[tokio::test]
     async fn test_run_command() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_commands = vec!["echo".to_string(), "ls".to_string()];
-        
-        let executor = ShellExecutor::new(config, temp_dir.path().to_path_buf());
-        
-        let mut params = HashMap::new();
-        params.insert("command".to_string(), serde_json::Value::String("echo Hello World".to_string()));
-        
-        let result = executor.execute_tool("run_command", &params).await.expect("Command execution failed");
 
-        let command_result: CommandResult = serde_json::from_str(&result).expect("Failed to parse command result");
+        let executor = ShellExecutor::new(config, temp_dir.path().to_path_buf());
+
+        let mut params = HashMap::new();
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("echo Hello World".to_string()),
+        );
+
+        let result = executor
+            .execute_tool("run_command", &params)
+            .await
+            .expect("Command execution failed");
+
+        let command_result: CommandResult =
+            serde_json::from_str(&result).expect("Failed to parse command result");
         assert!(command_result.success);
         assert!(command_result.stdout.contains("Hello World"));
         assert_eq!(command_result.exit_code, 0);
@@ -267,29 +289,42 @@ mod tests {
     #[tokio::test]
     async fn test_command_validation() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_commands = vec!["echo".to_string()];
-        
+
         let executor = ShellExecutor::new(config, temp_dir.path().to_path_buf());
-        
+
         // Valid command
         let mut valid_params = HashMap::new();
-        valid_params.insert("command".to_string(), serde_json::Value::String("echo test".to_string()));
-        assert!(executor.validate_tool_request("run_command", &valid_params).is_ok());
-        
+        valid_params.insert(
+            "command".to_string(),
+            serde_json::Value::String("echo test".to_string()),
+        );
+        assert!(executor
+            .validate_tool_request("run_command", &valid_params)
+            .is_ok());
+
         // Invalid command
         let mut invalid_params = HashMap::new();
-        invalid_params.insert("command".to_string(), serde_json::Value::String("rm -rf /".to_string()));
-        assert!(executor.validate_tool_request("run_command", &invalid_params).is_err());
+        invalid_params.insert(
+            "command".to_string(),
+            serde_json::Value::String("rm -rf /".to_string()),
+        );
+        assert!(executor
+            .validate_tool_request("run_command", &invalid_params)
+            .is_err());
     }
 
     #[tokio::test]
     async fn test_get_working_directory() {
         let temp_dir = tempdir().unwrap();
         let executor = ShellExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
-        let result = executor.execute_tool("get_working_directory", &HashMap::new()).await.unwrap();
+
+        let result = executor
+            .execute_tool("get_working_directory", &HashMap::new())
+            .await
+            .unwrap();
         assert_eq!(result, temp_dir.path().to_string_lossy());
     }
 
@@ -297,12 +332,18 @@ mod tests {
     async fn test_check_command_available() {
         let temp_dir = tempdir().unwrap();
         let executor = ShellExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
+
         let mut params = HashMap::new();
-        params.insert("command".to_string(), serde_json::Value::String("echo".to_string()));
-        
-        let result = executor.execute_tool("check_command_available", &params).await.unwrap();
-        
+        params.insert(
+            "command".to_string(),
+            serde_json::Value::String("echo".to_string()),
+        );
+
+        let result = executor
+            .execute_tool("check_command_available", &params)
+            .await
+            .unwrap();
+
         let availability: CommandAvailability = serde_json::from_str(&result).unwrap();
         assert_eq!(availability.command, "echo");
         assert!(availability.available); // echo should be available on most systems
@@ -311,23 +352,30 @@ mod tests {
     #[tokio::test]
     async fn test_run_script() {
         let temp_dir = tempdir().expect("Failed to create temp directory");
-        
+
         let mut config = ToolExecutionConfig::default();
         config.allowed_commands = vec!["echo".to_string(), "ls".to_string()];
-        
+
         let executor = ShellExecutor::new(config, temp_dir.path().to_path_buf());
-        
+
         let script = r#"
             echo "Line 1"
             echo "Line 2"
         "#;
-        
-        let mut params = HashMap::new();
-        params.insert("script".to_string(), serde_json::Value::String(script.to_string()));
-        
-        let result = executor.execute_tool("run_script", &params).await.expect("Script execution failed");
 
-        let command_result: CommandResult = serde_json::from_str(&result).expect("Failed to parse command result");
+        let mut params = HashMap::new();
+        params.insert(
+            "script".to_string(),
+            serde_json::Value::String(script.to_string()),
+        );
+
+        let result = executor
+            .execute_tool("run_script", &params)
+            .await
+            .expect("Script execution failed");
+
+        let command_result: CommandResult =
+            serde_json::from_str(&result).expect("Failed to parse command result");
         assert!(command_result.success);
         assert!(command_result.stdout.contains("Line 1"));
         assert!(command_result.stdout.contains("Line 2"));
@@ -338,11 +386,15 @@ mod tests {
         let temp_dir = tempdir().expect("Failed to create temp directory");
         let executor = ShellExecutor::with_defaults(temp_dir.path().to_path_buf());
 
-        let (command, args) = executor.parse_command("echo hello world").expect("Failed to parse command");
+        let (command, args) = executor
+            .parse_command("echo hello world")
+            .expect("Failed to parse command");
         assert_eq!(command, "echo");
         assert_eq!(args, vec!["hello", "world"]);
 
-        let (command, args) = executor.parse_command("ls").expect("Failed to parse command");
+        let (command, args) = executor
+            .parse_command("ls")
+            .expect("Failed to parse command");
         assert_eq!(command, "ls");
         assert!(args.is_empty());
     }

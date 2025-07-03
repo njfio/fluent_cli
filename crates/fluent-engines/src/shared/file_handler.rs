@@ -26,7 +26,7 @@ impl FileHandler {
     pub async fn create_file_form(
         file_path: &Path,
         purpose: &str,
-        additional_fields: Option<&[(&str, &str)]>
+        additional_fields: Option<&[(&str, &str)]>,
     ) -> Result<Form> {
         // Security validation
         InputValidator::validate_file_upload(file_path).await?;
@@ -42,8 +42,8 @@ impl FileHandler {
 
         let file = File::open(file_path).await.context("Failed to open file")?;
         let stream = FramedRead::new(file, BytesCodec::new());
-        let file_part = Part::stream(reqwest::Body::wrap_stream(stream))
-            .file_name(sanitized_filename);
+        let file_part =
+            Part::stream(reqwest::Body::wrap_stream(stream)).file_name(sanitized_filename);
 
         let mut form = Form::new()
             .part("file", file_part)
@@ -119,11 +119,12 @@ impl FileHandler {
 
     /// Validate file size
     pub async fn validate_file_size(file_path: &Path, max_size_mb: u64) -> Result<()> {
-        let metadata = tokio::fs::metadata(file_path).await
+        let metadata = tokio::fs::metadata(file_path)
+            .await
             .context("Failed to read file metadata")?;
-        
+
         let file_size_mb = metadata.len() / (1024 * 1024);
-        
+
         if file_size_mb > max_size_mb {
             return Err(anyhow::anyhow!(
                 "File size ({} MB) exceeds maximum allowed size ({} MB)",
@@ -131,7 +132,7 @@ impl FileHandler {
                 max_size_mb
             ));
         }
-        
+
         Ok(())
     }
 }
@@ -144,10 +145,16 @@ mod tests {
     #[test]
     fn test_get_file_extension() {
         let path = PathBuf::from("test.jpg");
-        assert_eq!(FileHandler::get_file_extension(&path), Some("jpg".to_string()));
+        assert_eq!(
+            FileHandler::get_file_extension(&path),
+            Some("jpg".to_string())
+        );
 
         let path = PathBuf::from("test.PNG");
-        assert_eq!(FileHandler::get_file_extension(&path), Some("png".to_string()));
+        assert_eq!(
+            FileHandler::get_file_extension(&path),
+            Some("png".to_string())
+        );
 
         let path = PathBuf::from("test");
         assert_eq!(FileHandler::get_file_extension(&path), None);
@@ -165,7 +172,10 @@ mod tests {
         assert_eq!(FileHandler::get_mime_type(&path), "application/pdf");
 
         let path = PathBuf::from("test.unknown");
-        assert_eq!(FileHandler::get_mime_type(&path), "application/octet-stream");
+        assert_eq!(
+            FileHandler::get_mime_type(&path),
+            "application/octet-stream"
+        );
     }
 
     #[test]
@@ -186,8 +196,17 @@ mod tests {
 
     #[test]
     fn test_get_image_format() {
-        assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.jpg")), "jpeg");
-        assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.png")), "png");
-        assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.unknown")), "png");
+        assert_eq!(
+            FileHandler::get_image_format(&PathBuf::from("test.jpg")),
+            "jpeg"
+        );
+        assert_eq!(
+            FileHandler::get_image_format(&PathBuf::from("test.png")),
+            "png"
+        );
+        assert_eq!(
+            FileHandler::get_image_format(&PathBuf::from("test.unknown")),
+            "png"
+        );
     }
 }

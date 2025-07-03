@@ -38,7 +38,7 @@ impl Default for StateStoreConfig {
     fn default() -> Self {
         Self {
             cache_size: 1000,
-            cache_ttl: Duration::from_secs(3600), // 1 hour
+            cache_ttl: Duration::from_secs(3600),    // 1 hour
             flush_interval: Duration::from_secs(30), // 30 seconds
             enable_compression: true,
             write_through: false,
@@ -62,7 +62,7 @@ impl OptimizedStateStore {
     /// Create a new optimized state store
     pub fn new(directory: PathBuf, config: StateStoreConfig) -> Result<Self> {
         let cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(config.cache_size).unwrap()
+            NonZeroUsize::new(config.cache_size).unwrap(),
         )));
 
         // Start background flush task
@@ -70,12 +70,14 @@ impl OptimizedStateStore {
         let flush_dir = directory.clone();
         let flush_interval = config.flush_interval;
         let enable_compression = config.enable_compression;
-        
+
         let flush_task = tokio::spawn(async move {
             let mut interval = tokio::time::interval(flush_interval);
             loop {
                 interval.tick().await;
-                if let Err(e) = Self::flush_dirty_states(&flush_cache, &flush_dir, enable_compression).await {
+                if let Err(e) =
+                    Self::flush_dirty_states(&flush_cache, &flush_dir, enable_compression).await
+                {
                     eprintln!("Error flushing states: {}", e);
                 }
             }
@@ -101,7 +103,7 @@ impl OptimizedStateStore {
         enable_compression: bool,
     ) -> Result<()> {
         let mut dirty_states = Vec::new();
-        
+
         // Collect dirty states
         {
             let mut cache_guard = cache.write().await;
@@ -129,7 +131,7 @@ impl OptimizedStateStore {
         enable_compression: bool,
     ) -> Result<()> {
         let file_path = directory.join(format!("{}.json", key));
-        
+
         if enable_compression {
             // Use compressed JSON
             let json = serde_json::to_vec(state)?;
@@ -151,13 +153,13 @@ impl OptimizedStateStore {
         enable_compression: bool,
     ) -> Result<Option<PipelineState>> {
         let file_path = directory.join(format!("{}.json", key));
-        
+
         if !file_path.exists() {
             return Ok(None);
         }
 
         let data = tokio::fs::read(&file_path).await?;
-        
+
         let state = if enable_compression {
             // Try to decompress first
             match lz4_flex::decompress_size_prepended(&data) {
@@ -179,7 +181,7 @@ impl OptimizedStateStore {
     async fn cleanup_expired_entries(&self) {
         let now = SystemTime::now();
         let mut cache_guard = self.cache.write().await;
-        
+
         let mut keys_to_remove = Vec::new();
         for (key, cached_state) in cache_guard.iter() {
             if let Ok(elapsed) = now.duration_since(cached_state.last_accessed) {
@@ -220,16 +222,19 @@ impl OptimizedStateStore {
 impl StateStore for OptimizedStateStore {
     async fn save_state(&self, state_key: &str, state: &PipelineState) -> Result<()> {
         let now = SystemTime::now();
-        
+
         // Update cache
         {
             let mut cache_guard = self.cache.write().await;
-            cache_guard.put(state_key.to_string(), CachedState {
-                state: state.clone(),
-                last_accessed: now,
-                last_modified: now,
-                dirty: true,
-            });
+            cache_guard.put(
+                state_key.to_string(),
+                CachedState {
+                    state: state.clone(),
+                    last_accessed: now,
+                    last_modified: now,
+                    dirty: true,
+                },
+            );
         }
 
         // If write-through is enabled, immediately write to disk
@@ -239,7 +244,8 @@ impl StateStore for OptimizedStateStore {
                 state_key,
                 state,
                 self.config.enable_compression,
-            ).await?;
+            )
+            .await?;
         }
 
         Ok(())
@@ -258,20 +264,22 @@ impl StateStore for OptimizedStateStore {
         }
 
         // Load from disk if not in cache
-        if let Some(state) = Self::read_state_from_disk(
-            &self.directory,
-            state_key,
-            self.config.enable_compression,
-        ).await? {
+        if let Some(state) =
+            Self::read_state_from_disk(&self.directory, state_key, self.config.enable_compression)
+                .await?
+        {
             // Add to cache
             {
                 let mut cache_guard = self.cache.write().await;
-                cache_guard.put(state_key.to_string(), CachedState {
-                    state: state.clone(),
-                    last_accessed: now,
-                    last_modified: now,
-                    dirty: false,
-                });
+                cache_guard.put(
+                    state_key.to_string(),
+                    CachedState {
+                        state: state.clone(),
+                        last_accessed: now,
+                        last_modified: now,
+                        dirty: false,
+                    },
+                );
             }
             Ok(Some(state))
         } else {
@@ -314,7 +322,10 @@ impl StateBatch {
         self.operations.push(StateOperation::Load { key });
     }
 
-    pub async fn execute(&self, store: &OptimizedStateStore) -> Result<HashMap<String, Option<PipelineState>>> {
+    pub async fn execute(
+        &self,
+        store: &OptimizedStateStore,
+    ) -> Result<HashMap<String, Option<PipelineState>>> {
         let mut results = HashMap::new();
 
         for operation in &self.operations {
@@ -337,9 +348,9 @@ impl StateBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::collections::HashMap;
     use std::time::UNIX_EPOCH;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_optimized_state_store() {
@@ -350,7 +361,10 @@ mod tests {
             current_step: 1,
             data: HashMap::new(),
             run_id: "test-run".to_string(),
-            start_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            start_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
 
         // Test save and load
@@ -370,12 +384,15 @@ mod tests {
         let store = OptimizedStateStore::with_defaults(temp_dir.path().to_path_buf()).unwrap();
 
         let mut batch = StateBatch::new();
-        
+
         let state1 = PipelineState {
             current_step: 1,
             data: HashMap::new(),
             run_id: "batch-test-1".to_string(),
-            start_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            start_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
 
         batch.save("batch-key-1".to_string(), state1);

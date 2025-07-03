@@ -5,17 +5,21 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use crate::context::ExecutionContext;
-use crate::orchestrator::{ActionType, ActionResult as OrchActionResult, ReasoningResult};
+use crate::orchestrator::{ActionResult as OrchActionResult, ActionType, ReasoningResult};
 
 /// Trait for action planners that can determine the best next action
 #[async_trait]
 pub trait ActionPlanner: Send + Sync {
     /// Plan the next action based on reasoning results and context
-    async fn plan_action(&self, reasoning: ReasoningResult, context: &ExecutionContext) -> Result<ActionPlan>;
-    
+    async fn plan_action(
+        &self,
+        reasoning: ReasoningResult,
+        context: &ExecutionContext,
+    ) -> Result<ActionPlan>;
+
     /// Get the planning capabilities of this planner
     fn get_capabilities(&self) -> Vec<PlanningCapability>;
-    
+
     /// Validate if this planner can handle the given action type
     fn can_plan(&self, action_type: &ActionType) -> bool;
 }
@@ -24,11 +28,15 @@ pub trait ActionPlanner: Send + Sync {
 #[async_trait]
 pub trait ActionExecutor: Send + Sync {
     /// Execute a planned action and return the result
-    async fn execute(&self, plan: ActionPlan, context: &mut ExecutionContext) -> Result<ActionResult>;
-    
+    async fn execute(
+        &self,
+        plan: ActionPlan,
+        context: &mut ExecutionContext,
+    ) -> Result<ActionResult>;
+
     /// Get the execution capabilities of this executor
     fn get_capabilities(&self) -> Vec<ExecutionCapability>;
-    
+
     /// Validate if this executor can handle the given action type
     fn can_execute(&self, action_type: &ActionType) -> bool;
 }
@@ -142,13 +150,18 @@ pub struct IntelligentActionPlanner {
 /// Strategy for planning specific types of actions
 #[async_trait]
 pub trait PlanningStrategy: Send + Sync {
-    async fn plan(&self, reasoning: &ReasoningResult, context: &ExecutionContext) -> Result<ActionPlan>;
+    async fn plan(
+        &self,
+        reasoning: &ReasoningResult,
+        context: &ExecutionContext,
+    ) -> Result<ActionPlan>;
 }
 
 /// Risk assessment for planned actions
 #[async_trait]
 pub trait RiskAssessor: Send + Sync {
-    async fn assess_risk(&self, plan: &ActionPlan, context: &ExecutionContext) -> Result<RiskLevel>;
+    async fn assess_risk(&self, plan: &ActionPlan, context: &ExecutionContext)
+        -> Result<RiskLevel>;
 }
 
 /// Comprehensive action executor that can handle multiple action types
@@ -162,14 +175,22 @@ pub struct ComprehensiveActionExecutor {
 /// Tool execution interface
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
-    async fn execute_tool(&self, tool_name: &str, parameters: &HashMap<String, serde_json::Value>) -> Result<String>;
+    async fn execute_tool(
+        &self,
+        tool_name: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+    ) -> Result<String>;
     fn get_available_tools(&self) -> Vec<String>;
 }
 
 /// Code generation interface
 #[async_trait]
 pub trait CodeGenerator: Send + Sync {
-    async fn generate_code(&self, specification: &str, context: &ExecutionContext) -> Result<String>;
+    async fn generate_code(
+        &self,
+        specification: &str,
+        context: &ExecutionContext,
+    ) -> Result<String>;
     fn get_supported_languages(&self) -> Vec<String>;
 }
 
@@ -208,7 +229,11 @@ impl IntelligentActionPlanner {
     }
 
     /// Register a planning strategy for a specific action type
-    pub fn register_strategy(&mut self, action_type: ActionType, strategy: Box<dyn PlanningStrategy>) {
+    pub fn register_strategy(
+        &mut self,
+        action_type: ActionType,
+        strategy: Box<dyn PlanningStrategy>,
+    ) {
         self.planning_strategies.insert(action_type, strategy);
     }
 
@@ -216,16 +241,25 @@ impl IntelligentActionPlanner {
     fn determine_action_type(&self, reasoning: &ReasoningResult) -> ActionType {
         // Analyze reasoning output to determine appropriate action type
         let output = reasoning.reasoning_output.to_lowercase();
-        
+
         if output.contains("tool") || output.contains("execute") || output.contains("run") {
             ActionType::ToolExecution
-        } else if output.contains("code") || output.contains("implement") || output.contains("write") {
+        } else if output.contains("code")
+            || output.contains("implement")
+            || output.contains("write")
+        {
             ActionType::CodeGeneration
         } else if output.contains("file") || output.contains("read") || output.contains("write") {
             ActionType::FileOperation
-        } else if output.contains("analyze") || output.contains("examine") || output.contains("review") {
+        } else if output.contains("analyze")
+            || output.contains("examine")
+            || output.contains("review")
+        {
             ActionType::Analysis
-        } else if output.contains("communicate") || output.contains("message") || output.contains("notify") {
+        } else if output.contains("communicate")
+            || output.contains("message")
+            || output.contains("notify")
+        {
             ActionType::Communication
         } else {
             ActionType::Planning // Default to planning if unclear
@@ -235,25 +269,33 @@ impl IntelligentActionPlanner {
 
 #[async_trait]
 impl ActionPlanner for IntelligentActionPlanner {
-    async fn plan_action(&self, reasoning: ReasoningResult, context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan_action(
+        &self,
+        reasoning: ReasoningResult,
+        context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         // Determine the appropriate action type
         let action_type = self.determine_action_type(&reasoning);
-        
+
         // Get the planning strategy for this action type
-        let strategy = self.planning_strategies.get(&action_type)
-            .ok_or_else(|| anyhow!("No planning strategy available for action type: {:?}", action_type))?;
-        
+        let strategy = self.planning_strategies.get(&action_type).ok_or_else(|| {
+            anyhow!(
+                "No planning strategy available for action type: {:?}",
+                action_type
+            )
+        })?;
+
         // Plan the action using the strategy
         let mut plan = strategy.plan(&reasoning, context).await?;
-        
+
         // Assess risk
         plan.risk_level = self.risk_assessor.assess_risk(&plan, context).await?;
-        
+
         // Generate alternatives if risk is high
         if matches!(plan.risk_level, RiskLevel::High | RiskLevel::Critical) {
             plan.alternatives = self.generate_alternatives(&plan, context).await?;
         }
-        
+
         Ok(plan)
     }
 
@@ -268,9 +310,13 @@ impl ActionPlanner for IntelligentActionPlanner {
 
 impl IntelligentActionPlanner {
     /// Generate alternative actions for high-risk plans
-    async fn generate_alternatives(&self, plan: &ActionPlan, _context: &ExecutionContext) -> Result<Vec<AlternativeAction>> {
+    async fn generate_alternatives(
+        &self,
+        plan: &ActionPlan,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<AlternativeAction>> {
         let mut alternatives = Vec::new();
-        
+
         // Generate safer alternatives based on action type
         match plan.action_type {
             ActionType::ToolExecution => {
@@ -299,7 +345,7 @@ impl IntelligentActionPlanner {
             }
             _ => {}
         }
-        
+
         Ok(alternatives)
     }
 }
@@ -328,9 +374,13 @@ impl ComprehensiveActionExecutor {
 
 #[async_trait]
 impl ActionExecutor for ComprehensiveActionExecutor {
-    async fn execute(&self, plan: ActionPlan, context: &mut ExecutionContext) -> Result<ActionResult> {
+    async fn execute(
+        &self,
+        plan: ActionPlan,
+        context: &mut ExecutionContext,
+    ) -> Result<ActionResult> {
         let start_time = SystemTime::now();
-        
+
         let execution_result = match plan.action_type {
             ActionType::ToolExecution => self.execute_tool_action(&plan).await,
             ActionType::CodeGeneration => self.execute_code_generation(&plan, context).await,
@@ -341,46 +391,42 @@ impl ActionExecutor for ComprehensiveActionExecutor {
         };
 
         let execution_time = start_time.elapsed().unwrap_or_default();
-        
+
         match execution_result {
-            Ok((output, metadata, side_effects)) => {
-                Ok(ActionResult {
-                    action_id: plan.action_id,
-                    action_type: plan.action_type,
-                    parameters: plan.parameters,
-                    result: OrchActionResult {
-                        success: true,
-                        output: output.clone(),
-                        error: None,
-                        metadata: metadata.clone(),
-                    },
-                    execution_time,
+            Ok((output, metadata, side_effects)) => Ok(ActionResult {
+                action_id: plan.action_id,
+                action_type: plan.action_type,
+                parameters: plan.parameters,
+                result: OrchActionResult {
                     success: true,
-                    output,
+                    output: output.clone(),
                     error: None,
-                    metadata,
-                    side_effects,
-                })
-            }
-            Err(e) => {
-                Ok(ActionResult {
-                    action_id: plan.action_id,
-                    action_type: plan.action_type,
-                    parameters: plan.parameters,
-                    result: OrchActionResult {
-                        success: false,
-                        output: None,
-                        error: Some(e.to_string()),
-                        metadata: HashMap::new(),
-                    },
-                    execution_time,
+                    metadata: metadata.clone(),
+                },
+                execution_time,
+                success: true,
+                output,
+                error: None,
+                metadata,
+                side_effects,
+            }),
+            Err(e) => Ok(ActionResult {
+                action_id: plan.action_id,
+                action_type: plan.action_type,
+                parameters: plan.parameters,
+                result: OrchActionResult {
                     success: false,
                     output: None,
                     error: Some(e.to_string()),
                     metadata: HashMap::new(),
-                    side_effects: Vec::new(),
-                })
-            }
+                },
+                execution_time,
+                success: false,
+                output: None,
+                error: Some(e.to_string()),
+                metadata: HashMap::new(),
+                side_effects: Vec::new(),
+            }),
         }
     }
 
@@ -389,80 +435,121 @@ impl ActionExecutor for ComprehensiveActionExecutor {
     }
 
     fn can_execute(&self, action_type: &ActionType) -> bool {
-        matches!(action_type, 
-            ActionType::ToolExecution | 
-            ActionType::CodeGeneration | 
-            ActionType::FileOperation | 
-            ActionType::Analysis |
-            ActionType::Communication |
-            ActionType::Planning
+        matches!(
+            action_type,
+            ActionType::ToolExecution
+                | ActionType::CodeGeneration
+                | ActionType::FileOperation
+                | ActionType::Analysis
+                | ActionType::Communication
+                | ActionType::Planning
         )
     }
 }
 
 impl ComprehensiveActionExecutor {
     /// Execute tool-based actions
-    async fn execute_tool_action(&self, plan: &ActionPlan) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let tool_name = plan.parameters.get("tool_name")
+    async fn execute_tool_action(
+        &self,
+        plan: &ActionPlan,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let tool_name = plan
+            .parameters
+            .get("tool_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Tool name not specified in parameters"))?;
-        
-        let output = self.tool_executor.execute_tool(tool_name, &plan.parameters).await?;
-        
+
+        let output = self
+            .tool_executor
+            .execute_tool(tool_name, &plan.parameters)
+            .await?;
+
         let mut metadata = HashMap::new();
         metadata.insert("tool_used".to_string(), serde_json::json!(tool_name));
-        
-        let side_effects = vec![
-            SideEffect {
-                effect_type: SideEffectType::ResourceConsumption,
-                description: format!("Executed tool: {}", tool_name),
-                impact_level: ImpactLevel::Minimal,
-            }
-        ];
-        
+
+        let side_effects = vec![SideEffect {
+            effect_type: SideEffectType::ResourceConsumption,
+            description: format!("Executed tool: {}", tool_name),
+            impact_level: ImpactLevel::Minimal,
+        }];
+
         Ok((Some(output), metadata, side_effects))
     }
 
     /// Execute code generation actions
-    async fn execute_code_generation(&self, plan: &ActionPlan, context: &ExecutionContext) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let specification = plan.parameters.get("specification")
+    async fn execute_code_generation(
+        &self,
+        plan: &ActionPlan,
+        context: &ExecutionContext,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let specification = plan
+            .parameters
+            .get("specification")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Code specification not provided"))?;
-        
-        let generated_code = self.code_generator.generate_code(specification, context).await?;
-        
+
+        let generated_code = self
+            .code_generator
+            .generate_code(specification, context)
+            .await?;
+
         let mut metadata = HashMap::new();
-        metadata.insert("code_length".to_string(), serde_json::json!(generated_code.len()));
-        metadata.insert("specification".to_string(), serde_json::json!(specification));
-        
-        let side_effects = vec![
-            SideEffect {
-                effect_type: SideEffectType::StateChange,
-                description: "Generated new code".to_string(),
-                impact_level: ImpactLevel::Moderate,
-            }
-        ];
-        
+        metadata.insert(
+            "code_length".to_string(),
+            serde_json::json!(generated_code.len()),
+        );
+        metadata.insert(
+            "specification".to_string(),
+            serde_json::json!(specification),
+        );
+
+        let side_effects = vec![SideEffect {
+            effect_type: SideEffectType::StateChange,
+            description: "Generated new code".to_string(),
+            impact_level: ImpactLevel::Moderate,
+        }];
+
         Ok((Some(generated_code), metadata, side_effects))
     }
 
     /// Execute file operation actions
-    async fn execute_file_operation(&self, plan: &ActionPlan) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let operation = plan.parameters.get("operation")
+    async fn execute_file_operation(
+        &self,
+        plan: &ActionPlan,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let operation = plan
+            .parameters
+            .get("operation")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("File operation not specified"))?;
-        
-        let path = plan.parameters.get("path")
+
+        let path = plan
+            .parameters
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("File path not specified"))?;
-        
+
         let result = match operation {
             "read" => {
                 let content = self.file_manager.read_file(path).await?;
                 Some(content)
             }
             "write" => {
-                let content = plan.parameters.get("content")
+                let content = plan
+                    .parameters
+                    .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("File content not specified for write operation"))?;
                 self.file_manager.write_file(path, content).await?;
@@ -474,62 +561,106 @@ impl ComprehensiveActionExecutor {
             }
             _ => return Err(anyhow!("Unsupported file operation: {}", operation)),
         };
-        
+
         let mut metadata = HashMap::new();
         metadata.insert("operation".to_string(), serde_json::json!(operation));
         metadata.insert("path".to_string(), serde_json::json!(path));
-        
-        let side_effects = vec![
-            SideEffect {
-                effect_type: SideEffectType::FileModification,
-                description: format!("File operation: {} on {}", operation, path),
-                impact_level: if operation == "delete" { ImpactLevel::Significant } else { ImpactLevel::Moderate },
-            }
-        ];
-        
+
+        let side_effects = vec![SideEffect {
+            effect_type: SideEffectType::FileModification,
+            description: format!("File operation: {} on {}", operation, path),
+            impact_level: if operation == "delete" {
+                ImpactLevel::Significant
+            } else {
+                ImpactLevel::Moderate
+            },
+        }];
+
         Ok((result, metadata, side_effects))
     }
 
     /// Execute analysis actions
-    async fn execute_analysis(&self, plan: &ActionPlan, _context: &ExecutionContext) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let analysis_type = plan.parameters.get("analysis_type")
+    async fn execute_analysis(
+        &self,
+        plan: &ActionPlan,
+        _context: &ExecutionContext,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let analysis_type = plan
+            .parameters
+            .get("analysis_type")
             .and_then(|v| v.as_str())
             .unwrap_or("general");
-        
+
         let analysis_result = format!("Analysis completed: {}", analysis_type);
-        
+
         let mut metadata = HashMap::new();
-        metadata.insert("analysis_type".to_string(), serde_json::json!(analysis_type));
-        
+        metadata.insert(
+            "analysis_type".to_string(),
+            serde_json::json!(analysis_type),
+        );
+
         Ok((Some(analysis_result), metadata, Vec::new()))
     }
 
     /// Execute communication actions
-    async fn execute_communication(&self, plan: &ActionPlan) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let message = plan.parameters.get("message")
+    async fn execute_communication(
+        &self,
+        plan: &ActionPlan,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let message = plan
+            .parameters
+            .get("message")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Message not specified for communication"))?;
-        
+
         // For now, just log the communication
         println!("Agent Communication: {}", message);
-        
+
         let mut metadata = HashMap::new();
-        metadata.insert("message_length".to_string(), serde_json::json!(message.len()));
-        
-        Ok((Some(format!("Communicated: {}", message)), metadata, Vec::new()))
+        metadata.insert(
+            "message_length".to_string(),
+            serde_json::json!(message.len()),
+        );
+
+        Ok((
+            Some(format!("Communicated: {}", message)),
+            metadata,
+            Vec::new(),
+        ))
     }
 
     /// Execute planning actions
-    async fn execute_planning(&self, plan: &ActionPlan, _context: &ExecutionContext) -> Result<(Option<String>, HashMap<String, serde_json::Value>, Vec<SideEffect>)> {
-        let planning_scope = plan.parameters.get("scope")
+    async fn execute_planning(
+        &self,
+        plan: &ActionPlan,
+        _context: &ExecutionContext,
+    ) -> Result<(
+        Option<String>,
+        HashMap<String, serde_json::Value>,
+        Vec<SideEffect>,
+    )> {
+        let planning_scope = plan
+            .parameters
+            .get("scope")
             .and_then(|v| v.as_str())
             .unwrap_or("general");
-        
+
         let planning_result = format!("Planning completed for scope: {}", planning_scope);
-        
+
         let mut metadata = HashMap::new();
-        metadata.insert("planning_scope".to_string(), serde_json::json!(planning_scope));
-        
+        metadata.insert(
+            "planning_scope".to_string(),
+            serde_json::json!(planning_scope),
+        );
+
         Ok((Some(planning_result), metadata, Vec::new()))
     }
 }
@@ -542,7 +673,11 @@ struct AnalysisPlanningStrategy;
 
 #[async_trait]
 impl PlanningStrategy for ToolPlanningStrategy {
-    async fn plan(&self, reasoning: &ReasoningResult, _context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan(
+        &self,
+        reasoning: &ReasoningResult,
+        _context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::ToolExecution,
@@ -561,7 +696,11 @@ impl PlanningStrategy for ToolPlanningStrategy {
 
 #[async_trait]
 impl PlanningStrategy for CodePlanningStrategy {
-    async fn plan(&self, reasoning: &ReasoningResult, _context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan(
+        &self,
+        reasoning: &ReasoningResult,
+        _context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::CodeGeneration,
@@ -573,14 +712,21 @@ impl PlanningStrategy for CodePlanningStrategy {
             risk_level: RiskLevel::Medium,
             alternatives: Vec::new(),
             prerequisites: Vec::new(),
-            success_criteria: vec!["Code compiles successfully".to_string(), "Code meets requirements".to_string()],
+            success_criteria: vec![
+                "Code compiles successfully".to_string(),
+                "Code meets requirements".to_string(),
+            ],
         })
     }
 }
 
 #[async_trait]
 impl PlanningStrategy for FilePlanningStrategy {
-    async fn plan(&self, reasoning: &ReasoningResult, _context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan(
+        &self,
+        reasoning: &ReasoningResult,
+        _context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::FileOperation,
@@ -599,7 +745,11 @@ impl PlanningStrategy for FilePlanningStrategy {
 
 #[async_trait]
 impl PlanningStrategy for AnalysisPlanningStrategy {
-    async fn plan(&self, reasoning: &ReasoningResult, _context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan(
+        &self,
+        reasoning: &ReasoningResult,
+        _context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::Analysis,
@@ -635,7 +785,7 @@ mod tests {
             prerequisites: Vec::new(),
             success_criteria: Vec::new(),
         };
-        
+
         assert_eq!(plan.action_id, "test-id");
         assert_eq!(plan.confidence_score, 0.8);
         assert!(matches!(plan.action_type, ActionType::ToolExecution));
