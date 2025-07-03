@@ -436,7 +436,7 @@ impl MemorySystem {
 
         // Maintain attention focus size
         stm.attention_focus
-            .sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap());
+            .sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
         stm.attention_focus.truncate(10); // Keep top 10 items
 
         Ok(())
@@ -865,7 +865,8 @@ impl SqliteMemoryStore {
 
     /// Create the necessary tables for memory storage
     fn create_tables(&self) -> Result<()> {
-        let conn = self.connection.lock().unwrap();
+        let conn = self.connection.lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
         // Memory items table
         conn.execute(
             r#"
@@ -1040,7 +1041,8 @@ impl LongTermMemory for SqliteMemoryStore {
     ) -> Result<Vec<MemoryItem>> {
         // Simple similarity based on content matching and importance
         // In a real implementation, you'd use embeddings and vector similarity
-        let conn = self.connection.lock().unwrap();
+        let conn = self.connection.lock()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
 
         let mut stmt = conn.prepare(
             "SELECT * FROM memory_items WHERE importance >= ?1 AND content LIKE ?2 ORDER BY importance DESC LIMIT 10"

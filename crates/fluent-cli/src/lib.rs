@@ -1,7 +1,11 @@
 pub mod commands;
 pub mod pipeline_builder;
+pub mod validation;
+pub mod memory;
+pub mod utils;
+pub mod frogger;
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use std::pin::Pin;
 
 use fluent_core::config::{EngineConfig, Neo4jConfig};
@@ -10,8 +14,11 @@ use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use fluent_engines::create_engine;
 use log::debug;
-use regex::Regex;
-use serde_json::Value;
+
+// Re-export commonly used functions
+pub use utils::{extract_cypher_query, is_valid_cypher, format_as_csv, extract_code};
+pub use validation::{validate_engine_name, validate_file_path_secure, parse_key_value_pair};
+pub use memory::MemoryManager;
 
 pub mod cli {
     use anyhow::{anyhow, Error, Result};
@@ -1809,50 +1816,7 @@ async fn generate_and_execute_cypher(
     Ok(format_as_csv(&cypher_result))
 }
 
-fn extract_cypher_query(content: &str) -> Result<String, Error> {
-    // First, try to extract content between triple backticks
-    let backtick_re = Regex::new(r"```(?:cypher)?\s*([\s\S]*?)\s*```")
-        .map_err(|e| anyhow!("Failed to compile backtick regex: {}", e))?;
-    if let Some(captures) = backtick_re.captures(content) {
-        if let Some(query) = captures.get(1) {
-            let extracted = query.as_str().trim();
-            if is_valid_cypher(extracted) {
-                return Ok(extracted.to_string());
-            }
-        }
-    }
 
-    // If not found, look for common Cypher keywords to identify the query
-    let cypher_re = Regex::new(r"(?i)(MATCH|CREATE|MERGE|DELETE|REMOVE|SET|RETURN)[\s\S]+")
-        .map_err(|e| anyhow!("Failed to compile cypher regex: {}", e))?;
-    if let Some(captures) = cypher_re.captures(content) {
-        if let Some(query) = captures.get(0) {
-            let extracted = query.as_str().trim();
-            if is_valid_cypher(extracted) {
-                return Ok(extracted.to_string());
-            }
-        }
-    }
-
-    // If still not found, return an error
-    Err(anyhow!("No valid Cypher query found in the content"))
-}
-
-fn is_valid_cypher(query: &str) -> bool {
-    // Basic validation: check if the query contains common Cypher clauses
-    let valid_clauses = [
-        "MATCH", "CREATE", "MERGE", "DELETE", "REMOVE", "SET", "RETURN", "WITH", "WHERE",
-    ];
-    valid_clauses
-        .iter()
-        .any(|&clause| query.to_uppercase().contains(clause))
-}
-
-fn format_as_csv(result: &Value) -> String {
-    // Implement CSV formatting here
-    // For now, we'll just return the JSON as a string
-    result.to_string()
-}
 
 async fn create_llm_engine(engine_config: &EngineConfig) -> Result<Box<dyn Engine>, Error> {
     create_engine(engine_config).await

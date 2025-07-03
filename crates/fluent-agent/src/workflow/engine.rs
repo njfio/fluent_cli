@@ -5,11 +5,12 @@ use super::{
 };
 use crate::tools::ToolRegistry;
 use anyhow::Result;
+use log::warn;
 use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -186,6 +187,8 @@ impl WorkflowEngine {
         step: &super::WorkflowStep,
         context: &mut WorkflowContext,
     ) -> Result<()> {
+        // Start timing for this step
+        context.start_step_timing(&step.id);
         context.set_step_status(&step.id, StepStatus::Running);
 
         // Check condition if specified
@@ -208,6 +211,8 @@ impl WorkflowEngine {
             &resolved_params,
             retry_config,
             step.timeout.as_deref(),
+            &step.id,
+            context,
         )
         .await;
 
@@ -226,6 +231,7 @@ impl WorkflowEngine {
                 }
 
                 context.set_step_status(&step.id, StepStatus::Completed);
+                context.end_step_timing(&step.id);
             }
             Err(e) => {
                 context.set_step_status(
@@ -235,6 +241,7 @@ impl WorkflowEngine {
                         attempt: retry_config.max_attempts,
                     },
                 );
+                context.end_step_timing(&step.id);
 
                 // Handle error based on step configuration
                 match step.on_error.as_ref() {
@@ -261,6 +268,8 @@ impl WorkflowEngine {
         parameters: &HashMap<String, serde_json::Value>,
         retry_config: &RetryConfig,
         timeout_str: Option<&str>,
+        step_id: &str,
+        context: &mut WorkflowContext,
     ) -> Result<serde_json::Value> {
         let timeout_duration = if let Some(timeout_str) = timeout_str {
             Some(utils::parse_duration(timeout_str)?)
@@ -279,6 +288,7 @@ impl WorkflowEngine {
 
         loop {
             attempts += 1;
+            context.increment_step_attempts(step_id);
 
             let execution_future = tool_registry.execute_tool(tool_name, parameters);
 
@@ -346,31 +356,267 @@ impl WorkflowEngine {
     }
 
     /// Evaluate step condition
-    fn evaluate_condition(_condition: &str, _context: &WorkflowContext) -> Result<bool> {
-        // TODO: Implement proper condition evaluation
-        // For now, always return true
+    fn evaluate_condition(condition: &str, context: &WorkflowContext) -> Result<bool> {
+        // Simple condition evaluation supporting basic expressions
+        let condition = condition.trim();
+
+        // Handle empty conditions
+        if condition.is_empty() {
+            return Ok(true);
+        }
+
+        // Handle boolean literals
+        if condition == "true" {
+            return Ok(true);
+        }
+        if condition == "false" {
+            return Ok(false);
+        }
+
+        // Handle variable references like ${variable_name}
+        if condition.starts_with("${") && condition.ends_with("}") {
+            let var_name = &condition[2..condition.len()-1];
+            if let Some(value) = context.variables.get(var_name) {
+                return match value {
+                    serde_json::Value::Bool(b) => Ok(*b),
+                    serde_json::Value::String(s) => Ok(!s.is_empty()),
+                    serde_json::Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0) != 0.0),
+                    serde_json::Value::Null => Ok(false),
+                    _ => Ok(true),
+                };
+            }
+            return Ok(false);
+        }
+
+        // Handle simple comparisons like "variable == value"
+        if condition.contains("==") {
+            let parts: Vec<&str> = condition.split("==").map(|s| s.trim()).collect();
+            if parts.len() == 2 {
+                let left = Self::resolve_value(parts[0], context)?;
+                let right = Self::resolve_value(parts[1], context)?;
+                return Ok(left == right);
+            }
+        }
+
+        if condition.contains("!=") {
+            let parts: Vec<&str> = condition.split("!=").map(|s| s.trim()).collect();
+            if parts.len() == 2 {
+                let left = Self::resolve_value(parts[0], context)?;
+                let right = Self::resolve_value(parts[1], context)?;
+                return Ok(left != right);
+            }
+        }
+
+        // Default to true for unknown conditions
+        warn!("Unknown condition format: {}", condition);
         Ok(true)
     }
 
+    /// Resolve a value from context or return as literal
+    fn resolve_value(value: &str, context: &WorkflowContext) -> Result<serde_json::Value> {
+        let value = value.trim();
+
+        // Handle variable references
+        if value.starts_with("${") && value.ends_with("}") {
+            let var_name = &value[2..value.len()-1];
+            return Ok(context.variables.get(var_name).cloned().unwrap_or(serde_json::Value::Null));
+        }
+
+        // Handle string literals
+        if (value.starts_with('"') && value.ends_with('"')) ||
+           (value.starts_with('\'') && value.ends_with('\'')) {
+            return Ok(serde_json::Value::String(value[1..value.len()-1].to_string()));
+        }
+
+        // Handle number literals
+        if let Ok(n) = value.parse::<f64>() {
+            return Ok(serde_json::Value::Number(serde_json::Number::from_f64(n).unwrap()));
+        }
+
+        // Handle boolean literals
+        if value == "true" {
+            return Ok(serde_json::Value::Bool(true));
+        }
+        if value == "false" {
+            return Ok(serde_json::Value::Bool(false));
+        }
+
+        // Default to string
+        Ok(serde_json::Value::String(value.to_string()))
+    }
+
     /// Extract value from output using JSONPath-like syntax
-    fn extract_value_by_path(output: &serde_json::Value, _path: &str) -> Result<serde_json::Value> {
-        // TODO: Implement proper JSONPath extraction
-        // For now, return the entire output
-        Ok(output.clone())
+    fn extract_value_by_path(output: &serde_json::Value, path: &str) -> Result<serde_json::Value> {
+        let path = path.trim();
+
+        // Handle empty path - return entire output
+        if path.is_empty() || path == "$" {
+            return Ok(output.clone());
+        }
+
+        // Remove leading $ if present
+        let path = if path.starts_with('$') {
+            &path[1..]
+        } else {
+            path
+        };
+
+        // Handle simple dot notation like .field or .field.subfield
+        if path.starts_with('.') {
+            let path = &path[1..]; // Remove leading dot
+            return Self::extract_by_dot_notation(output, path);
+        }
+
+        // Handle array access like [0] or field[0]
+        if path.contains('[') && path.contains(']') {
+            return Self::extract_with_array_access(output, path);
+        }
+
+        // Handle simple field access
+        if let serde_json::Value::Object(obj) = output {
+            if let Some(value) = obj.get(path) {
+                return Ok(value.clone());
+            }
+        }
+
+        // Path not found
+        Ok(serde_json::Value::Null)
+    }
+
+    /// Extract value using dot notation
+    fn extract_by_dot_notation(mut current: &serde_json::Value, path: &str) -> Result<serde_json::Value> {
+        if path.is_empty() {
+            return Ok(current.clone());
+        }
+
+        let parts: Vec<&str> = path.split('.').collect();
+
+        for part in parts {
+            if part.is_empty() {
+                continue;
+            }
+
+            // Handle array access in part like "field[0]"
+            if part.contains('[') && part.ends_with(']') {
+                let bracket_pos = part.find('[').unwrap();
+                let field_name = &part[..bracket_pos];
+                let index_str = &part[bracket_pos+1..part.len()-1];
+
+                // First access the field
+                if !field_name.is_empty() {
+                    if let serde_json::Value::Object(obj) = current {
+                        if let Some(field_value) = obj.get(field_name) {
+                            current = field_value;
+                        } else {
+                            return Ok(serde_json::Value::Null);
+                        }
+                    } else {
+                        return Ok(serde_json::Value::Null);
+                    }
+                }
+
+                // Then access the array index
+                if let Ok(index) = index_str.parse::<usize>() {
+                    if let serde_json::Value::Array(arr) = current {
+                        if index < arr.len() {
+                            current = &arr[index];
+                        } else {
+                            return Ok(serde_json::Value::Null);
+                        }
+                    } else {
+                        return Ok(serde_json::Value::Null);
+                    }
+                } else {
+                    return Ok(serde_json::Value::Null);
+                }
+            } else {
+                // Simple field access
+                if let serde_json::Value::Object(obj) = current {
+                    if let Some(field_value) = obj.get(part) {
+                        current = field_value;
+                    } else {
+                        return Ok(serde_json::Value::Null);
+                    }
+                } else {
+                    return Ok(serde_json::Value::Null);
+                }
+            }
+        }
+
+        Ok(current.clone())
+    }
+
+    /// Extract value with array access
+    fn extract_with_array_access(output: &serde_json::Value, path: &str) -> Result<serde_json::Value> {
+        // Simple implementation for paths like [0] or field[0]
+        if path.starts_with('[') && path.ends_with(']') {
+            // Direct array access like [0]
+            let index_str = &path[1..path.len()-1];
+            if let Ok(index) = index_str.parse::<usize>() {
+                if let serde_json::Value::Array(arr) = output {
+                    if index < arr.len() {
+                        return Ok(arr[index].clone());
+                    }
+                }
+            }
+            return Ok(serde_json::Value::Null);
+        }
+
+        // Field with array access like field[0]
+        let bracket_pos = path.find('[').unwrap();
+        let field_name = &path[..bracket_pos];
+        let index_part = &path[bracket_pos..];
+
+        // First get the field
+        let field_value = if field_name.is_empty() {
+            output
+        } else if let serde_json::Value::Object(obj) = output {
+            obj.get(field_name).unwrap_or(&serde_json::Value::Null)
+        } else {
+            &serde_json::Value::Null
+        };
+
+        // Then apply array access
+        Self::extract_with_array_access(field_value, index_part)
     }
 
     /// Extract workflow outputs from context
     fn extract_outputs(
         &self,
-        _context: &WorkflowContext,
+        context: &WorkflowContext,
         definition: &WorkflowDefinition,
     ) -> HashMap<String, serde_json::Value> {
         let mut outputs = HashMap::new();
 
         for output_def in &definition.outputs {
-            // TODO: Extract output based on definition
-            // For now, just use empty value
-            outputs.insert(output_def.name.clone(), serde_json::Value::Null);
+            // Try to find the output value in different places
+            let value =
+                // First, try to find in variables by exact name
+                context.variables.get(&output_def.name).cloned()
+                .or_else(|| {
+                    // Try to find in the last step's output if it matches the output name
+                    if let Some(last_step_id) = definition.steps.last().map(|s| &s.id) {
+                        context.step_outputs.get(last_step_id)
+                            .and_then(|output_map| {
+                                // Try to extract field with the same name as output
+                                output_map.get(&output_def.name).cloned()
+                            })
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| {
+                    // Try to find in any step output that has a field with this name
+                    for step_output_map in context.step_outputs.values() {
+                        if let Some(field_value) = step_output_map.get(&output_def.name) {
+                            return Some(field_value.clone());
+                        }
+                    }
+                    None
+                })
+                .unwrap_or(serde_json::Value::Null);
+
+            outputs.insert(output_def.name.clone(), value);
         }
 
         outputs
@@ -389,14 +635,14 @@ impl WorkflowEngine {
                     .get(step_id)
                     .cloned()
                     .unwrap_or_default(),
-                start_time: context.start_time, // TODO: Track individual step times
-                end_time: Some(SystemTime::now()),
-                duration: Some(Duration::from_secs(1)), // TODO: Calculate actual duration
+                start_time: context.step_start_times.get(step_id).copied().unwrap_or(context.start_time),
+                end_time: context.step_end_times.get(step_id).copied(),
+                duration: context.get_step_duration(step_id),
                 error: match status {
                     StepStatus::Failed { error, .. } => Some(error.clone()),
                     _ => None,
                 },
-                attempts: 1, // TODO: Track actual attempts
+                attempts: context.get_step_attempts(step_id),
             };
 
             results.insert(step_id.clone(), result);
