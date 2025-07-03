@@ -165,8 +165,8 @@ async fn main() -> Result<()> {
             if !reflection_result.learning_insights.is_empty() {
                 println!("   💡 Learning Insights:");
                 for insight in &reflection_result.learning_insights {
-                    println!("      - {}: {}", 
-                            insight.insight_type, 
+                    println!("      - {:?}: {}",
+                            insight.insight_type,
                             insight.description);
                     println!("        Confidence: {:.2}", insight.confidence);
                     println!("        Retention Value: {:.2}", insight.retention_value);
@@ -177,8 +177,8 @@ async fn main() -> Result<()> {
             if !reflection_result.recommendations.is_empty() {
                 println!("   📋 Recommendations:");
                 for recommendation in &reflection_result.recommendations {
-                    println!("      - {}: {}", 
-                            recommendation.recommendation_type, 
+                    println!("      - {:?}: {}",
+                            recommendation.recommendation_type,
                             recommendation.description);
                     println!("        Priority: {:?}, Urgency: {:?}", 
                             recommendation.priority, 

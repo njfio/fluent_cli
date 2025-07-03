@@ -5,7 +5,7 @@ use fluent_agent::{
     Goal, GoalType, GoalPriority, Task, TaskType, TaskPriority,
     ReasoningEngine,
 };
-use fluent_agent::reflection::ReflectionTrigger;
+
 use fluent_agent::profiling::ReflectionMemoryProfiler;
 use std::collections::HashMap;
 use std::time::{SystemTime, Duration};
@@ -203,8 +203,8 @@ async fn main() -> Result<()> {
             if !reflection_result.strategy_adjustments.is_empty() {
                 println!("   🔧 Memory-Optimized Strategy Adjustments:");
                 for adjustment in &reflection_result.strategy_adjustments {
-                    println!("      - {}: {}", 
-                            adjustment.adjustment_type, 
+                    println!("      - {:?}: {}",
+                            adjustment.adjustment_type,
                             adjustment.description);
                     if adjustment.description.contains("memory") || adjustment.description.contains("performance") {
                         println!("        🎯 Performance-focused adjustment detected");
@@ -216,8 +216,8 @@ async fn main() -> Result<()> {
             if !reflection_result.learning_insights.is_empty() {
                 println!("   💡 Memory-Aware Learning Insights:");
                 for insight in &reflection_result.learning_insights {
-                    println!("      - {}: {}", 
-                            insight.insight_type, 
+                    println!("      - {:?}: {}",
+                            insight.insight_type,
                             insight.description);
                     println!("        Confidence: {:.2}, Retention: {:.2}", 
                             insight.confidence, insight.retention_value);
