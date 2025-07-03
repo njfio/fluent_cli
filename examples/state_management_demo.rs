@@ -1,8 +1,9 @@
 use anyhow::Result;
 use fluent_agent::{
-    ExecutionContext, StateManager, StateManagerConfig, CheckpointType,
+    ExecutionContext, StateManager, StateManagerConfig,
     Goal, GoalType, GoalPriority,
 };
+use fluent_agent::context::CheckpointType;
 use std::collections::HashMap;
 use tempfile::tempdir;
 use tokio;
@@ -17,10 +18,10 @@ async fn main() -> Result<()> {
     let temp_dir = tempdir()?;
     println!("📁 State directory: {:?}\n", temp_dir.path());
 
-    // Configure state manager
+    // Configure state manager (disable auto-save for demo)
     let config = StateManagerConfig {
         state_directory: temp_dir.path().to_path_buf(),
-        auto_save_enabled: true,
+        auto_save_enabled: false, // Disable auto-save to avoid hanging
         auto_save_interval_seconds: 5,
         max_checkpoints: 20,
         compression_enabled: false,

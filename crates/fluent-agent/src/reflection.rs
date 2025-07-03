@@ -184,6 +184,20 @@ pub enum InsightType {
     StrategyOptimization,
 }
 
+impl std::fmt::Display for InsightType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InsightType::CausalRelationship => write!(f, "Causal Relationship"),
+            InsightType::PerformancePattern => write!(f, "Performance Pattern"),
+            InsightType::SuccessFactors => write!(f, "Success Factors"),
+            InsightType::FailureFactors => write!(f, "Failure Factors"),
+            InsightType::EnvironmentalInfluence => write!(f, "Environmental Influence"),
+            InsightType::ToolEffectiveness => write!(f, "Tool Effectiveness"),
+            InsightType::StrategyOptimization => write!(f, "Strategy Optimization"),
+        }
+    }
+}
+
 /// Recommendation from reflection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recommendation {
@@ -207,6 +221,20 @@ pub enum RecommendationType {
     ProcessImprovement,
     GoalAdjustment,
     ResourceRequest,
+}
+
+impl std::fmt::Display for RecommendationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RecommendationType::ImmediateAction => write!(f, "Immediate Action"),
+            RecommendationType::StrategyChange => write!(f, "Strategy Change"),
+            RecommendationType::SkillDevelopment => write!(f, "Skill Development"),
+            RecommendationType::ToolAdoption => write!(f, "Tool Adoption"),
+            RecommendationType::ProcessImprovement => write!(f, "Process Improvement"),
+            RecommendationType::GoalAdjustment => write!(f, "Goal Adjustment"),
+            RecommendationType::ResourceRequest => write!(f, "Resource Request"),
+        }
+    }
 }
 
 /// Learning experience for building knowledge

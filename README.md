@@ -125,20 +125,18 @@ fluent openai "Complex analysis task" --cache
 #### Agent Commands
 
 ```bash
-# Interactive agent session
-fluent agent --interactive
+# Interactive agent session (requires API keys)
+fluent openai agent
 
-# Agentic mode with specific goal
-fluent agent --agentic --goal "Build a simple web server" --max-iterations 10
+# Agentic mode with specific goal (requires API keys)
+fluent openai --agentic --goal "Build a simple web server" --max-iterations 10 --enable-tools
 
-# Agent with tools enabled
-fluent agent --tools --config agent_config.json
+# Agent with MCP capabilities (requires API keys)
+fluent agent-mcp --engine openai --task "Analyze codebase" --mcp-servers "filesystem:mcp-server-filesystem"
 
-# Agent with self-reflection enabled
-fluent agent --agentic --goal "Complex problem solving" --reflection --max-iterations 15
-
-# Agent with custom reflection configuration
-fluent agent --interactive --reflection-config reflection_config.json
+# Note: Set appropriate API keys before running:
+# export OPENAI_API_KEY="your-api-key-here"
+# export ANTHROPIC_API_KEY="your-api-key-here"
 ```
 
 #### Pipeline Commands
@@ -299,10 +297,10 @@ tools:
 Interactive agent sessions with basic memory and tool access:
 
 ```bash
-# Start an interactive agent session
+# Start an interactive agent session (requires OPENAI_API_KEY)
 fluent openai agent
 
-# Agent with specific goal (experimental)
+# Agent with specific goal (requires OPENAI_API_KEY)
 fluent openai --agentic --goal "Analyze project structure" --enable-tools
 ```
 
@@ -446,6 +444,10 @@ cargo run --example state_management_demo
 
 # Run the string replace editor demo
 cargo run --example string_replace_demo
+
+# Run other available examples
+cargo run --example real_agentic_demo
+cargo run --example working_agentic_demo
 ```
 
 ### Quality Assurance Tools

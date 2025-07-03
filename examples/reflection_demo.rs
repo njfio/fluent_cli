@@ -5,7 +5,7 @@ use fluent_agent::{
     Goal, GoalType, GoalPriority, Task, TaskType, TaskPriority,
     ReasoningEngine,
 };
-use fluent_agent::reflection::{ReflectionTrigger, ReflectionType};
+use fluent_agent::reflection::ReflectionTrigger;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio;
@@ -101,13 +101,20 @@ async fn main() -> Result<()> {
         let task = Task {
             task_id: format!("task-{}", iteration),
             description: format!("Task for iteration {}", iteration),
-            task_type: TaskType::Analysis,
+            task_type: TaskType::CodeAnalysis,
             priority: TaskPriority::Medium,
             dependencies: Vec::new(),
+            inputs: HashMap::new(),
+            expected_outputs: vec!["analysis_result".to_string()],
+            success_criteria: vec!["Task completed successfully".to_string()],
             estimated_duration: None,
+            max_attempts: 3,
+            current_attempt: 1,
             created_at: SystemTime::now(),
+            started_at: None,
             completed_at: None,
             success: None,
+            error_message: None,
             metadata: HashMap::new(),
         };
         
