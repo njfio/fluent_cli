@@ -30,7 +30,7 @@ chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-async-trait = { workspace = true }
+async-trait.workspace = true
 crossterm = "0.27"
 rand = "0.8"
 
