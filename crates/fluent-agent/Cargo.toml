@@ -12,6 +12,7 @@ async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
+log = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 futures = { workspace = true }

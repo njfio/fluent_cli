@@ -620,4 +620,77 @@ mod tests {
         let file_content = fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(file_content, original_content);
     }
+
+    #[tokio::test]
+    async fn test_line_range_replacement() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file with multiple lines
+        let original_content = "Line 1: foo\nLine 2: foo\nLine 3: foo\nLine 4: foo\nLine 5: foo";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        // Replace only in lines 2-4
+        let params = StringReplaceParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            old_str: "foo".to_string(),
+            new_str: "bar".to_string(),
+            occurrence: Some(ReplaceOccurrence::All),
+            line_range: Some((2, 4)),
+            create_backup: Some(false),
+            dry_run: Some(false),
+        };
+
+        let result = editor.replace_string(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.replacements_made, 3); // Lines 2, 3, 4
+
+        let new_content = fs::read_to_string(&file_path).await.unwrap();
+        let expected = "Line 1: foo\nLine 2: bar\nLine 3: bar\nLine 4: bar\nLine 5: foo";
+        assert_eq!(new_content, expected);
+    }
+
+    #[tokio::test]
+    async fn test_line_range_single_line() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        let original_content = "Line 1: foo\nLine 2: foo bar foo\nLine 3: foo";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        // Replace only in line 2
+        let params = StringReplaceParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            old_str: "foo".to_string(),
+            new_str: "baz".to_string(),
+            occurrence: Some(ReplaceOccurrence::All),
+            line_range: Some((2, 2)),
+            create_backup: Some(false),
+            dry_run: Some(false),
+        };
+
+        let result = editor.replace_string(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.replacements_made, 2); // Two "foo" in line 2
+
+        let new_content = fs::read_to_string(&file_path).await.unwrap();
+        let expected = "Line 1: foo\nLine 2: baz bar baz\nLine 3: foo";
+        assert_eq!(new_content, expected);
+    }
 }

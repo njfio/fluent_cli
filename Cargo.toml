@@ -34,7 +34,8 @@ crossterm = "0.27"
 rand = "0.8"
 
 [workspace.dependencies]
-reqwest = { version = "^0.12", default-features = false, features = [
+# Core HTTP client - pin to specific minor version for stability
+reqwest = { version = "0.12.8", default-features = false, features = [
     "json",
     "stream",
     "multipart",
@@ -46,70 +47,122 @@ fluent-engines = { path = "crates/fluent-engines" }
 fluent-storage = { path = "crates/fluent-storage" }
 fluent-sdk = { path = "crates/fluent-sdk" }
 fluent-agent = { path = "crates/fluent-agent" }
-serde = { version = "^1.0" }
-lambda_runtime = "^0.13"
-serde_json = "^1.0"
-tracing-subscriber = "^0.3"
-tracing = "^0.1"
-tokio = { version = "^1", features = ["macros", "rt-multi-thread", "net", "fs", "io-util", "time", "sync"] }
-anyhow = { version = "^1.0" }
-strum = { version = "^0.26" }
-clap = { version = "^4.5" }
-env_logger = { version = "^0.11.5" }
-neo4rs = { version = "^0.8" }
-chrono = { version = "^0.4" }
-uuid = { version = "^1.3" }
-indicatif = "^0.17"
-owo-colors = "^4.0"
-regex = "^1.10"
-serde_yaml = "^0.9"
-async-trait = "^0.1"
-log = "^0.4"
-unicode-segmentation = "^1.11"
-rust-stemmers = "^1.2"
-stop-words = "^0.8"
-base64 = "^0.22"
-url = "^2.5"
-termimad = "^0.30"
-syntect = "^5.2"
-pdf-extract = "^0.7"
-tokio-util = { version = "^0.7" }
-mime_guess = { version = "^2.0" }
-futures-util = { version = "^0.3" }
-tempfile = "^3.10"
-futures = "^0.3"
+# Core serialization - pin to specific minor version
+serde = { version = "1.0.210" }
+# AWS Lambda runtime - allow patch updates only
+lambda_runtime = "0.13.0"
+# JSON handling - pin to specific minor version
+serde_json = "1.0.128"
+# Logging infrastructure - allow minor updates within 0.3.x
+tracing-subscriber = "~0.3.18"
+tracing = "~0.1.40"
+# Async runtime - pin to specific minor version for stability
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "net", "fs", "io-util", "time", "sync"] }
+# Error handling - allow minor updates within 1.x
+anyhow = { version = "~1.0.89" }
+# Enum utilities - allow minor updates within 0.26.x
+strum = { version = "~0.26.3" }
+# CLI framework - pin to specific minor version
+clap = { version = "4.5.20" }
+# Logging - allow minor updates within 0.11.x
+env_logger = { version = "~0.11.5" }
+# Neo4j driver - allow minor updates within 0.8.x
+neo4rs = { version = "~0.8.0" }
+# Date/time handling - allow minor updates within 0.4.x
+chrono = { version = "~0.4.38" }
+# UUID generation - allow minor updates within 1.x
+uuid = { version = "~1.10.0" }
+# Progress bars - allow minor updates within 0.17.x
+indicatif = "~0.17.8"
+# Terminal colors - pin to major version
+owo-colors = "~4.1.0"
+# Regular expressions - allow minor updates within 1.x
+regex = "~1.10.6"
+# YAML serialization - allow minor updates within 0.9.x
+serde_yaml = "~0.9.34"
+# Async traits - allow minor updates within 0.1.x
+async-trait = "~0.1.83"
+# Logging facade - allow minor updates within 0.4.x
+log = "~0.4.22"
+# Unicode text processing - allow minor updates within 1.x
+unicode-segmentation = "~1.12.0"
+# Text stemming - allow minor updates within 1.x
+rust-stemmers = "~1.2.0"
+# Stop words - allow minor updates within 0.8.x
+stop-words = "~0.8.0"
+# Base64 encoding - pin to specific minor version
+base64 = "0.22.1"
+# URL parsing - allow minor updates within 2.x
+url = "~2.5.2"
+# Terminal markdown - allow minor updates within 0.30.x
+termimad = "~0.30.0"
+# Syntax highlighting - allow minor updates within 5.x
+syntect = "~5.2.0"
+# PDF text extraction - allow minor updates within 0.7.x
+pdf-extract = "~0.7.7"
+# Tokio utilities - allow minor updates within 0.7.x
+tokio-util = { version = "~0.7.12" }
+# MIME type detection - allow minor updates within 2.x
+mime_guess = { version = "~2.0.5" }
+# Futures utilities - allow minor updates within 0.3.x
+futures-util = { version = "~0.3.31" }
+# Temporary files - pin to specific minor version
+tempfile = "3.13.0"
+# Async futures - allow minor updates within 0.3.x
+futures = "~0.3.31"
 
-dialoguer = "^0.11"
+# Interactive prompts - allow minor updates within 0.11.x
+dialoguer = "~0.11.0"
 
+# JSON schema generation and validation - pin to specific versions
+schemars = { version = "0.8.21", features = ["derive"] }
+jsonschema = "0.17.1"
 
-schemars = { version = "^0.8", features = ["derive"] }
-jsonschema = "^0.17"
+# Embedded database - pin to specific minor version
+sled = "0.34.7"
+# Cryptographic hashing - allow minor updates within 0.10.x
+sha2 = "~0.10.8"
+# MCP protocol implementation - pin to exact version for stability
+rmcp = { version = "0.1.0", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
 
-
-sled = "^0.34"
-sha2 = "^0.10"
-rmcp = { version = "0.1", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
-
-
-libloading = "^0.8"
-once_cell = "^1.19"
-num_cpus = "1.16"
-async-stream = "0.3"
-lru = "0.12"
-lz4_flex = "0.11"
-hex = "0.4"
+# Dynamic library loading - allow minor updates within 0.8.x
+libloading = "~0.8.5"
+# Thread-safe lazy initialization - allow minor updates within 1.x
+once_cell = "~1.20.2"
+# CPU core detection - pin to exact version
+num_cpus = "1.16.0"
+# Async stream utilities - pin to exact version
+async-stream = "0.3.6"
+# LRU cache - pin to exact version
+lru = "0.12.4"
+# LZ4 compression - pin to exact version
+lz4_flex = "0.11.3"
+# Hex encoding/decoding - pin to exact version
+hex = "0.4.3"
 # Additional dependencies from fluent-agent
-tokio-tungstenite = "0.20"
-deadpool = "0.10"
-moka = { version = "0.12", features = ["future"] }
-nix = "0.27"
-petgraph = "0.6"
-handlebars = "4.4"
-metrics = "0.21"
-prometheus = "0.13"
-thiserror = "1.0"
+# WebSocket support - pin to exact version
+tokio-tungstenite = "0.20.1"
+# Connection pooling - pin to exact version
+deadpool = "0.10.0"
+# High-performance cache - pin to exact version with future support
+moka = { version = "0.12.8", features = ["future"] }
+# Unix system calls - pin to exact version
+nix = "0.27.1"
+# Graph data structures - pin to exact version
+petgraph = "0.6.5"
+# Template engine - pin to exact version
+handlebars = "4.4.0"
+# Metrics collection - pin to exact version
+metrics = "0.21.1"
+# Prometheus metrics - pin to exact version
+prometheus = "0.13.4"
+# Error handling derive macros - pin to exact version
+thiserror = "1.0.64"
+# SQLite database - pin to exact version with required features
 rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "serde_json"] }
+# Async SQLite wrapper - pin to exact version
 tokio-rusqlite = "0.5.1"
-which = "6.0"
+# Executable finder - pin to exact version
+which = "6.0.3"
 
 

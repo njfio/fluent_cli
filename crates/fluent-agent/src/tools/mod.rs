@@ -9,6 +9,9 @@ pub mod rust_compiler;
 pub mod shell;
 pub mod string_replace_editor;
 
+#[cfg(test)]
+mod string_replace_editor_tests;
+
 pub use filesystem::FileSystemExecutor;
 pub use rust_compiler::RustCompilerExecutor;
 pub use shell::ShellExecutor;

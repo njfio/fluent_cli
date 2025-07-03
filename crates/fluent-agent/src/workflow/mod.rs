@@ -154,6 +154,9 @@ pub struct WorkflowContext {
     pub variables: HashMap<String, serde_json::Value>,
     pub start_time: std::time::SystemTime,
     pub metadata: HashMap<String, serde_json::Value>,
+    pub step_start_times: HashMap<String, std::time::SystemTime>,
+    pub step_end_times: HashMap<String, std::time::SystemTime>,
+    pub step_attempts: HashMap<String, u32>,
 }
 
 /// Step execution status
@@ -221,6 +224,9 @@ impl WorkflowContext {
             variables: HashMap::new(),
             start_time: std::time::SystemTime::now(),
             metadata: HashMap::new(),
+            step_start_times: HashMap::new(),
+            step_end_times: HashMap::new(),
+            step_attempts: HashMap::new(),
         }
     }
 
@@ -237,6 +243,35 @@ impl WorkflowContext {
             .entry(step_id.to_string())
             .or_insert_with(HashMap::new)
             .insert(key.to_string(), value);
+    }
+
+    pub fn start_step_timing(&mut self, step_id: &str) {
+        self.step_start_times.insert(step_id.to_string(), std::time::SystemTime::now());
+        // Initialize attempt counter if not exists
+        self.step_attempts.entry(step_id.to_string()).or_insert(0);
+    }
+
+    pub fn end_step_timing(&mut self, step_id: &str) {
+        self.step_end_times.insert(step_id.to_string(), std::time::SystemTime::now());
+    }
+
+    pub fn increment_step_attempts(&mut self, step_id: &str) {
+        *self.step_attempts.entry(step_id.to_string()).or_insert(0) += 1;
+    }
+
+    pub fn get_step_duration(&self, step_id: &str) -> Option<std::time::Duration> {
+        if let (Some(start), Some(end)) = (
+            self.step_start_times.get(step_id),
+            self.step_end_times.get(step_id),
+        ) {
+            end.duration_since(*start).ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn get_step_attempts(&self, step_id: &str) -> u32 {
+        self.step_attempts.get(step_id).copied().unwrap_or(0)
     }
 
     pub fn get_step_output(&self, step_id: &str, key: &str) -> Option<&serde_json::Value> {
