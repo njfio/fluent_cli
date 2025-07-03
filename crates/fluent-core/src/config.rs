@@ -259,10 +259,18 @@ impl VariableResolver for AmberVarResolver {
 
 impl VariableResolver for EnvVarResolver {
     fn is_resolvable(&self, key: &str) -> bool {
-        key.starts_with("ENV_")
+        // Support both ENV_ prefix and ${VAR} syntax for flexibility
+        key.starts_with("ENV_") || (key.starts_with("${") && key.ends_with("}"))
     }
     fn resolve(&self, key: &str) -> Result<String> {
-        let env_key = &key[4..]; // Skip the "ENV_" prefix to fetch the correct env var
+        let env_key = if key.starts_with("ENV_") {
+            &key[4..] // Skip the "ENV_" prefix
+        } else if key.starts_with("${") && key.ends_with("}") {
+            &key[2..key.len()-1] // Extract variable name from ${VAR}
+        } else {
+            return Err(anyhow!("Invalid environment variable format: {}", key));
+        };
+
         debug!("Attempting to replace: {}", key);
         debug!("Looking up environment variable: {}", env_key);
         match env::var(env_key) {

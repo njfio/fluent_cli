@@ -20,6 +20,7 @@ pub mod memory;
 pub mod observation;
 pub mod orchestrator;
 pub mod performance;
+pub mod profiling;
 pub mod reasoning;
 pub mod reflection;
 pub mod security;

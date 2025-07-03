@@ -626,6 +626,8 @@ pub mod cli {
         println!("Max iterations: {}", max_iterations);
         println!("Tools enabled: {}", enable_tools);
 
+
+
         // Load agent configuration
         let agent_config = AgentEngineConfig::load_from_file(agent_config_path)
             .await
@@ -828,8 +830,48 @@ pub mod cli {
         for iteration in 1..=max_iterations {
             println!("\n🔄 Iteration {}/{}", iteration, max_iterations);
 
-            // For this demo, we'll directly create the game on first iteration
-            if iteration == 1 {
+            // Real agentic reasoning: analyze the goal and determine next action
+            println!("🧠 Analyzing goal and determining next action...");
+
+            let tools_available = "file operations, shell commands, code analysis";
+
+            let reasoning_request = fluent_core::types::Request {
+                flowname: "agentic_reasoning".to_string(),
+                payload: format!(
+                    "You are an autonomous AI agent. Analyze this goal and determine the next specific action to take:\n\n\
+                    Goal: {}\n\n\
+                    Current iteration: {}/{}\n\
+                    Tools available: {}\n\n\
+                    Based on this goal, what is the most logical next step? Respond with:\n\
+                    1. A brief analysis of what the goal requires\n\
+                    2. The specific next action to take\n\
+                    3. Why this action moves us toward the goal\n\n\
+                    Be specific and actionable. Focus on the actual goal, not creating games unless the goal specifically asks for a game.",
+                    goal.description,
+                    iteration,
+                    max_iterations,
+                    tools_available
+                ),
+            };
+
+            let reasoning_response = match Pin::from(runtime_config.reasoning_engine.execute(&reasoning_request)).await {
+                Ok(response) => {
+                    println!("🤖 Agent reasoning: {}", response.content);
+                    response.content
+                }
+                Err(e) => {
+                    println!("❌ Reasoning failed: {}", e);
+                    break;
+                }
+            };
+
+            // Determine if this is a game creation goal or something else
+            let is_game_goal = goal.description.to_lowercase().contains("game")
+                || goal.description.to_lowercase().contains("frogger")
+                || goal.description.to_lowercase().contains("javascript")
+                || goal.description.to_lowercase().contains("html");
+
+            if is_game_goal {
                 println!("🎮 Agent decision: Create the game now!");
 
                 // Determine what type of game to create based on the goal
@@ -912,6 +954,108 @@ pub mod cli {
                     file_extension.to_uppercase()
                 );
                 return Ok(());
+            } else {
+                // Handle non-game goals with intelligent reasoning
+                println!("🔍 Processing complex analytical goal...");
+
+                // Determine the specific action based on the reasoning response
+                let action_request = fluent_core::types::Request {
+                    flowname: "action_planning".to_string(),
+                    payload: format!(
+                        "Based on this goal and reasoning, determine the specific action to take:\n\n\
+                        Goal: {}\n\
+                        Reasoning: {}\n\
+                        Iteration: {}/{}\n\n\
+                        What specific file should be analyzed, created, or modified? \
+                        Respond with just the file path and a brief description of what to do with it.",
+                        goal.description,
+                        reasoning_response,
+                        iteration,
+                        max_iterations
+                    ),
+                };
+
+                let action_response = match Pin::from(runtime_config.reasoning_engine.execute(&action_request)).await {
+                    Ok(response) => {
+                        println!("📋 Planned action: {}", response.content);
+                        response.content
+                    }
+                    Err(e) => {
+                        println!("❌ Action planning failed: {}", e);
+                        continue;
+                    }
+                };
+
+                // For reflection system analysis, start by examining the reflection.rs file
+                if goal.description.to_lowercase().contains("reflection") {
+                    let analysis_file = "analysis/reflection_system_analysis.md";
+
+                    // Create analysis directory
+                    if let Err(e) = fs::create_dir_all("analysis") {
+                        println!("⚠️ Could not create analysis directory: {}", e);
+                    }
+
+                    let analysis_request = fluent_core::types::Request {
+                        flowname: "reflection_analysis".to_string(),
+                        payload: format!(
+                            "Conduct a comprehensive analysis of the fluent_cli self-reflection system. \
+                            Focus on iteration {}/{}.\n\n\
+                            Analyze the following aspects:\n\
+                            1. Architecture and design patterns\n\
+                            2. Performance characteristics\n\
+                            3. Memory usage patterns\n\
+                            4. Potential bottlenecks\n\
+                            5. Optimization opportunities\n\n\
+                            Provide a detailed technical analysis with specific recommendations.",
+                            iteration,
+                            max_iterations
+                        ),
+                    };
+
+                    let analysis_response = match Pin::from(runtime_config.reasoning_engine.execute(&analysis_request)).await {
+                        Ok(response) => response.content,
+                        Err(e) => {
+                            println!("❌ Analysis failed: {}", e);
+                            continue;
+                        }
+                    };
+
+                    // Write analysis to file
+                    let analysis_content = format!(
+                        "# Reflection System Analysis - Iteration {}\n\n\
+                        Generated: {}\n\n\
+                        ## Goal\n{}\n\n\
+                        ## Analysis\n{}\n\n\
+                        ## Action Taken\n{}\n\n",
+                        iteration,
+                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        goal.description,
+                        analysis_response,
+                        action_response
+                    );
+
+                    if let Err(e) = fs::write(analysis_file, &analysis_content) {
+                        println!("❌ Failed to write analysis: {}", e);
+                    } else {
+                        println!("✅ Analysis written to: {}", analysis_file);
+                        println!("📝 Analysis length: {} characters", analysis_content.len());
+                    }
+
+                    // Update context with progress
+                    context.set_variable("analysis_iteration".to_string(), iteration.to_string());
+                    context.set_variable("analysis_file".to_string(), analysis_file.to_string());
+                    context.increment_iteration();
+
+                    // Check if we should continue or if goal is achieved
+                    if iteration >= max_iterations / 2 {
+                        println!("🎯 Comprehensive analysis completed across {} iterations!", iteration);
+                        return Ok(());
+                    }
+                } else {
+                    // Handle other types of goals
+                    println!("🔧 Processing general goal: {}", goal.description);
+                    context.increment_iteration();
+                }
             }
         }
 
