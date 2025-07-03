@@ -128,7 +128,7 @@ impl ConnectionPool {
     /// Get a client for the specified engine configuration
     pub async fn get_client(&self, engine_config: &EngineConfig) -> Result<Client> {
         let host_key = self.create_host_key(engine_config);
-        
+
         // Try to get an existing client from the pool
         if let Some(client) = self.get_pooled_client(&host_key).await {
             self.update_stats(|stats| {
@@ -140,7 +140,7 @@ impl ConnectionPool {
 
         // Create a new client if none available in pool
         let client = self.create_new_client(engine_config).await?;
-        
+
         self.update_stats(|stats| {
             stats.cache_misses += 1;
             stats.total_clients_created += 1;
@@ -152,14 +152,14 @@ impl ConnectionPool {
     /// Return a client to the pool for reuse
     pub async fn return_client(&self, engine_config: &EngineConfig, client: Client) {
         let host_key = self.create_host_key(engine_config);
-        
+
         let mut pools = self.pools.write().await;
         let pool = pools.entry(host_key).or_insert_with(Vec::new);
-        
+
         // Only add to pool if we haven't exceeded the limit
         if pool.len() < self.config.max_clients_per_host {
             pool.push(PooledClient::new(client));
-            
+
             self.update_stats(|stats| {
                 stats.current_pool_size = pools.values().map(|p| p.len()).sum();
             });
@@ -195,7 +195,7 @@ impl ConnectionPool {
     pub async fn clear(&self) {
         let mut pools = self.pools.write().await;
         pools.clear();
-        
+
         self.update_stats(|stats| {
             stats.current_pool_size = 0;
         });
@@ -265,30 +265,33 @@ impl ConnectionPool {
     // Private helper methods
 
     fn create_host_key(&self, config: &EngineConfig) -> String {
-        format!("{}://{}:{}", 
-                config.connection.protocol, 
-                config.connection.hostname, 
-                config.connection.port)
+        format!(
+            "{}://{}:{}",
+            config.connection.protocol, config.connection.hostname, config.connection.port
+        )
     }
 
     async fn get_pooled_client(&self, host_key: &str) -> Option<Client> {
         let mut pools = self.pools.write().await;
-        
+
         if let Some(pool) = pools.get_mut(host_key) {
             // Find a non-expired client
-            if let Some(index) = pool.iter().position(|c| !c.is_expired(self.config.max_idle_time)) {
+            if let Some(index) = pool
+                .iter()
+                .position(|c| !c.is_expired(self.config.max_idle_time))
+            {
                 let mut pooled_client = pool.remove(index);
                 pooled_client.mark_used();
                 return Some(pooled_client.client);
             }
-            
+
             // Remove expired clients
             pool.retain(|c| !c.is_expired(self.config.max_idle_time));
             if pool.is_empty() {
                 pools.remove(host_key);
             }
         }
-        
+
         None
     }
 
@@ -328,10 +331,7 @@ impl ConnectionPool {
         let url = format!("{}/health", host_key);
 
         // Perform a simple HEAD request with a short timeout
-        let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            client.head(&url).send()
-        ).await;
+        let response = tokio::time::timeout(Duration::from_secs(5), client.head(&url).send()).await;
 
         match response {
             Ok(Ok(resp)) => {
@@ -339,7 +339,10 @@ impl ConnectionPool {
                     // 404 is acceptable for health checks (endpoint might not exist)
                     Ok(())
                 } else {
-                    Err(anyhow!("Health check failed with status: {}", resp.status()))
+                    Err(anyhow!(
+                        "Health check failed with status: {}",
+                        resp.status()
+                    ))
                 }
             }
             Ok(Err(e)) => Err(anyhow!("Health check request failed: {}", e)),
@@ -358,7 +361,7 @@ impl ConnectionPool {
 }
 
 /// Global connection pool instance
-static GLOBAL_POOL: once_cell::sync::Lazy<ConnectionPool> = 
+static GLOBAL_POOL: once_cell::sync::Lazy<ConnectionPool> =
     once_cell::sync::Lazy::new(|| ConnectionPool::with_defaults());
 
 /// Get the global connection pool instance
@@ -436,13 +439,13 @@ mod tests {
 
         // Get first client
         let client1 = pool.get_client(&config).await.unwrap();
-        
+
         // Return it to pool
         pool.return_client(&config, client1).await;
-        
+
         // Get another client (should be reused)
         let _client2 = pool.get_client(&config).await.unwrap();
-        
+
         let stats = pool.get_stats();
         assert!(stats.total_clients_created > 0);
     }
@@ -453,20 +456,20 @@ mod tests {
             max_idle_time: Duration::from_millis(1), // Very short for testing
             ..Default::default()
         };
-        
+
         let pool = ConnectionPool::new(config);
         let engine_config = create_test_config();
 
         // Add a client to pool
         let client = pool.get_client(&engine_config).await.unwrap();
         pool.return_client(&engine_config, client).await;
-        
+
         // Wait for expiration
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         // Cleanup should remove expired clients
         pool.cleanup_expired().await;
-        
+
         let stats = pool.get_stats();
         assert_eq!(stats.current_pool_size, 0);
     }
@@ -476,7 +479,7 @@ mod tests {
         let config = create_test_config();
         let client = get_pooled_client(&config).await.unwrap();
         return_pooled_client(&config, client).await;
-        
+
         let stats = global_pool().get_stats();
         assert!(stats.total_clients_created > 0);
     }

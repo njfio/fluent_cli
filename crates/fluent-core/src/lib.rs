@@ -1,19 +1,16 @@
 // crates/fluent-core/src/lib.rs
-pub mod types;
-pub mod traits;
+pub mod auth;
+pub mod cache;
 pub mod config;
-pub mod utils;
-pub mod output;
+pub mod cost_calculator;
+pub mod error;
+pub mod input_validator;
+pub mod memory_utils;
 pub mod neo4j_client;
-mod voyageai_client;
+pub mod output;
 pub mod output_processor;
 pub mod spinner_configuration;
-pub mod cache;
-pub mod cost_calculator;
-pub mod input_validator;
-pub mod auth;
-pub mod error;
-pub mod memory_utils;
-
-
-
+pub mod traits;
+pub mod types;
+pub mod utils;
+mod voyageai_client;

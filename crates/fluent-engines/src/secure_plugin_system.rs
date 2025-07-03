@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use sha2::Digest;
 use fluent_core::config::EngineConfig;
 use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
+use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::Digest;
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use std::time::SystemTime;
 use tokio::sync::{Mutex, RwLock};
 
 /// Secure plugin system using WebAssembly for sandboxing
-/// 
+///
 /// This system provides:
 /// - Memory isolation through WASM
 /// - Capability-based security
@@ -172,7 +172,7 @@ impl AuditLogger for DefaultAuditLogger {
     async fn get_logs(&self, plugin_id: &str, limit: usize) -> Result<Vec<AuditLogEntry>> {
         let content = tokio::fs::read_to_string(&self.log_file).await?;
         let mut logs = Vec::new();
-        
+
         for line in content.lines().rev().take(limit) {
             if let Ok(entry) = serde_json::from_str::<AuditLogEntry>(line) {
                 if entry.plugin_id == plugin_id {
@@ -180,7 +180,7 @@ impl AuditLogger for DefaultAuditLogger {
                 }
             }
         }
-        
+
         logs.reverse();
         Ok(logs)
     }
@@ -232,13 +232,23 @@ impl PluginRuntime {
         let actual_checksum = sha2::Sha256::digest(&wasm_bytes);
         let expected_checksum = hex::decode(&manifest.checksum)?;
         if actual_checksum.as_slice() != expected_checksum {
-            return Err(anyhow!("Plugin '{}' checksum verification failed", manifest.name));
+            return Err(anyhow!(
+                "Plugin '{}' checksum verification failed",
+                manifest.name
+            ));
         }
 
         // Verify signature if present
         if let Some(signature) = &manifest.signature {
-            if !self.signature_verifier.verify_signature(&wasm_bytes, signature).await? {
-                return Err(anyhow!("Plugin '{}' signature verification failed", manifest.name));
+            if !self
+                .signature_verifier
+                .verify_signature(&wasm_bytes, signature)
+                .await?
+            {
+                return Err(anyhow!(
+                    "Plugin '{}' signature verification failed",
+                    manifest.name
+                ));
             }
         } else {
             // Reject unsigned plugins in production
@@ -287,9 +297,14 @@ impl PluginRuntime {
     }
 
     /// Create an engine instance from a loaded plugin
-    pub async fn create_engine(&self, plugin_id: &str, config: EngineConfig) -> Result<Box<dyn Engine>> {
+    pub async fn create_engine(
+        &self,
+        plugin_id: &str,
+        config: EngineConfig,
+    ) -> Result<Box<dyn Engine>> {
         let plugins = self.plugins.read().await;
-        let plugin = plugins.get(plugin_id)
+        let plugin = plugins
+            .get(plugin_id)
             .ok_or_else(|| anyhow!("Plugin '{}' not found", plugin_id))?;
 
         // Check if plugin supports the requested engine type
@@ -340,7 +355,8 @@ impl PluginRuntime {
     /// Get plugin statistics
     pub async fn get_plugin_stats(&self, plugin_id: &str) -> Result<PluginStats> {
         let plugins = self.plugins.read().await;
-        let plugin = plugins.get(plugin_id)
+        let plugin = plugins
+            .get(plugin_id)
             .ok_or_else(|| anyhow!("Plugin '{}' not found", plugin_id))?;
 
         let memory_used = *plugin.context.memory_used.lock().await;
@@ -352,7 +368,12 @@ impl PluginRuntime {
             memory_used_mb: memory_used / 1024 / 1024,
             network_requests_made: network_requests,
             files_accessed_count: files_accessed as u32,
-            uptime_seconds: plugin.context.start_time.elapsed().unwrap_or_default().as_secs(),
+            uptime_seconds: plugin
+                .context
+                .start_time
+                .elapsed()
+                .unwrap_or_default()
+                .as_secs(),
             use_count: plugin.use_count,
             last_used: plugin.last_used,
         })
@@ -410,7 +431,7 @@ impl Engine for SecurePluginEngine {
             // 3. Monitoring resource usage
             // 4. Enforcing timeouts and limits
             // 5. Logging all actions
-            
+
             // For now, return a placeholder response
             Err(anyhow!("WASM plugin execution not yet implemented"))
         })
@@ -420,9 +441,7 @@ impl Engine for SecurePluginEngine {
         &'a self,
         _request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("Plugin upsert not implemented"))
-        })
+        Box::new(async move { Err(anyhow!("Plugin upsert not implemented")) })
     }
 
     fn get_neo4j_client(&self) -> Option<&Arc<fluent_core::neo4j_client::Neo4jClient>> {
@@ -441,9 +460,7 @@ impl Engine for SecurePluginEngine {
         &'a self,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("Plugin file upload not implemented"))
-        })
+        Box::new(async move { Err(anyhow!("Plugin file upload not implemented")) })
     }
 
     fn process_request_with_file<'a>(
@@ -451,9 +468,7 @@ impl Engine for SecurePluginEngine {
         _request: &'a Request,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("Plugin file processing not implemented"))
-        })
+        Box::new(async move { Err(anyhow!("Plugin file processing not implemented")) })
     }
 }
 
@@ -467,13 +482,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let signature_verifier = Arc::new(DefaultSignatureVerifier);
         let audit_logger = Arc::new(DefaultAuditLogger::new(temp_dir.path().join("audit.log")));
-        
+
         let runtime = PluginRuntime::new(
             temp_dir.path().to_path_buf(),
             signature_verifier,
             audit_logger,
         );
-        
+
         let plugins = runtime.list_plugins().await;
         assert!(plugins.is_empty());
     }
@@ -492,7 +507,7 @@ mod tests {
             PluginCapability::NetworkAccess,
             PluginCapability::FileSystemRead,
         ];
-        
+
         assert!(capabilities.contains(&PluginCapability::NetworkAccess));
         assert!(!capabilities.contains(&PluginCapability::FileSystemWrite));
     }

@@ -29,28 +29,28 @@ pub struct Capability {
 /// Resource types that can be accessed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResourceType {
-    FileSystem { 
+    FileSystem {
         paths: Vec<String>,
         allowed_extensions: Option<Vec<String>>,
     },
-    Network { 
-        hosts: Vec<String>, 
+    Network {
+        hosts: Vec<String>,
         ports: Vec<u16>,
         protocols: Vec<String>,
     },
-    Process { 
+    Process {
         commands: Vec<String>,
         allowed_args: Option<Vec<String>>,
     },
-    Environment { 
+    Environment {
         variables: Vec<String>,
         read_only: bool,
     },
-    Memory { 
+    Memory {
         max_bytes: u64,
         shared_access: bool,
     },
-    Time { 
+    Time {
         max_duration_seconds: u64,
         time_windows: Option<Vec<TimeWindow>>,
     },
@@ -93,8 +93,14 @@ pub enum Constraint {
     MaxFileSize(u64),
     MaxMemoryUsage(u64),
     MaxExecutionTime(Duration),
-    RateLimit { max_requests: u32, window: Duration },
-    TimeWindow { start: chrono::NaiveTime, end: chrono::NaiveTime },
+    RateLimit {
+        max_requests: u32,
+        window: Duration,
+    },
+    TimeWindow {
+        start: chrono::NaiveTime,
+        end: chrono::NaiveTime,
+    },
     IpWhitelist(Vec<String>),
     UserAgent(String),
     Referrer(String),
@@ -104,11 +110,17 @@ pub enum Constraint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Condition {
     UserRole(String),
-    TimeOfDay { start: chrono::NaiveTime, end: chrono::NaiveTime },
+    TimeOfDay {
+        start: chrono::NaiveTime,
+        end: chrono::NaiveTime,
+    },
     DayOfWeek(Vec<u8>),
     IpAddress(String),
     Environment(String),
-    Custom { key: String, value: String },
+    Custom {
+        key: String,
+        value: String,
+    },
 }
 
 /// Security restrictions
@@ -171,10 +183,20 @@ pub enum AuditLogLevel {
 /// Audit log destinations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuditDestination {
-    File { path: String },
-    Database { connection_string: String },
-    Syslog { server: String, port: u16 },
-    Http { endpoint: String, headers: HashMap<String, String> },
+    File {
+        path: String,
+    },
+    Database {
+        connection_string: String,
+    },
+    Syslog {
+        server: String,
+        port: u16,
+    },
+    Http {
+        endpoint: String,
+        headers: HashMap<String, String>,
+    },
 }
 
 /// Alert thresholds for security monitoring
@@ -281,25 +303,25 @@ impl Default for ResourceUsage {
 pub enum SecurityError {
     #[error("Session not found: {0}")]
     SessionNotFound(String),
-    
+
     #[error("Capability not granted: {0}")]
     CapabilityNotGranted(String),
-    
+
     #[error("Constraint violation: {0}")]
     ConstraintViolation(String),
-    
+
     #[error("Resource limit exceeded: {0}")]
     ResourceLimitExceeded(String),
-    
+
     #[error("Access denied: {0}")]
     AccessDenied(String),
-    
+
     #[error("Sandbox violation: {0}")]
     SandboxViolation(String),
-    
+
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
-    
+
     #[error("Audit error: {0}")]
     AuditError(String),
 }
@@ -311,28 +333,35 @@ impl Default for SecurityPolicy {
             name: "default".to_string(),
             version: "1.0".to_string(),
             description: Some("Default security policy for development".to_string()),
-            capabilities: vec![
-                Capability {
-                    name: "file_read".to_string(),
-                    resource_type: ResourceType::FileSystem {
-                        paths: vec!["/tmp".to_string(), "./".to_string()],
-                        allowed_extensions: Some(vec!["txt".to_string(), "json".to_string()]),
-                    },
-                    permissions: vec![Permission::Read, Permission::List],
-                    constraints: vec![Constraint::MaxFileSize(10 * 1024 * 1024)], // 10MB
-                    conditions: None,
+            capabilities: vec![Capability {
+                name: "file_read".to_string(),
+                resource_type: ResourceType::FileSystem {
+                    paths: vec!["/tmp".to_string(), "./".to_string()],
+                    allowed_extensions: Some(vec!["txt".to_string(), "json".to_string()]),
                 },
-            ],
+                permissions: vec![Permission::Read, Permission::List],
+                constraints: vec![Constraint::MaxFileSize(10 * 1024 * 1024)], // 10MB
+                conditions: None,
+            }],
             restrictions: SecurityRestrictions {
-                max_file_size: 100 * 1024 * 1024, // 100MB
-                max_memory_usage: 1024 * 1024 * 1024, // 1GB
+                max_file_size: 100 * 1024 * 1024,             // 100MB
+                max_memory_usage: 1024 * 1024 * 1024,         // 1GB
                 max_execution_time: Duration::from_secs(300), // 5 minutes
-                allowed_file_extensions: ["txt", "json", "yaml", "md"].iter().map(|s| s.to_string()).collect(),
-                blocked_commands: ["rm", "sudo", "chmod", "chown"].iter().map(|s| s.to_string()).collect(),
+                allowed_file_extensions: ["txt", "json", "yaml", "md"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                blocked_commands: ["rm", "sudo", "chmod", "chown"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
                 network_restrictions: NetworkRestrictions {
                     allow_outbound: true,
                     allow_inbound: false,
-                    allowed_domains: vec!["api.openai.com".to_string(), "api.anthropic.com".to_string()],
+                    allowed_domains: vec![
+                        "api.openai.com".to_string(),
+                        "api.anthropic.com".to_string(),
+                    ],
                     blocked_ips: vec!["127.0.0.1".to_string()],
                     allowed_ports: Some(vec![80, 443]),
                     blocked_ports: vec![22, 23, 3389],
@@ -350,7 +379,9 @@ impl Default for SecurityPolicy {
             audit_config: AuditConfig {
                 enabled: true,
                 log_level: AuditLogLevel::Info,
-                log_destinations: vec![AuditDestination::File { path: "audit.log".to_string() }],
+                log_destinations: vec![AuditDestination::File {
+                    path: "audit.log".to_string(),
+                }],
                 retention_days: 30,
                 encryption_enabled: false,
                 real_time_alerts: false,
@@ -384,7 +415,7 @@ impl Default for SecurityPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_security_policy_default() {
         let policy = SecurityPolicy::default();
@@ -394,7 +425,7 @@ mod tests {
         assert!(policy.audit_config.enabled);
         assert!(policy.sandbox_config.enabled);
     }
-    
+
     #[test]
     fn test_resource_usage_default() {
         let usage = ResourceUsage::default();
@@ -402,7 +433,7 @@ mod tests {
         assert_eq!(usage.cpu_time_used, Duration::ZERO);
         assert_eq!(usage.files_accessed, 0);
     }
-    
+
     #[test]
     fn test_security_session_creation() {
         let session = SecuritySession {
@@ -415,7 +446,7 @@ mod tests {
             last_activity: chrono::Utc::now(),
             metadata: HashMap::new(),
         };
-        
+
         assert_eq!(session.session_id, "test_session");
         assert_eq!(session.policy_name, "test_policy");
         assert_eq!(session.user_id, Some("test_user".to_string()));

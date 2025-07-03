@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use owo_colors::OwoColorize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpinnerConfig {

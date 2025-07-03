@@ -1,8 +1,14 @@
-use super::{JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, McpTransport, AuthConfig, AuthType, TimeoutConfig, RetryConfig};
+use super::{
+    AuthConfig, AuthType, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpTransport,
+    RetryConfig, TimeoutConfig,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
-use reqwest::{Client, header::{HeaderMap, HeaderName, HeaderValue}};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Client,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,7 +35,7 @@ impl HttpTransport {
     ) -> Result<Self> {
         // Validate URL
         let _url = Url::parse(&base_url)?;
-        
+
         // Build headers
         let mut header_map = HeaderMap::new();
         for (key, value) in headers {
@@ -37,7 +43,7 @@ impl HttpTransport {
             let header_value = HeaderValue::from_str(&value)?;
             header_map.insert(header_name, header_value);
         }
-        
+
         // Add authentication headers
         if let Some(ref auth) = auth_config {
             match auth.auth_type {
@@ -59,9 +65,12 @@ impl HttpTransport {
                     }
                 }
                 AuthType::Basic => {
-                    if let (Some(username), Some(password)) = 
-                        (auth.credentials.get("username"), auth.credentials.get("password")) {
-                        let credentials = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", username, password));
+                    if let (Some(username), Some(password)) = (
+                        auth.credentials.get("username"),
+                        auth.credentials.get("password"),
+                    ) {
+                        let credentials = base64::engine::general_purpose::STANDARD
+                            .encode(format!("{}:{}", username, password));
                         let auth_value = HeaderValue::from_str(&format!("Basic {}", credentials))?;
                         header_map.insert("authorization", auth_value);
                     }
@@ -69,14 +78,14 @@ impl HttpTransport {
                 AuthType::None => {}
             }
         }
-        
+
         // Build HTTP client
         let client = Client::builder()
             .timeout(Duration::from_millis(timeout_config.request_timeout_ms))
             .connect_timeout(Duration::from_millis(timeout_config.connect_timeout_ms))
             .default_headers(header_map)
             .build()?;
-        
+
         let transport = Self {
             client,
             base_url,
@@ -86,13 +95,13 @@ impl HttpTransport {
             notification_tx: Arc::new(Mutex::new(None)),
             is_connected: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
-        
+
         // Test connection
         transport.test_connection().await?;
-        
+
         Ok(transport)
     }
-    
+
     async fn test_connection(&self) -> Result<()> {
         // Send a simple ping request to test connectivity
         let ping_request = JsonRpcRequest {
@@ -101,37 +110,45 @@ impl HttpTransport {
             method: "ping".to_string(),
             params: None,
         };
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&self.base_url)
             .json(&ping_request)
             .send()
             .await;
-        
+
         match response {
             Ok(resp) => {
                 if resp.status().is_success() || resp.status().as_u16() == 404 {
                     // 404 is acceptable as the server might not implement ping
                     Ok(())
                 } else {
-                    Err(anyhow::anyhow!("HTTP connection test failed: {}", resp.status()))
+                    Err(anyhow::anyhow!(
+                        "HTTP connection test failed: {}",
+                        resp.status()
+                    ))
                 }
             }
             Err(e) => Err(anyhow::anyhow!("HTTP connection test failed: {}", e)),
         }
     }
-    
+
     async fn send_http_request(&self, request: &JsonRpcRequest) -> Result<JsonRpcResponse> {
-        let response = self.client
+        let response = self
+            .client
             .post(&self.base_url)
             .json(request)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP request failed: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "HTTP request failed: {}",
+                response.status()
+            ));
         }
-        
+
         let json_response: JsonRpcResponse = response.json().await?;
         Ok(json_response)
     }
@@ -143,34 +160,39 @@ impl McpTransport for HttpTransport {
         if !self.is_connected().await {
             return Err(anyhow::anyhow!("Transport not connected"));
         }
-        
+
         // Implement retry logic
         let mut attempts = 0;
         let mut delay = match &self.retry_config.backoff_strategy {
             super::BackoffStrategy::Fixed { delay_ms } => *delay_ms,
-            super::BackoffStrategy::Exponential { initial_delay_ms, .. } => *initial_delay_ms,
+            super::BackoffStrategy::Exponential {
+                initial_delay_ms, ..
+            } => *initial_delay_ms,
             super::BackoffStrategy::Linear { increment_ms } => *increment_ms,
         };
-        
+
         loop {
             attempts += 1;
-            
+
             match self.send_http_request(&request).await {
                 Ok(response) => return Ok(response),
                 Err(error) => {
                     if attempts >= self.retry_config.max_attempts {
                         return Err(anyhow::anyhow!("Max retry attempts exceeded: {}", error));
                     }
-                    
+
                     // Check if error is retryable
                     let error_str = error.to_string().to_lowercase();
-                    let should_retry = self.retry_config.retry_on_errors.iter()
+                    let should_retry = self
+                        .retry_config
+                        .retry_on_errors
+                        .iter()
                         .any(|retry_error| error_str.contains(retry_error));
-                    
+
                     if !should_retry {
                         return Err(error);
                     }
-                    
+
                     // Calculate next delay
                     match &self.retry_config.backoff_strategy {
                         super::BackoffStrategy::Fixed { .. } => {
@@ -183,45 +205,52 @@ impl McpTransport for HttpTransport {
                             delay += increment_ms;
                         }
                     }
-                    
+
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
             }
         }
     }
-    
+
     async fn start_listening(&self) -> Result<mpsc::UnboundedReceiver<JsonRpcNotification>> {
         let (tx, rx) = mpsc::unbounded_channel();
         *self.notification_tx.lock().await = Some(tx);
-        
+
         // Note: HTTP transport doesn't support server-initiated notifications
         // This would typically be implemented with Server-Sent Events or polling
         // For now, we just return the receiver that won't receive any messages
-        
+
         Ok(rx)
     }
-    
+
     async fn close(&self) -> Result<()> {
-        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.is_connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
-    
+
     async fn is_connected(&self) -> bool {
         self.is_connected.load(std::sync::atomic::Ordering::Relaxed)
     }
-    
+
     fn get_metadata(&self) -> HashMap<String, String> {
         let mut metadata = HashMap::new();
         metadata.insert("transport_type".to_string(), "http".to_string());
         metadata.insert("base_url".to_string(), self.base_url.clone());
-        
+
         if let Some(ref auth) = self.auth_config {
             metadata.insert("auth_type".to_string(), format!("{:?}", auth.auth_type));
         }
-        
-        metadata.insert("connect_timeout_ms".to_string(), self.timeout_config.connect_timeout_ms.to_string());
-        metadata.insert("request_timeout_ms".to_string(), self.timeout_config.request_timeout_ms.to_string());
-        
+
+        metadata.insert(
+            "connect_timeout_ms".to_string(),
+            self.timeout_config.connect_timeout_ms.to_string(),
+        );
+        metadata.insert(
+            "request_timeout_ms".to_string(),
+            self.timeout_config.request_timeout_ms.to_string(),
+        );
+
         metadata
     }
 }
@@ -229,7 +258,7 @@ impl McpTransport for HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_http_transport_creation() {
         // Test with a mock URL (this will fail connection test but tests creation logic)
@@ -243,12 +272,13 @@ mod tests {
                 idle_timeout_ms: 30000,
             },
             RetryConfig::default(),
-        ).await;
-        
+        )
+        .await;
+
         // This will likely fail due to connection test, but validates the creation logic
         assert!(result.is_err()); // Expected to fail connection test
     }
-    
+
     #[test]
     fn test_metadata() {
         let transport = HttpTransport {
@@ -263,9 +293,12 @@ mod tests {
             notification_tx: Arc::new(Mutex::new(None)),
             is_connected: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
-        
+
         let metadata = transport.get_metadata();
         assert_eq!(metadata.get("transport_type"), Some(&"http".to_string()));
-        assert_eq!(metadata.get("base_url"), Some(&"http://example.com/mcp".to_string()));
+        assert_eq!(
+            metadata.get("base_url"),
+            Some(&"http://example.com/mcp".to_string())
+        );
     }
 }

@@ -4,7 +4,7 @@ use crate::shared::*;
 use anyhow::{anyhow, Result};
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
+use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use serde_json::Value;
 
 use std::path::Path;
@@ -100,13 +100,15 @@ impl BaseEngine {
 
     /// Get or create the cache instance
     pub async fn get_cache(&self) -> Result<&Arc<EnhancedCache>> {
-        self.cache.get_or_try_init(|| async {
-            let cache_config = crate::enhanced_cache::CacheConfig {
-                disk_cache_dir: Some(format!("fluent_cache_{}", self.base_config.engine_type)),
-                ..Default::default()
-            };
-            Ok(Arc::new(EnhancedCache::new(cache_config)?))
-        }).await
+        self.cache
+            .get_or_try_init(|| async {
+                let cache_config = crate::enhanced_cache::CacheConfig {
+                    disk_cache_dir: Some(format!("fluent_cache_{}", self.base_config.engine_type)),
+                    ..Default::default()
+                };
+                Ok(Arc::new(EnhancedCache::new(cache_config)?))
+            })
+            .await
     }
 
     /// Execute a standard chat request
@@ -130,18 +132,21 @@ impl BaseEngine {
         let payload = self.build_chat_payload(request)?;
 
         // Send request
-        let response = client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = client.post(&url).json(&payload).send().await?;
 
         // Return client to pool
         return_pooled_client(&self.config, client).await;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow!("{} API error: {}", self.base_config.engine_type, error_text));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow!(
+                "{} API error: {}",
+                self.base_config.engine_type,
+                error_text
+            ));
         }
 
         let response_json: Value = response.json().await?;
@@ -158,9 +163,16 @@ impl BaseEngine {
     }
 
     /// Execute a vision request with file
-    pub async fn execute_vision_request(&self, request: &Request, file_path: &Path) -> Result<Response> {
+    pub async fn execute_vision_request(
+        &self,
+        request: &Request,
+        file_path: &Path,
+    ) -> Result<Response> {
         if !self.base_config.supports_vision {
-            return Err(anyhow!("{} does not support vision requests", self.base_config.engine_type));
+            return Err(anyhow!(
+                "{} does not support vision requests",
+                self.base_config.engine_type
+            ));
         }
 
         // Check cache with file
@@ -188,18 +200,21 @@ impl BaseEngine {
         let url = UrlBuilder::build_default_url(&self.config);
 
         // Send request
-        let response = client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await?;
+        let response = client.post(&url).json(&payload).send().await?;
 
         // Return client to pool
         return_pooled_client(&self.config, client).await;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow!("{} API error: {}", self.base_config.engine_type, error_text));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow!(
+                "{} API error: {}",
+                self.base_config.engine_type,
+                error_text
+            ));
         }
 
         let response_json: Value = response.json().await?;
@@ -218,7 +233,10 @@ impl BaseEngine {
         if !self.base_config.supports_embeddings {
             return Ok(UpsertResponse {
                 processed_files: vec![],
-                errors: vec![format!("{} does not support embeddings", self.base_config.engine_type)],
+                errors: vec![format!(
+                    "{} does not support embeddings",
+                    self.base_config.engine_type
+                )],
             });
         }
 
@@ -232,7 +250,9 @@ impl BaseEngine {
 
     /// Get the model name from configuration
     pub fn get_model_name(&self) -> String {
-        self.config.parameters.get("model")
+        self.config
+            .parameters
+            .get("model")
             .or_else(|| self.config.parameters.get("modelName"))
             .and_then(|v| v.as_str())
             .unwrap_or(&self.base_config.default_model)
@@ -243,13 +263,15 @@ impl BaseEngine {
     fn build_chat_payload(&self, request: &Request) -> Result<Value> {
         match self.base_config.engine_type.as_str() {
             "openai" => {
-                let mut payload = PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
+                let mut payload =
+                    PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
                 self.add_config_parameters(&mut payload);
                 Ok(payload)
             }
             "anthropic" => {
                 // Use the generic chat payload for Anthropic
-                let mut payload = PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
+                let mut payload =
+                    PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
                 // Anthropic uses "max_tokens" instead of "max_completion_tokens"
                 if let Some(max_tokens) = self.config.parameters.get("max_tokens") {
                     payload["max_tokens"] = max_tokens.clone();
@@ -261,13 +283,15 @@ impl BaseEngine {
             }
             "google_gemini" => {
                 // Use the generic chat payload for Gemini
-                let mut payload = PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
+                let mut payload =
+                    PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
                 self.add_config_parameters(&mut payload);
                 Ok(payload)
             }
             _ => {
                 // Generic payload for other engines
-                let mut payload = PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
+                let mut payload =
+                    PayloadBuilder::build_chat_payload(request, Some(&self.get_model_name()));
                 self.add_config_parameters(&mut payload);
                 Ok(payload)
             }
@@ -275,18 +299,30 @@ impl BaseEngine {
     }
 
     /// Build vision payload based on engine type
-    fn build_vision_payload(&self, request: &Request, base64_data: &str, image_format: &str) -> Result<Value> {
+    fn build_vision_payload(
+        &self,
+        request: &Request,
+        base64_data: &str,
+        image_format: &str,
+    ) -> Result<Value> {
         match self.base_config.engine_type.as_str() {
-            "openai" | "anthropic" => {
-                Ok(PayloadBuilder::build_vision_payload(&request.payload, base64_data, image_format))
-            }
+            "openai" | "anthropic" => Ok(PayloadBuilder::build_vision_payload(
+                &request.payload,
+                base64_data,
+                image_format,
+            )),
             "google_gemini" => {
                 // Use the standard vision payload for Gemini as well
-                Ok(PayloadBuilder::build_vision_payload(&request.payload, base64_data, image_format))
+                Ok(PayloadBuilder::build_vision_payload(
+                    &request.payload,
+                    base64_data,
+                    image_format,
+                ))
             }
-            _ => {
-                Err(anyhow!("Vision not supported for engine type: {}", self.base_config.engine_type))
-            }
+            _ => Err(anyhow!(
+                "Vision not supported for engine type: {}",
+                self.base_config.engine_type
+            )),
         }
     }
 
@@ -295,26 +331,43 @@ impl BaseEngine {
         match self.base_config.engine_type.as_str() {
             "openai" => {
                 let pricing = self.base_config.pricing_rates.unwrap_or((0.001, 0.002));
-                ResponseParser::parse_openai_chat_response(response_json, &self.get_model_name(), Some(pricing))
+                ResponseParser::parse_openai_chat_response(
+                    response_json,
+                    &self.get_model_name(),
+                    Some(pricing),
+                )
             }
             "anthropic" => {
                 let pricing = self.base_config.pricing_rates.unwrap_or((0.003, 0.015));
-                ResponseParser::parse_anthropic_response(response_json, &self.get_model_name(), Some(pricing))
+                ResponseParser::parse_anthropic_response(
+                    response_json,
+                    &self.get_model_name(),
+                    Some(pricing),
+                )
             }
             "google_gemini" => {
                 let pricing = self.base_config.pricing_rates.unwrap_or((0.00025, 0.00075));
-                ResponseParser::parse_gemini_response(response_json, &self.get_model_name(), Some(pricing))
+                ResponseParser::parse_gemini_response(
+                    response_json,
+                    &self.get_model_name(),
+                    Some(pricing),
+                )
             }
             _ => {
                 // Generic response parsing
-                let content = response_json.get("content")
+                let content = response_json
+                    .get("content")
                     .or_else(|| response_json.get("text"))
                     .or_else(|| response_json.get("response"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("No content found")
                     .to_string();
 
-                Ok(ResponseParser::parse_simple_response(content, &self.get_model_name(), None))
+                Ok(ResponseParser::parse_simple_response(
+                    content,
+                    &self.get_model_name(),
+                    None,
+                ))
             }
         }
     }
@@ -323,7 +376,8 @@ impl BaseEngine {
     fn add_config_parameters(&self, payload: &mut Value) {
         for (key, value) in &self.config.parameters {
             match key.as_str() {
-                "temperature" | "max_tokens" | "top_p" | "frequency_penalty" | "presence_penalty" => {
+                "temperature" | "max_tokens" | "top_p" | "frequency_penalty"
+                | "presence_penalty" => {
                     payload[key] = value.clone();
                 }
                 _ => {} // Skip other parameters
@@ -343,13 +397,14 @@ impl BaseEngine {
 
     /// Get session ID from configuration
     pub fn get_session_id(&self) -> Option<String> {
-        self.config.session_id.clone()
-            .or_else(|| {
-                self.config.parameters.get("sessionID")
-                    .or_else(|| self.config.parameters.get("session_id"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-            })
+        self.config.session_id.clone().or_else(|| {
+            self.config
+                .parameters
+                .get("sessionID")
+                .or_else(|| self.config.parameters.get("session_id"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
     }
 
     /// Get Neo4j client reference
@@ -389,7 +444,7 @@ mod tests {
         let config = create_test_config();
         let base_config = BaseEngineConfig::openai();
         let engine = BaseEngine::new(config, base_config).await.unwrap();
-        
+
         assert_eq!(engine.get_model_name(), "gpt-4");
         assert_eq!(engine.base_config.engine_type, "openai");
         assert!(engine.base_config.supports_vision);
@@ -413,7 +468,7 @@ mod tests {
         let config = create_test_config();
         let base_config = BaseEngineConfig::openai();
         let engine = BaseEngine::new(config, base_config).await.unwrap();
-        
+
         assert_eq!(engine.get_model_name(), "gpt-4");
     }
 }

@@ -8,7 +8,9 @@ use fluent_core::cache::{cache_key, RequestCache};
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, Usage, Cost, UpsertRequest, UpsertResponse, ExtractedContent};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
@@ -33,15 +35,15 @@ impl OptimizedOpenAIEngine {
         };
 
         let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {
-            let path = std::env::var("FLUENT_CACHE_DIR").unwrap_or_else(|_| "fluent_cache".to_string());
+            let path =
+                std::env::var("FLUENT_CACHE_DIR").unwrap_or_else(|_| "fluent_cache".to_string());
             Some(RequestCache::new(std::path::Path::new(&path))?)
         } else {
             None
         };
 
         // Create authenticated client
-        let auth_client = EngineAuth::openai(&config.parameters)?
-            .create_authenticated_client()?;
+        let auth_client = EngineAuth::openai(&config.parameters)?.create_authenticated_client()?;
 
         Ok(Self {
             config,
@@ -55,10 +57,10 @@ impl OptimizedOpenAIEngine {
     /// Calculate cost with optimized memory usage
     fn calculate_cost_optimized(&self, usage: &Usage) -> Cost {
         let (prompt_rate, completion_rate) = self.get_pricing_rates();
-        
+
         let prompt_cost = (usage.prompt_tokens as f64 / 1_000_000.0) * prompt_rate;
         let completion_cost = (usage.completion_tokens as f64 / 1_000_000.0) * completion_rate;
-        
+
         Cost {
             prompt_cost,
             completion_cost,
@@ -67,7 +69,10 @@ impl OptimizedOpenAIEngine {
     }
 
     fn get_pricing_rates(&self) -> (f64, f64) {
-        let model = self.config.parameters.get("model")
+        let model = self
+            .config
+            .parameters
+            .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("gpt-3.5-turbo");
 
@@ -114,37 +119,45 @@ impl OptimizedOpenAIEngine {
         let url = url.to_string(); // Only allocate when necessary
 
         // Build payload using reusable builder
-        let model = self.config.parameters.get("model")
-            .and_then(|v| v.as_str());
-        
+        let model = self.config.parameters.get("model").and_then(|v| v.as_str());
+
         let _payload = payload_builder.build_openai_payload(&request.payload, model);
-        
+
         // Add configuration parameters
         payload_builder.add_config_params(&self.config.parameters);
 
         // Send request
-        let response = self.auth_client
+        let response = self
+            .auth_client
             .post(&url)
             .json(payload_builder.payload())
             .send()
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow!("OpenAI API error: {}", error_text));
         }
 
         let response_json: Value = response.json().await?;
 
         // Parse response using reusable parser
-        let content = response_parser.extract_openai_content(&response_json)
+        let content = response_parser
+            .extract_openai_content(&response_json)
             .ok_or_else(|| anyhow!("No content in response"))?
             .to_string(); // Only allocate final content
 
         // Extract usage information
         let usage = Usage {
-            prompt_tokens: response_json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_json["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_json["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             total_tokens: response_json["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
         };
 
@@ -177,14 +190,19 @@ impl OptimizedOpenAIEngine {
     }
 
     /// Process file request with memory optimization
-    async fn process_file_optimized(&self, request: &Request, file_path: &Path) -> Result<Response> {
+    async fn process_file_optimized(
+        &self,
+        request: &Request,
+        file_path: &Path,
+    ) -> Result<Response> {
         // Check cache first
         let cache_key_str = {
             let mut string_buffer = {
                 let mut pool = self.memory_pool.lock().unwrap();
                 pool.get_string_buffer()
             };
-            let key = string_buffer.build_cache_key(&request.payload, Some(&file_path.display().to_string()));
+            let key = string_buffer
+                .build_cache_key(&request.payload, Some(&file_path.display().to_string()));
             let result = key.to_string();
             {
                 let mut pool = self.memory_pool.lock().unwrap();
@@ -217,7 +235,8 @@ impl OptimizedOpenAIEngine {
             pool.get_payload_builder()
         };
 
-        let _payload = payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
+        let _payload =
+            payload_builder.build_vision_payload(&request.payload, &base64_image, &image_format);
 
         // Build URL
         let mut string_buffer = {
@@ -234,14 +253,18 @@ impl OptimizedOpenAIEngine {
         let url = url.to_string();
 
         // Send request
-        let response = self.auth_client
+        let response = self
+            .auth_client
             .post(&url)
             .json(payload_builder.payload())
             .send()
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow!("OpenAI API error: {}", error_text));
         }
 
@@ -253,14 +276,19 @@ impl OptimizedOpenAIEngine {
             pool.get_response_parser()
         };
 
-        let content = response_parser.extract_openai_content(&response_json)
+        let content = response_parser
+            .extract_openai_content(&response_json)
             .ok_or_else(|| anyhow!("No content in response"))?
             .to_string();
 
         // Extract usage and calculate cost
         let usage = Usage {
-            prompt_tokens: response_json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            completion_tokens: response_json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            prompt_tokens: response_json["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            completion_tokens: response_json["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             total_tokens: response_json["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
         };
 
@@ -300,9 +328,7 @@ impl Engine for OptimizedOpenAIEngine {
         &'a self,
         request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.execute_optimized(request).await
-        })
+        Box::new(async move { self.execute_optimized(request).await })
     }
 
     fn process_request_with_file<'a>(
@@ -310,18 +336,14 @@ impl Engine for OptimizedOpenAIEngine {
         request: &'a Request,
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.process_file_optimized(request, file_path).await
-        })
+        Box::new(async move { self.process_file_optimized(request, file_path).await })
     }
 
     fn upload_file<'a>(
         &'a self,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("File upload not supported for OpenAI engine"))
-        })
+        Box::new(async move { Err(anyhow!("File upload not supported for OpenAI engine")) })
     }
 
     fn upsert<'a>(

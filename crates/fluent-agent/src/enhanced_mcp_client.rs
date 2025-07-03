@@ -6,9 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::transport::{
-    McpTransport, TransportFactory, TransportConfig, JsonRpcRequest
-};
+use crate::transport::{JsonRpcRequest, McpTransport, TransportConfig, TransportFactory};
 
 /// MCP Protocol version
 const MCP_VERSION: &str = "2025-06-18";
@@ -105,7 +103,7 @@ impl EnhancedMcpClient {
     /// Create a new enhanced MCP client with transport configuration
     pub async fn new(transport_config: TransportConfig) -> Result<Self> {
         let transport = TransportFactory::create_transport(transport_config).await?;
-        
+
         let client = Self {
             transport,
             tools: Arc::new(RwLock::new(Vec::new())),
@@ -113,13 +111,13 @@ impl EnhancedMcpClient {
             capabilities: Arc::new(RwLock::new(None)),
             client_info: ClientInfo::default(),
         };
-        
+
         // Initialize the connection
         client.initialize().await?;
-        
+
         Ok(client)
     }
-    
+
     /// Initialize the MCP connection
     async fn initialize(&self) -> Result<()> {
         // Send initialize request
@@ -138,21 +136,25 @@ impl EnhancedMcpClient {
                 "clientInfo": self.client_info
             })),
         };
-        
+
         let response = self.transport.send_request(init_request).await?;
-        
+
         if let Some(error) = response.error {
-            return Err(anyhow!("Initialize failed: {} - {}", error.code, error.message));
+            return Err(anyhow!(
+                "Initialize failed: {} - {}",
+                error.code,
+                error.message
+            ));
         }
-        
+
         if let Some(result) = response.result {
             if let Ok(server_caps) = serde_json::from_value::<ServerCapabilities>(
-                result.get("capabilities").unwrap_or(&json!({})).clone()
+                result.get("capabilities").unwrap_or(&json!({})).clone(),
             ) {
                 *self.capabilities.write().await = Some(server_caps);
             }
         }
-        
+
         // Send initialized notification
         let initialized_notification = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -160,17 +162,17 @@ impl EnhancedMcpClient {
             method: "notifications/initialized".to_string(),
             params: None,
         };
-        
+
         // For notifications, we don't wait for a response
         let _ = self.transport.send_request(initialized_notification).await;
-        
+
         // Discover available tools and resources
         self.discover_tools().await?;
         self.discover_resources().await?;
-        
+
         Ok(())
     }
-    
+
     /// Discover available tools from the server
     async fn discover_tools(&self) -> Result<()> {
         let request = JsonRpcRequest {
@@ -179,18 +181,22 @@ impl EnhancedMcpClient {
             method: "tools/list".to_string(),
             params: None,
         };
-        
+
         let response = self.transport.send_request(request).await?;
-        
+
         if let Some(error) = response.error {
-            return Err(anyhow!("Tools discovery failed: {} - {}", error.code, error.message));
+            return Err(anyhow!(
+                "Tools discovery failed: {} - {}",
+                error.code,
+                error.message
+            ));
         }
-        
+
         if let Some(result) = response.result {
             if let Some(tools_array) = result.get("tools").and_then(|t| t.as_array()) {
                 let mut tools = self.tools.write().await;
                 tools.clear();
-                
+
                 for tool_value in tools_array {
                     if let Ok(tool) = serde_json::from_value::<McpTool>(tool_value.clone()) {
                         tools.push(tool);
@@ -198,10 +204,10 @@ impl EnhancedMcpClient {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Discover available resources from the server
     async fn discover_resources(&self) -> Result<()> {
         let request = JsonRpcRequest {
@@ -210,30 +216,32 @@ impl EnhancedMcpClient {
             method: "resources/list".to_string(),
             params: None,
         };
-        
+
         let response = self.transport.send_request(request).await?;
-        
+
         if let Some(_error) = response.error {
             // Resources might not be supported, so we don't fail here
             return Ok(());
         }
-        
+
         if let Some(result) = response.result {
             if let Some(resources_array) = result.get("resources").and_then(|r| r.as_array()) {
                 let mut resources = self.resources.write().await;
                 resources.clear();
-                
+
                 for resource_value in resources_array {
-                    if let Ok(resource) = serde_json::from_value::<McpResource>(resource_value.clone()) {
+                    if let Ok(resource) =
+                        serde_json::from_value::<McpResource>(resource_value.clone())
+                    {
                         resources.push(resource);
                     }
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Execute a tool with the given parameters
     pub async fn execute_tool(&self, tool_name: &str, parameters: Value) -> Result<McpToolResult> {
         let request = JsonRpcRequest {
@@ -245,13 +253,17 @@ impl EnhancedMcpClient {
                 "arguments": parameters
             })),
         };
-        
+
         let response = self.transport.send_request(request).await?;
-        
+
         if let Some(error) = response.error {
-            return Err(anyhow!("Tool execution failed: {} - {}", error.code, error.message));
+            return Err(anyhow!(
+                "Tool execution failed: {} - {}",
+                error.code,
+                error.message
+            ));
         }
-        
+
         if let Some(result) = response.result {
             let tool_result = serde_json::from_value::<McpToolResult>(result)?;
             Ok(tool_result)
@@ -259,7 +271,7 @@ impl EnhancedMcpClient {
             Err(anyhow!("No result returned from tool execution"))
         }
     }
-    
+
     /// Read a resource by URI
     pub async fn read_resource(&self, uri: &str) -> Result<Value> {
         let request = JsonRpcRequest {
@@ -270,41 +282,47 @@ impl EnhancedMcpClient {
                 "uri": uri
             })),
         };
-        
+
         let response = self.transport.send_request(request).await?;
-        
+
         if let Some(error) = response.error {
-            return Err(anyhow!("Resource read failed: {} - {}", error.code, error.message));
+            return Err(anyhow!(
+                "Resource read failed: {} - {}",
+                error.code,
+                error.message
+            ));
         }
-        
-        response.result.ok_or_else(|| anyhow!("No result returned from resource read"))
+
+        response
+            .result
+            .ok_or_else(|| anyhow!("No result returned from resource read"))
     }
-    
+
     /// Get available tools
     pub async fn get_tools(&self) -> Vec<McpTool> {
         self.tools.read().await.clone()
     }
-    
+
     /// Get available resources
     pub async fn get_resources(&self) -> Vec<McpResource> {
         self.resources.read().await.clone()
     }
-    
+
     /// Get server capabilities
     pub async fn get_capabilities(&self) -> Option<ServerCapabilities> {
         self.capabilities.read().await.clone()
     }
-    
+
     /// Check if the client is connected
     pub async fn is_connected(&self) -> bool {
         self.transport.is_connected().await
     }
-    
+
     /// Close the connection
     pub async fn close(&self) -> Result<()> {
         self.transport.close().await
     }
-    
+
     /// Get transport metadata
     pub fn get_transport_metadata(&self) -> HashMap<String, String> {
         self.transport.get_metadata()
@@ -314,8 +332,8 @@ impl EnhancedMcpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transport::{TransportType, ConnectionConfig, TimeoutConfig, RetryConfig};
-    
+    use crate::transport::{ConnectionConfig, RetryConfig, TimeoutConfig, TransportType};
+
     #[tokio::test]
     async fn test_enhanced_mcp_client_creation() {
         let config = TransportConfig {
@@ -328,12 +346,12 @@ mod tests {
             timeout_config: TimeoutConfig::default(),
             retry_config: RetryConfig::default(),
         };
-        
+
         // This will fail due to no server, but tests the creation logic
         let result = EnhancedMcpClient::new(config).await;
         assert!(result.is_err()); // Expected to fail connection
     }
-    
+
     #[test]
     fn test_client_info_default() {
         let client_info = ClientInfo::default();

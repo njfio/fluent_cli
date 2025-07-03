@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use crate::context::ExecutionContext;
 
 /// Goal that the agent is working towards
-/// 
+///
 /// Goals represent high-level objectives that the agent should achieve.
 /// They provide direction and success criteria for agent execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +93,7 @@ impl Goal {
     /// Get estimated complexity based on goal type and criteria
     pub fn get_complexity(&self) -> GoalComplexity {
         let criteria_count = self.success_criteria.len();
-        
+
         match self.goal_type {
             GoalType::CodeGeneration | GoalType::Refactoring => {
                 if criteria_count > 5 {
@@ -121,16 +121,16 @@ impl Goal {
         let base_duration = match self.goal_type {
             GoalType::CodeGeneration => Duration::from_secs(300), // 5 minutes
             GoalType::CodeReview => Duration::from_secs(180),     // 3 minutes
-            GoalType::Testing => Duration::from_secs(240),       // 4 minutes
-            GoalType::Debugging => Duration::from_secs(600),     // 10 minutes
-            GoalType::Refactoring => Duration::from_secs(480),   // 8 minutes
-            GoalType::Documentation => Duration::from_secs(360), // 6 minutes
-            GoalType::Analysis => Duration::from_secs(420),      // 7 minutes
-            GoalType::FileOperation => Duration::from_secs(60),  // 1 minute
-            GoalType::Communication => Duration::from_secs(30),  // 30 seconds
-            GoalType::Planning => Duration::from_secs(120),      // 2 minutes
-            GoalType::Learning => Duration::from_secs(900),      // 15 minutes
-            GoalType::Research => Duration::from_secs(1200),     // 20 minutes
+            GoalType::Testing => Duration::from_secs(240),        // 4 minutes
+            GoalType::Debugging => Duration::from_secs(600),      // 10 minutes
+            GoalType::Refactoring => Duration::from_secs(480),    // 8 minutes
+            GoalType::Documentation => Duration::from_secs(360),  // 6 minutes
+            GoalType::Analysis => Duration::from_secs(420),       // 7 minutes
+            GoalType::FileOperation => Duration::from_secs(60),   // 1 minute
+            GoalType::Communication => Duration::from_secs(30),   // 30 seconds
+            GoalType::Planning => Duration::from_secs(120),       // 2 minutes
+            GoalType::Learning => Duration::from_secs(900),       // 15 minutes
+            GoalType::Research => Duration::from_secs(1200),      // 20 minutes
         };
 
         // Adjust based on complexity
@@ -144,7 +144,10 @@ impl Goal {
     /// Check if goal has timed out
     pub fn is_timed_out(&self, start_time: SystemTime) -> bool {
         if let Some(timeout) = self.timeout {
-            SystemTime::now().duration_since(start_time).unwrap_or_default() > timeout
+            SystemTime::now()
+                .duration_since(start_time)
+                .unwrap_or_default()
+                > timeout
         } else {
             false
         }
@@ -225,7 +228,9 @@ impl std::fmt::Display for GoalValidationError {
             GoalValidationError::EmptyDescription => write!(f, "Goal description cannot be empty"),
             GoalValidationError::DescriptionTooShort => write!(f, "Goal description is too short"),
             GoalValidationError::NoSuccessCriteria => write!(f, "Goal must have success criteria"),
-            GoalValidationError::InvalidMaxIterations => write!(f, "Max iterations must be greater than 0"),
+            GoalValidationError::InvalidMaxIterations => {
+                write!(f, "Max iterations must be greater than 0")
+            }
             GoalValidationError::InvalidTimeout => write!(f, "Timeout must be greater than 0"),
         }
     }
@@ -287,7 +292,11 @@ pub struct GoalTemplates;
 
 impl GoalTemplates {
     /// Create a code generation goal
-    pub fn code_generation(description: String, language: String, requirements: Vec<String>) -> Goal {
+    pub fn code_generation(
+        description: String,
+        language: String,
+        requirements: Vec<String>,
+    ) -> Goal {
         let mut criteria = vec![
             format!("Generate valid {} code", language),
             "Code compiles without errors".to_string(),
@@ -306,34 +315,51 @@ impl GoalTemplates {
 
     /// Create a code review goal
     pub fn code_review(file_path: String, focus_areas: Vec<String>) -> Goal {
-        Goal::builder(format!("Review code in {}", file_path), GoalType::CodeReview)
-            .priority(GoalPriority::Medium)
-            .success_criteria(vec![
-                "Identify potential issues".to_string(),
-                "Suggest improvements".to_string(),
-                "Check code quality".to_string(),
-            ])
-            .success_criteria(focus_areas.iter().map(|area| format!("Review {}", area)).collect())
-            .max_iterations(15)
-            .timeout(Duration::from_secs(300))
-            .metadata("file_path".to_string(), serde_json::json!(file_path))
-            .build_unchecked()
+        Goal::builder(
+            format!("Review code in {}", file_path),
+            GoalType::CodeReview,
+        )
+        .priority(GoalPriority::Medium)
+        .success_criteria(vec![
+            "Identify potential issues".to_string(),
+            "Suggest improvements".to_string(),
+            "Check code quality".to_string(),
+        ])
+        .success_criteria(
+            focus_areas
+                .iter()
+                .map(|area| format!("Review {}", area))
+                .collect(),
+        )
+        .max_iterations(15)
+        .timeout(Duration::from_secs(300))
+        .metadata("file_path".to_string(), serde_json::json!(file_path))
+        .build_unchecked()
     }
 
     /// Create a debugging goal
     pub fn debugging(issue_description: String, error_details: String) -> Goal {
-        Goal::builder(format!("Debug issue: {}", issue_description), GoalType::Debugging)
-            .priority(GoalPriority::High)
-            .success_criteria(vec![
-                "Identify root cause".to_string(),
-                "Propose solution".to_string(),
-                "Verify fix works".to_string(),
-            ])
-            .max_iterations(25)
-            .timeout(Duration::from_secs(900))
-            .metadata("issue_description".to_string(), serde_json::json!(issue_description))
-            .metadata("error_details".to_string(), serde_json::json!(error_details))
-            .build_unchecked()
+        Goal::builder(
+            format!("Debug issue: {}", issue_description),
+            GoalType::Debugging,
+        )
+        .priority(GoalPriority::High)
+        .success_criteria(vec![
+            "Identify root cause".to_string(),
+            "Propose solution".to_string(),
+            "Verify fix works".to_string(),
+        ])
+        .max_iterations(25)
+        .timeout(Duration::from_secs(900))
+        .metadata(
+            "issue_description".to_string(),
+            serde_json::json!(issue_description),
+        )
+        .metadata(
+            "error_details".to_string(),
+            serde_json::json!(error_details),
+        )
+        .build_unchecked()
     }
 
     /// Create a testing goal
@@ -345,7 +371,12 @@ impl GoalTemplates {
                 "Achieve good test coverage".to_string(),
                 "Tests pass successfully".to_string(),
             ])
-            .success_criteria(test_types.iter().map(|t| format!("Include {} tests", t)).collect())
+            .success_criteria(
+                test_types
+                    .iter()
+                    .map(|t| format!("Include {} tests", t))
+                    .collect(),
+            )
             .max_iterations(20)
             .timeout(Duration::from_secs(480))
             .metadata("component".to_string(), serde_json::json!(component))
@@ -370,34 +401,48 @@ impl GoalTemplates {
 
     /// Create a documentation goal
     pub fn documentation(scope: String, doc_types: Vec<String>) -> Goal {
-        Goal::builder(format!("Create documentation for {}", scope), GoalType::Documentation)
-            .priority(GoalPriority::Low)
-            .success_criteria(vec![
-                "Create clear documentation".to_string(),
-                "Include examples".to_string(),
-                "Cover all features".to_string(),
-            ])
-            .success_criteria(doc_types.iter().map(|t| format!("Include {} documentation", t)).collect())
-            .max_iterations(15)
-            .timeout(Duration::from_secs(540))
-            .metadata("scope".to_string(), serde_json::json!(scope))
-            .build_unchecked()
+        Goal::builder(
+            format!("Create documentation for {}", scope),
+            GoalType::Documentation,
+        )
+        .priority(GoalPriority::Low)
+        .success_criteria(vec![
+            "Create clear documentation".to_string(),
+            "Include examples".to_string(),
+            "Cover all features".to_string(),
+        ])
+        .success_criteria(
+            doc_types
+                .iter()
+                .map(|t| format!("Include {} documentation", t))
+                .collect(),
+        )
+        .max_iterations(15)
+        .timeout(Duration::from_secs(540))
+        .metadata("scope".to_string(), serde_json::json!(scope))
+        .build_unchecked()
     }
 
     /// Create an analysis goal
     pub fn analysis(subject: String, analysis_type: String) -> Goal {
-        Goal::builder(format!("Analyze {} for {}", subject, analysis_type), GoalType::Analysis)
-            .priority(GoalPriority::Medium)
-            .success_criteria(vec![
-                "Complete thorough analysis".to_string(),
-                "Identify key insights".to_string(),
-                "Provide recommendations".to_string(),
-            ])
-            .max_iterations(20)
-            .timeout(Duration::from_secs(600))
-            .metadata("subject".to_string(), serde_json::json!(subject))
-            .metadata("analysis_type".to_string(), serde_json::json!(analysis_type))
-            .build_unchecked()
+        Goal::builder(
+            format!("Analyze {} for {}", subject, analysis_type),
+            GoalType::Analysis,
+        )
+        .priority(GoalPriority::Medium)
+        .success_criteria(vec![
+            "Complete thorough analysis".to_string(),
+            "Identify key insights".to_string(),
+            "Provide recommendations".to_string(),
+        ])
+        .max_iterations(20)
+        .timeout(Duration::from_secs(600))
+        .metadata("subject".to_string(), serde_json::json!(subject))
+        .metadata(
+            "analysis_type".to_string(),
+            serde_json::json!(analysis_type),
+        )
+        .build_unchecked()
     }
 }
 
@@ -408,7 +453,7 @@ mod tests {
     #[test]
     fn test_goal_creation() {
         let goal = Goal::new("Test goal".to_string(), GoalType::CodeGeneration);
-        
+
         assert!(!goal.goal_id.is_empty());
         assert_eq!(goal.description, "Test goal");
         assert!(matches!(goal.goal_type, GoalType::CodeGeneration));
@@ -424,7 +469,7 @@ mod tests {
             .timeout(Duration::from_secs(300))
             .build()
             .unwrap();
-        
+
         assert_eq!(goal.description, "Test goal");
         assert_eq!(goal.priority, GoalPriority::High);
         assert_eq!(goal.success_criteria.len(), 1);
@@ -444,8 +489,11 @@ mod tests {
             timeout: None,
             metadata: HashMap::new(),
         };
-        
-        assert!(matches!(invalid_goal.validate(), Err(GoalValidationError::EmptyDescription)));
+
+        assert!(matches!(
+            invalid_goal.validate(),
+            Err(GoalValidationError::EmptyDescription)
+        ));
     }
 
     #[test]
@@ -454,9 +502,9 @@ mod tests {
             .success_criterion("Complete task".to_string())
             .build()
             .unwrap();
-        
+
         assert_eq!(simple_goal.get_complexity(), GoalComplexity::Low);
-        
+
         let complex_goal = Goal::builder("Complex task".to_string(), GoalType::CodeGeneration)
             .success_criteria(vec![
                 "Criterion 1".to_string(),
@@ -468,7 +516,7 @@ mod tests {
             ])
             .build()
             .unwrap();
-        
+
         assert_eq!(complex_goal.get_complexity(), GoalComplexity::High);
     }
 
@@ -479,11 +527,14 @@ mod tests {
             "Rust".to_string(),
             vec!["Must be async".to_string()],
         );
-        
+
         assert!(matches!(code_goal.goal_type, GoalType::CodeGeneration));
         assert_eq!(code_goal.priority, GoalPriority::High);
         assert!(code_goal.success_criteria.len() >= 3);
-        assert_eq!(code_goal.get_metadata("language"), Some(&serde_json::json!("Rust")));
+        assert_eq!(
+            code_goal.get_metadata("language"),
+            Some(&serde_json::json!("Rust"))
+        );
     }
 
     #[test]
@@ -493,10 +544,10 @@ mod tests {
             .success_criterion("Complete".to_string())
             .build()
             .unwrap();
-        
+
         let start_time = SystemTime::now() - Duration::from_secs(150);
         assert!(goal.is_timed_out(start_time));
-        
+
         let recent_start = SystemTime::now() - Duration::from_secs(50);
         assert!(!goal.is_timed_out(recent_start));
     }

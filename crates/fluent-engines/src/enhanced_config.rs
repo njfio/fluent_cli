@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use fluent_core::config::{EngineConfig, ConnectionConfig, Neo4jConfig};
+use fluent_core::config::{ConnectionConfig, EngineConfig, Neo4jConfig};
 use fluent_core::input_validator::InputValidator;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,13 +14,13 @@ use tokio::sync::RwLock;
 pub struct EnhancedEngineConfig {
     #[serde(flatten)]
     pub base: EngineConfig,
-    
+
     /// Configuration metadata
     pub metadata: ConfigMetadata,
-    
+
     /// Validation rules
     pub validation: ValidationRules,
-    
+
     /// Environment-specific overrides
     pub environments: HashMap<String, EnvironmentOverrides>,
 }
@@ -86,8 +86,9 @@ pub struct ConfigManager {
 impl ConfigManager {
     /// Create a new configuration manager
     pub fn new(config_dir: PathBuf) -> Self {
-        let current_environment = env::var("FLUENT_ENV").unwrap_or_else(|_| "development".to_string());
-        
+        let current_environment =
+            env::var("FLUENT_ENV").unwrap_or_else(|_| "development".to_string());
+
         Self {
             configs: Arc::new(RwLock::new(HashMap::new())),
             config_dir,
@@ -101,7 +102,10 @@ impl ConfigManager {
         {
             let configs = self.configs.read().await;
             if let Some(enhanced_config) = configs.get(engine_name) {
-                return self.apply_environment_overrides(&enhanced_config.base, &enhanced_config.environments);
+                return self.apply_environment_overrides(
+                    &enhanced_config.base,
+                    &enhanced_config.environments,
+                );
             }
         }
 
@@ -123,7 +127,11 @@ impl ConfigManager {
     }
 
     /// Save configuration to file
-    pub async fn save_config(&self, engine_name: &str, config: &EnhancedEngineConfig) -> Result<()> {
+    pub async fn save_config(
+        &self,
+        engine_name: &str,
+        config: &EnhancedEngineConfig,
+    ) -> Result<()> {
         // Validate before saving
         self.validate_config(config).await?;
 
@@ -174,7 +182,10 @@ impl ConfigManager {
         // Validate required parameters
         for required_param in &config.validation.required_parameters {
             if !config.base.parameters.contains_key(required_param) {
-                return Err(anyhow!("Required parameter '{}' is missing", required_param));
+                return Err(anyhow!(
+                    "Required parameter '{}' is missing",
+                    required_param
+                ));
             }
         }
 
@@ -203,7 +214,7 @@ impl ConfigManager {
     /// List all available configurations
     pub async fn list_configs(&self) -> Result<Vec<String>> {
         let mut configs = Vec::new();
-        
+
         let mut entries = tokio::fs::read_dir(&self.config_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             if let Some(file_name) = entry.file_name().to_str() {
@@ -231,10 +242,15 @@ impl ConfigManager {
     }
 
     /// Update configuration parameters
-    pub async fn update_parameters(&self, engine_name: &str, updates: HashMap<String, Value>) -> Result<()> {
+    pub async fn update_parameters(
+        &self,
+        engine_name: &str,
+        updates: HashMap<String, Value>,
+    ) -> Result<()> {
         let mut enhanced_config = {
             let configs = self.configs.read().await;
-            configs.get(engine_name)
+            configs
+                .get(engine_name)
                 .ok_or_else(|| anyhow!("Configuration '{}' not found", engine_name))?
                 .clone()
         };
@@ -251,9 +267,10 @@ impl ConfigManager {
     // Private helper methods
 
     async fn load_from_file(&self, path: &Path) -> Result<EnhancedEngineConfig> {
-        let content = tokio::fs::read_to_string(path).await
+        let content = tokio::fs::read_to_string(path)
+            .await
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-        
+
         serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))
     }
@@ -285,7 +302,12 @@ impl ConfigManager {
         Ok(config)
     }
 
-    fn validate_parameter_type(&self, name: &str, value: &Value, param_type: &ParameterType) -> Result<()> {
+    fn validate_parameter_type(
+        &self,
+        name: &str,
+        value: &Value,
+        param_type: &ParameterType,
+    ) -> Result<()> {
         let is_valid = match param_type {
             ParameterType::String | ParameterType::SecretString => value.is_string(),
             ParameterType::Number => value.is_number(),
@@ -295,23 +317,42 @@ impl ConfigManager {
         };
 
         if !is_valid {
-            return Err(anyhow!("Parameter '{}' has invalid type. Expected: {:?}", name, param_type));
+            return Err(anyhow!(
+                "Parameter '{}' has invalid type. Expected: {:?}",
+                name,
+                param_type
+            ));
         }
 
         Ok(())
     }
 
-    fn validate_parameter_constraints(&self, name: &str, value: &Value, constraints: &ParameterConstraints) -> Result<()> {
+    fn validate_parameter_constraints(
+        &self,
+        name: &str,
+        value: &Value,
+        constraints: &ParameterConstraints,
+    ) -> Result<()> {
         // Validate numeric constraints
         if let Some(num) = value.as_f64() {
             if let Some(min) = constraints.min_value {
                 if num < min {
-                    return Err(anyhow!("Parameter '{}' value {} is below minimum {}", name, num, min));
+                    return Err(anyhow!(
+                        "Parameter '{}' value {} is below minimum {}",
+                        name,
+                        num,
+                        min
+                    ));
                 }
             }
             if let Some(max) = constraints.max_value {
                 if num > max {
-                    return Err(anyhow!("Parameter '{}' value {} is above maximum {}", name, num, max));
+                    return Err(anyhow!(
+                        "Parameter '{}' value {} is above maximum {}",
+                        name,
+                        num,
+                        max
+                    ));
                 }
             }
         }
@@ -320,12 +361,22 @@ impl ConfigManager {
         if let Some(string) = value.as_str() {
             if let Some(min_len) = constraints.min_length {
                 if string.len() < min_len {
-                    return Err(anyhow!("Parameter '{}' length {} is below minimum {}", name, string.len(), min_len));
+                    return Err(anyhow!(
+                        "Parameter '{}' length {} is below minimum {}",
+                        name,
+                        string.len(),
+                        min_len
+                    ));
                 }
             }
             if let Some(max_len) = constraints.max_length {
                 if string.len() > max_len {
-                    return Err(anyhow!("Parameter '{}' length {} is above maximum {}", name, string.len(), max_len));
+                    return Err(anyhow!(
+                        "Parameter '{}' length {} is above maximum {}",
+                        name,
+                        string.len(),
+                        max_len
+                    ));
                 }
             }
         }
@@ -333,7 +384,11 @@ impl ConfigManager {
         // Validate allowed values
         if let Some(allowed) = &constraints.allowed_values {
             if !allowed.contains(value) {
-                return Err(anyhow!("Parameter '{}' has invalid value. Allowed values: {:?}", name, allowed));
+                return Err(anyhow!(
+                    "Parameter '{}' has invalid value. Allowed values: {:?}",
+                    name,
+                    allowed
+                ));
             }
         }
 
@@ -342,9 +397,18 @@ impl ConfigManager {
 
     fn create_openai_config(name: &str) -> EngineConfig {
         let mut parameters = HashMap::new();
-        parameters.insert("model".to_string(), Value::String("gpt-3.5-turbo".to_string()));
-        parameters.insert("temperature".to_string(), Value::Number(serde_json::Number::from_f64(0.7).unwrap()));
-        parameters.insert("max_tokens".to_string(), Value::Number(serde_json::Number::from(4096)));
+        parameters.insert(
+            "model".to_string(),
+            Value::String("gpt-3.5-turbo".to_string()),
+        );
+        parameters.insert(
+            "temperature".to_string(),
+            Value::Number(serde_json::Number::from_f64(0.7).unwrap()),
+        );
+        parameters.insert(
+            "max_tokens".to_string(),
+            Value::Number(serde_json::Number::from(4096)),
+        );
 
         EngineConfig {
             name: name.to_string(),
@@ -364,8 +428,14 @@ impl ConfigManager {
 
     fn create_anthropic_config(name: &str) -> EngineConfig {
         let mut parameters = HashMap::new();
-        parameters.insert("model".to_string(), Value::String("claude-3-sonnet".to_string()));
-        parameters.insert("max_tokens".to_string(), Value::Number(serde_json::Number::from(4096)));
+        parameters.insert(
+            "model".to_string(),
+            Value::String("claude-3-sonnet".to_string()),
+        );
+        parameters.insert(
+            "max_tokens".to_string(),
+            Value::Number(serde_json::Number::from(4096)),
+        );
 
         EngineConfig {
             name: name.to_string(),
@@ -385,7 +455,10 @@ impl ConfigManager {
 
     fn create_gemini_config(name: &str) -> EngineConfig {
         let mut parameters = HashMap::new();
-        parameters.insert("model".to_string(), Value::String("gemini-1.5-flash".to_string()));
+        parameters.insert(
+            "model".to_string(),
+            Value::String("gemini-1.5-flash".to_string()),
+        );
 
         EngineConfig {
             name: name.to_string(),
@@ -434,22 +507,28 @@ impl ConfigManager {
                 },
                 parameter_constraints: {
                     let mut constraints = HashMap::new();
-                    constraints.insert("temperature".to_string(), ParameterConstraints {
-                        min_value: Some(0.0),
-                        max_value: Some(2.0),
-                        min_length: None,
-                        max_length: None,
-                        allowed_values: None,
-                        pattern: None,
-                    });
-                    constraints.insert("max_tokens".to_string(), ParameterConstraints {
-                        min_value: Some(1.0),
-                        max_value: Some(32768.0),
-                        min_length: None,
-                        max_length: None,
-                        allowed_values: None,
-                        pattern: None,
-                    });
+                    constraints.insert(
+                        "temperature".to_string(),
+                        ParameterConstraints {
+                            min_value: Some(0.0),
+                            max_value: Some(2.0),
+                            min_length: None,
+                            max_length: None,
+                            allowed_values: None,
+                            pattern: None,
+                        },
+                    );
+                    constraints.insert(
+                        "max_tokens".to_string(),
+                        ParameterConstraints {
+                            min_value: Some(1.0),
+                            max_value: Some(32768.0),
+                            min_length: None,
+                            max_length: None,
+                            allowed_values: None,
+                            pattern: None,
+                        },
+                    );
                     constraints
                 },
                 connection_timeout: Some(30),
@@ -475,27 +554,30 @@ mod tests {
     async fn test_config_manager_creation() {
         let temp_dir = TempDir::new().unwrap();
         let manager = ConfigManager::new(temp_dir.path().to_path_buf());
-        
+
         assert_eq!(manager.current_environment, "development");
     }
 
     #[tokio::test]
     async fn test_default_config_creation() {
         let config = ConfigManager::create_default_config("openai", "test-openai");
-        
+
         assert_eq!(config.base.engine, "openai");
         assert_eq!(config.base.name, "test-openai");
-        assert!(config.validation.required_parameters.contains(&"model".to_string()));
+        assert!(config
+            .validation
+            .required_parameters
+            .contains(&"model".to_string()));
     }
 
     #[tokio::test]
     async fn test_config_validation() {
         let temp_dir = TempDir::new().unwrap();
         let manager = ConfigManager::new(temp_dir.path().to_path_buf());
-        
+
         let config = ConfigManager::create_default_config("openai", "test");
         let result = manager.validate_config(&config).await;
-        
+
         assert!(result.is_ok());
     }
 
@@ -503,12 +585,15 @@ mod tests {
     async fn test_parameter_validation() {
         let temp_dir = TempDir::new().unwrap();
         let manager = ConfigManager::new(temp_dir.path().to_path_buf());
-        
+
         let mut config = ConfigManager::create_default_config("openai", "test");
-        
+
         // Test invalid temperature
-        config.base.parameters.insert("temperature".to_string(), Value::Number(serde_json::Number::from_f64(3.0).unwrap()));
-        
+        config.base.parameters.insert(
+            "temperature".to_string(),
+            Value::Number(serde_json::Number::from_f64(3.0).unwrap()),
+        );
+
         let result = manager.validate_config(&config).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("above maximum"));

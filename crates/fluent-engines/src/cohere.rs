@@ -6,8 +6,7 @@ use fluent_core::cost_calculator::CostCalculator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
 use log::debug;
 use reqwest::Client;
@@ -156,7 +155,8 @@ impl Engine for CohereEngine {
             // Calculate cost securely
             let cost = {
                 let mut calculator = self.cost_calculator.lock().unwrap();
-                calculator.calculate_cost("cohere", &model, &usage)
+                calculator
+                    .calculate_cost("cohere", &model, &usage)
                     .unwrap_or_else(|e| {
                         debug!("Cost calculation failed: {}, using zero cost", e);
                         Cost {
@@ -324,7 +324,8 @@ impl Engine for CohereEngine {
             // Calculate cost securely
             let cost = {
                 let mut calculator = self.cost_calculator.lock().unwrap();
-                calculator.calculate_cost("cohere", &model, &usage)
+                calculator
+                    .calculate_cost("cohere", &model, &usage)
                     .unwrap_or_else(|e| {
                         debug!("Cost calculation failed: {}, using zero cost", e);
                         Cost {

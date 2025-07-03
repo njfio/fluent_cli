@@ -1,10 +1,10 @@
-use crate::enhanced_cache::{EnhancedCache, CacheKey, CacheConfig};
-use fluent_core::types::{Request, Response};
+use crate::enhanced_cache::{CacheConfig, CacheKey, EnhancedCache};
 use anyhow::Result;
-use std::sync::Arc;
-use std::collections::HashMap;
-use tokio::sync::RwLock;
+use fluent_core::types::{Request, Response};
 use log::debug;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Centralized cache manager for all engines
 pub struct CacheManager {
@@ -42,9 +42,9 @@ impl CacheManager {
         // Create new cache
         let mut config = self.default_config.clone();
         config.disk_cache_dir = Some(format!("fluent_cache_{}", engine_name));
-        
+
         let cache = Arc::new(EnhancedCache::new(config)?);
-        
+
         // Store in map
         {
             let mut caches = self.caches.write().await;
@@ -69,11 +69,11 @@ impl CacheManager {
 
         let cache = self.get_cache(engine_name).await?;
         let mut cache_key = CacheKey::new(&request.payload, engine_name);
-        
+
         if let Some(model) = model {
             cache_key = cache_key.with_model(model);
         }
-        
+
         if let Some(params) = parameters {
             cache_key = cache_key.with_parameters(params);
         }
@@ -109,11 +109,11 @@ impl CacheManager {
 
         let cache = self.get_cache(engine_name).await?;
         let mut cache_key = CacheKey::new(&request.payload, engine_name);
-        
+
         if let Some(model) = model {
             cache_key = cache_key.with_model(model);
         }
-        
+
         if let Some(params) = parameters {
             cache_key = cache_key.with_parameters(params);
         }
@@ -139,38 +139,44 @@ impl CacheManager {
     pub async fn get_statistics(&self) -> HashMap<String, serde_json::Value> {
         let mut stats = HashMap::new();
         let caches = self.caches.read().await;
-        
+
         for (engine_name, cache) in caches.iter() {
             let cache_stats = cache.get_stats();
-            stats.insert(engine_name.clone(), serde_json::to_value(cache_stats).unwrap_or_default());
+            stats.insert(
+                engine_name.clone(),
+                serde_json::to_value(cache_stats).unwrap_or_default(),
+            );
         }
-        
+
         stats
     }
 
     /// Clear all caches
     pub async fn clear_all(&self) -> Result<()> {
         let caches = self.caches.read().await;
-        
+
         for (engine_name, cache) in caches.iter() {
             if let Err(e) = cache.clear().await {
                 debug!("Failed to clear cache for {}: {}", engine_name, e);
             }
         }
-        
+
         Ok(())
     }
 
     /// Cleanup expired entries in all caches
     pub async fn cleanup_expired(&self) -> Result<()> {
         let caches = self.caches.read().await;
-        
+
         for (engine_name, cache) in caches.iter() {
             if let Err(e) = cache.cleanup_expired().await {
-                debug!("Failed to cleanup expired entries for {}: {}", engine_name, e);
+                debug!(
+                    "Failed to cleanup expired entries for {}: {}",
+                    engine_name, e
+                );
             }
         }
-        
+
         Ok(())
     }
 }
@@ -187,9 +193,7 @@ static CACHE_MANAGER: tokio::sync::OnceCell<Arc<CacheManager>> = tokio::sync::On
 /// Get the global cache manager instance
 pub async fn global_cache_manager() -> Arc<CacheManager> {
     CACHE_MANAGER
-        .get_or_init(|| async {
-            Arc::new(CacheManager::new())
-        })
+        .get_or_init(|| async { Arc::new(CacheManager::new()) })
         .await
         .clone()
 }
@@ -202,7 +206,9 @@ pub async fn get_cached_response(
     parameters: Option<&HashMap<String, serde_json::Value>>,
 ) -> Result<Option<Response>> {
     let manager = global_cache_manager().await;
-    manager.get_cached_response(engine_name, request, model, parameters).await
+    manager
+        .get_cached_response(engine_name, request, model, parameters)
+        .await
 }
 
 /// Convenience function to cache response for any engine
@@ -214,17 +220,19 @@ pub async fn cache_response(
     parameters: Option<&HashMap<String, serde_json::Value>>,
 ) -> Result<()> {
     let manager = global_cache_manager().await;
-    manager.cache_response(engine_name, request, response, model, parameters).await
+    manager
+        .cache_response(engine_name, request, response, model, parameters)
+        .await
 }
 
 /// Start background task for cache maintenance
 pub fn start_cache_maintenance() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // Every 5 minutes
-        
+
         loop {
             interval.tick().await;
-            
+
             let manager = global_cache_manager().await;
             if let Err(e) = manager.cleanup_expired().await {
                 debug!("Cache maintenance error: {}", e);
@@ -272,23 +280,36 @@ mod tests {
     #[tokio::test]
     async fn test_cache_operations() {
         std::env::set_var("FLUENT_CACHE", "1");
-        
+
         let manager = CacheManager::new();
         let request = create_test_request();
         let response = create_test_response();
-        
+
         // Should be cache miss initially
-        let cached = manager.get_cached_response("test_engine", &request, Some("test-model"), None).await.unwrap();
+        let cached = manager
+            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .await
+            .unwrap();
         assert!(cached.is_none());
-        
+
         // Cache the response
-        manager.cache_response("test_engine", &request, &response, Some("test-model"), None).await.unwrap();
-        
+        manager
+            .cache_response("test_engine", &request, &response, Some("test-model"), None)
+            .await
+            .unwrap();
+
         // Should be cache hit now
-        let cached = manager.get_cached_response("test_engine", &request, Some("test-model"), None).await.unwrap();
+        let cached = manager
+            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .await
+            .unwrap();
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().content, "test response");
-        
+
         std::env::remove_var("FLUENT_CACHE");
     }
 }
+
+// Include comprehensive test suite
+#[path = "cache_manager_tests.rs"]
+mod cache_manager_tests;

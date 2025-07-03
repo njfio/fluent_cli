@@ -1,7 +1,5 @@
-pub mod args;
+pub mod commands;
 pub mod pipeline_builder;
-
-
 
 use anyhow::{anyhow, Error};
 use std::pin::Pin;
@@ -21,7 +19,7 @@ pub mod cli {
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_core::error::{FluentError, FluentResult, ValidationError};
     use fluent_core::input_validator::InputValidator;
-    use fluent_core::memory_utils::{StringUtils, ObjectPool, StringBuffer};
+    use fluent_core::memory_utils::StringUtils;
     use fluent_core::traits::Engine;
     use fluent_core::types::{Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
@@ -39,7 +37,7 @@ pub mod cli {
 
     use log::{debug, error, info};
     use serde_json::Value;
-    use tokio::io::{AsyncReadExt, AsyncBufReadExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
     /// Convert anyhow errors to FluentError with context
     fn to_fluent_error(err: anyhow::Error, context: &str) -> FluentError {
@@ -47,19 +45,24 @@ pub mod cli {
     }
 
     /// Validate required CLI arguments
-    fn validate_required_string(matches: &ArgMatches, arg_name: &str, context: &str) -> FluentResult<String> {
-        matches.get_one::<String>(arg_name)
-            .cloned()
-            .ok_or_else(|| FluentError::Validation(ValidationError::MissingField(
-                format!("{} is required for {}", arg_name, context)
+    fn validate_required_string(
+        matches: &ArgMatches,
+        arg_name: &str,
+        context: &str,
+    ) -> FluentResult<String> {
+        matches.get_one::<String>(arg_name).cloned().ok_or_else(|| {
+            FluentError::Validation(ValidationError::MissingField(format!(
+                "{} is required for {}",
+                arg_name, context
             )))
+        })
     }
 
     /// Enhanced validation for file paths with security checks
     fn validate_file_path_secure(path: &str, context: &str) -> FluentResult<String> {
         if path.is_empty() {
             return Err(FluentError::Validation(ValidationError::MissingField(
-                format!("File path is required for {}", context)
+                format!("File path is required for {}", context),
             )));
         }
 
@@ -85,7 +88,12 @@ pub mod cli {
     }
 
     /// Validate numeric parameters with bounds checking
-    fn validate_numeric_parameter(value: u32, min: u32, max: u32, param_name: &str) -> FluentResult<u32> {
+    fn validate_numeric_parameter(
+        value: u32,
+        min: u32,
+        max: u32,
+        param_name: &str,
+    ) -> FluentResult<u32> {
         if value < min || value > max {
             return Err(FluentError::Validation(ValidationError::InvalidFormat {
                 input: value.to_string(),
@@ -95,39 +103,25 @@ pub mod cli {
         Ok(value)
     }
 
-    /// Validate configuration file path and existence
-    fn validate_config_path(config_path: &str) -> FluentResult<String> {
-        if config_path.is_empty() {
-            return Err(FluentError::Validation(ValidationError::MissingField(
-                "Configuration file path cannot be empty".to_string()
-            )));
-        }
-
-        // Validate the path format
-        let validated_path = validate_file_path_secure(config_path, "configuration")?;
-
-        // Check if file exists
-        if !std::path::Path::new(&validated_path).exists() {
-            return Err(FluentError::Validation(ValidationError::InvalidFormat {
-                input: validated_path.clone(),
-                expected: "existing configuration file".to_string(),
-            }));
-        }
-
-        Ok(validated_path)
-    }
-
     /// Validate engine name against supported engines
     fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
         if engine_name.is_empty() {
             return Err(FluentError::Validation(ValidationError::MissingField(
-                "Engine name cannot be empty".to_string()
+                "Engine name cannot be empty".to_string(),
             )));
         }
 
         let supported_engines = [
-            "openai", "anthropic", "google_gemini", "cohere", "mistral",
-            "stability_ai", "replicate", "leonardo_ai", "imagine_pro", "webhook"
+            "openai",
+            "anthropic",
+            "google_gemini",
+            "cohere",
+            "mistral",
+            "stability_ai",
+            "replicate",
+            "leonardo_ai",
+            "imagine_pro",
+            "webhook",
         ];
 
         if !supported_engines.contains(&engine_name) {
@@ -140,52 +134,6 @@ pub mod cli {
         }
 
         Ok(engine_name.to_string())
-    }
-
-    /// Memory-efficient request processing with resource cleanup
-    struct RequestProcessor {
-        string_buffer: StringBuffer,
-        object_pool: ObjectPool<String>,
-    }
-
-    impl RequestProcessor {
-        fn new() -> Self {
-            Self {
-                string_buffer: StringBuffer::with_capacity(4096), // Pre-allocate reasonable size
-                object_pool: ObjectPool::new(10), // Pool for reusable strings
-            }
-        }
-
-        /// Process request with memory-efficient string handling
-        fn process_request_content(&mut self, parts: &[&str]) -> String {
-            self.string_buffer.clear();
-
-            for (i, part) in parts.iter().enumerate() {
-                if i > 0 {
-                    self.string_buffer.write_str(" ");
-                }
-                self.string_buffer.write_str(part);
-            }
-
-            self.string_buffer.take()
-        }
-
-        /// Get a reusable string from the pool
-        fn get_temp_string(&mut self) -> String {
-            self.object_pool.get(|| String::with_capacity(256))
-        }
-
-        /// Return a string to the pool for reuse
-        fn return_temp_string(&mut self, mut s: String) {
-            s.clear();
-            self.object_pool.return_object(s);
-        }
-
-        /// Clean up resources and free memory
-        fn cleanup(&mut self) {
-            self.string_buffer.clear();
-            // The object pool will be dropped automatically
-        }
     }
 
     /// Memory monitoring and cleanup utilities
@@ -275,10 +223,10 @@ pub mod cli {
     use fluent_engines::perplexity::PerplexityEngine;
     use fluent_engines::replicate::ReplicateEngine;
 
+    use fluent_agent::Agent;
     use fluent_engines::pipeline_executor::{
         validate_pipeline_yaml, FileStateStore, Pipeline, PipelineExecutor, StateStore,
     };
-    use fluent_agent::Agent;
     use fluent_engines::stabilityai::StabilityAIEngine;
     use fluent_engines::webhook::WebhookEngine;
     use tokio::time::Instant;
@@ -629,9 +577,9 @@ pub mod cli {
     }
 
     pub async fn run_mcp_server(_sub_matches: &ArgMatches) -> Result<()> {
-        use fluent_agent::tools::ToolRegistry;
-        use fluent_agent::memory::SqliteMemoryStore;
         use fluent_agent::mcp_adapter::FluentMcpServer;
+        use fluent_agent::memory::SqliteMemoryStore;
+        use fluent_agent::tools::ToolRegistry;
         use std::sync::Arc;
 
         println!("🔌 Starting Fluent CLI Model Context Protocol Server");
@@ -663,9 +611,8 @@ pub mod cli {
         _config: &Config,
         config_path: &str,
     ) -> Result<()> {
-        use fluent_agent::config::{AgentEngineConfig, credentials};
+        use fluent_agent::config::{credentials, AgentEngineConfig};
         use fluent_agent::goal::{Goal, GoalType};
-
 
         println!("🤖 Starting Agentic Mode");
         println!("Goal: {}", goal_description);
@@ -673,7 +620,8 @@ pub mod cli {
         println!("Tools enabled: {}", enable_tools);
 
         // Load agent configuration
-        let agent_config = AgentEngineConfig::load_from_file(agent_config_path).await
+        let agent_config = AgentEngineConfig::load_from_file(agent_config_path)
+            .await
             .map_err(|e| anyhow!("Failed to load agent config: {}", e))?;
 
         println!("✅ Agent configuration loaded:");
@@ -684,7 +632,10 @@ pub mod cli {
 
         // Load credentials using fluent_cli's comprehensive system
         let credentials = credentials::load_from_environment();
-        println!("🔑 Loaded {} credential(s) from environment", credentials.len());
+        println!(
+            "🔑 Loaded {} credential(s) from environment",
+            credentials.len()
+        );
 
         // Validate required credentials
         let required_engines = vec![
@@ -696,10 +647,12 @@ pub mod cli {
 
         // Create runtime configuration with real engines
         println!("🔧 Creating LLM engines...");
-        let runtime_config = agent_config.create_runtime_config(
-            config_path, // Use the actual config file path
-            credentials,
-        ).await?;
+        let runtime_config = agent_config
+            .create_runtime_config(
+                config_path, // Use the actual config file path
+                credentials,
+            )
+            .await?;
 
         println!("✅ LLM engines created successfully!");
 
@@ -773,7 +726,9 @@ pub mod cli {
         println!("🚀 Starting Fluent CLI Agent with MCP capabilities");
 
         // Get the engine config
-        let engine_config = config.engines.iter()
+        let engine_config = config
+            .engines
+            .iter()
             .find(|e| e.name == engine_name)
             .ok_or_else(|| anyhow::anyhow!("Engine '{}' not found", engine_name))?;
 
@@ -800,11 +755,10 @@ pub mod cli {
             };
 
             println!("🔌 Connecting to MCP server: {}", name);
-            match agent.connect_to_mcp_server(
-                name.to_string(),
-                command,
-                &["--stdio"]
-            ).await {
+            match agent
+                .connect_to_mcp_server(name.to_string(), command, &["--stdio"])
+                .await
+            {
                 Ok(_) => println!("✅ Connected to {}", name),
                 Err(e) => println!("⚠️ Failed to connect to {}: {}", name, e),
             }
@@ -856,7 +810,10 @@ pub mod cli {
         use fluent_agent::context::ExecutionContext;
         use std::fs;
 
-        println!("🎯 Starting autonomous execution for goal: {}", goal.description);
+        println!(
+            "🎯 Starting autonomous execution for goal: {}",
+            goal.description
+        );
 
         // Create execution context
         let mut context = ExecutionContext::new(goal.clone());
@@ -869,9 +826,13 @@ pub mod cli {
                 println!("🎮 Agent decision: Create the game now!");
 
                 // Determine what type of game to create based on the goal
-                let (file_extension, code_prompt, file_path) = if goal.description.to_lowercase().contains("javascript") ||
-                                                                  goal.description.to_lowercase().contains("html") ||
-                                                                  goal.description.to_lowercase().contains("web") {
+                let (file_extension, code_prompt, file_path) = if goal
+                    .description
+                    .to_lowercase()
+                    .contains("javascript")
+                    || goal.description.to_lowercase().contains("html")
+                    || goal.description.to_lowercase().contains("web")
+                {
                     (
                         "html",
                         format!(
@@ -914,8 +875,12 @@ pub mod cli {
                     payload: code_prompt,
                 };
 
-                println!("🧠 Generating {} game code with Claude...", file_extension.to_uppercase());
-                let code_response = Pin::from(runtime_config.reasoning_engine.execute(&code_request)).await?;
+                println!(
+                    "🧠 Generating {} game code with Claude...",
+                    file_extension.to_uppercase()
+                );
+                let code_response =
+                    Pin::from(runtime_config.reasoning_engine.execute(&code_request)).await?;
 
                 // Extract the code from the response
                 let game_code = extract_code(&code_response.content, file_extension);
@@ -923,7 +888,11 @@ pub mod cli {
                 // Write the game to the file
                 fs::write(file_path, &game_code)?;
 
-                println!("✅ Created {} game at: {}", file_extension.to_uppercase(), file_path);
+                println!(
+                    "✅ Created {} game at: {}",
+                    file_extension.to_uppercase(),
+                    file_path
+                );
                 println!("📝 Game code length: {} characters", game_code.len());
 
                 // Update context
@@ -931,7 +900,10 @@ pub mod cli {
                 context.set_variable("game_path".to_string(), file_path.to_string());
                 context.set_variable("game_type".to_string(), file_extension.to_string());
 
-                println!("🎉 Goal achieved! {} game created successfully!", file_extension.to_uppercase());
+                println!(
+                    "🎉 Goal achieved! {} game created successfully!",
+                    file_extension.to_uppercase()
+                );
                 return Ok(());
             }
         }
@@ -1014,7 +986,7 @@ pub mod cli {
     </script>
 </body>
 </html>"#.to_string()
-            },
+            }
             "rs" => {
                 if response.contains("fn main()") {
                     return response.trim().to_string();
@@ -1037,12 +1009,59 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
-}"#.to_string()
-            },
+}"#
+                .to_string()
+            }
             _ => response.trim().to_string(),
         }
     }
 
+    /// New modular run function using command handlers
+    pub async fn run_modular() -> Result<()> {
+        use crate::commands::*;
+
+        let matches = build_cli().get_matches();
+        // Load configuration (simplified for demonstration)
+        let config_path = matches
+            .get_one::<String>("config")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "config.yaml".to_string());
+
+        let config = load_config(&config_path, "openai", &std::collections::HashMap::new())?;
+
+        // Route to appropriate command handler
+        match matches.subcommand() {
+            Some(("pipeline", sub_matches)) => {
+                let handler = pipeline::PipelineCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
+            Some(("agent", sub_matches)) => {
+                let handler = agent::AgentCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
+            Some(("mcp", sub_matches)) => {
+                let handler = mcp::McpCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
+            Some(("neo4j", sub_matches)) => {
+                let handler = neo4j::Neo4jCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
+            Some((_engine_name, sub_matches)) => {
+                // Handle engine commands
+                let handler = engine::EngineCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
+            None => {
+                // Default behavior - show help
+                build_cli().print_help()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Original monolithic run function (preserved for compatibility)
     pub async fn run() -> Result<()> {
         let matches = build_cli().get_matches();
 
@@ -1054,8 +1073,9 @@ fn main() -> io::Result<()> {
 
         let _: Result<(), Error> = match matches.subcommand() {
             Some(("pipeline", sub_matches)) => {
-                let pipeline_file = validate_required_string(sub_matches, "file", "pipeline execution")
-                    .map_err(|e| anyhow!("{}", e))?;
+                let pipeline_file =
+                    validate_required_string(sub_matches, "file", "pipeline execution")
+                        .map_err(|e| anyhow!("{}", e))?;
                 let input = validate_required_string(sub_matches, "input", "pipeline execution")
                     .map_err(|e| anyhow!("{}", e))?;
                 let force_fresh = sub_matches.get_flag("force_fresh");
@@ -1118,8 +1138,9 @@ fn main() -> io::Result<()> {
                     .map_err(|e| anyhow!("{}", e))?;
                 let task = validate_required_string(sub_matches, "task", "agent-mcp")
                     .map_err(|e| anyhow!("{}", e))?;
-                let mcp_servers_str = validate_required_string(sub_matches, "mcp-servers", "agent-mcp")
-                    .map_err(|e| anyhow!("{}", e))?;
+                let mcp_servers_str =
+                    validate_required_string(sub_matches, "mcp-servers", "agent-mcp")
+                        .map_err(|e| anyhow!("{}", e))?;
                 let config_path = sub_matches.get_one::<String>("config")
                     .map(|s| s.to_string())
                     .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
@@ -1142,19 +1163,24 @@ fn main() -> io::Result<()> {
 
         // Check for agentic mode
         if matches.get_flag("agentic") {
-            let goal = matches.get_one::<String>("goal")
-                .ok_or_else(|| anyhow!("Goal is required when using agentic mode. Use --goal to specify the goal."))?;
+            let goal = matches.get_one::<String>("goal").ok_or_else(|| {
+                anyhow!("Goal is required when using agentic mode. Use --goal to specify the goal.")
+            })?;
 
-            let agent_config_path = matches.get_one::<String>("agent_config")
+            let agent_config_path = matches
+                .get_one::<String>("agent_config")
                 .ok_or_else(|| anyhow!("Agent config path is required for agentic mode"))?;
-            let max_iterations_str = matches.get_one::<String>("max_iterations")
+            let max_iterations_str = matches
+                .get_one::<String>("max_iterations")
                 .ok_or_else(|| anyhow!("Max iterations is required for agentic mode"))?;
-            let max_iterations: u32 = max_iterations_str.parse()
+            let max_iterations: u32 = max_iterations_str
+                .parse()
                 .map_err(|_| anyhow!("Invalid max_iterations value: {}", max_iterations_str))?;
 
             // Validate max_iterations is within reasonable bounds
-            let validated_max_iterations = validate_numeric_parameter(max_iterations, 1, 1000, "max_iterations")
-                .map_err(|e| anyhow!("{}", e))?;
+            let validated_max_iterations =
+                validate_numeric_parameter(max_iterations, 1, 1000, "max_iterations")
+                    .map_err(|e| anyhow!("{}", e))?;
             let enable_tools = matches.get_flag("enable_tools");
 
             // Load the main config for engine credentials
@@ -1163,7 +1189,8 @@ fn main() -> io::Result<()> {
                 .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
                 .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
 
-            let engine_name = matches.get_one::<String>("engine")
+            let engine_name = matches
+                .get_one::<String>("engine")
                 .ok_or_else(|| anyhow!("Engine name is required"))?;
             let overrides: HashMap<String, String> = matches
                 .get_many::<String>("override")
@@ -1172,7 +1199,15 @@ fn main() -> io::Result<()> {
 
             let config = load_config(&config_path, engine_name, &overrides)?;
 
-            return run_agentic_mode(goal, agent_config_path, validated_max_iterations, enable_tools, &config, &config_path).await;
+            return run_agentic_mode(
+                goal,
+                agent_config_path,
+                validated_max_iterations,
+                enable_tools,
+                &config,
+                &config_path,
+            )
+            .await;
         }
 
         let config_path = matches.get_one::<String>("config")
@@ -1180,10 +1215,11 @@ fn main() -> io::Result<()> {
             .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
             .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
 
-        let engine_name = matches.get_one::<String>("engine")
+        let engine_name = matches
+            .get_one::<String>("engine")
             .ok_or_else(|| anyhow!("Engine name is required"))?;
-        let validated_engine_name = validate_engine_name(engine_name)
-            .map_err(|e| anyhow!("{}", e))?;
+        let validated_engine_name =
+            validate_engine_name(engine_name).map_err(|e| anyhow!("{}", e))?;
 
         let overrides: HashMap<String, String> = matches
             .get_many::<String>("override")
@@ -1215,10 +1251,16 @@ fn main() -> io::Result<()> {
             println!("Starting agent loop. Type 'exit' to quit.");
             loop {
                 line.clear();
-                if reader.read_line(&mut line).await? == 0 { break; }
+                if reader.read_line(&mut line).await? == 0 {
+                    break;
+                }
                 let prompt = line.trim();
-                if prompt.eq_ignore_ascii_case("exit") { break; }
-                if prompt.is_empty() { continue; }
+                if prompt.eq_ignore_ascii_case("exit") {
+                    break;
+                }
+                if prompt.is_empty() {
+                    continue;
+                }
                 if let Err(e) = agent.run_cycle(prompt).await {
                     eprintln!("Agent error: {}", e);
                 }
@@ -1395,7 +1437,8 @@ fn main() -> io::Result<()> {
             handle_upsert(engine_config, &matches).await?;
         } else {
             debug!("No mode specified, defaulting to interactive mode");
-            let request = matches.get_one::<String>("request")
+            let request = matches
+                .get_one::<String>("request")
                 .ok_or_else(|| anyhow!("Request is required"))?;
 
             let engine: Box<dyn Engine> = match engine_config.engine.as_str() {
@@ -1455,8 +1498,6 @@ fn main() -> io::Result<()> {
             }
 
             // Combine all inputs
-            // Use memory-efficient request processing
-            let mut processor = RequestProcessor::new();
             let combined_request = {
                 let mut parts = Vec::with_capacity(3); // Pre-allocate for known max size
 
@@ -1475,10 +1516,8 @@ fn main() -> io::Result<()> {
                     parts.push(file_contents.trim());
                 }
 
-                // Use memory-efficient concatenation
-                let result = processor.process_request_content(&parts);
-                processor.cleanup(); // Clean up resources
-                result
+                // Simple string concatenation
+                parts.join(" ")
             };
             debug!("Combined Request:\n{}", combined_request);
 
@@ -1499,7 +1538,8 @@ fn main() -> io::Result<()> {
 
                 debug!("Processing request with validated file: {}", validated_path);
                 pb.set_message("Processing request with file...");
-                Pin::from(engine.process_request_with_file(&request, Path::new(&validated_path))).await?
+                Pin::from(engine.process_request_with_file(&request, Path::new(&validated_path)))
+                    .await?
             } else {
                 pb.set_message("Executing request...");
                 Pin::from(engine.execute(&request)).await?

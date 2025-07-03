@@ -1,14 +1,14 @@
 use crate::universal_base_engine::UniversalEngine;
-use fluent_core::config::EngineConfig;
-use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
-use fluent_core::neo4j_client::Neo4jClient;
-use anyhow::{Result, anyhow};
-use serde_json::Value;
-use std::sync::Arc;
-use std::path::Path;
-use std::future::Future;
+use anyhow::Result;
 use async_trait::async_trait;
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
+use serde_json::Value;
+use std::future::Future;
+use std::path::Path;
+use std::sync::Arc;
 
 /// Anthropic engine implementation using the universal base engine
 /// This demonstrates how to migrate existing engines to use the universal base
@@ -26,12 +26,18 @@ impl AnthropicUniversalEngine {
 
 #[async_trait]
 impl Engine for AnthropicUniversalEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         // Delegate to the universal engine - all the common functionality is handled automatically
         self.universal.execute(request)
     }
 
-    fn upsert<'a>(&'a self, request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         self.universal.upsert(request)
     }
 
@@ -47,11 +53,18 @@ impl Engine for AnthropicUniversalEngine {
         self.universal.extract_content(value)
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         self.universal.upload_file(file_path)
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         self.universal.process_request_with_file(request, file_path)
     }
 }
@@ -59,7 +72,7 @@ impl Engine for AnthropicUniversalEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::config::{EngineConfig, ConnectionConfig};
+    use fluent_core::config::{ConnectionConfig, EngineConfig};
     use serde_json::json;
 
     fn create_anthropic_config() -> EngineConfig {
@@ -89,7 +102,7 @@ mod tests {
     async fn test_anthropic_universal_engine_creation() {
         let config = create_anthropic_config();
         let engine = AnthropicUniversalEngine::new(config).await.unwrap();
-        
+
         // Test that the engine was created successfully
         assert!(engine.get_session_id().is_none());
         assert!(engine.get_neo4j_client().is_none());
@@ -99,11 +112,11 @@ mod tests {
     async fn test_anthropic_universal_engine_methods() {
         let config = create_anthropic_config();
         let engine = AnthropicUniversalEngine::new(config).await.unwrap();
-        
+
         // Test that all required methods are available
         assert!(engine.get_session_id().is_none());
         assert!(engine.get_neo4j_client().is_none());
-        
+
         // Test extract_content with empty value
         let empty_value = json!({});
         assert!(engine.extract_content(&empty_value).is_none());
@@ -111,14 +124,14 @@ mod tests {
 }
 
 /// Migration guide for existing engines:
-/// 
+///
 /// 1. Replace the engine struct with a wrapper around UniversalEngine:
 ///    ```rust
 ///    pub struct MyEngine {
 ///        universal: UniversalEngine,
 ///    }
 ///    ```
-/// 
+///
 /// 2. Update the constructor to use the appropriate universal engine factory:
 ///    ```rust
 ///    pub async fn new(config: EngineConfig) -> Result<Self> {
@@ -126,7 +139,7 @@ mod tests {
 ///        Ok(Self { universal })
 ///    }
 ///    ```
-/// 
+///
 /// 3. Implement the Engine trait by delegating to the universal engine:
 ///    ```rust
 ///    #[async_trait]
@@ -137,7 +150,7 @@ mod tests {
 ///        // ... delegate other methods similarly
 ///    }
 ///    ```
-/// 
+///
 /// Benefits of migration:
 /// - Eliminates code duplication (HTTP client management, caching, error handling)
 /// - Consistent behavior across all engines
@@ -145,7 +158,7 @@ mod tests {
 /// - Standardized authentication handling
 /// - Reduced maintenance burden
 /// - Better performance through optimized HTTP client reuse
-/// 
+///
 /// The universal base engine handles:
 /// - HTTP client creation and optimization
 /// - URL construction

@@ -159,9 +159,13 @@ impl McpClient {
             .spawn()
             .map_err(|e| anyhow!("Failed to start MCP server: {}", e))?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| anyhow!("Failed to get server stdin"))?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| anyhow!("Failed to get server stdout"))?;
 
         self.stdin = Some(Arc::new(Mutex::new(stdin)));
@@ -179,7 +183,7 @@ impl McpClient {
     /// Start reading responses from the server
     async fn start_response_reader(&self, stdout: ChildStdout) {
         let response_handlers = Arc::clone(&self.response_handlers);
-        
+
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
@@ -235,7 +239,9 @@ impl McpClient {
         }
 
         // Wait for response
-        let response = rx.recv().await
+        let response = rx
+            .recv()
+            .await
             .ok_or_else(|| anyhow!("No response received"))?;
 
         // Clean up handler
@@ -248,7 +254,9 @@ impl McpClient {
             return Err(anyhow!("MCP Error {}: {}", error.code, error.message));
         }
 
-        response.result.ok_or_else(|| anyhow!("No result in response"))
+        response
+            .result
+            .ok_or_else(|| anyhow!("No result in response"))
     }
 
     /// Initialize the MCP connection
@@ -268,7 +276,7 @@ impl McpClient {
         });
 
         let result = self.send_request("initialize", Some(params)).await?;
-        
+
         // Parse server capabilities
         if let Some(capabilities) = result.get("capabilities") {
             self.capabilities = serde_json::from_value(capabilities.clone()).ok();
@@ -299,10 +307,12 @@ impl McpClient {
 
     /// Refresh the list of available tools from the server
     async fn refresh_tools(&self) -> Result<()> {
-        if self.capabilities.as_ref()
+        if self
+            .capabilities
+            .as_ref()
             .and_then(|c| c.tools.as_ref())
-            .is_some() {
-
+            .is_some()
+        {
             let result = self.send_request("tools/list", None).await?;
             if let Some(tools_array) = result.get("tools") {
                 if let Ok(tools) = serde_json::from_value::<Vec<McpTool>>(tools_array.clone()) {
@@ -316,13 +326,17 @@ impl McpClient {
 
     /// Refresh the list of available resources from the server
     async fn refresh_resources(&self) -> Result<()> {
-        if self.capabilities.as_ref()
+        if self
+            .capabilities
+            .as_ref()
             .and_then(|c| c.resources.as_ref())
-            .is_some() {
-
+            .is_some()
+        {
             let result = self.send_request("resources/list", None).await?;
             if let Some(resources_array) = result.get("resources") {
-                if let Ok(resources) = serde_json::from_value::<Vec<McpResource>>(resources_array.clone()) {
+                if let Ok(resources) =
+                    serde_json::from_value::<Vec<McpResource>>(resources_array.clone())
+                {
                     let mut resources_guard = self.resources.write().await;
                     *resources_guard = resources;
                 }
@@ -349,8 +363,7 @@ impl McpClient {
         });
 
         let result = self.send_request("tools/call", Some(params)).await?;
-        serde_json::from_value(result)
-            .map_err(|e| anyhow!("Failed to parse tool result: {}", e))
+        serde_json::from_value(result).map_err(|e| anyhow!("Failed to parse tool result: {}", e))
     }
 
     /// Read a resource from the MCP server
@@ -364,21 +377,24 @@ impl McpClient {
 
     /// Check if the server supports tools
     pub fn supports_tools(&self) -> bool {
-        self.capabilities.as_ref()
+        self.capabilities
+            .as_ref()
             .and_then(|c| c.tools.as_ref())
             .is_some()
     }
 
     /// Check if the server supports resources
     pub fn supports_resources(&self) -> bool {
-        self.capabilities.as_ref()
+        self.capabilities
+            .as_ref()
             .and_then(|c| c.resources.as_ref())
             .is_some()
     }
 
     /// Check if the server supports prompts
     pub fn supports_prompts(&self) -> bool {
-        self.capabilities.as_ref()
+        self.capabilities
+            .as_ref()
             .and_then(|c| c.prompts.as_ref())
             .is_some()
     }
@@ -442,15 +458,26 @@ impl McpClientManager {
     }
 
     /// Call a tool on a specific server
-    pub async fn call_tool(&self, server_name: &str, tool_name: &str, arguments: Value) -> Result<McpToolResult> {
-        let client = self.clients.get(server_name)
+    pub async fn call_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<McpToolResult> {
+        let client = self
+            .clients
+            .get(server_name)
             .ok_or_else(|| anyhow!("Server '{}' not found", server_name))?;
 
         client.call_tool(tool_name, arguments).await
     }
 
     /// Find and call a tool by name across all servers
-    pub async fn find_and_call_tool(&self, tool_name: &str, arguments: Value) -> Result<McpToolResult> {
+    pub async fn find_and_call_tool(
+        &self,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<McpToolResult> {
         for (_server_name, client) in &self.clients {
             let tools = client.get_tools().await;
             if tools.iter().any(|t| t.name == tool_name) {
@@ -458,7 +485,10 @@ impl McpClientManager {
             }
         }
 
-        Err(anyhow!("Tool '{}' not found on any connected server", tool_name))
+        Err(anyhow!(
+            "Tool '{}' not found on any connected server",
+            tool_name
+        ))
     }
 
     /// Disconnect all servers

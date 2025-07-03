@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::{Request, Response, UpsertRequest, UpsertResponse, ExtractedContent};
+use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
@@ -72,9 +72,7 @@ impl Engine for SimplifiedEngine {
         &'a self,
         request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.base.execute_chat_request(request).await
-        })
+        Box::new(async move { self.base.execute_chat_request(request).await })
     }
 
     fn process_request_with_file<'a>(
@@ -82,9 +80,7 @@ impl Engine for SimplifiedEngine {
         request: &'a Request,
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
-        Box::new(async move {
-            self.base.execute_vision_request(request, file_path).await
-        })
+        Box::new(async move { self.base.execute_vision_request(request, file_path).await })
     }
 
     fn upload_file<'a>(
@@ -96,8 +92,10 @@ impl Engine for SimplifiedEngine {
                 // Implement file upload logic here
                 Ok("File upload not yet implemented".to_string())
             } else {
-                Err(anyhow::anyhow!("File upload not supported for engine: {}", 
-                                   self.base.base_config.engine_type))
+                Err(anyhow::anyhow!(
+                    "File upload not supported for engine: {}",
+                    self.base.base_config.engine_type
+                ))
             }
         })
     }
@@ -106,9 +104,7 @@ impl Engine for SimplifiedEngine {
         &'a self,
         request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
-        Box::new(async move {
-            self.base.handle_upsert(request).await
-        })
+        Box::new(async move { self.base.handle_upsert(request).await })
     }
 
     fn get_neo4j_client(&self) -> Option<&Arc<Neo4jClient>> {
@@ -143,7 +139,10 @@ pub mod comparison {
     use std::time::Instant;
 
     /// Benchmark engine creation performance
-    pub async fn benchmark_engine_creation(config: &EngineConfig, iterations: usize) -> Result<(f64, f64)> {
+    pub async fn benchmark_engine_creation(
+        config: &EngineConfig,
+        iterations: usize,
+    ) -> Result<(f64, f64)> {
         // Benchmark simplified engine creation
         let start = Instant::now();
         for _ in 0..iterations {
@@ -203,7 +202,7 @@ mod tests {
     async fn test_simplified_openai_engine() {
         let config = create_test_config("openai");
         let engine = SimplifiedEngine::openai(config).await.unwrap();
-        
+
         assert_eq!(engine.base.base_config.engine_type, "openai");
         assert!(engine.base.base_config.supports_vision);
         assert!(engine.base.base_config.supports_embeddings);
@@ -213,7 +212,7 @@ mod tests {
     async fn test_simplified_anthropic_engine() {
         let config = create_test_config("anthropic");
         let engine = SimplifiedEngine::anthropic(config).await.unwrap();
-        
+
         assert_eq!(engine.base.base_config.engine_type, "anthropic");
         assert!(engine.base.base_config.supports_vision);
         assert!(!engine.base.base_config.supports_embeddings);
@@ -223,7 +222,7 @@ mod tests {
     async fn test_simplified_engine_factory() {
         let config = create_test_config("openai");
         let engine = create_simplified_engine(&config).await.unwrap();
-        
+
         // Test that the engine implements the Engine trait
         assert!(engine.get_session_id().is_none());
         assert!(engine.get_neo4j_client().is_none());
@@ -233,7 +232,7 @@ mod tests {
     async fn test_unknown_engine_type() {
         let config = create_test_config("unknown_engine");
         let engine = SimplifiedEngine::new(config).await.unwrap();
-        
+
         assert_eq!(engine.base.base_config.engine_type, "unknown_engine");
         assert!(!engine.base.base_config.supports_vision);
         assert!(!engine.base.base_config.supports_embeddings);
@@ -244,7 +243,7 @@ mod tests {
         let benefits = comparison::show_benefits();
         assert!(!benefits.is_empty());
         assert!(benefits.len() >= 5);
-        
+
         // Check that key benefits are mentioned
         let benefits_text = benefits.join(" ");
         assert!(benefits_text.contains("code duplication"));
@@ -256,14 +255,14 @@ mod tests {
     async fn test_engine_capabilities() {
         let openai_config = create_test_config("openai");
         let openai_engine = SimplifiedEngine::openai(openai_config).await.unwrap();
-        
+
         let webhook_config = create_test_config("webhook");
         let webhook_engine = SimplifiedEngine::webhook(webhook_config).await.unwrap();
-        
+
         // OpenAI supports vision, webhook doesn't
         assert!(openai_engine.base.base_config.supports_vision);
         assert!(!webhook_engine.base.base_config.supports_vision);
-        
+
         // Webhook supports file upload, OpenAI doesn't (in this simplified model)
         assert!(!openai_engine.base.base_config.supports_file_upload);
         assert!(webhook_engine.base.base_config.supports_file_upload);

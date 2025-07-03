@@ -7,13 +7,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use tokio_rusqlite::{Connection as AsyncConnection};
+use tokio_rusqlite::Connection as AsyncConnection;
 
 use crate::context::ExecutionContext;
 use crate::orchestrator::Observation;
 
 /// Memory system for storing and retrieving agent experiences and learnings
-/// 
+///
 /// The memory system provides both short-term and long-term memory capabilities:
 /// - Short-term memory: Recent context, current session data
 /// - Long-term memory: Persistent learnings, patterns, successful strategies
@@ -97,18 +97,19 @@ pub enum PatternType {
 pub trait LongTermMemory: Send + Sync {
     /// Store a memory item for long-term retention
     async fn store(&self, memory: MemoryItem) -> Result<String>;
-    
+
     /// Retrieve memories based on query
     async fn retrieve(&self, query: &MemoryQuery) -> Result<Vec<MemoryItem>>;
-    
+
     /// Update an existing memory item
     async fn update(&self, memory_id: &str, memory: MemoryItem) -> Result<()>;
-    
+
     /// Delete a memory item
     async fn delete(&self, memory_id: &str) -> Result<()>;
-    
+
     /// Search for similar memories
-    async fn find_similar(&self, reference: &MemoryItem, threshold: f64) -> Result<Vec<MemoryItem>>;
+    async fn find_similar(&self, reference: &MemoryItem, threshold: f64)
+        -> Result<Vec<MemoryItem>>;
 }
 
 /// Trait for episodic memory (specific experiences)
@@ -116,12 +117,16 @@ pub trait LongTermMemory: Send + Sync {
 pub trait EpisodicMemory: Send + Sync {
     /// Store an episode (specific experience)
     async fn store_episode(&self, episode: Episode) -> Result<String>;
-    
+
     /// Retrieve episodes matching criteria
     async fn retrieve_episodes(&self, criteria: &EpisodeCriteria) -> Result<Vec<Episode>>;
-    
+
     /// Get episodes similar to current context
-    async fn get_similar_episodes(&self, context: &ExecutionContext, limit: usize) -> Result<Vec<Episode>>;
+    async fn get_similar_episodes(
+        &self,
+        context: &ExecutionContext,
+        limit: usize,
+    ) -> Result<Vec<Episode>>;
 }
 
 /// Trait for semantic memory (general knowledge)
@@ -129,10 +134,10 @@ pub trait EpisodicMemory: Send + Sync {
 pub trait SemanticMemory: Send + Sync {
     /// Store semantic knowledge
     async fn store_knowledge(&self, knowledge: Knowledge) -> Result<String>;
-    
+
     /// Retrieve knowledge by topic
     async fn retrieve_knowledge(&self, topic: &str) -> Result<Vec<Knowledge>>;
-    
+
     /// Update knowledge based on new evidence
     async fn update_knowledge(&self, knowledge_id: &str, evidence: Evidence) -> Result<()>;
 }
@@ -230,7 +235,9 @@ impl MemorySystem {
         config: MemoryConfig,
     ) -> Self {
         Self {
-            short_term_memory: Arc::new(RwLock::new(ShortTermMemory::new(config.short_term_capacity))),
+            short_term_memory: Arc::new(RwLock::new(ShortTermMemory::new(
+                config.short_term_capacity,
+            ))),
             long_term_memory,
             episodic_memory,
             semantic_memory,
@@ -242,23 +249,27 @@ impl MemorySystem {
     pub async fn update(&self, context: &ExecutionContext) -> Result<()> {
         // Update short-term memory
         self.update_short_term_memory(context).await?;
-        
+
         // Check for consolidation opportunities
         if self.should_consolidate().await? {
             self.consolidate_memories().await?;
         }
-        
+
         // Update attention focus
         self.update_attention_focus(context).await?;
-        
+
         // Detect and track patterns
         self.detect_and_track_patterns(context).await?;
-        
+
         Ok(())
     }
 
     /// Store a significant experience in episodic memory
-    pub async fn store_experience(&self, context: &ExecutionContext, outcome: ExperienceOutcome) -> Result<String> {
+    pub async fn store_experience(
+        &self,
+        context: &ExecutionContext,
+        outcome: ExperienceOutcome,
+    ) -> Result<String> {
         let importance = self.calculate_experience_importance(&outcome);
         let episode = Episode {
             episode_id: uuid::Uuid::new_v4().to_string(),
@@ -277,7 +288,12 @@ impl MemorySystem {
     }
 
     /// Store learned knowledge in semantic memory
-    pub async fn store_learning(&self, topic: &str, content: &str, evidence: Evidence) -> Result<String> {
+    pub async fn store_learning(
+        &self,
+        topic: &str,
+        content: &str,
+        evidence: Evidence,
+    ) -> Result<String> {
         let knowledge = Knowledge {
             knowledge_id: uuid::Uuid::new_v4().to_string(),
             topic: topic.to_string(),
@@ -292,10 +308,18 @@ impl MemorySystem {
     }
 
     /// Retrieve relevant memories for current context
-    pub async fn retrieve_relevant_memories(&self, context: &ExecutionContext, limit: usize) -> Result<Vec<MemoryItem>> {
+    pub async fn retrieve_relevant_memories(
+        &self,
+        context: &ExecutionContext,
+        limit: usize,
+    ) -> Result<Vec<MemoryItem>> {
         let query = MemoryQuery {
             query_text: context.get_summary(),
-            memory_types: vec![MemoryType::Experience, MemoryType::Learning, MemoryType::Strategy],
+            memory_types: vec![
+                MemoryType::Experience,
+                MemoryType::Learning,
+                MemoryType::Strategy,
+            ],
             tags: context.get_tags(),
             time_range: None,
             importance_threshold: Some(0.5),
@@ -306,8 +330,14 @@ impl MemorySystem {
     }
 
     /// Get similar past experiences
-    pub async fn get_similar_experiences(&self, context: &ExecutionContext, limit: usize) -> Result<Vec<Episode>> {
-        self.episodic_memory.get_similar_episodes(context, limit).await
+    pub async fn get_similar_experiences(
+        &self,
+        context: &ExecutionContext,
+        limit: usize,
+    ) -> Result<Vec<Episode>> {
+        self.episodic_memory
+            .get_similar_episodes(context, limit)
+            .await
     }
 
     /// Get relevant knowledge for a topic
@@ -319,32 +349,34 @@ impl MemorySystem {
     async fn update_short_term_memory(&self, context: &ExecutionContext) -> Result<()> {
         let mut stm = self.short_term_memory.write().await;
         stm.current_context = Some(context.clone());
-        
+
         // Add new observations
         if let Some(latest_observation) = context.get_latest_observation() {
             stm.recent_observations.push(latest_observation);
-            
+
             // Maintain capacity limit
             if stm.recent_observations.len() > stm.capacity {
                 stm.recent_observations.remove(0);
             }
         }
-        
+
         Ok(())
     }
 
     /// Check if memories should be consolidated
     async fn should_consolidate(&self) -> Result<bool> {
         let stm = self.short_term_memory.read().await;
-        Ok(stm.recent_observations.len() >= (stm.capacity as f64 * self.memory_config.consolidation_threshold) as usize)
+        Ok(stm.recent_observations.len()
+            >= (stm.capacity as f64 * self.memory_config.consolidation_threshold) as usize)
     }
 
     /// Consolidate short-term memories into long-term storage
     async fn consolidate_memories(&self) -> Result<()> {
         let mut stm = self.short_term_memory.write().await;
-        
+
         // Identify important observations for consolidation
-        let important_observations: Vec<_> = stm.recent_observations
+        let important_observations: Vec<_> = stm
+            .recent_observations
             .iter()
             .filter(|obs| obs.relevance_score > 0.7)
             .cloned()
@@ -364,20 +396,21 @@ impl MemorySystem {
                 tags: vec!["consolidated".to_string()],
                 embedding: None,
             };
-            
+
             self.long_term_memory.store(memory_item).await?;
         }
-        
+
         // Clear consolidated observations from short-term memory
-        stm.recent_observations.retain(|obs| obs.relevance_score <= 0.7);
-        
+        stm.recent_observations
+            .retain(|obs| obs.relevance_score <= 0.7);
+
         Ok(())
     }
 
     /// Update attention focus based on current context
     async fn update_attention_focus(&self, context: &ExecutionContext) -> Result<()> {
         let mut stm = self.short_term_memory.write().await;
-        
+
         // Extract important items from context
         if let Some(goal) = context.get_current_goal() {
             let attention_item = AttentionItem {
@@ -387,29 +420,35 @@ impl MemorySystem {
                 last_accessed: SystemTime::now(),
                 access_count: 1,
             };
-            
+
             // Update or add attention item
-            if let Some(existing) = stm.attention_focus.iter_mut().find(|item| item.item_id == attention_item.item_id) {
+            if let Some(existing) = stm
+                .attention_focus
+                .iter_mut()
+                .find(|item| item.item_id == attention_item.item_id)
+            {
                 existing.last_accessed = SystemTime::now();
                 existing.access_count += 1;
             } else {
                 stm.attention_focus.push(attention_item);
             }
         }
-        
+
         // Maintain attention focus size
-        stm.attention_focus.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap());
+        stm.attention_focus
+            .sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap());
         stm.attention_focus.truncate(10); // Keep top 10 items
-        
+
         Ok(())
     }
 
     /// Detect and track patterns in recent observations
     async fn detect_and_track_patterns(&self, _context: &ExecutionContext) -> Result<()> {
         let mut stm = self.short_term_memory.write().await;
-        
+
         // Simple pattern detection: consecutive successes or failures
-        let recent_successes = stm.recent_observations
+        let recent_successes = stm
+            .recent_observations
             .iter()
             .rev()
             .take(5)
@@ -425,9 +464,13 @@ impl MemorySystem {
                 confidence: 0.8,
                 relevance: 0.9,
             };
-            
+
             // Update or add pattern
-            if let Some(existing) = stm.active_patterns.iter_mut().find(|p| p.pattern_id == pattern.pattern_id) {
+            if let Some(existing) = stm
+                .active_patterns
+                .iter_mut()
+                .find(|p| p.pattern_id == pattern.pattern_id)
+            {
                 existing.occurrences = pattern.occurrences;
                 existing.last_seen = pattern.last_seen;
                 existing.confidence = (existing.confidence + pattern.confidence) / 2.0;
@@ -435,31 +478,31 @@ impl MemorySystem {
                 stm.active_patterns.push(pattern);
             }
         }
-        
+
         Ok(())
     }
 
     /// Calculate importance of an experience
     fn calculate_experience_importance(&self, outcome: &ExperienceOutcome) -> f64 {
         let mut importance: f64 = 0.5; // Base importance
-        
+
         // Increase importance for successes and failures
         if outcome.success {
             importance += 0.2;
         } else {
             importance += 0.3; // Failures often more important for learning
         }
-        
+
         // Increase importance for experiences with lessons learned
         if !outcome.lessons_learned.is_empty() {
             importance += 0.2;
         }
-        
+
         // Increase importance for longer experiences
         if outcome.duration > Duration::from_secs(60) {
             importance += 0.1;
         }
-        
+
         importance.min(1.0)
     }
 
@@ -471,7 +514,7 @@ impl MemorySystem {
     /// Get memory statistics
     pub async fn get_memory_stats(&self) -> MemoryStats {
         let stm = self.short_term_memory.read().await;
-        
+
         MemoryStats {
             short_term_items: stm.recent_observations.len(),
             active_patterns: stm.active_patterns.len(),
@@ -546,9 +589,7 @@ impl AsyncSqliteMemoryStore {
             AsyncConnection::open(database_path).await?
         };
 
-        let store = Self {
-            connection: conn,
-        };
+        let store = Self { connection: conn };
 
         // Create tables if they don't exist
         store.create_tables().await?;
@@ -558,10 +599,11 @@ impl AsyncSqliteMemoryStore {
 
     /// Create the necessary tables for memory storage
     async fn create_tables(&self) -> Result<()> {
-        self.connection.call(|conn| {
-            // Memory items table
-            conn.execute(
-                r#"
+        self.connection
+            .call(|conn| {
+                // Memory items table
+                conn.execute(
+                    r#"
                 CREATE TABLE IF NOT EXISTS memory_items (
                     id TEXT PRIMARY KEY,
                     memory_type TEXT NOT NULL,
@@ -575,16 +617,26 @@ impl AsyncSqliteMemoryStore {
                     embedding BLOB
                 )
                 "#,
-                [],
-            )?;
+                    [],
+                )?;
 
-            // Create indexes for better performance
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_items(memory_type)", [])?;
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_items(importance)", [])?;
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory_items(created_at)", [])?;
+                // Create indexes for better performance
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_items(memory_type)",
+                    [],
+                )?;
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_items(importance)",
+                    [],
+                )?;
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory_items(created_at)",
+                    [],
+                )?;
 
-            Ok(())
-        }).await?;
+                Ok(())
+            })
+            .await?;
 
         Ok(())
     }
@@ -595,28 +647,32 @@ impl LongTermMemory for AsyncSqliteMemoryStore {
     async fn store(&self, memory: MemoryItem) -> Result<String> {
         let id = memory.memory_id.clone();
 
-        self.connection.call(move |conn| {
-            conn.execute(
-                r#"
+        self.connection
+            .call(move |conn| {
+                conn.execute(
+                    r#"
                 INSERT OR REPLACE INTO memory_items (
                     id, memory_type, content, metadata, importance,
                     created_at, last_accessed, access_count, tags
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 "#,
-                rusqlite::params![
-                    &memory.memory_id,
-                    format!("{:?}", memory.memory_type),
-                    &memory.content,
-                    serde_json::to_string(&memory.metadata).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
-                    memory.importance,
-                    memory.created_at.to_rfc3339(),
-                    memory.last_accessed.to_rfc3339(),
-                    memory.access_count as i64,
-                    serde_json::to_string(&memory.tags).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
-                ],
-            )?;
-            Ok(())
-        }).await?;
+                    rusqlite::params![
+                        &memory.memory_id,
+                        format!("{:?}", memory.memory_type),
+                        &memory.content,
+                        serde_json::to_string(&memory.metadata)
+                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                        memory.importance,
+                        memory.created_at.to_rfc3339(),
+                        memory.last_accessed.to_rfc3339(),
+                        memory.access_count as i64,
+                        serde_json::to_string(&memory.tags)
+                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await?;
 
         Ok(id)
     }
@@ -680,27 +736,31 @@ impl LongTermMemory for AsyncSqliteMemoryStore {
     async fn update(&self, memory_id: &str, memory: MemoryItem) -> Result<()> {
         let memory_id = memory_id.to_string();
 
-        self.connection.call(move |conn| {
-            conn.execute(
-                r#"
+        self.connection
+            .call(move |conn| {
+                conn.execute(
+                    r#"
                 UPDATE memory_items
                 SET memory_type = ?2, content = ?3, metadata = ?4, importance = ?5,
                     last_accessed = ?6, access_count = ?7, tags = ?8
                 WHERE id = ?1
                 "#,
-                rusqlite::params![
-                    memory_id,
-                    format!("{:?}", memory.memory_type),
-                    &memory.content,
-                    serde_json::to_string(&memory.metadata).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
-                    memory.importance,
-                    memory.last_accessed.to_rfc3339(),
-                    memory.access_count as i64,
-                    serde_json::to_string(&memory.tags).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
-                ],
-            )?;
-            Ok(())
-        }).await?;
+                    rusqlite::params![
+                        memory_id,
+                        format!("{:?}", memory.memory_type),
+                        &memory.content,
+                        serde_json::to_string(&memory.metadata)
+                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                        memory.importance,
+                        memory.last_accessed.to_rfc3339(),
+                        memory.access_count as i64,
+                        serde_json::to_string(&memory.tags)
+                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await?;
 
         Ok(())
     }
@@ -708,21 +768,30 @@ impl LongTermMemory for AsyncSqliteMemoryStore {
     async fn delete(&self, memory_id: &str) -> Result<()> {
         let memory_id = memory_id.to_string();
 
-        self.connection.call(move |conn| {
-            conn.execute(
-                "DELETE FROM memory_items WHERE id = ?1",
-                rusqlite::params![memory_id],
-            )?;
-            Ok(())
-        }).await?;
+        self.connection
+            .call(move |conn| {
+                conn.execute(
+                    "DELETE FROM memory_items WHERE id = ?1",
+                    rusqlite::params![memory_id],
+                )?;
+                Ok(())
+            })
+            .await?;
 
         Ok(())
     }
 
-    async fn find_similar(&self, reference: &MemoryItem, threshold: f64) -> Result<Vec<MemoryItem>> {
+    async fn find_similar(
+        &self,
+        reference: &MemoryItem,
+        threshold: f64,
+    ) -> Result<Vec<MemoryItem>> {
         // Simple similarity based on content matching and importance
         // In a real implementation, you'd use embeddings and vector similarity
-        let search_term = format!("%{}%", reference.content.split_whitespace().next().unwrap_or(""));
+        let search_term = format!(
+            "%{}%",
+            reference.content.split_whitespace().next().unwrap_or("")
+        );
 
         let memories = self.connection.call(move |conn| {
             let mut stmt = conn.prepare(
@@ -817,20 +886,26 @@ impl SqliteMemoryStore {
         )?;
 
         // Create indexes for better performance
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_items(memory_type)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_items(importance)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_items(memory_type)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_items(importance)",
+            [],
+        )?;
 
         Ok(())
     }
-
-
 }
 
 #[async_trait]
 impl LongTermMemory for SqliteMemoryStore {
     async fn store(&self, memory: MemoryItem) -> Result<String> {
         let id = memory.memory_id.clone();
-        let conn = self.connection.lock()
+        let conn = self
+            .connection
+            .lock()
             .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
 
         conn.execute(
@@ -857,11 +932,14 @@ impl LongTermMemory for SqliteMemoryStore {
     }
 
     async fn retrieve(&self, query: &MemoryQuery) -> Result<Vec<MemoryItem>> {
-        let conn = self.connection.lock()
+        let conn = self
+            .connection
+            .lock()
             .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
 
         // Use a simple query for now
-        let sql = "SELECT * FROM memory_items WHERE importance >= ?1 ORDER BY importance DESC LIMIT ?2";
+        let sql =
+            "SELECT * FROM memory_items WHERE importance >= ?1 ORDER BY importance DESC LIMIT ?2";
         let mut stmt = conn.prepare(sql)?;
 
         let memory_iter = stmt.query_map(
@@ -902,7 +980,7 @@ impl LongTermMemory for SqliteMemoryStore {
                     tags: serde_json::from_str(&tags_str).unwrap_or_default(),
                     embedding: None,
                 })
-            }
+            },
         )?;
 
         let mut memories = Vec::new();
@@ -914,7 +992,9 @@ impl LongTermMemory for SqliteMemoryStore {
     }
 
     async fn update(&self, memory_id: &str, memory: MemoryItem) -> Result<()> {
-        let conn = self.connection.lock()
+        let conn = self
+            .connection
+            .lock()
             .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
 
         conn.execute(
@@ -940,7 +1020,9 @@ impl LongTermMemory for SqliteMemoryStore {
     }
 
     async fn delete(&self, memory_id: &str) -> Result<()> {
-        let conn = self.connection.lock()
+        let conn = self
+            .connection
+            .lock()
             .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
 
         conn.execute(
@@ -951,7 +1033,11 @@ impl LongTermMemory for SqliteMemoryStore {
         Ok(())
     }
 
-    async fn find_similar(&self, reference: &MemoryItem, threshold: f64) -> Result<Vec<MemoryItem>> {
+    async fn find_similar(
+        &self,
+        reference: &MemoryItem,
+        threshold: f64,
+    ) -> Result<Vec<MemoryItem>> {
         // Simple similarity based on content matching and importance
         // In a real implementation, you'd use embeddings and vector similarity
         let conn = self.connection.lock().unwrap();
@@ -960,7 +1046,10 @@ impl LongTermMemory for SqliteMemoryStore {
             "SELECT * FROM memory_items WHERE importance >= ?1 AND content LIKE ?2 ORDER BY importance DESC LIMIT 10"
         )?;
 
-        let search_term = format!("%{}%", reference.content.split_whitespace().next().unwrap_or(""));
+        let search_term = format!(
+            "%{}%",
+            reference.content.split_whitespace().next().unwrap_or("")
+        );
 
         let memory_iter = stmt.query_map(rusqlite::params![threshold, search_term], |row| {
             let memory_type_str: String = row.get("memory_type")?;
@@ -1048,7 +1137,7 @@ mod tests {
             tags: vec!["test".to_string()],
             embedding: None,
         };
-        
+
         assert_eq!(memory_item.memory_id, "test-memory");
         assert_eq!(memory_item.importance, 0.8);
         assert!(matches!(memory_item.memory_type, MemoryType::Experience));
@@ -1072,7 +1161,10 @@ mod tests {
         };
 
         // Test storing memory
-        let stored_id = store.store(memory.clone()).await.expect("Failed to store memory");
+        let stored_id = store
+            .store(memory.clone())
+            .await
+            .expect("Failed to store memory");
         assert_eq!(stored_id, "test-memory");
 
         // Test retrieving memory

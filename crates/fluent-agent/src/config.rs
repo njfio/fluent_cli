@@ -64,26 +64,18 @@ impl AgentEngineConfig {
         let fluent_config_content = tokio::fs::read_to_string(fluent_config_path).await?;
 
         // Create reasoning engine
-        let reasoning_engine = self.create_engine(
-            &fluent_config_content,
-            &self.reasoning_engine,
-            &credentials,
-        ).await?;
+        let reasoning_engine = self
+            .create_engine(&fluent_config_content, &self.reasoning_engine, &credentials)
+            .await?;
 
         // Create action engine (can be the same as reasoning)
         let action_engine = if self.action_engine == self.reasoning_engine {
             // Create a new instance of the same engine
-            self.create_engine(
-                &fluent_config_content,
-                &self.action_engine,
-                &credentials,
-            ).await?
+            self.create_engine(&fluent_config_content, &self.action_engine, &credentials)
+                .await?
         } else {
-            self.create_engine(
-                &fluent_config_content,
-                &self.action_engine,
-                &credentials,
-            ).await?
+            self.create_engine(&fluent_config_content, &self.action_engine, &credentials)
+                .await?
         };
 
         // Create reflection engine (can be the same as reasoning)
@@ -93,20 +85,23 @@ impl AgentEngineConfig {
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
-            ).await?
+            )
+            .await?
         } else if self.reflection_engine == self.action_engine {
             // Create a new instance of the same engine
             self.create_engine(
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
-            ).await?
+            )
+            .await?
         } else {
             self.create_engine(
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
-            ).await?
+            )
+            .await?
         };
 
         Ok(AgentRuntimeConfig {
@@ -137,13 +132,19 @@ impl AgentEngineConfig {
                 match create_engine(&engine_config).await {
                     Ok(engine) => Ok(engine),
                     Err(e) => {
-                        eprintln!("Warning: Failed to create engine '{}' with config: {}", engine_name, e);
+                        eprintln!(
+                            "Warning: Failed to create engine '{}' with config: {}",
+                            engine_name, e
+                        );
                         self.create_default_engine(engine_name, credentials).await
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Engine '{}' not found in config: {}", engine_name, e);
+                eprintln!(
+                    "Warning: Engine '{}' not found in config: {}",
+                    engine_name, e
+                );
                 self.create_default_engine(engine_name, credentials).await
             }
         }
@@ -155,26 +156,46 @@ impl AgentEngineConfig {
         engine_name: &str,
         credentials: &HashMap<String, String>,
     ) -> Result<Box<dyn Engine>> {
-        use fluent_core::config::{EngineConfig, ConnectionConfig};
+        use fluent_core::config::{ConnectionConfig, EngineConfig};
         use serde_json::Value;
         use std::collections::HashMap as StdHashMap;
 
         let (engine_type, api_key_name, hostname, request_path, model) = match engine_name {
-            "openai" | "gpt-4o" | "gpt-4" => {
-                ("openai", "OPENAI_API_KEY", "api.openai.com", "/v1/chat/completions", "gpt-4")
-            }
-            "anthropic" | "claude" | "sonnet3.5" => {
-                ("anthropic", "ANTHROPIC_API_KEY", "api.anthropic.com", "/v1/messages", "claude-3-5-sonnet-20241022")
-            }
-            "google_gemini" | "gemini" | "gemini-flash" => {
-                ("google_gemini", "GOOGLE_API_KEY", "generativelanguage.googleapis.com", "/v1beta/models", "gemini-1.5-flash")
-            }
-            "groq" | "groq_lpu" => {
-                ("groq_lpu", "GROQ_API_KEY", "api.groq.com", "/openai/v1/chat/completions", "llama-3.1-70b-versatile")
-            }
-            "perplexity" => {
-                ("perplexity", "PERPLEXITY_API_KEY", "api.perplexity.ai", "/chat/completions", "llama-3.1-sonar-large-128k-online")
-            }
+            "openai" | "gpt-4o" | "gpt-4" => (
+                "openai",
+                "OPENAI_API_KEY",
+                "api.openai.com",
+                "/v1/chat/completions",
+                "gpt-4",
+            ),
+            "anthropic" | "claude" | "sonnet3.5" => (
+                "anthropic",
+                "ANTHROPIC_API_KEY",
+                "api.anthropic.com",
+                "/v1/messages",
+                "claude-3-5-sonnet-20241022",
+            ),
+            "google_gemini" | "gemini" | "gemini-flash" => (
+                "google_gemini",
+                "GOOGLE_API_KEY",
+                "generativelanguage.googleapis.com",
+                "/v1beta/models",
+                "gemini-1.5-flash",
+            ),
+            "groq" | "groq_lpu" => (
+                "groq_lpu",
+                "GROQ_API_KEY",
+                "api.groq.com",
+                "/openai/v1/chat/completions",
+                "llama-3.1-70b-versatile",
+            ),
+            "perplexity" => (
+                "perplexity",
+                "PERPLEXITY_API_KEY",
+                "api.perplexity.ai",
+                "/chat/completions",
+                "llama-3.1-sonar-large-128k-online",
+            ),
             _ => return Err(anyhow!("Unsupported engine type: {}", engine_name)),
         };
 
@@ -191,7 +212,10 @@ impl AgentEngineConfig {
         }
 
         if engine_type != "google_gemini" {
-            parameters.insert("max_tokens".to_string(), Value::Number(serde_json::Number::from(4000)));
+            parameters.insert(
+                "max_tokens".to_string(),
+                Value::Number(serde_json::Number::from(4000)),
+            );
         }
 
         let engine_config = EngineConfig {
@@ -209,8 +233,12 @@ impl AgentEngineConfig {
             spinner: None,
         };
 
-        println!("🔧 Creating default {} engine with model {}", engine_type, model);
-        create_engine(&engine_config).await
+        println!(
+            "🔧 Creating default {} engine with model {}",
+            engine_type, model
+        );
+        create_engine(&engine_config)
+            .await
             .map_err(|e| anyhow!("Failed to create default engine '{}': {}", engine_name, e))
     }
 
@@ -371,8 +399,9 @@ pub mod credentials {
                         for line in stdout.lines() {
                             if let Some((key, value)) = parse_amber_line(line) {
                                 // Validate key format to prevent injection
-                                if key.chars().all(|c| c.is_alphanumeric() || c == '_') &&
-                                   credential_keys.iter().any(|&k| k == key) {
+                                if key.chars().all(|c| c.is_alphanumeric() || c == '_')
+                                    && credential_keys.iter().any(|&k| k == key)
+                                {
                                     credentials.insert(key, value);
                                 }
                             }
@@ -418,11 +447,12 @@ pub mod credentials {
 
         for engine in required_engines {
             let engine_lower = engine.to_lowercase();
-            
+
             // Find the required credential for this engine
-            if let Some((_, credential_key)) = engine_credentials.iter()
-                .find(|(engine_name, _)| engine_lower.contains(engine_name)) {
-                
+            if let Some((_, credential_key)) = engine_credentials
+                .iter()
+                .find(|(engine_name, _)| engine_lower.contains(engine_name))
+            {
                 if !credentials.contains_key(*credential_key) {
                     return Err(anyhow!(
                         "Missing required credential '{}' for engine '{}'. Please set the environment variable.",
@@ -468,7 +498,7 @@ mod tests {
         let path = temp_file.path();
 
         AgentEngineConfig::create_template_file(path).await.unwrap();
-        
+
         // Verify file was created and can be loaded
         let loaded_config = AgentEngineConfig::load_from_file(path).await.unwrap();
         assert!(loaded_config.validate().is_ok());

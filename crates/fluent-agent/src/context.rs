@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use crate::goal::Goal;
-use crate::task::Task;
 use crate::orchestrator::Observation;
+use crate::task::Task;
 
 /// Execution context that maintains state throughout agent execution
-/// 
+///
 /// The execution context serves as the central state container for agent operations,
 /// tracking the current goal, active tasks, observations, variables, and execution history.
 /// It provides a comprehensive view of the agent's current situation and progress.
@@ -67,7 +67,7 @@ impl ExecutionContext {
     pub fn new(goal: Goal) -> Self {
         let context_id = uuid::Uuid::new_v4().to_string();
         let now = SystemTime::now();
-        
+
         Self {
             context_id: context_id.clone(),
             current_goal: Some(goal.clone()),
@@ -97,7 +97,7 @@ impl ExecutionContext {
         reflection_context.context_id = uuid::Uuid::new_v4().to_string();
         reflection_context.metadata.insert(
             "reflection_base".to_string(),
-            serde_json::json!(base_context.context_id)
+            serde_json::json!(base_context.context_id),
         );
         reflection_context
     }
@@ -106,7 +106,7 @@ impl ExecutionContext {
     pub fn add_observation(&mut self, observation: Observation) {
         self.observations.push(observation.clone());
         self.last_update = SystemTime::now();
-        
+
         // Record event
         self.execution_history.push(ExecutionEvent {
             event_id: uuid::Uuid::new_v4().to_string(),
@@ -121,7 +121,7 @@ impl ExecutionContext {
     pub fn set_variable(&mut self, key: String, value: String) {
         self.variables.insert(key.clone(), value.clone());
         self.last_update = SystemTime::now();
-        
+
         // Record event
         self.execution_history.push(ExecutionEvent {
             event_id: uuid::Uuid::new_v4().to_string(),
@@ -141,10 +141,10 @@ impl ExecutionContext {
             adjustments: adjustments.clone(),
             expected_impact: "Improved goal achievement".to_string(),
         };
-        
+
         self.strategy_adjustments.push(adjustment);
         self.last_update = SystemTime::now();
-        
+
         // Record event
         self.execution_history.push(ExecutionEvent {
             event_id: uuid::Uuid::new_v4().to_string(),
@@ -159,7 +159,7 @@ impl ExecutionContext {
     pub fn start_task(&mut self, task: Task) {
         self.active_tasks.push(task.clone());
         self.last_update = SystemTime::now();
-        
+
         // Record event
         self.execution_history.push(ExecutionEvent {
             event_id: uuid::Uuid::new_v4().to_string(),
@@ -178,14 +178,22 @@ impl ExecutionContext {
             task.success = Some(success);
             self.completed_tasks.push(task.clone());
             self.last_update = SystemTime::now();
-            
+
             // Record event
-            let event_type = if success { ExecutionEventType::TaskCompleted } else { ExecutionEventType::TaskFailed };
+            let event_type = if success {
+                ExecutionEventType::TaskCompleted
+            } else {
+                ExecutionEventType::TaskFailed
+            };
             self.execution_history.push(ExecutionEvent {
                 event_id: uuid::Uuid::new_v4().to_string(),
                 timestamp: SystemTime::now(),
                 event_type,
-                description: format!("Task {}: {}", if success { "completed" } else { "failed" }, task.description),
+                description: format!(
+                    "Task {}: {}",
+                    if success { "completed" } else { "failed" },
+                    task.description
+                ),
                 metadata: HashMap::new(),
             });
         }
@@ -220,11 +228,7 @@ impl ExecutionContext {
 
     /// Get recent actions from execution history
     pub fn get_recent_actions(&self) -> Vec<&ExecutionEvent> {
-        self.execution_history
-            .iter()
-            .rev()
-            .take(10)
-            .collect()
+        self.execution_history.iter().rev().take(10).collect()
     }
 
     /// Get the latest observation
@@ -236,8 +240,12 @@ impl ExecutionContext {
     pub fn get_progress_summary(&self) -> String {
         let total_tasks = self.active_tasks.len() + self.completed_tasks.len();
         let completed_count = self.completed_tasks.len();
-        let success_count = self.completed_tasks.iter().filter(|t| t.success == Some(true)).count();
-        
+        let success_count = self
+            .completed_tasks
+            .iter()
+            .filter(|t| t.success == Some(true))
+            .count();
+
         format!(
             "Progress: {}/{} tasks completed, {} successful, {} iterations, {} observations",
             completed_count,
@@ -258,15 +266,25 @@ impl ExecutionContext {
 
     /// Get results summary
     pub fn get_results_summary(&self) -> String {
-        let successful_tasks = self.completed_tasks.iter().filter(|t| t.success == Some(true)).count();
-        let failed_tasks = self.completed_tasks.iter().filter(|t| t.success == Some(false)).count();
-        let positive_observations = self.observations.iter().filter(|o| o.content.contains("SUCCESS")).count();
-        
+        let successful_tasks = self
+            .completed_tasks
+            .iter()
+            .filter(|t| t.success == Some(true))
+            .count();
+        let failed_tasks = self
+            .completed_tasks
+            .iter()
+            .filter(|t| t.success == Some(false))
+            .count();
+        let positive_observations = self
+            .observations
+            .iter()
+            .filter(|o| o.content.contains("SUCCESS"))
+            .count();
+
         format!(
             "Results: {} successful tasks, {} failed tasks, {} positive observations",
-            successful_tasks,
-            failed_tasks,
-            positive_observations
+            successful_tasks, failed_tasks, positive_observations
         )
     }
 
@@ -290,22 +308,26 @@ impl ExecutionContext {
     /// Get tags for memory storage
     pub fn get_tags(&self) -> Vec<String> {
         let mut tags = Vec::new();
-        
+
         if let Some(goal) = &self.current_goal {
             tags.push(format!("goal_{:?}", goal.goal_type));
         }
-        
+
         tags.push(format!("tasks_{}", self.completed_tasks.len()));
         tags.push(format!("observations_{}", self.observations.len()));
-        
+
         if self.completed_tasks.iter().any(|t| t.success == Some(true)) {
             tags.push("has_success".to_string());
         }
-        
-        if self.completed_tasks.iter().any(|t| t.success == Some(false)) {
+
+        if self
+            .completed_tasks
+            .iter()
+            .any(|t| t.success == Some(false))
+        {
             tags.push("has_failure".to_string());
         }
-        
+
         tags
     }
 
@@ -351,12 +373,17 @@ impl ExecutionContext {
 
     /// Get execution duration
     pub fn get_execution_duration(&self) -> Duration {
-        self.last_update.duration_since(self.start_time).unwrap_or_default()
+        self.last_update
+            .duration_since(self.start_time)
+            .unwrap_or_default()
     }
 
     /// Check if context is stale (hasn't been updated recently)
     pub fn is_stale(&self, threshold: Duration) -> bool {
-        SystemTime::now().duration_since(self.last_update).unwrap_or_default() > threshold
+        SystemTime::now()
+            .duration_since(self.last_update)
+            .unwrap_or_default()
+            > threshold
     }
 
     /// Get context statistics
@@ -411,7 +438,7 @@ impl Default for ExecutionContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::goal::{Goal, GoalType, GoalPriority};
+    use crate::goal::{Goal, GoalPriority, GoalType};
 
     #[test]
     fn test_execution_context_creation() {
@@ -427,7 +454,7 @@ mod tests {
         };
 
         let context = ExecutionContext::new(goal.clone());
-        
+
         assert!(!context.context_id.is_empty());
         assert_eq!(context.current_goal.as_ref().unwrap().goal_id, "test-goal");
         assert_eq!(context.iteration_count, 0);
@@ -449,11 +476,17 @@ mod tests {
         };
 
         let mut context = ExecutionContext::new(goal);
-        
+
         context.set_variable("test_key".to_string(), "test_value".to_string());
-        
-        assert_eq!(context.variables.get("test_key"), Some(&"test_value".to_string()));
-        assert!(context.execution_history.iter().any(|e| matches!(e.event_type, ExecutionEventType::VariableSet)));
+
+        assert_eq!(
+            context.variables.get("test_key"),
+            Some(&"test_value".to_string())
+        );
+        assert!(context
+            .execution_history
+            .iter()
+            .any(|e| matches!(e.event_type, ExecutionEventType::VariableSet)));
     }
 
     #[test]
@@ -471,7 +504,7 @@ mod tests {
 
         let context = ExecutionContext::new(goal);
         let summary = context.get_summary();
-        
+
         assert!(summary.contains("Goal: Some(\"Test goal\")"));
         assert!(summary.contains("Active tasks: 0"));
         assert!(summary.contains("Completed tasks: 0"));
@@ -492,7 +525,7 @@ mod tests {
 
         let context = ExecutionContext::new(goal);
         let stats = context.get_stats();
-        
+
         assert_eq!(stats.total_observations, 0);
         assert_eq!(stats.active_tasks, 0);
         assert_eq!(stats.completed_tasks, 0);

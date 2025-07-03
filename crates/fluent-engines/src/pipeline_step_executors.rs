@@ -1,4 +1,4 @@
-use crate::modular_pipeline_executor::{StepExecutor, StepResult, ExecutionContext, PipelineStep};
+use crate::modular_pipeline_executor::{ExecutionContext, PipelineStep, StepExecutor, StepResult};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -12,12 +12,20 @@ pub struct CommandStepExecutor;
 
 #[async_trait]
 impl StepExecutor for CommandStepExecutor {
-    async fn execute(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<StepResult> {
-        let command = step.config.get("command")
+    async fn execute(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<StepResult> {
+        let command = step
+            .config
+            .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Command step requires 'command' config"))?;
 
-        let shell = step.config.get("shell")
+        let shell = step
+            .config
+            .get("shell")
             .and_then(|v| v.as_str())
             .unwrap_or("sh");
 
@@ -37,7 +45,11 @@ impl StepExecutor for CommandStepExecutor {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            return Err(anyhow!("Command failed with exit code {:?}: {}", output.status.code(), stderr));
+            return Err(anyhow!(
+                "Command failed with exit code {:?}: {}",
+                output.status.code(),
+                stderr
+            ));
         }
 
         let mut variables = HashMap::new();
@@ -48,7 +60,12 @@ impl StepExecutor for CommandStepExecutor {
         Ok(StepResult {
             output: Some(stdout),
             variables,
-            metadata: [("exit_code".to_string(), output.status.code().unwrap_or(0).to_string())].into_iter().collect(),
+            metadata: [(
+                "exit_code".to_string(),
+                output.status.code().unwrap_or(0).to_string(),
+            )]
+            .into_iter()
+            .collect(),
         })
     }
 
@@ -65,7 +82,11 @@ impl StepExecutor for CommandStepExecutor {
 }
 
 impl CommandStepExecutor {
-    fn expand_variables(&self, template: &str, variables: &HashMap<String, String>) -> Result<String> {
+    fn expand_variables(
+        &self,
+        template: &str,
+        variables: &HashMap<String, String>,
+    ) -> Result<String> {
         let mut result = template.to_string();
         for (key, value) in variables {
             let placeholder = format!("${{{}}}", key);
@@ -90,16 +111,26 @@ impl HttpStepExecutor {
 
 #[async_trait]
 impl StepExecutor for HttpStepExecutor {
-    async fn execute(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<StepResult> {
-        let url = step.config.get("url")
+    async fn execute(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<StepResult> {
+        let url = step
+            .config
+            .get("url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("HTTP step requires 'url' config"))?;
 
-        let method = step.config.get("method")
+        let method = step
+            .config
+            .get("method")
             .and_then(|v| v.as_str())
             .unwrap_or("GET");
 
-        let headers = step.config.get("headers")
+        let headers = step
+            .config
+            .get("headers")
             .and_then(|v| v.as_object())
             .map(|obj| {
                 obj.iter()
@@ -108,8 +139,7 @@ impl StepExecutor for HttpStepExecutor {
             })
             .unwrap_or_default();
 
-        let body = step.config.get("body")
-            .and_then(|v| v.as_str());
+        let body = step.config.get("body").and_then(|v| v.as_str());
 
         // Expand variables in URL and body
         let expanded_url = self.expand_variables(url, &context.variables)?;
@@ -154,7 +184,11 @@ impl StepExecutor for HttpStepExecutor {
         }
 
         if !status.is_success() {
-            return Err(anyhow!("HTTP request failed with status {}: {}", status, response_text));
+            return Err(anyhow!(
+                "HTTP request failed with status {}: {}",
+                status,
+                response_text
+            ));
         }
 
         Ok(StepResult {
@@ -164,7 +198,9 @@ impl StepExecutor for HttpStepExecutor {
                 ("status_code".to_string(), status.as_u16().to_string()),
                 ("method".to_string(), method.to_string()),
                 ("url".to_string(), expanded_url),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
@@ -181,7 +217,11 @@ impl StepExecutor for HttpStepExecutor {
 }
 
 impl HttpStepExecutor {
-    fn expand_variables(&self, template: &str, variables: &HashMap<String, String>) -> Result<String> {
+    fn expand_variables(
+        &self,
+        template: &str,
+        variables: &HashMap<String, String>,
+    ) -> Result<String> {
         let mut result = template.to_string();
         for (key, value) in variables {
             let placeholder = format!("${{{}}}", key);
@@ -196,8 +236,14 @@ pub struct FileStepExecutor;
 
 #[async_trait]
 impl StepExecutor for FileStepExecutor {
-    async fn execute(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<StepResult> {
-        let operation = step.config.get("operation")
+    async fn execute(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<StepResult> {
+        let operation = step
+            .config
+            .get("operation")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("File step requires 'operation' config"))?;
 
@@ -226,7 +272,6 @@ impl StepExecutor for FileStepExecutor {
 impl FileStepExecutor {
     /// Validate file path for security
     fn validate_file_path(&self, path: &str) -> Result<PathBuf> {
-
         // Check for path traversal attempts
         if path.contains("..") {
             return Err(anyhow!("Path traversal attempt detected: {}", path));
@@ -237,11 +282,7 @@ impl FileStepExecutor {
         if path_buf.is_absolute() {
             // For absolute paths, ensure they're in safe locations
             let current_dir = std::env::current_dir()?.to_string_lossy().to_string();
-            let allowed_prefixes = [
-                "/tmp/",
-                "/var/tmp/",
-                current_dir.as_str(),
-            ];
+            let allowed_prefixes = ["/tmp/", "/var/tmp/", current_dir.as_str()];
 
             let mut is_allowed = false;
             for prefix in &allowed_prefixes {
@@ -263,7 +304,9 @@ impl FileStepExecutor {
                 // If canonicalize fails (file doesn't exist), validate parent directory
                 if let Some(parent) = path_buf.parent() {
                     match parent.canonicalize() {
-                        Ok(parent_canonical) => parent_canonical.join(path_buf.file_name().unwrap_or_default()),
+                        Ok(parent_canonical) => {
+                            parent_canonical.join(path_buf.file_name().unwrap_or_default())
+                        }
                         Err(_) => return Err(anyhow!("Invalid parent directory: {}", path)),
                     }
                 } else {
@@ -274,8 +317,14 @@ impl FileStepExecutor {
 
         Ok(canonical_path)
     }
-    async fn read_file(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
-        let path = step.config.get("path")
+    async fn read_file(
+        &self,
+        step: &PipelineStep,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
+        let path = step
+            .config
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Read operation requires 'path' config"))?;
 
@@ -293,16 +342,26 @@ impl FileStepExecutor {
         Ok(StepResult {
             output: Some(content),
             variables,
-            metadata: [("file_path".to_string(), expanded_path)].into_iter().collect(),
+            metadata: [("file_path".to_string(), expanded_path)]
+                .into_iter()
+                .collect(),
         })
     }
 
-    async fn write_file(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
-        let path = step.config.get("path")
+    async fn write_file(
+        &self,
+        step: &PipelineStep,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
+        let path = step
+            .config
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Write operation requires 'path' config"))?;
 
-        let content = step.config.get("content")
+        let content = step
+            .config
+            .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Write operation requires 'content' config"))?;
 
@@ -314,21 +373,38 @@ impl FileStepExecutor {
         tokio::fs::write(&validated_path, &expanded_content).await?;
 
         Ok(StepResult {
-            output: Some(format!("Written {} bytes to {}", expanded_content.len(), expanded_path)),
+            output: Some(format!(
+                "Written {} bytes to {}",
+                expanded_content.len(),
+                expanded_path
+            )),
             variables: HashMap::new(),
             metadata: [
                 ("file_path".to_string(), expanded_path),
-                ("bytes_written".to_string(), expanded_content.len().to_string()),
-            ].into_iter().collect(),
+                (
+                    "bytes_written".to_string(),
+                    expanded_content.len().to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
-    async fn copy_file(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
-        let source = step.config.get("source")
+    async fn copy_file(
+        &self,
+        step: &PipelineStep,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
+        let source = step
+            .config
+            .get("source")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Copy operation requires 'source' config"))?;
 
-        let destination = step.config.get("destination")
+        let destination = step
+            .config
+            .get("destination")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Copy operation requires 'destination' config"))?;
 
@@ -338,17 +414,28 @@ impl FileStepExecutor {
         tokio::fs::copy(&expanded_source, &expanded_destination).await?;
 
         Ok(StepResult {
-            output: Some(format!("Copied {} to {}", expanded_source, expanded_destination)),
+            output: Some(format!(
+                "Copied {} to {}",
+                expanded_source, expanded_destination
+            )),
             variables: HashMap::new(),
             metadata: [
                 ("source_path".to_string(), expanded_source),
                 ("destination_path".to_string(), expanded_destination),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
-    async fn delete_file(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
-        let path = step.config.get("path")
+    async fn delete_file(
+        &self,
+        step: &PipelineStep,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
+        let path = step
+            .config
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Delete operation requires 'path' config"))?;
 
@@ -358,12 +445,20 @@ impl FileStepExecutor {
         Ok(StepResult {
             output: Some(format!("Deleted {}", expanded_path)),
             variables: HashMap::new(),
-            metadata: [("deleted_path".to_string(), expanded_path)].into_iter().collect(),
+            metadata: [("deleted_path".to_string(), expanded_path)]
+                .into_iter()
+                .collect(),
         })
     }
 
-    async fn check_file_exists(&self, step: &PipelineStep, context: &ExecutionContext) -> Result<StepResult> {
-        let path = step.config.get("path")
+    async fn check_file_exists(
+        &self,
+        step: &PipelineStep,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
+        let path = step
+            .config
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Exists operation requires 'path' config"))?;
 
@@ -381,11 +476,17 @@ impl FileStepExecutor {
             metadata: [
                 ("file_path".to_string(), expanded_path),
                 ("exists".to_string(), exists.to_string()),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
-    fn expand_variables(&self, template: &str, variables: &HashMap<String, String>) -> Result<String> {
+    fn expand_variables(
+        &self,
+        template: &str,
+        variables: &HashMap<String, String>,
+    ) -> Result<String> {
         let mut result = template.to_string();
         for (key, value) in variables {
             let placeholder = format!("${{{}}}", key);
@@ -400,16 +501,26 @@ pub struct ConditionStepExecutor;
 
 #[async_trait]
 impl StepExecutor for ConditionStepExecutor {
-    async fn execute(&self, step: &PipelineStep, context: &mut ExecutionContext) -> Result<StepResult> {
-        let condition = step.config.get("condition")
+    async fn execute(
+        &self,
+        step: &PipelineStep,
+        context: &mut ExecutionContext,
+    ) -> Result<StepResult> {
+        let condition = step
+            .config
+            .get("condition")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Condition step requires 'condition' config"))?;
 
-        let if_true = step.config.get("if_true")
+        let if_true = step
+            .config
+            .get("if_true")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        let if_false = step.config.get("if_false")
+        let if_false = step
+            .config
+            .get("if_false")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
@@ -428,7 +539,9 @@ impl StepExecutor for ConditionStepExecutor {
             metadata: [
                 ("condition_result".to_string(), result.to_string()),
                 ("condition".to_string(), condition.to_string()),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
@@ -445,7 +558,11 @@ impl StepExecutor for ConditionStepExecutor {
 }
 
 impl ConditionStepExecutor {
-    fn evaluate_condition(&self, condition: &str, variables: &HashMap<String, String>) -> Result<bool> {
+    fn evaluate_condition(
+        &self,
+        condition: &str,
+        variables: &HashMap<String, String>,
+    ) -> Result<bool> {
         // Expand variables first
         let mut expanded = condition.to_string();
         for (key, value) in variables {
@@ -471,7 +588,7 @@ impl ConditionStepExecutor {
                         return Ok(parts[0].trim() != parts[1].trim());
                     }
                 }
-                
+
                 // Default to false for unknown conditions
                 Ok(false)
             }
@@ -494,7 +611,9 @@ mod tests {
             config: [
                 ("command".to_string(), serde_json::json!("echo hello")),
                 ("save_output".to_string(), serde_json::json!("result")),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             timeout: None,
             retry_config: None,
             depends_on: Vec::new(),
@@ -520,11 +639,17 @@ mod tests {
     #[test]
     fn test_condition_evaluation() {
         let executor = ConditionStepExecutor;
-        let variables = [("status".to_string(), "success".to_string())].into_iter().collect();
-        
+        let variables = [("status".to_string(), "success".to_string())]
+            .into_iter()
+            .collect();
+
         assert!(executor.evaluate_condition("true", &variables).unwrap());
         assert!(!executor.evaluate_condition("false", &variables).unwrap());
-        assert!(executor.evaluate_condition("${status} == success", &variables).unwrap());
-        assert!(!executor.evaluate_condition("${status} == failure", &variables).unwrap());
+        assert!(executor
+            .evaluate_condition("${status} == success", &variables)
+            .unwrap());
+        assert!(!executor
+            .evaluate_condition("${status} == failure", &variables)
+            .unwrap());
     }
 }

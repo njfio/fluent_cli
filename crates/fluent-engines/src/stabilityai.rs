@@ -1,24 +1,22 @@
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use base64::engine::general_purpose::STANDARD as Base64;
+use base64::Engine as Base64Engine;
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
+use reqwest::multipart::{Form, Part};
+use reqwest::Client;
+use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
-use serde_json::Value;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
-use log::debug;
-use reqwest::Client;
-use reqwest::multipart::{Form, Part};
-use base64::Engine as Base64Engine;
-use base64::engine::general_purpose::STANDARD as Base64;
-
 
 pub struct StabilityAIEngine {
     config: EngineConfig,
@@ -51,22 +49,32 @@ impl StabilityAIEngine {
 
 #[async_trait]
 impl Engine for StabilityAIEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let url = "https://api.stability.ai/v2beta/stable-image/generate/ultra";
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
             // Get output format from configuration, default to webp
-            let output_format = self.config.parameters
+            let output_format = self
+                .config
+                .parameters
                 .get("output_format")
                 .and_then(|v| v.as_str())
                 .unwrap_or("webp");
 
             // Get accept header type, default to image/*
-            let accept_header = self.config.parameters
+            let accept_header = self
+                .config
+                .parameters
                 .get("accept")
                 .and_then(|v| v.as_str())
                 .unwrap_or("image/*");
@@ -93,16 +101,21 @@ impl Engine for StabilityAIEngine {
             }
 
             // Send the request
-            let response = self.client.post(url)
+            let response = self
+                .client
+                .post(url)
                 .header("Authorization", format!("Bearer {}", auth_token))
-                .header("Accept", accept_header)  // Add Accept header
+                .header("Accept", accept_header) // Add Accept header
                 .multipart(form)
                 .send()
                 .await?;
 
             // Check for successful response (200 OK)
             if !response.status().is_success() {
-                return Err(anyhow!("Stability AI API request failed: {}", response.status()));
+                return Err(anyhow!(
+                    "Stability AI API request failed: {}",
+                    response.status()
+                ));
             }
 
             let response_content = if accept_header == "application/json" {
@@ -110,7 +123,9 @@ impl Engine for StabilityAIEngine {
                 let json_response: Value = response.json().await?;
                 let base64_image = json_response["artifacts"][0]["base64"]
                     .as_str()
-                    .ok_or_else(|| anyhow!("Failed to extract base64 image data from JSON response"))?;
+                    .ok_or_else(|| {
+                        anyhow!("Failed to extract base64 image data from JSON response")
+                    })?;
                 Base64.encode(base64_image).into_bytes()
             } else {
                 // Get image bytes directly
@@ -118,18 +133,27 @@ impl Engine for StabilityAIEngine {
             };
 
             // Get the download directory
-            let download_dir = self.download_dir
+            let download_dir = self
+                .download_dir
                 .as_ref()
                 .ok_or_else(|| anyhow!("Download directory not set for StabilityAIEngine"))?;
             let download_path = Path::new(download_dir);
 
             // Create a unique file name
-            let file_name = format!("stabilityai_image_{}.{}", uuid::Uuid::new_v4(), output_format);
+            let file_name = format!(
+                "stabilityai_image_{}.{}",
+                uuid::Uuid::new_v4(),
+                output_format
+            );
             let full_path = download_path.join(file_name);
 
             // Write the image data to the file
-            let mut file = File::create(&full_path).await.context("Failed to create image file")?;
-            file.write_all(&response_content).await.context("Failed to write image data to file")?;
+            let mut file = File::create(&full_path)
+                .await
+                .context("Failed to create image file")?;
+            file.write_all(&response_content)
+                .await
+                .context("Failed to write image data to file")?;
 
             Ok(Response {
                 content: full_path.to_str().unwrap().to_string(),
@@ -149,7 +173,10 @@ impl Engine for StabilityAIEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             Ok(UpsertResponse {
                 processed_files: vec![],
@@ -163,7 +190,11 @@ impl Engine for StabilityAIEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
@@ -173,7 +204,11 @@ impl Engine for StabilityAIEngine {
             .ok_or_else(|| anyhow!("Failed to extract artifacts from Stability AI response"))
             .ok()?
             .iter()
-            .filter_map(|artifact| artifact["base64"].as_str().map(|base64| format!("data:image/png;base64,{}", base64)))
+            .filter_map(|artifact| {
+                artifact["base64"]
+                    .as_str()
+                    .map(|base64| format!("data:image/png;base64,{}", base64))
+            })
             .collect();
 
         if image_urls.is_empty() {
@@ -189,29 +224,41 @@ impl Engine for StabilityAIEngine {
         }
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
             // Stability AI doesn't support file uploads in the same way as OpenAI.
             // Instead, we'll read the file and encode it to base64.
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+            file.read_to_end(&mut buffer)
+                .await
+                .context("Failed to read file")?;
             let base64_image = Base64.encode(&buffer);
             Ok(base64_image)
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let mut file = File::open(file_path).await.context("Failed to open file")?;
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+            file.read_to_end(&mut buffer)
+                .await
+                .context("Failed to read file")?;
             let base64_image = Base64.encode(&buffer);
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
             let payload = serde_json::json!({
@@ -222,11 +269,16 @@ impl Engine for StabilityAIEngine {
 
             debug!("Stability AI Payload with file: {:?}", payload);
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .json(&payload)
                 .send()
@@ -245,12 +297,20 @@ impl Engine for StabilityAIEngine {
                 .as_array()
                 .ok_or_else(|| anyhow!("Failed to extract artifacts from Stability AI response"))?
                 .iter()
-                .filter_map(|artifact| artifact["base64"].as_str().map(|base64| format!("data:image/png;base64,{}", base64)))
+                .filter_map(|artifact| {
+                    artifact["base64"]
+                        .as_str()
+                        .map(|base64| format!("data:image/png;base64,{}", base64))
+                })
                 .collect();
 
             Ok(Response {
                 content: image_urls.join("\n"),
-                usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                usage: Usage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
                 model: "stability-ai".to_string(), // Extract the model name from the response if available
                 finish_reason: Some("success".to_string()),
                 cost: Cost {

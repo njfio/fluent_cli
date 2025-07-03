@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub mod filesystem;
-pub mod shell;
 pub mod rust_compiler;
+pub mod shell;
 pub mod string_replace_editor;
 
 pub use filesystem::FileSystemExecutor;
-pub use shell::ShellExecutor;
 pub use rust_compiler::RustCompilerExecutor;
+pub use shell::ShellExecutor;
 pub use string_replace_editor::StringReplaceEditor;
 
 /// Trait for tool executors that can perform actions in the environment
@@ -64,28 +64,35 @@ impl ToolRegistry {
     ) -> Result<String> {
         // Find the executor that provides this tool
         for executor in self.executors.values() {
-            if executor.get_available_tools().contains(&tool_name.to_string()) {
+            if executor
+                .get_available_tools()
+                .contains(&tool_name.to_string())
+            {
                 // Validate the request first
                 executor.validate_tool_request(tool_name, parameters)?;
-                
+
                 // Execute the tool
                 return executor.execute_tool(tool_name, parameters).await;
             }
         }
 
-        Err(anyhow::anyhow!("Tool '{}' not found in any registered executor", tool_name))
+        Err(anyhow::anyhow!(
+            "Tool '{}' not found in any registered executor",
+            tool_name
+        ))
     }
 
     /// Get all available tools across all executors
     pub fn get_all_available_tools(&self) -> Vec<ToolInfo> {
         let mut tools = Vec::new();
-        
+
         for (executor_name, executor) in &self.executors {
             for tool_name in executor.get_available_tools() {
                 tools.push(ToolInfo {
                     name: tool_name.clone(),
                     executor: executor_name.clone(),
-                    description: executor.get_tool_description(&tool_name)
+                    description: executor
+                        .get_tool_description(&tool_name)
                         .unwrap_or_else(|| "No description available".to_string()),
                 });
             }
@@ -96,8 +103,11 @@ impl ToolRegistry {
 
     /// Check if a tool is available
     pub fn is_tool_available(&self, tool_name: &str) -> bool {
-        self.executors.values()
-            .any(|executor| executor.get_available_tools().contains(&tool_name.to_string()))
+        self.executors.values().any(|executor| {
+            executor
+                .get_available_tools()
+                .contains(&tool_name.to_string())
+        })
     }
 }
 
@@ -117,16 +127,18 @@ impl ToolRegistry {
             let tool_config = ToolExecutionConfig {
                 timeout_seconds: 30,
                 max_output_size: 1024 * 1024, // 1MB
-                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
-                    "./".to_string(),
-                    "./src".to_string(),
-                    "./examples".to_string(),
-                    "./crates".to_string(),
-                ]),
-                allowed_commands: config.allowed_commands.clone().unwrap_or_else(|| vec![
-                    "cargo".to_string(),
-                    "rustc".to_string(),
-                ]),
+                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| {
+                    vec![
+                        "./".to_string(),
+                        "./src".to_string(),
+                        "./examples".to_string(),
+                        "./crates".to_string(),
+                    ]
+                }),
+                allowed_commands: config
+                    .allowed_commands
+                    .clone()
+                    .unwrap_or_else(|| vec!["cargo".to_string(), "rustc".to_string()]),
                 read_only: false,
             };
 
@@ -135,19 +147,22 @@ impl ToolRegistry {
 
             // Register string replace editor (also requires file operations)
             let string_replace_config = string_replace_editor::StringReplaceConfig {
-                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
-                    "./".to_string(),
-                    "./src".to_string(),
-                    "./examples".to_string(),
-                    "./crates".to_string(),
-                ]),
+                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| {
+                    vec![
+                        "./".to_string(),
+                        "./src".to_string(),
+                        "./examples".to_string(),
+                        "./crates".to_string(),
+                    ]
+                }),
                 max_file_size: 10 * 1024 * 1024, // 10MB
                 backup_enabled: true,
                 case_sensitive: true,
                 max_replacements: 100,
             };
 
-            let string_replace_executor = Arc::new(StringReplaceEditor::with_config(string_replace_config));
+            let string_replace_executor =
+                Arc::new(StringReplaceEditor::with_config(string_replace_config));
             registry.register("string_replace".to_string(), string_replace_executor);
         }
 
@@ -156,20 +171,24 @@ impl ToolRegistry {
             let shell_config = ToolExecutionConfig {
                 timeout_seconds: 60,
                 max_output_size: 1024 * 1024, // 1MB
-                allowed_paths: config.allowed_paths.clone().unwrap_or_else(|| vec![
-                    "./".to_string(),
-                ]),
-                allowed_commands: config.allowed_commands.clone().unwrap_or_else(|| vec![
-                    "cargo".to_string(),
-                    "rustc".to_string(),
-                    "ls".to_string(),
-                    "cat".to_string(),
-                    "echo".to_string(),
-                ]),
+                allowed_paths: config
+                    .allowed_paths
+                    .clone()
+                    .unwrap_or_else(|| vec!["./".to_string()]),
+                allowed_commands: config.allowed_commands.clone().unwrap_or_else(|| {
+                    vec![
+                        "cargo".to_string(),
+                        "rustc".to_string(),
+                        "ls".to_string(),
+                        "cat".to_string(),
+                        "echo".to_string(),
+                    ]
+                }),
                 read_only: false,
             };
 
-            let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let working_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             let shell_executor = Arc::new(ShellExecutor::new(shell_config, working_dir));
             registry.register("shell".to_string(), shell_executor);
         }
@@ -177,7 +196,7 @@ impl ToolRegistry {
         // Register Rust compiler executor
         if config.rust_compiler {
             let rust_compiler_executor = Arc::new(RustCompilerExecutor::with_defaults(
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
             ));
             registry.register("rust_compiler".to_string(), rust_compiler_executor);
         }
@@ -251,8 +270,13 @@ pub mod validation {
             canonical
         } else if let Some(parent) = path.parent() {
             if let Some(filename) = path.file_name() {
-                let canonical_parent = parent.canonicalize()
-                    .map_err(|e| anyhow::anyhow!("Failed to canonicalize parent path '{}': {}", parent.display(), e))?;
+                let canonical_parent = parent.canonicalize().map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to canonicalize parent path '{}': {}",
+                        parent.display(),
+                        e
+                    )
+                })?;
                 canonical_parent.join(filename)
             } else {
                 return Err(anyhow::anyhow!("Invalid path: {}", path.display()));
@@ -279,7 +303,7 @@ pub mod validation {
     /// Validate that a command is in the allowed list
     pub fn validate_command(command: &str, allowed_commands: &[String]) -> Result<()> {
         let command_lower = command.to_lowercase();
-        
+
         for allowed in allowed_commands {
             if command_lower.starts_with(&allowed.to_lowercase()) {
                 return Ok(());
@@ -346,16 +370,16 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry() {
         let mut registry = ToolRegistry::new();
-        
+
         let executor = Arc::new(MockToolExecutor {
             tools: vec!["test_tool".to_string()],
         });
-        
+
         registry.register("mock".to_string(), executor);
-        
+
         assert!(registry.is_tool_available("test_tool"));
         assert!(!registry.is_tool_available("nonexistent_tool"));
-        
+
         let result = registry.execute_tool("test_tool", &HashMap::new()).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Executed test_tool");
@@ -384,7 +408,7 @@ mod tests {
     #[test]
     fn test_command_validation() {
         let allowed_commands = vec!["cargo build".to_string(), "cargo test".to_string()];
-        
+
         assert!(validation::validate_command("cargo build", &allowed_commands).is_ok());
         assert!(validation::validate_command("cargo test --lib", &allowed_commands).is_ok());
         assert!(validation::validate_command("rm -rf /", &allowed_commands).is_err());
@@ -394,9 +418,12 @@ mod tests {
     fn test_output_sanitization() {
         let short_output = "Hello, world!";
         let long_output = "a".repeat(2000);
-        
-        assert_eq!(validation::sanitize_output(short_output, 1000), short_output);
-        
+
+        assert_eq!(
+            validation::sanitize_output(short_output, 1000),
+            short_output
+        );
+
         let sanitized = validation::sanitize_output(&long_output, 100);
         assert!(sanitized.len() < long_output.len());
         assert!(sanitized.contains("truncated"));

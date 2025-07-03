@@ -1,17 +1,16 @@
+use anyhow::{anyhow, Result};
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::{Engine, EngineConfigProcessor};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
+use reqwest::Client;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::traits::{Engine, EngineConfigProcessor};
-use fluent_core::config::EngineConfig;
-use fluent_core::neo4j_client::Neo4jClient;
-use anyhow::{Result, anyhow};
-use reqwest::Client;
-use serde_json::{json, Value};
-use log::debug;
 
 pub struct LangflowEngine {
     config: EngineConfig,
@@ -55,7 +54,7 @@ impl EngineConfigProcessor for LangflowConfigProcessor {
                 serde_json::Value::Object(obj) => {
                     // Handle nested objects
                     payload["tweaks"][key] = json!(obj);
-                },
+                }
                 _ => {
                     // For non-object values, add them directly to the root of the payload
                     payload[key] = value.clone();
@@ -66,8 +65,6 @@ impl EngineConfigProcessor for LangflowConfigProcessor {
         debug!("Langflow Payload: {:#?}", payload);
         Ok(payload)
     }
-
-
 }
 
 #[async_trait::async_trait]
@@ -77,23 +74,33 @@ impl Engine for LangflowEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Langflow doesn't have a native upsert/embedding API
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "langflow".to_string(),
                 operation: "upsert".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
-
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let client = Client::new();
             debug!("Config: {:?}", self.config);
@@ -101,17 +108,15 @@ impl Engine for LangflowEngine {
             let mut payload = self.config_processor.process_config(&self.config)?;
             payload["input_value"] = json!(request.payload);
 
-            let url = format!("{}://{}:{}{}",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port,
-                              self.config.connection.request_path
+            let url = format!(
+                "{}://{}:{}{}",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port,
+                self.config.connection.request_path
             );
 
-            let res = client.post(&url)
-                .json(&payload)
-                .send()
-                .await?;
+            let res = client.post(&url).json(&payload).send().await?;
 
             let response_body = res.json::<serde_json::Value>().await?;
             debug!("Response: {:?}", response_body);
@@ -120,10 +125,12 @@ impl Engine for LangflowEngine {
                 return Err(anyhow!("Langflow API error: {:?}", error));
             }
 
-            let extracted_content = self.extract_content(&response_body)
+            let extracted_content = self
+                .extract_content(&response_body)
                 .ok_or_else(|| anyhow!("Failed to extract content from Langflow response"))?;
 
-            let estimated_tokens = (extracted_content.main_content.len() as f32 / 4.0).ceil() as u32;
+            let estimated_tokens =
+                (extracted_content.main_content.len() as f32 / 4.0).ceil() as u32;
             let usage = Usage {
                 prompt_tokens: estimated_tokens / 2,
                 completion_tokens: estimated_tokens / 2,
@@ -159,13 +166,25 @@ impl Engine for LangflowEngine {
                         content.main_content = message.to_string();
                     }
 
-                    content.sentiment = map.get("sentiment").and_then(|v| v.as_str()).map(String::from);
-                    content.clusters = map.get("clusters").and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
-                    content.themes = map.get("themes").and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
-                    content.keywords = map.get("keywords").and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                    content.sentiment = map
+                        .get("sentiment")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    content.clusters = map.get("clusters").and_then(|v| v.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
+                    content.themes = map.get("themes").and_then(|v| v.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
+                    content.keywords = map.get("keywords").and_then(|v| v.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
 
                     if !content.main_content.is_empty() {
                         Some(content)
@@ -193,25 +212,34 @@ impl Engine for LangflowEngine {
         extract_recursive(value)
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "langflow".to_string(),
                 operation: "file_upload".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "langflow".to_string(),
                 operation: "file_processing".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 }

@@ -1,4 +1,4 @@
-use crate::modular_pipeline_executor::{Pipeline, PipelineStep, RetryConfig, ExecutionContext};
+use crate::modular_pipeline_executor::{ExecutionContext, Pipeline, PipelineStep, RetryConfig};
 use crate::pipeline_infrastructure::PipelineExecutorBuilder;
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
@@ -89,40 +89,30 @@ impl PipelineCli {
     /// Run the CLI application
     pub async fn run() -> Result<()> {
         let cli = PipelineCli::parse();
-        
+
         // Ensure directories exist
         tokio::fs::create_dir_all(&cli.pipeline_dir).await?;
         tokio::fs::create_dir_all(&cli.state_dir).await?;
         tokio::fs::create_dir_all(&cli.log_dir).await?;
 
         match cli.command {
-            Commands::List => {
-                Self::list_pipelines(&cli.pipeline_dir).await
-            }
-            Commands::Show { name } => {
-                Self::show_pipeline(&cli.pipeline_dir, &name).await
-            }
-            Commands::Execute { ref name, ref var, ref resume } => {
-                Self::execute_pipeline(&cli, name, var.clone(), resume.clone()).await
-            }
-            Commands::Validate { name } => {
-                Self::validate_pipeline(&cli.pipeline_dir, &name).await
-            }
+            Commands::List => Self::list_pipelines(&cli.pipeline_dir).await,
+            Commands::Show { name } => Self::show_pipeline(&cli.pipeline_dir, &name).await,
+            Commands::Execute {
+                ref name,
+                ref var,
+                ref resume,
+            } => Self::execute_pipeline(&cli, name, var.clone(), resume.clone()).await,
+            Commands::Validate { name } => Self::validate_pipeline(&cli.pipeline_dir, &name).await,
             Commands::Create { name, description } => {
                 Self::create_pipeline(&cli.pipeline_dir, &name, description.as_deref()).await
             }
-            Commands::Metrics => {
-                Self::show_metrics(&cli).await
-            }
-            Commands::History { limit } => {
-                Self::show_history(&cli.state_dir, limit).await
-            }
+            Commands::Metrics => Self::show_metrics(&cli).await,
+            Commands::History { limit } => Self::show_history(&cli.state_dir, limit).await,
             Commands::Monitor { run_id, interval } => {
                 Self::monitor_execution(&cli.state_dir, &run_id, interval).await
             }
-            Commands::Cancel { run_id } => {
-                Self::cancel_execution(&run_id).await
-            }
+            Commands::Cancel { run_id } => Self::cancel_execution(&run_id).await,
         }
     }
 
@@ -149,9 +139,15 @@ impl PipelineCli {
             // Try to load pipeline to get description
             match Self::load_pipeline(pipeline_dir, &pipeline_name).await {
                 Ok(pipeline) => {
-                    let description = pipeline.description.unwrap_or_else(|| "No description".to_string());
+                    let description = pipeline
+                        .description
+                        .unwrap_or_else(|| "No description".to_string());
                     println!("  • {} - {}", pipeline_name, description);
-                    println!("    Version: {}, Steps: {}", pipeline.version, pipeline.steps.len());
+                    println!(
+                        "    Version: {}, Steps: {}",
+                        pipeline.version,
+                        pipeline.steps.len()
+                    );
                 }
                 Err(_) => {
                     println!("  • {} (failed to load)", pipeline_name);
@@ -182,19 +178,19 @@ impl PipelineCli {
         println!("\n📋 Steps ({}):", pipeline.steps.len());
         for (i, step) in pipeline.steps.iter().enumerate() {
             println!("  {}. {} ({})", i + 1, step.name, step.step_type);
-            
+
             if !step.depends_on.is_empty() {
                 println!("     Depends on: {:?}", step.depends_on);
             }
-            
+
             if let Some(condition) = &step.condition {
                 println!("     Condition: {}", condition);
             }
-            
+
             if let Some(retry_config) = &step.retry_config {
                 println!("     Retry: {} attempts", retry_config.max_attempts);
             }
-            
+
             if let Some(timeout) = &step.timeout {
                 println!("     Timeout: {:?}", timeout);
             }
@@ -210,9 +206,14 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn execute_pipeline(cli: &PipelineCli, name: &str, variables: Vec<String>, resume: Option<String>) -> Result<()> {
+    async fn execute_pipeline(
+        cli: &PipelineCli,
+        name: &str,
+        variables: Vec<String>,
+        resume: Option<String>,
+    ) -> Result<()> {
         let pipeline = Self::load_pipeline(&cli.pipeline_dir, name).await?;
-        
+
         // Parse variables
         let mut initial_variables = HashMap::new();
         for var in variables {
@@ -241,15 +242,18 @@ impl PipelineCli {
         }
 
         let start_time = std::time::Instant::now();
-        
-        match executor.execute_pipeline(&pipeline, initial_variables, resume).await {
+
+        match executor
+            .execute_pipeline(&pipeline, initial_variables, resume)
+            .await
+        {
             Ok(context) => {
                 let duration = start_time.elapsed();
                 println!("✅ Pipeline completed successfully!");
                 println!("   Run ID: {}", context.run_id);
                 println!("   Duration: {:?}", duration);
                 println!("   Steps executed: {}", context.step_history.len());
-                
+
                 // Show final variables
                 if !context.variables.is_empty() {
                     println!("\n📝 Final variables:");
@@ -270,7 +274,7 @@ impl PipelineCli {
                 println!("❌ Pipeline failed!");
                 println!("   Duration: {:?}", duration);
                 println!("   Error: {}", e);
-                
+
                 // Show metrics even on failure
                 let metrics = metrics_listener.get_metrics().await;
                 if metrics.total_steps > 0 {
@@ -279,7 +283,7 @@ impl PipelineCli {
                     println!("   Successful steps: {}", metrics.successful_steps);
                     println!("   Failed steps: {}", metrics.failed_steps);
                 }
-                
+
                 return Err(e);
             }
         }
@@ -289,9 +293,9 @@ impl PipelineCli {
 
     async fn validate_pipeline(pipeline_dir: &PathBuf, name: &str) -> Result<()> {
         println!("🔍 Validating pipeline: {}", name);
-        
+
         let pipeline = Self::load_pipeline(pipeline_dir, name).await?;
-        
+
         // Basic validation
         if pipeline.steps.is_empty() {
             return Err(anyhow!("Pipeline has no steps"));
@@ -309,7 +313,11 @@ impl PipelineCli {
         for step in &pipeline.steps {
             for dep in &step.depends_on {
                 if !step_names.contains(dep) {
-                    return Err(anyhow!("Step '{}' depends on non-existent step '{}'", step.name, dep));
+                    return Err(anyhow!(
+                        "Step '{}' depends on non-existent step '{}'",
+                        step.name,
+                        dep
+                    ));
                 }
             }
         }
@@ -323,12 +331,23 @@ impl PipelineCli {
 
         println!("✅ Pipeline validation successful!");
         println!("   Steps: {}", pipeline.steps.len());
-        println!("   Dependencies: {}", pipeline.steps.iter().map(|s| s.depends_on.len()).sum::<usize>());
-        
+        println!(
+            "   Dependencies: {}",
+            pipeline
+                .steps
+                .iter()
+                .map(|s| s.depends_on.len())
+                .sum::<usize>()
+        );
+
         Ok(())
     }
 
-    async fn create_pipeline(pipeline_dir: &PathBuf, name: &str, description: Option<&str>) -> Result<()> {
+    async fn create_pipeline(
+        pipeline_dir: &PathBuf,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
         let pipeline = Pipeline {
             name: name.to_string(),
             version: "1.0.0".to_string(),
@@ -338,9 +357,17 @@ impl PipelineCli {
                     name: "hello".to_string(),
                     step_type: "command".to_string(),
                     config: [
-                        ("command".to_string(), Value::String("echo 'Hello, World!'".to_string())),
-                        ("save_output".to_string(), Value::String("greeting".to_string())),
-                    ].into_iter().collect(),
+                        (
+                            "command".to_string(),
+                            Value::String("echo 'Hello, World!'".to_string()),
+                        ),
+                        (
+                            "save_output".to_string(),
+                            Value::String("greeting".to_string()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
                     timeout: Some(Duration::from_secs(30)),
                     retry_config: Some(RetryConfig {
                         max_attempts: 3,
@@ -356,9 +383,12 @@ impl PipelineCli {
                 PipelineStep {
                     name: "goodbye".to_string(),
                     step_type: "command".to_string(),
-                    config: [
-                        ("command".to_string(), Value::String("echo 'Goodbye from ${greeting}!'".to_string())),
-                    ].into_iter().collect(),
+                    config: [(
+                        "command".to_string(),
+                        Value::String("echo 'Goodbye from ${greeting}!'".to_string()),
+                    )]
+                    .into_iter()
+                    .collect(),
                     timeout: Some(Duration::from_secs(30)),
                     retry_config: None,
                     depends_on: vec!["hello".to_string()],
@@ -367,9 +397,17 @@ impl PipelineCli {
                 },
             ],
             global_config: [
-                ("timeout".to_string(), Value::Number(serde_json::Number::from(300))),
-                ("max_parallel".to_string(), Value::Number(serde_json::Number::from(2))),
-            ].into_iter().collect(),
+                (
+                    "timeout".to_string(),
+                    Value::Number(serde_json::Number::from(300)),
+                ),
+                (
+                    "max_parallel".to_string(),
+                    Value::Number(serde_json::Number::from(2)),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             timeout: Some(Duration::from_secs(300)),
             max_parallel: Some(2),
         };
@@ -381,7 +419,7 @@ impl PipelineCli {
         println!("✅ Created pipeline template: {}", name);
         println!("   File: {}", pipeline_file.display());
         println!("   Steps: {}", pipeline.steps.len());
-        
+
         println!("\n📝 Next steps:");
         println!("  1. Edit the pipeline file to customize steps");
         println!("  2. Validate: fluent-pipeline validate {}", name);
@@ -394,13 +432,13 @@ impl PipelineCli {
         println!("📊 Pipeline execution metrics:");
         println!("   [Metrics display not yet implemented]");
         println!("   This would show aggregated metrics across all pipeline executions");
-        
+
         Ok(())
     }
 
     async fn show_history(state_dir: &PathBuf, limit: usize) -> Result<()> {
         println!("📜 Pipeline execution history (last {}):", limit);
-        
+
         let mut entries = tokio::fs::read_dir(state_dir).await?;
         let mut contexts = Vec::new();
 
@@ -426,33 +464,47 @@ impl PipelineCli {
         }
 
         for context in contexts {
-            let status = if context.step_history.iter().any(|s| s.status == crate::modular_pipeline_executor::ExecutionStatus::Failed) {
-                "❌ Failed"
-            } else if context.step_history.iter().all(|s| s.status == crate::modular_pipeline_executor::ExecutionStatus::Completed) {
-                "✅ Completed"
-            } else {
-                "🔄 In Progress"
-            };
+            let status =
+                if context
+                    .step_history
+                    .iter()
+                    .any(|s| s.status == crate::modular_pipeline_executor::ExecutionStatus::Failed)
+                {
+                    "❌ Failed"
+                } else if context.step_history.iter().all(|s| {
+                    s.status == crate::modular_pipeline_executor::ExecutionStatus::Completed
+                }) {
+                    "✅ Completed"
+                } else {
+                    "🔄 In Progress"
+                };
 
-            println!("  • {} - {} ({})", 
-                     context.run_id[..8].to_string(),
-                     context.pipeline_name,
-                     status);
+            println!(
+                "  • {} - {} ({})",
+                context.run_id[..8].to_string(),
+                context.pipeline_name,
+                status
+            );
             println!("    Started: {:?}", context.start_time);
-            println!("    Steps: {}/{}", 
-                     context.step_history.len(),
-                     context.current_step);
+            println!(
+                "    Steps: {}/{}",
+                context.step_history.len(),
+                context.current_step
+            );
         }
 
         Ok(())
     }
 
     async fn monitor_execution(state_dir: &PathBuf, run_id: &str, interval: u64) -> Result<()> {
-        println!("👁️  Monitoring execution: {} (refresh every {}s)", run_id, interval);
-        
+        println!(
+            "👁️  Monitoring execution: {} (refresh every {}s)",
+            run_id, interval
+        );
+
         loop {
             let state_file = state_dir.join(format!("{}.json", run_id));
-            
+
             if !state_file.exists() {
                 println!("❌ Execution not found: {}", run_id);
                 break;
@@ -463,14 +515,14 @@ impl PipelineCli {
 
             // Clear screen
             print!("\x1B[2J\x1B[1;1H");
-            
+
             println!("🔄 Pipeline Execution Monitor");
             println!("═══════════════════════════════");
             println!("Run ID: {}", context.run_id);
             println!("Pipeline: {}", context.pipeline_name);
             println!("Started: {:?}", context.start_time);
             println!("Current Step: {}", context.current_step);
-            
+
             println!("\n📋 Step History:");
             for (i, step) in context.step_history.iter().enumerate() {
                 let status_icon = match step.status {
@@ -481,27 +533,36 @@ impl PipelineCli {
                     crate::modular_pipeline_executor::ExecutionStatus::Skipped => "⏭️",
                     crate::modular_pipeline_executor::ExecutionStatus::Cancelled => "🚫",
                 };
-                
-                println!("  {}. {} {} ({})", i + 1, status_icon, step.step_name, step.step_type);
-                
+
+                println!(
+                    "  {}. {} {} ({})",
+                    i + 1,
+                    status_icon,
+                    step.step_name,
+                    step.step_type
+                );
+
                 if let Some(error) = &step.error {
                     println!("     Error: {}", error);
                 }
-                
+
                 if step.retry_count > 0 {
                     println!("     Retries: {}", step.retry_count);
                 }
             }
-            
+
             if !context.variables.is_empty() {
                 println!("\n📝 Variables:");
                 for (key, value) in &context.variables {
                     println!("  {}: {}", key, value);
                 }
             }
-            
+
             println!("\n{}", "═".repeat(50));
-            println!("Last updated: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"));
+            println!(
+                "Last updated: {}",
+                chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+            );
             println!("Press Ctrl+C to stop monitoring");
 
             tokio::time::sleep(Duration::from_secs(interval)).await;
@@ -514,20 +575,20 @@ impl PipelineCli {
         println!("🚫 Cancelling execution: {}", run_id);
         println!("   [Cancellation not yet implemented]");
         println!("   This would send a cancellation signal to the running pipeline");
-        
+
         Ok(())
     }
 
     async fn load_pipeline(pipeline_dir: &PathBuf, name: &str) -> Result<Pipeline> {
         let pipeline_file = pipeline_dir.join(format!("{}.json", name));
-        
+
         if !pipeline_file.exists() {
             return Err(anyhow!("Pipeline '{}' not found", name));
         }
 
         let content = tokio::fs::read_to_string(&pipeline_file).await?;
         let pipeline: Pipeline = serde_json::from_str(&content)?;
-        
+
         Ok(pipeline)
     }
 }

@@ -1,6 +1,14 @@
-# Fluent CLI - Multi-LLM Command Line Interface
+# Fluent CLI - Advanced Multi-LLM Command Line Interface
 
-A Rust-based command-line interface for interacting with multiple Large Language Model (LLM) providers. Fluent CLI provides a unified interface for OpenAI, Anthropic, Google Gemini, and other LLM services, with experimental agentic capabilities and Model Context Protocol (MCP) integration.
+A modern, secure, and modular Rust-based command-line interface for interacting with multiple Large Language Model (LLM) providers. Fluent CLI provides a unified interface for OpenAI, Anthropic, Google Gemini, and other LLM services, with production-ready agentic capabilities, comprehensive security features, and full Model Context Protocol (MCP) integration.
+
+## 🎉 **Recent Major Updates (v0.2.0)**
+
+- **🏗️ Modular Architecture**: Complete refactoring from monolithic to modular command structure
+- **🔒 Enhanced Security**: Comprehensive input validation, rate limiting, and secure execution environment
+- **🧪 Comprehensive Testing**: Full test coverage with integration and unit tests
+- **📊 Quality Assurance**: Automated security auditing and code quality assessment tools
+- **📁 Organized Documentation**: Structured documentation with guides, analysis, and implementation details
 
 ## 🚀 Key Features
 
@@ -18,12 +26,20 @@ A Rust-based command-line interface for interacting with multiple Large Language
 - **Pipeline Execution**: YAML-defined multi-step workflows
 - **Caching**: Optional request caching for improved performance
 
-### 🤖 **Experimental Agentic Features**
-- **Basic Agent Loop**: Interactive agent sessions with memory
-- **MCP Integration**: Model Context Protocol client and server capabilities
-- **Advanced Tool System**: Comprehensive file operations, shell commands, and code analysis
-- **String Replace Editor**: Surgical file editing with precision targeting
-- **Memory System**: SQLite-based persistent memory for agents
+### 🤖 **Production-Ready Agentic Features**
+- **Modular Agent Architecture**: Clean separation of reasoning, action, and reflection engines
+- **MCP Integration**: Full Model Context Protocol client and server capabilities
+- **Advanced Tool System**: Secure file operations, shell commands, and code analysis
+- **String Replace Editor**: Surgical file editing with precision targeting and validation
+- **Memory System**: SQLite-based persistent memory with performance optimization
+- **Security Sandboxing**: Rate limiting, input validation, and secure execution environment
+
+### 🔒 **Security & Quality Features**
+- **Comprehensive Input Validation**: Protection against injection attacks and malicious input
+- **Rate Limiting**: Configurable request throttling (30 requests/minute default)
+- **Command Sandboxing**: Isolated execution environment with timeouts
+- **Security Audit Tools**: Automated security scanning and vulnerability detection
+- **Code Quality Assessment**: Automated quality metrics and best practice validation
 
 ## 📦 Installation
 
@@ -45,6 +61,8 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 ```
 
 ### 2. Basic Usage
+
+#### Direct LLM Queries
 ```bash
 # Simple query to OpenAI
 fluent openai "Explain quantum computing"
@@ -59,10 +77,54 @@ fluent openai "What's in this image?" --upload_image_file image.jpg
 fluent openai "Complex analysis task" --cache
 ```
 
-### 3. Available Commands
+### 3. New Modular Command Structure
+
+#### Agent Commands
 ```bash
 # Interactive agent session
-fluent openai agent
+fluent agent --interactive
+
+# Agentic mode with specific goal
+fluent agent --agentic --goal "Build a simple web server" --max-iterations 10
+
+# Agent with tools enabled
+fluent agent --tools --config agent_config.json
+```
+
+#### Pipeline Commands
+```bash
+# Execute a pipeline
+fluent pipeline --file pipeline.yaml --input "process this data"
+
+# Pipeline with JSON output
+fluent pipeline --file pipeline.yaml --json-output
+
+# Force fresh execution (ignore cache)
+fluent pipeline --file pipeline.yaml --force-fresh
+```
+
+#### MCP (Model Context Protocol) Commands
+```bash
+# Start MCP server
+fluent mcp server
+
+# Run agent with MCP integration
+fluent mcp agent --engine openai --task "analyze codebase" --servers server1,server2
+```
+
+#### Neo4j Integration Commands
+```bash
+# Query Neo4j with natural language
+fluent neo4j query "Find all connected nodes" --engine openai
+
+# Upsert data to Neo4j
+fluent neo4j upsert --data "user data" --engine anthropic
+```
+
+#### Direct Engine Commands (Legacy Support)
+```bash
+# Direct engine queries (still supported)
+fluent openai "Explain quantum computing"
 
 # Execute a pipeline
 fluent openai pipeline -f pipeline.yaml -i "input data"
@@ -237,6 +299,44 @@ cargo test
 
 # Run specific package tests
 cargo test --package fluent-agent
+
+# Run integration tests
+cargo test --test integration
+```
+
+### Quality Assurance Tools
+
+#### Security Audit
+```bash
+# Run comprehensive security audit (15 security checks)
+./scripts/security_audit.sh
+```
+
+#### Code Quality Assessment
+```bash
+# Run code quality checks (15 quality metrics)
+./scripts/code_quality_check.sh
+```
+
+### Project Structure
+```
+fluent_cli/
+├── crates/
+│   ├── fluent-cli/          # Main CLI application with modular commands
+│   ├── fluent-core/         # Core utilities and configuration
+│   ├── fluent-engines/      # LLM engine implementations
+│   ├── fluent-agent/        # Agentic capabilities and tools
+│   ├── fluent-storage/      # Storage and persistence layer
+│   └── fluent-sdk/          # SDK for external integrations
+├── docs/                    # Organized documentation
+│   ├── analysis/           # Code review and analysis
+│   ├── guides/             # User and development guides
+│   ├── implementation/     # Implementation status
+│   ├── security/           # Security documentation
+│   └── testing/            # Testing documentation
+├── scripts/                # Quality assurance scripts
+├── tests/                  # Integration tests and test data
+└── examples/               # Usage examples and demos
 ```
 
 ## 🤝 Contributing

@@ -14,9 +14,7 @@ pub struct Response {
     pub model: String,
     pub finish_reason: Option<String>,
     pub cost: Cost,
-
 }
-
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Usage {
@@ -31,8 +29,6 @@ pub struct Cost {
     pub completion_cost: f64,
     pub total_cost: f64,
 }
-
-
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UpsertRequest {
@@ -54,7 +50,6 @@ pub struct DocumentStatistics {
     pub chunk_count: i64,
     pub embedding_count: i64,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ExtractedContent {

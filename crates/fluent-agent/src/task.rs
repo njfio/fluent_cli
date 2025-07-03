@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 /// Task that represents a specific unit of work within a goal
-/// 
+///
 /// Tasks are smaller, actionable units that contribute to achieving a goal.
 /// They have clear inputs, outputs, and success criteria.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,7 +149,8 @@ impl Task {
     pub fn complete_success(&mut self, outputs: HashMap<String, serde_json::Value>) {
         self.completed_at = Some(SystemTime::now());
         self.success = Some(true);
-        self.metadata.insert("outputs".to_string(), serde_json::json!(outputs));
+        self.metadata
+            .insert("outputs".to_string(), serde_json::json!(outputs));
     }
 
     /// Complete the task with failure
@@ -196,7 +197,7 @@ impl Task {
     pub fn get_complexity(&self) -> TaskComplexity {
         let criteria_count = self.success_criteria.len();
         let has_dependencies = !self.dependencies.is_empty();
-        
+
         match self.task_type {
             TaskType::CodeGeneration => {
                 if criteria_count > 3 || has_dependencies {
@@ -289,7 +290,9 @@ impl std::fmt::Display for TaskValidationError {
         match self {
             TaskValidationError::EmptyDescription => write!(f, "Task description cannot be empty"),
             TaskValidationError::DescriptionTooShort => write!(f, "Task description is too short"),
-            TaskValidationError::InvalidMaxAttempts => write!(f, "Max attempts must be greater than 0"),
+            TaskValidationError::InvalidMaxAttempts => {
+                write!(f, "Max attempts must be greater than 0")
+            }
         }
     }
 }
@@ -386,7 +389,11 @@ pub struct TaskTemplates;
 
 impl TaskTemplates {
     /// Create a code generation task
-    pub fn code_generation(description: String, language: String, requirements: Vec<String>) -> Task {
+    pub fn code_generation(
+        description: String,
+        language: String,
+        requirements: Vec<String>,
+    ) -> Task {
         let mut criteria = vec![
             format!("Generate valid {} code", language),
             "Code meets requirements".to_string(),
@@ -404,41 +411,53 @@ impl TaskTemplates {
 
     /// Create a file operation task
     pub fn file_operation(operation: String, file_path: String) -> Task {
-        Task::builder(format!("{} file: {}", operation, file_path), TaskType::FileOperation)
-            .priority(TaskPriority::Medium)
-            .success_criterion(format!("Successfully {} file", operation))
-            .input("operation".to_string(), serde_json::json!(operation))
-            .input("file_path".to_string(), serde_json::json!(file_path))
-            .expected_output("Operation result".to_string())
-            .estimated_duration(Duration::from_secs(30))
-            .build_unchecked()
+        Task::builder(
+            format!("{} file: {}", operation, file_path),
+            TaskType::FileOperation,
+        )
+        .priority(TaskPriority::Medium)
+        .success_criterion(format!("Successfully {} file", operation))
+        .input("operation".to_string(), serde_json::json!(operation))
+        .input("file_path".to_string(), serde_json::json!(file_path))
+        .expected_output("Operation result".to_string())
+        .estimated_duration(Duration::from_secs(30))
+        .build_unchecked()
     }
 
     /// Create a tool execution task
-    pub fn tool_execution(tool_name: String, parameters: HashMap<String, serde_json::Value>) -> Task {
-        Task::builder(format!("Execute tool: {}", tool_name), TaskType::ToolExecution)
-            .priority(TaskPriority::Medium)
-            .success_criterion("Tool executes successfully".to_string())
-            .input("tool_name".to_string(), serde_json::json!(tool_name))
-            .inputs(parameters)
-            .expected_output("Tool output".to_string())
-            .estimated_duration(Duration::from_secs(60))
-            .build_unchecked()
+    pub fn tool_execution(
+        tool_name: String,
+        parameters: HashMap<String, serde_json::Value>,
+    ) -> Task {
+        Task::builder(
+            format!("Execute tool: {}", tool_name),
+            TaskType::ToolExecution,
+        )
+        .priority(TaskPriority::Medium)
+        .success_criterion("Tool executes successfully".to_string())
+        .input("tool_name".to_string(), serde_json::json!(tool_name))
+        .inputs(parameters)
+        .expected_output("Tool output".to_string())
+        .estimated_duration(Duration::from_secs(60))
+        .build_unchecked()
     }
 
     /// Create a testing task
     pub fn testing(component: String, test_type: String) -> Task {
-        Task::builder(format!("Test {} with {}", component, test_type), TaskType::Testing)
-            .priority(TaskPriority::High)
-            .success_criteria(vec![
-                "Tests execute successfully".to_string(),
-                "All tests pass".to_string(),
-            ])
-            .input("component".to_string(), serde_json::json!(component))
-            .input("test_type".to_string(), serde_json::json!(test_type))
-            .expected_output("Test results".to_string())
-            .estimated_duration(Duration::from_secs(120))
-            .build_unchecked()
+        Task::builder(
+            format!("Test {} with {}", component, test_type),
+            TaskType::Testing,
+        )
+        .priority(TaskPriority::High)
+        .success_criteria(vec![
+            "Tests execute successfully".to_string(),
+            "All tests pass".to_string(),
+        ])
+        .input("component".to_string(), serde_json::json!(component))
+        .input("test_type".to_string(), serde_json::json!(test_type))
+        .expected_output("Test results".to_string())
+        .estimated_duration(Duration::from_secs(120))
+        .build_unchecked()
     }
 
     /// Create a validation task
@@ -455,17 +474,23 @@ impl TaskTemplates {
 
     /// Create an analysis task
     pub fn analysis(target: String, analysis_type: String) -> Task {
-        Task::builder(format!("Analyze {} for {}", target, analysis_type), TaskType::CodeAnalysis)
-            .priority(TaskPriority::Medium)
-            .success_criteria(vec![
-                "Complete analysis".to_string(),
-                "Generate insights".to_string(),
-            ])
-            .input("target".to_string(), serde_json::json!(target))
-            .input("analysis_type".to_string(), serde_json::json!(analysis_type))
-            .expected_output("Analysis report".to_string())
-            .estimated_duration(Duration::from_secs(150))
-            .build_unchecked()
+        Task::builder(
+            format!("Analyze {} for {}", target, analysis_type),
+            TaskType::CodeAnalysis,
+        )
+        .priority(TaskPriority::Medium)
+        .success_criteria(vec![
+            "Complete analysis".to_string(),
+            "Generate insights".to_string(),
+        ])
+        .input("target".to_string(), serde_json::json!(target))
+        .input(
+            "analysis_type".to_string(),
+            serde_json::json!(analysis_type),
+        )
+        .expected_output("Analysis report".to_string())
+        .estimated_duration(Duration::from_secs(150))
+        .build_unchecked()
     }
 }
 
@@ -476,7 +501,7 @@ mod tests {
     #[test]
     fn test_task_creation() {
         let task = Task::new("Test task".to_string(), TaskType::CodeGeneration);
-        
+
         assert!(!task.task_id.is_empty());
         assert_eq!(task.description, "Test task");
         assert!(matches!(task.task_type, TaskType::CodeGeneration));
@@ -493,7 +518,7 @@ mod tests {
             .estimated_duration(Duration::from_secs(120))
             .build()
             .unwrap();
-        
+
         assert_eq!(task.description, "Test task");
         assert_eq!(task.priority, TaskPriority::High);
         assert_eq!(task.success_criteria.len(), 1);
@@ -504,13 +529,13 @@ mod tests {
     #[test]
     fn test_task_lifecycle() {
         let mut task = Task::new("Test task".to_string(), TaskType::FileOperation);
-        
+
         assert_eq!(task.get_status(), TaskStatus::Created);
-        
+
         task.start();
         assert_eq!(task.get_status(), TaskStatus::Running);
         assert_eq!(task.current_attempt, 1);
-        
+
         task.complete_success(HashMap::new());
         assert_eq!(task.get_status(), TaskStatus::Completed);
         assert_eq!(task.success, Some(true));
@@ -520,13 +545,13 @@ mod tests {
     fn test_task_retry() {
         let mut task = Task::new("Test task".to_string(), TaskType::ToolExecution);
         task.max_attempts = 3;
-        
+
         task.start();
         task.complete_failure("Test error".to_string());
-        
+
         assert!(task.can_retry());
         assert_eq!(task.current_attempt, 1);
-        
+
         task.reset_for_retry();
         assert_eq!(task.get_status(), TaskStatus::Created);
         assert!(task.success.is_none());
@@ -539,11 +564,14 @@ mod tests {
             "Rust".to_string(),
             vec!["Must be async".to_string()],
         );
-        
+
         assert!(matches!(code_task.task_type, TaskType::CodeGeneration));
         assert_eq!(code_task.priority, TaskPriority::High);
         assert!(code_task.success_criteria.len() >= 2);
-        assert_eq!(code_task.get_metadata("language"), Some(&serde_json::json!("Rust")));
+        assert_eq!(
+            code_task.get_metadata("language"),
+            Some(&serde_json::json!("Rust"))
+        );
     }
 
     #[test]
@@ -552,9 +580,9 @@ mod tests {
             .success_criterion("Complete".to_string())
             .build()
             .unwrap();
-        
+
         assert_eq!(simple_task.get_complexity(), TaskComplexity::Low);
-        
+
         let complex_task = Task::builder("Complex task".to_string(), TaskType::CodeGeneration)
             .success_criteria(vec![
                 "Criterion 1".to_string(),
@@ -565,7 +593,7 @@ mod tests {
             .dependency("dep1".to_string())
             .build()
             .unwrap();
-        
+
         assert_eq!(complex_task.get_complexity(), TaskComplexity::High);
     }
 }

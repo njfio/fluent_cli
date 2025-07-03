@@ -2,24 +2,23 @@ use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 
-use std::time::Duration;
-use anyhow::{Result, anyhow, Context};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use serde_json::{json, Value};
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
+use base64::engine::general_purpose::STANDARD as Base64;
+use base64::Engine as Base64Engine;
+use fluent_core::config::EngineConfig;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use log::{debug, info};
 use reqwest::Client;
+use serde_json::{json, Value};
+use std::time::Duration;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
-use base64::Engine as Base64Engine;
-use base64::engine::general_purpose::STANDARD as Base64;
 
 pub struct ImagineProEngine {
     config: EngineConfig,
@@ -49,14 +48,18 @@ impl ImagineProEngine {
     }
 
     async fn get_image_result(&self, message_id: &str) -> Result<String> {
-        let url = format!("{}://{}:{}/api/v1/midjourney/message/{}",
-                          self.config.connection.protocol,
-                          self.config.connection.hostname,
-                          self.config.connection.port,
-                          message_id
+        let url = format!(
+            "{}://{}:{}/api/v1/midjourney/message/{}",
+            self.config.connection.protocol,
+            self.config.connection.hostname,
+            self.config.connection.port,
+            message_id
         );
 
-        let auth_token = self.config.parameters.get("bearer_token")
+        let auth_token = self
+            .config
+            .parameters
+            .get("bearer_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
@@ -64,7 +67,9 @@ impl ImagineProEngine {
         let delay = Duration::from_secs(10); // Adjust as needed
 
         for _ in 0..max_attempts {
-            let response = self.client.get(&url)
+            let response = self
+                .client
+                .get(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .send()
                 .await?
@@ -73,14 +78,15 @@ impl ImagineProEngine {
 
             match response["status"].as_str() {
                 Some("DONE") => {
-                    return response["uri"].as_str()
+                    return response["uri"]
+                        .as_str()
                         .ok_or_else(|| anyhow!("Image URI not found in response"))
                         .map(String::from)
-                },
+                }
                 Some("PROCESSING") | Some("QUEUED") => {
                     info!("Job still processing. Progress: {}%", response["progress"]);
                     tokio::time::sleep(delay).await;
-                },
+                }
                 Some("FAIL") => return Err(anyhow!("Job failed: {:?}", response["error"])),
                 _ => return Err(anyhow!("Unexpected job status: {:?}", response["status"])),
             }
@@ -93,7 +99,9 @@ impl ImagineProEngine {
         let response = self.client.get(uri).send().await?;
         let content = response.bytes().await?;
 
-        let download_dir = self.download_dir.as_ref()
+        let download_dir = self
+            .download_dir
+            .as_ref()
             .ok_or_else(|| anyhow!("Download directory not set"))?;
         let file_name = format!("imaginepro_{}.png", Uuid::new_v4());
         let file_path = Path::new(download_dir).join(file_name);
@@ -107,9 +115,13 @@ impl ImagineProEngine {
     async fn upload_file_internal(&self, file_path: &Path) -> Result<String> {
         let mut file = File::open(file_path).await.context("Failed to open file")?;
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await.context("Failed to read file")?;
+        file.read_to_end(&mut buffer)
+            .await
+            .context("Failed to read file")?;
         let base64_image = Base64.encode(&buffer);
-        let mime_type = mime_guess::from_path(file_path).first_or_octet_stream().to_string();
+        let mime_type = mime_guess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
         Ok(format!("data:{};base64,{}", mime_type, base64_image))
     }
 
@@ -118,7 +130,8 @@ impl ImagineProEngine {
         if let Some(start) = payload.find("**Image Prompt:**") {
             if let Some(quote_start) = payload[start..].find('"') {
                 if let Some(quote_end) = payload[start + quote_start + 1..].find('"') {
-                    return payload[start + quote_start + 1..start + quote_start + 1 + quote_end].to_string();
+                    return payload[start + quote_start + 1..start + quote_start + 1 + quote_end]
+                        .to_string();
                 }
             }
         }
@@ -129,15 +142,22 @@ impl ImagineProEngine {
 
 #[async_trait]
 impl Engine for ImagineProEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let url = format!("{}://{}:{}/api/v1/midjourney/imagine",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port
+            let url = format!(
+                "{}://{}:{}/api/v1/midjourney/imagine",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port
             );
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
@@ -152,7 +172,9 @@ impl Engine for ImagineProEngine {
 
             debug!("ImaginePro Payload: {:?}", payload);
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .json(&payload)
                 .send()
@@ -161,10 +183,14 @@ impl Engine for ImagineProEngine {
                 .await?;
 
             if !response["success"].as_bool().unwrap_or(false) {
-                return Err(anyhow!("ImaginePro API request failed: {:?}", response["error"]));
+                return Err(anyhow!(
+                    "ImaginePro API request failed: {:?}",
+                    response["error"]
+                ));
             }
 
-            let message_id = response["messageId"].as_str()
+            let message_id = response["messageId"]
+                .as_str()
                 .ok_or_else(|| anyhow!("MessageId not found in response"))?;
 
             // Wait for the image to be generated
@@ -191,7 +217,10 @@ impl Engine for ImagineProEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
             Ok(UpsertResponse {
                 processed_files: vec![],
@@ -205,11 +234,16 @@ impl Engine for ImagineProEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
-        value.get("imageUrl")
+        value
+            .get("imageUrl")
             .and_then(|url| url.as_str())
             .map(|url| ExtractedContent {
                 main_content: url.to_string(),
@@ -220,11 +254,18 @@ impl Engine for ImagineProEngine {
             })
     }
 
-    fn upload_file<'a>(&'a self, file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(self.upload_file_internal(file_path))
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a Request, file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a Request,
+        file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let data_url = self.upload_file_internal(file_path).await?;
             let prompt = format!("{} {}", data_url, request.payload);
@@ -235,13 +276,17 @@ impl Engine for ImagineProEngine {
             };
 
             // Manually implement the execute logic to avoid recursive async calls
-            let url = format!("{}://{}:{}/api/v1/midjourney/imagine",
-                              self.config.connection.protocol,
-                              self.config.connection.hostname,
-                              self.config.connection.port
+            let url = format!(
+                "{}://{}:{}/api/v1/midjourney/imagine",
+                self.config.connection.protocol,
+                self.config.connection.hostname,
+                self.config.connection.port
             );
 
-            let auth_token = self.config.parameters.get("bearer_token")
+            let auth_token = self
+                .config
+                .parameters
+                .get("bearer_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
@@ -253,7 +298,9 @@ impl Engine for ImagineProEngine {
                 "webhookOverride": self.config.parameters.get("webhookOverride"),
             });
 
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Bearer {}", auth_token))
                 .json(&payload)
                 .send()

@@ -1,4 +1,4 @@
-use super::{ToolExecutor, ToolExecutionConfig, validation};
+use super::{validation, ToolExecutionConfig, ToolExecutor};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -39,12 +39,16 @@ impl RustCompilerExecutor {
             "cargo --version".to_string(),
         ];
         config.timeout_seconds = 300; // 5 minutes for compilation
-        
+
         Self::new(config, project_root)
     }
 
     /// Execute a cargo command safely with timeout and output limits
-    async fn execute_cargo_command(&self, subcommand: &str, args: &[String]) -> Result<CargoResult> {
+    async fn execute_cargo_command(
+        &self,
+        subcommand: &str,
+        args: &[String],
+    ) -> Result<CargoResult> {
         let start_time = std::time::Instant::now();
 
         let mut cmd = Command::new("cargo");
@@ -56,9 +60,15 @@ impl RustCompilerExecutor {
             .stdin(Stdio::null());
 
         let timeout_duration = Duration::from_secs(self.config.timeout_seconds);
-        
-        let output = timeout(timeout_duration, cmd.output()).await
-            .map_err(|_| anyhow!("Cargo command timed out after {} seconds", self.config.timeout_seconds))?
+
+        let output = timeout(timeout_duration, cmd.output())
+            .await
+            .map_err(|_| {
+                anyhow!(
+                    "Cargo command timed out after {} seconds",
+                    self.config.timeout_seconds
+                )
+            })?
             .map_err(|e| anyhow!("Failed to execute cargo command: {}", e))?;
 
         let execution_time = start_time.elapsed();
@@ -104,12 +114,12 @@ impl ToolExecutor for RustCompilerExecutor {
 
         match tool_name {
             "cargo_build" => {
-                let release = parameters.get("release")
+                let release = parameters
+                    .get("release")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if release {
@@ -125,13 +135,12 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_test" => {
-                let test_name = parameters.get("test_name")
-                    .and_then(|v| v.as_str());
-                
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let test_name = parameters.get("test_name").and_then(|v| v.as_str());
 
-                let lib_only = parameters.get("lib_only")
+                let package = parameters.get("package").and_then(|v| v.as_str());
+
+                let lib_only = parameters
+                    .get("lib_only")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
@@ -152,8 +161,7 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_check" => {
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if let Some(pkg) = package {
@@ -166,12 +174,12 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_clippy" => {
-                let fix = parameters.get("fix")
+                let fix = parameters
+                    .get("fix")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if let Some(pkg) = package {
@@ -187,12 +195,12 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_fmt" => {
-                let check = parameters.get("check")
+                let check = parameters
+                    .get("check")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if let Some(pkg) = package {
@@ -208,8 +216,7 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_clean" => {
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if let Some(pkg) = package {
@@ -222,12 +229,12 @@ impl ToolExecutor for RustCompilerExecutor {
             }
 
             "cargo_doc" => {
-                let open = parameters.get("open")
+                let open = parameters
+                    .get("open")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let package = parameters.get("package")
-                    .and_then(|v| v.as_str());
+                let package = parameters.get("package").and_then(|v| v.as_str());
 
                 let mut args = Vec::new();
                 if let Some(pkg) = package {
@@ -244,13 +251,16 @@ impl ToolExecutor for RustCompilerExecutor {
 
             "get_cargo_info" => {
                 let cargo_version = self.execute_cargo_command("--version", &[]).await?;
-                
+
                 let mut rustc_cmd = Command::new("rustc");
-                rustc_cmd.arg("--version")
+                rustc_cmd
+                    .arg("--version")
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
 
-                let rustc_output = rustc_cmd.output().await
+                let rustc_output = rustc_cmd
+                    .output()
+                    .await
                     .map_err(|e| anyhow!("Failed to get rustc version: {}", e))?;
 
                 let rustc_version = String::from_utf8_lossy(&rustc_output.stdout);
@@ -265,7 +275,7 @@ impl ToolExecutor for RustCompilerExecutor {
                 Ok(serde_json::to_string_pretty(&info)?)
             }
 
-            _ => Err(anyhow!("Unknown Rust compiler tool: {}", tool_name))
+            _ => Err(anyhow!("Unknown Rust compiler tool: {}", tool_name)),
         }
     }
 
@@ -399,9 +409,12 @@ mod tests {
         create_test_cargo_project(temp_dir.path()).await.unwrap();
 
         let executor = RustCompilerExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
-        let result = executor.execute_tool("cargo_check", &HashMap::new()).await.unwrap();
-        
+
+        let result = executor
+            .execute_tool("cargo_check", &HashMap::new())
+            .await
+            .unwrap();
+
         let cargo_result: CargoResult = serde_json::from_str(&result).unwrap();
         assert_eq!(cargo_result.subcommand, "check");
         // Note: The actual success depends on whether cargo is available in the test environment
@@ -413,9 +426,12 @@ mod tests {
         create_test_cargo_project(temp_dir.path()).await.unwrap();
 
         let executor = RustCompilerExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
-        let result = executor.execute_tool("get_cargo_info", &HashMap::new()).await.unwrap();
-        
+
+        let result = executor
+            .execute_tool("get_cargo_info", &HashMap::new())
+            .await
+            .unwrap();
+
         let info: RustToolchainInfo = serde_json::from_str(&result).unwrap();
         assert!(info.has_cargo_toml);
         assert_eq!(info.project_root, temp_dir.path().to_string_lossy());
@@ -424,7 +440,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_cargo_project() {
         let temp_dir = tempdir().unwrap();
-        
+
         // Test without Cargo.toml
         let executor = RustCompilerExecutor::with_defaults(temp_dir.path().to_path_buf());
         assert!(executor.validate_cargo_project().await.is_err());
@@ -440,12 +456,12 @@ mod tests {
         create_test_cargo_project(temp_dir.path()).await.unwrap();
 
         let executor = RustCompilerExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
+
         let mut params = HashMap::new();
         params.insert("release".to_string(), serde_json::Value::Bool(true));
-        
+
         let result = executor.execute_tool("cargo_build", &params).await.unwrap();
-        
+
         let cargo_result: CargoResult = serde_json::from_str(&result).unwrap();
         assert_eq!(cargo_result.subcommand, "build");
     }
@@ -454,18 +470,28 @@ mod tests {
     fn test_parameter_validation() {
         let temp_dir = tempdir().unwrap();
         let executor = RustCompilerExecutor::with_defaults(temp_dir.path().to_path_buf());
-        
+
         // Valid parameters
         let mut valid_params = HashMap::new();
         valid_params.insert("release".to_string(), serde_json::Value::Bool(true));
-        valid_params.insert("package".to_string(), serde_json::Value::String("test".to_string()));
-        
-        assert!(executor.validate_tool_request("cargo_build", &valid_params).is_ok());
-        
+        valid_params.insert(
+            "package".to_string(),
+            serde_json::Value::String("test".to_string()),
+        );
+
+        assert!(executor
+            .validate_tool_request("cargo_build", &valid_params)
+            .is_ok());
+
         // Invalid parameter type
         let mut invalid_params = HashMap::new();
-        invalid_params.insert("release".to_string(), serde_json::Value::String("true".to_string()));
-        
-        assert!(executor.validate_tool_request("cargo_build", &invalid_params).is_err());
+        invalid_params.insert(
+            "release".to_string(),
+            serde_json::Value::String("true".to_string()),
+        );
+
+        assert!(executor
+            .validate_tool_request("cargo_build", &invalid_params)
+            .is_err());
     }
 }

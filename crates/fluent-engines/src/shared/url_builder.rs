@@ -40,7 +40,7 @@ impl UrlBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::config::{EngineConfig, ConnectionConfig};
+    use fluent_core::config::{ConnectionConfig, EngineConfig};
     use std::collections::HashMap;
 
     fn create_test_config() -> EngineConfig {

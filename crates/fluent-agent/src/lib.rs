@@ -2,41 +2,42 @@ use anyhow::{anyhow, Result};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use std::path::Path;
+use std::pin::Pin;
 use std::process::Stdio;
 use tokio::fs;
 use tokio::process::Command;
-use std::pin::Pin;
 
 // Advanced agentic modules
+pub mod action;
+pub mod agent_with_mcp;
 pub mod config;
+pub mod context;
+pub mod enhanced_mcp_client;
+pub mod goal;
 pub mod mcp_adapter;
 pub mod mcp_client;
-pub mod enhanced_mcp_client;
-pub mod agent_with_mcp;
-pub mod orchestrator;
-pub mod reasoning;
-pub mod action;
-pub mod observation;
 pub mod memory;
-pub mod context;
-pub mod goal;
+pub mod observation;
+pub mod orchestrator;
+pub mod performance;
+pub mod reasoning;
+pub mod security;
 pub mod task;
 pub mod tools;
 pub mod transport;
 pub mod workflow;
-pub mod performance;
-pub mod security;
 
 // Re-export advanced agentic types
+pub use action::{
+    ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
+};
+pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
+pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
+pub use memory::{MemoryConfig, MemoryStats, MemorySystem};
+pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
-pub use reasoning::{ReasoningEngine, LLMReasoningEngine, ReasoningCapability};
-pub use action::{ActionPlanner, ActionExecutor, IntelligentActionPlanner, ComprehensiveActionExecutor};
-pub use observation::{ObservationProcessor, ComprehensiveObservationProcessor};
-pub use memory::{MemorySystem, MemoryConfig, MemoryStats};
-pub use context::{ExecutionContext, ExecutionEvent, ContextStats};
-pub use goal::{Goal, GoalType, GoalPriority, GoalResult, GoalTemplates};
-pub use task::{Task, TaskType, TaskPriority, TaskResult, TaskTemplates};
-
+pub use reasoning::{LLMReasoningEngine, ReasoningCapability, ReasoningEngine};
+pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
@@ -47,12 +48,18 @@ pub struct Agent {
 impl Agent {
     /// Create a new agent from an engine.
     pub fn new(engine: Box<dyn Engine>) -> Self {
-        Self { engine, history: Vec::new() }
+        Self {
+            engine,
+            history: Vec::new(),
+        }
     }
 
     /// Send a prompt to the engine and store the response in history.
     pub async fn send(&mut self, prompt: &str) -> Result<String> {
-        let request = Request { flowname: "agent".to_string(), payload: prompt.to_string() };
+        let request = Request {
+            flowname: "agent".to_string(),
+            payload: prompt.to_string(),
+        };
         let response = Pin::from(self.engine.execute(&request)).await?;
         let content = response.content.clone();
         self.history.push((prompt.to_string(), content.clone()));
@@ -100,7 +107,9 @@ impl Agent {
     /// Run a simple plan -> generate -> test -> commit cycle using the engine.
     pub async fn run_cycle(&mut self, prompt: &str) -> Result<()> {
         let plan = self.send(&format!("Plan: {}", prompt)).await?;
-        let _generation = self.send(&format!("Generate code based on plan:\n{}", plan)).await?;
+        let _generation = self
+            .send(&format!("Generate code based on plan:\n{}", plan))
+            .await?;
 
         let test_output = self.run_command("cargo", &["test", "--quiet"]).await?;
         if !test_output.contains("0 failed") {
@@ -111,4 +120,3 @@ impl Agent {
         Ok(())
     }
 }
-

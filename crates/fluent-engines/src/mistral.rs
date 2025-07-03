@@ -1,20 +1,18 @@
 // crates/fluent-engines/src/mistral.rs
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use serde_json::{json, Value};
 
-
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
 use fluent_core::config::EngineConfig;
 use fluent_core::cost_calculator::CostCalculator;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use log::debug;
 use reqwest::Client;
 
@@ -52,11 +50,12 @@ impl MistralEngine {
     }
 
     async fn send_mistral_request(&self, messages: Vec<Value>) -> Result<Value> {
-        let url = format!("{}://{}:{}{}",
-                          self.config.connection.protocol,
-                          self.config.connection.hostname,
-                          self.config.connection.port,
-                          self.config.connection.request_path
+        let url = format!(
+            "{}://{}:{}{}",
+            self.config.connection.protocol,
+            self.config.connection.hostname,
+            self.config.connection.port,
+            self.config.connection.request_path
         );
 
         let payload = json!({
@@ -70,11 +69,16 @@ impl MistralEngine {
 
         debug!("Mistral Request: {:?}", payload);
 
-        let auth_token = self.config.parameters.get("bearer_token")
+        let auth_token = self
+            .config
+            .parameters
+            .get("bearer_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-        let response = self.client.post(&url)
+        let response = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", auth_token))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -97,7 +101,10 @@ impl MistralEngine {
 
 #[async_trait]
 impl Engine for MistralEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let messages = vec![json!({
                 "role": "user",
@@ -113,17 +120,21 @@ impl Engine for MistralEngine {
 
             let usage = Usage {
                 prompt_tokens: response["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: response["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+                completion_tokens: response["usage"]["completion_tokens"].as_u64().unwrap_or(0)
+                    as u32,
                 total_tokens: response["usage"]["total_tokens"].as_u64().unwrap_or(0) as u32,
             };
 
             let model = response["model"].as_str().unwrap_or("unknown").to_string();
-            let finish_reason = response["choices"][0]["finish_reason"].as_str().map(String::from);
+            let finish_reason = response["choices"][0]["finish_reason"]
+                .as_str()
+                .map(String::from);
 
             // Calculate cost securely
             let cost = {
                 let mut calculator = self.cost_calculator.lock().unwrap();
-                calculator.calculate_cost("mistral", &model, &usage)
+                calculator
+                    .calculate_cost("mistral", &model, &usage)
                     .unwrap_or_else(|e| {
                         debug!("Cost calculation failed: {}, using zero cost", e);
                         Cost {
@@ -144,16 +155,20 @@ impl Engine for MistralEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Mistral doesn't have a native upsert/embedding API
             // Return appropriate error indicating unsupported operation
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "mistral".to_string(),
                 operation: "upsert".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
@@ -162,7 +177,11 @@ impl Engine for MistralEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionId").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionId")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
@@ -177,25 +196,34 @@ impl Engine for MistralEngine {
             })
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "mistral".to_string(),
                 operation: "file_upload".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "mistral".to_string(),
                 operation: "file_processing".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 }

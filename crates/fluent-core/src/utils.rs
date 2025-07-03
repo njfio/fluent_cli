@@ -3,7 +3,6 @@ pub fn some_utility_function() {
     // Utility function implementation
 }
 
-
 pub mod chunking {
     use unicode_segmentation::UnicodeSegmentation;
 
@@ -24,7 +23,11 @@ pub mod chunking {
                 break;
             }
 
-            start = if end > CHUNK_OVERLAP { end - CHUNK_OVERLAP } else { 0 };
+            start = if end > CHUNK_OVERLAP {
+                end - CHUNK_OVERLAP
+            } else {
+                0
+            };
         }
 
         chunks

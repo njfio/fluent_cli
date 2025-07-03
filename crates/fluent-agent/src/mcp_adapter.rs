@@ -1,17 +1,14 @@
 use anyhow::{anyhow, Result};
 use rmcp::{
-    model::{
-        CallToolResult, Content,
-        ServerInfo, Tool
-    },
+    model::{CallToolResult, Content, ServerInfo, Tool},
     ServerHandler,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType};
 use crate::tools::ToolRegistry;
-use crate::memory::{LongTermMemory, MemoryItem, MemoryType, MemoryQuery};
 
 /// MCP adapter that exposes fluent_cli tools as MCP server capabilities
 #[derive(Clone)]
@@ -24,10 +21,7 @@ pub struct FluentMcpAdapter {
 #[allow(dead_code)]
 impl FluentMcpAdapter {
     /// Create a new MCP adapter
-    pub fn new(
-        tool_registry: Arc<ToolRegistry>,
-        memory_system: Arc<dyn LongTermMemory>,
-    ) -> Self {
+    pub fn new(tool_registry: Arc<ToolRegistry>, memory_system: Arc<dyn LongTermMemory>) -> Self {
         Self {
             tool_registry,
             memory_system,
@@ -36,14 +30,17 @@ impl FluentMcpAdapter {
 
     /// Convert fluent tool to MCP tool format
     fn convert_tool_to_mcp(&self, name: &str, description: &str) -> Tool {
-        use std::sync::Arc;
         use serde_json::Map;
+        use std::sync::Arc;
 
         let mut properties = Map::new();
-        properties.insert("params".to_string(), json!({
-            "type": "object",
-            "description": "Tool parameters as JSON object"
-        }));
+        properties.insert(
+            "params".to_string(),
+            json!({
+                "type": "object",
+                "description": "Tool parameters as JSON object"
+            }),
+        );
 
         let mut schema = Map::new();
         schema.insert("type".to_string(), json!("object"));
@@ -67,15 +64,24 @@ impl FluentMcpAdapter {
                 format!("Files in {}: example.txt, README.md", path)
             }
             "read_file" => {
-                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let path = params
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 format!("Content of file: {}", path)
             }
             "write_file" => {
-                let path = params.get("path").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let path = params
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 format!("Successfully wrote to file: {}", path)
             }
             "run_command" => {
-                let command = params.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let command = params
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 format!("Executed command: {}", command)
             }
             _ => format!("Tool {} executed successfully", name),
@@ -104,57 +110,79 @@ impl FluentMcpAdapter {
     }
 
     /// Handle tool execution
-    async fn handle_tool_call(&self, name: &str, arguments: Option<Value>) -> Result<CallToolResult, rmcp::Error> {
+    async fn handle_tool_call(
+        &self,
+        name: &str,
+        arguments: Option<Value>,
+    ) -> Result<CallToolResult, rmcp::Error> {
         let args = arguments.unwrap_or(json!({}));
 
         match name {
             "list_files" => {
-                let path = args.get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
                 let params = json!({"path": path});
-                self.execute_fluent_tool("list_files", params).await
+                self.execute_fluent_tool("list_files", params)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))
             }
             "read_file" => {
-                let path = args.get("path")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| rmcp::Error::invalid_params("path parameter required".to_string(), None))?;
+                let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+                    rmcp::Error::invalid_params("path parameter required".to_string(), None)
+                })?;
                 let params = json!({"path": path});
-                self.execute_fluent_tool("read_file", params).await
+                self.execute_fluent_tool("read_file", params)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))
             }
             "write_file" => {
-                let path = args.get("path")
+                let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+                    rmcp::Error::invalid_params("path parameter required".to_string(), None)
+                })?;
+                let content = args
+                    .get("content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| rmcp::Error::invalid_params("path parameter required".to_string(), None))?;
-                let content = args.get("content")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| rmcp::Error::invalid_params("content parameter required".to_string(), None))?;
+                    .ok_or_else(|| {
+                        rmcp::Error::invalid_params("content parameter required".to_string(), None)
+                    })?;
                 let params = json!({"path": path, "content": content});
-                self.execute_fluent_tool("write_file", params).await
+                self.execute_fluent_tool("write_file", params)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))
             }
             "run_command" => {
-                let command = args.get("command")
+                let command = args
+                    .get("command")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| rmcp::Error::invalid_params("command parameter required".to_string(), None))?;
-                let args_vec = args.get("args")
+                    .ok_or_else(|| {
+                        rmcp::Error::invalid_params("command parameter required".to_string(), None)
+                    })?;
+                let args_vec = args
+                    .get("args")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect::<Vec<_>>())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<_>>()
+                    })
                     .unwrap_or_default();
                 let params = json!({"command": command, "args": args_vec});
-                self.execute_fluent_tool("run_command", params).await
+                self.execute_fluent_tool("run_command", params)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))
             }
             "store_memory" => {
-                let content = args.get("content")
+                let content = args
+                    .get("content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| rmcp::Error::invalid_params("content parameter required".to_string(), None))?;
-                let memory_type_str = args.get("memory_type")
+                    .ok_or_else(|| {
+                        rmcp::Error::invalid_params("content parameter required".to_string(), None)
+                    })?;
+                let memory_type_str = args
+                    .get("memory_type")
                     .and_then(|v| v.as_str())
                     .unwrap_or("experience");
-                let importance = args.get("importance")
+                let importance = args
+                    .get("importance")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.5);
 
@@ -181,18 +209,31 @@ impl FluentMcpAdapter {
                     embedding: None,
                 };
 
-                let memory_id = self.memory_system.store(memory_item).await
+                let memory_id = self
+                    .memory_system
+                    .store(memory_item)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))?;
 
                 Ok(CallToolResult {
-                    content: vec![Content::text(format!("Memory stored with ID: {}", memory_id))],
+                    content: vec![Content::text(format!(
+                        "Memory stored with ID: {}",
+                        memory_id
+                    ))],
                     is_error: Some(false),
                 })
             }
             "retrieve_memory" => {
-                let query = args.get("query").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let importance_threshold = args.get("importance_threshold").and_then(|v| v.as_f64());
-                let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let query = args
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let importance_threshold =
+                    args.get("importance_threshold").and_then(|v| v.as_f64());
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
 
                 let memory_query = MemoryQuery {
                     query_text: query.unwrap_or_default(),
@@ -203,26 +244,36 @@ impl FluentMcpAdapter {
                     limit,
                 };
 
-                let memories = self.memory_system.retrieve(&memory_query).await
+                let memories = self
+                    .memory_system
+                    .retrieve(&memory_query)
+                    .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))?;
 
-                let result = memories.iter()
-                    .map(|m| json!({
-                        "id": m.memory_id,
-                        "content": m.content,
-                        "type": format!("{:?}", m.memory_type),
-                        "importance": m.importance,
-                        "created_at": m.created_at.to_rfc3339(),
-                        "access_count": m.access_count
-                    }))
+                let result = memories
+                    .iter()
+                    .map(|m| {
+                        json!({
+                            "id": m.memory_id,
+                            "content": m.content,
+                            "type": format!("{:?}", m.memory_type),
+                            "importance": m.importance,
+                            "created_at": m.created_at.to_rfc3339(),
+                            "access_count": m.access_count
+                        })
+                    })
                     .collect::<Vec<_>>();
 
                 Ok(CallToolResult {
-                    content: vec![Content::text(serde_json::to_string_pretty(&result).unwrap())],
+                    content: vec![Content::text(
+                        serde_json::to_string_pretty(&result).unwrap(),
+                    )],
                     is_error: Some(false),
                 })
             }
-            _ => Err(rmcp::Error::method_not_found::<rmcp::model::CallToolRequestMethod>())
+            _ => Err(rmcp::Error::method_not_found::<
+                rmcp::model::CallToolRequestMethod,
+            >()),
         }
     }
 }
@@ -230,7 +281,11 @@ impl FluentMcpAdapter {
 impl ServerHandler for FluentMcpAdapter {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("Fluent CLI agentic system exposed via Model Context Protocol".to_string().into()),
+            instructions: Some(
+                "Fluent CLI agentic system exposed via Model Context Protocol"
+                    .to_string()
+                    .into(),
+            ),
             ..Default::default()
         }
     }
@@ -243,10 +298,7 @@ pub struct FluentMcpServer {
 
 impl FluentMcpServer {
     /// Create a new MCP server
-    pub fn new(
-        tool_registry: Arc<ToolRegistry>,
-        memory_system: Arc<dyn LongTermMemory>,
-    ) -> Self {
+    pub fn new(tool_registry: Arc<ToolRegistry>, memory_system: Arc<dyn LongTermMemory>) -> Self {
         Self {
             adapter: FluentMcpAdapter::new(tool_registry, memory_system),
         }
@@ -254,12 +306,16 @@ impl FluentMcpServer {
 
     /// Start the MCP server with stdio transport
     pub async fn start_stdio(&self) -> Result<()> {
-        use rmcp::{ServiceExt, transport::stdio};
+        use rmcp::{transport::stdio, ServiceExt};
         use tokio::signal;
 
         println!("Starting Fluent CLI MCP Server...");
-        
-        let service = self.adapter.clone().serve(stdio()).await
+
+        let service = self
+            .adapter
+            .clone()
+            .serve(stdio())
+            .await
             .map_err(|e| anyhow!("Failed to start MCP server: {}", e))?;
 
         println!("MCP Server started successfully. Waiting for connections...");
@@ -296,7 +352,8 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_adapter_creation() {
         let tool_registry = Arc::new(ToolRegistry::new());
-        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
+        let memory_system =
+            Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let info = adapter.get_info();
@@ -309,7 +366,8 @@ mod tests {
     #[test]
     fn test_tool_conversion() {
         let tool_registry = Arc::new(ToolRegistry::new());
-        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
+        let memory_system =
+            Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let tool = adapter.convert_tool_to_mcp("test_tool", "Test tool description");

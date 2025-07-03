@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
-pub mod stdio;
 pub mod http;
+pub mod stdio;
 pub mod websocket;
 
 /// JSON-RPC 2.0 request structure
@@ -47,16 +47,16 @@ pub struct JsonRpcError {
 pub trait McpTransport: Send + Sync {
     /// Send a request and wait for response
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse>;
-    
+
     /// Start listening for notifications
     async fn start_listening(&self) -> Result<mpsc::UnboundedReceiver<JsonRpcNotification>>;
-    
+
     /// Close the transport connection
     async fn close(&self) -> Result<()>;
-    
+
     /// Check if the transport is connected
     async fn is_connected(&self) -> bool;
-    
+
     /// Get transport-specific metadata
     fn get_metadata(&self) -> HashMap<String, String>;
 }
@@ -151,9 +151,16 @@ impl Default for RetryConfig {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum BackoffStrategy {
-    Fixed { delay_ms: u64 },
-    Exponential { initial_delay_ms: u64, max_delay_ms: u64 },
-    Linear { increment_ms: u64 },
+    Fixed {
+        delay_ms: u64,
+    },
+    Exponential {
+        initial_delay_ms: u64,
+        max_delay_ms: u64,
+    },
+    Linear {
+        increment_ms: u64,
+    },
 }
 
 /// Transport factory for creating transport instances
@@ -164,10 +171,18 @@ impl TransportFactory {
         match config.transport_type {
             TransportType::Stdio => {
                 if let ConnectionConfig::Stdio { command, args } = config.connection_config {
-                    let transport = stdio::StdioTransport::new(command, args, config.timeout_config, config.retry_config).await?;
+                    let transport = stdio::StdioTransport::new(
+                        command,
+                        args,
+                        config.timeout_config,
+                        config.retry_config,
+                    )
+                    .await?;
                     Ok(Box::new(transport))
                 } else {
-                    Err(anyhow::anyhow!("Invalid connection config for STDIO transport"))
+                    Err(anyhow::anyhow!(
+                        "Invalid connection config for STDIO transport"
+                    ))
                 }
             }
             TransportType::Http => {
@@ -178,10 +193,13 @@ impl TransportFactory {
                         config.auth_config,
                         config.timeout_config,
                         config.retry_config,
-                    ).await?;
+                    )
+                    .await?;
                     Ok(Box::new(transport))
                 } else {
-                    Err(anyhow::anyhow!("Invalid connection config for HTTP transport"))
+                    Err(anyhow::anyhow!(
+                        "Invalid connection config for HTTP transport"
+                    ))
                 }
             }
             TransportType::WebSocket => {
@@ -192,10 +210,13 @@ impl TransportFactory {
                         config.auth_config,
                         config.timeout_config,
                         config.retry_config,
-                    ).await?;
+                    )
+                    .await?;
                     Ok(Box::new(transport))
                 } else {
-                    Err(anyhow::anyhow!("Invalid connection config for WebSocket transport"))
+                    Err(anyhow::anyhow!(
+                        "Invalid connection config for WebSocket transport"
+                    ))
                 }
             }
         }
@@ -206,11 +227,11 @@ impl TransportFactory {
 pub mod utils {
     use super::*;
     use std::time::Duration;
-    
+
     pub fn create_request_id() -> Value {
         serde_json::Value::String(uuid::Uuid::new_v4().to_string())
     }
-    
+
     pub async fn retry_with_backoff<F, T, E>(
         mut operation: F,
         retry_config: &RetryConfig,
@@ -222,20 +243,22 @@ pub mod utils {
         let mut attempts = 0;
         let mut delay = match &retry_config.backoff_strategy {
             BackoffStrategy::Fixed { delay_ms } => *delay_ms,
-            BackoffStrategy::Exponential { initial_delay_ms, .. } => *initial_delay_ms,
+            BackoffStrategy::Exponential {
+                initial_delay_ms, ..
+            } => *initial_delay_ms,
             BackoffStrategy::Linear { increment_ms } => *increment_ms,
         };
-        
+
         loop {
             attempts += 1;
-            
+
             match operation().await {
                 Ok(result) => return Ok(result),
                 Err(error) => {
                     if attempts >= retry_config.max_attempts {
                         return Err(anyhow::anyhow!("Max retry attempts exceeded: {}", error));
                     }
-                    
+
                     // Calculate next delay
                     match &retry_config.backoff_strategy {
                         BackoffStrategy::Fixed { .. } => {
@@ -248,7 +271,7 @@ pub mod utils {
                             delay += increment_ms;
                         }
                     }
-                    
+
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
             }
@@ -259,7 +282,7 @@ pub mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_transport_config_serialization() {
         let config = TransportConfig {
@@ -279,13 +302,13 @@ mod tests {
             timeout_config: TimeoutConfig::default(),
             retry_config: RetryConfig::default(),
         };
-        
+
         let serialized = serde_json::to_string(&config).unwrap();
         let deserialized: TransportConfig = serde_json::from_str(&serialized).unwrap();
-        
+
         assert!(matches!(deserialized.transport_type, TransportType::Http));
     }
-    
+
     #[tokio::test]
     async fn test_retry_with_backoff() {
         let retry_config = RetryConfig {
@@ -293,7 +316,7 @@ mod tests {
             backoff_strategy: BackoffStrategy::Fixed { delay_ms: 10 },
             retry_on_errors: vec!["test_error".to_string()],
         };
-        
+
         let mut call_count = 0;
         let result = utils::retry_with_backoff(
             || {
@@ -307,8 +330,9 @@ mod tests {
                 })
             },
             &retry_config,
-        ).await;
-        
+        )
+        .await;
+
         assert!(result.is_ok());
         assert_eq!(call_count, 3);
     }

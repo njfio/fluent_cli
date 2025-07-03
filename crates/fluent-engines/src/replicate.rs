@@ -1,23 +1,19 @@
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use fluent_core::config::EngineConfig;
+use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::traits::Engine;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
+use log::debug;
+use reqwest::Client;
+use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
-use anyhow::{Result, anyhow, Context};
-use async_trait::async_trait;
-use serde_json::Value;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use fluent_core::types::{
-    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse,
-    Usage,
-};
-use fluent_core::neo4j_client::Neo4jClient;
-use fluent_core::traits::Engine;
-use fluent_core::config::EngineConfig;
-use log::debug;
-use reqwest::Client;
-
-
-
 
 pub struct ReplicateEngine {
     config: EngineConfig,
@@ -50,13 +46,22 @@ impl ReplicateEngine {
 
 #[async_trait]
 impl Engine for ReplicateEngine {
-    fn execute<'a>(&'a self, request: &'a Request) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        request: &'a Request,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            let model = self.config.parameters.get("model")
+            let model = self
+                .config
+                .parameters
+                .get("model")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Model not found in configuration"))?;
 
-            let api_token = self.config.parameters.get("api_token")
+            let api_token = self
+                .config
+                .parameters
+                .get("api_token")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("API token not found in configuration"))?;
 
@@ -86,10 +91,12 @@ impl Engine for ReplicateEngine {
             debug!("Sending request to Replicate: {:?}", input_payload);
             // Create the main payload
             let payload = serde_json::json!({
-                "input": input_payload
-             });
+               "input": input_payload
+            });
             debug!("Sending request to Replicate: {:?}", payload);
-            let response = self.client.post(&url)
+            let response = self
+                .client
+                .post(&url)
                 .header("Authorization", format!("Token {}", api_token))
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -98,19 +105,27 @@ impl Engine for ReplicateEngine {
 
             // Check for successful response (201 Created)
             if !response.status().is_success() {
-                return Err(anyhow!("Replicate API request failed: {}", response.status()));
+                return Err(anyhow!(
+                    "Replicate API request failed: {}",
+                    response.status()
+                ));
             }
 
             let response_json: Value = response.json().await?;
             debug!("Replicate API response: {:?}", response_json);
-            let prediction_id = response_json["id"].as_str().ok_or_else(|| anyhow!("Failed to extract prediction ID"))?;
+            let prediction_id = response_json["id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("Failed to extract prediction ID"))?;
             debug!("Prediction ID: {}", prediction_id);
 
             // Poll for prediction completion
             let output_url = loop {
-                let status_url = format!("https://api.replicate.com/v1/predictions/{}", prediction_id);
+                let status_url =
+                    format!("https://api.replicate.com/v1/predictions/{}", prediction_id);
                 debug!("Prediction status URL: {}", status_url);
-                let status_response = self.client.get(&status_url)
+                let status_response = self
+                    .client
+                    .get(&status_url)
                     .header("Authorization", format!("Token {}", api_token))
                     .send()
                     .await?;
@@ -131,14 +146,15 @@ impl Engine for ReplicateEngine {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             };
 
-// Download the image **data** (this is the key change)
+            // Download the image **data** (this is the key change)
             debug!("Saving image: {}", output_url);
             let image_response = self.client.get(&output_url).send().await?;
             debug!("Saved image to:");
             let image_data = image_response.bytes().await?;
             debug!("Saved image to: ");
             // Download the image
-            let download_dir = self.download_dir
+            let download_dir = self
+                .download_dir
                 .as_ref()
                 .ok_or_else(|| anyhow!("Download directory not set for ReplicateEngine"))?;
             let download_path = Path::new(download_dir);
@@ -148,8 +164,12 @@ impl Engine for ReplicateEngine {
             let full_path = download_path.join(file_name);
 
             // Save the image data to a file
-            let mut file = File::create(&full_path).await.context("Failed to create image file")?;
-            file.write_all(&image_data).await.context("Failed to write image data to file")?;
+            let mut file = File::create(&full_path)
+                .await
+                .context("Failed to create image file")?;
+            file.write_all(&image_data)
+                .await
+                .context("Failed to write image data to file")?;
 
             Ok(Response {
                 content: full_path.to_str().unwrap().to_string(),
@@ -169,15 +189,19 @@ impl Engine for ReplicateEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a UpsertRequest) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a UpsertRequest,
+    ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Replicate doesn't have a native upsert/embedding API
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "replicate".to_string(),
                 operation: "upsert".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
@@ -186,7 +210,11 @@ impl Engine for ReplicateEngine {
     }
 
     fn get_session_id(&self) -> Option<String> {
-        self.config.parameters.get("sessionID").and_then(|v| v.as_str()).map(String::from)
+        self.config
+            .parameters
+            .get("sessionID")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
@@ -212,27 +240,36 @@ impl Engine for ReplicateEngine {
         }
     }
 
-    fn upload_file<'a>(&'a self, _file_path: &'a Path) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Replicate doesn't directly support file uploads for image generation
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "replicate".to_string(),
                 operation: "file_upload".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 
-    fn process_request_with_file<'a>(&'a self, _request: &'a Request, _file_path: &'a Path) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        _request: &'a Request,
+        _file_path: &'a Path,
+    ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            use fluent_core::error::{FluentError, EngineError};
+            use fluent_core::error::{EngineError, FluentError};
 
             // Replicate doesn't directly support file uploads for image generation
             Err(FluentError::Engine(EngineError::UnsupportedOperation {
                 engine: "replicate".to_string(),
                 operation: "file_processing".to_string(),
-            }).into())
+            })
+            .into())
         })
     }
 }
