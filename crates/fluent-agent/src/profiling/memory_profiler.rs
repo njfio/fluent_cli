@@ -1,7 +1,6 @@
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::mem;
 use anyhow::Result;
 
 /// Memory profiling metrics for reflection operations
