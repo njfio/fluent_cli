@@ -30,6 +30,7 @@ chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+async-trait.workspace = true
 crossterm = "0.27"
 rand = "0.8"
 
@@ -58,6 +59,8 @@ tracing-subscriber = "~0.3.18"
 tracing = "~0.1.40"
 # Async runtime - pin to specific minor version for stability
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "net", "fs", "io-util", "time", "sync"] }
+# Async trait support
+async-trait = "0.1.83"
 # Error handling - allow minor updates within 1.x
 anyhow = { version = "~1.0.89" }
 # Enum utilities - allow minor updates within 0.26.x
@@ -80,8 +83,6 @@ owo-colors = "~4.1.0"
 regex = "~1.10.6"
 # YAML serialization - allow minor updates within 0.9.x
 serde_yaml = "~0.9.34"
-# Async traits - allow minor updates within 0.1.x
-async-trait = "~0.1.83"
 # Logging facade - allow minor updates within 0.4.x
 log = "~0.4.22"
 # Unicode text processing - allow minor updates within 1.x
@@ -122,6 +123,8 @@ jsonschema = "0.17.1"
 sled = "0.34.7"
 # Cryptographic hashing - allow minor updates within 0.10.x
 sha2 = "~0.10.8"
+# Ed25519 digital signatures - pin to exact version for security
+ed25519-dalek = "2.1.1"
 # MCP protocol implementation - pin to exact version for stability
 rmcp = { version = "0.1.0", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
 

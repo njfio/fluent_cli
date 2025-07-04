@@ -245,10 +245,10 @@ mod comprehensive_tests {
             dry_run: Some(false),
         };
 
-        let result = editor.replace_string(params).await.unwrap();
+        let result = editor.replace_string(params).await;
 
-        assert!(result.success);
-        assert_eq!(result.replacements_made, 0); // No replacements should be made
+        // Should return an error for out of bounds line range
+        assert!(result.is_err());
 
         // File should remain unchanged
         let new_content = fs::read_to_string(&file_path).await.unwrap();

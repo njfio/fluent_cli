@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as Base64, Engine as _};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use fluent_core::config::EngineConfig;
 use fluent_core::traits::Engine;
 use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
@@ -138,14 +140,78 @@ pub struct DefaultSignatureVerifier;
 
 #[async_trait]
 impl SignatureVerifier for DefaultSignatureVerifier {
-    async fn verify_signature(&self, _plugin_bytes: &[u8], _signature: &str) -> Result<bool> {
-        // TODO: Implement actual signature verification using Ed25519 or RSA
-        // For now, return false to reject all unsigned plugins
+    async fn verify_signature(&self, plugin_bytes: &[u8], signature: &str) -> Result<bool> {
+        // Parse the signature from base64
+        let signature_bytes = Base64.decode(signature)
+            .map_err(|e| anyhow!("Invalid signature format: {}", e))?;
+
+        if signature_bytes.len() != 64 {
+            return Err(anyhow!("Invalid signature length: expected 64 bytes, got {}", signature_bytes.len()));
+        }
+
+        let signature_array: [u8; 64] = signature_bytes.try_into()
+            .map_err(|_| anyhow!("Failed to convert signature to array"))?;
+        let signature = Signature::from_bytes(&signature_array);
+
+        // Get trusted public keys
+        let trusted_keys = self.get_trusted_keys().await?;
+
+        // Try to verify against each trusted key
+        for key_str in trusted_keys {
+            if let Ok(key_bytes) = Base64.decode(&key_str) {
+                if key_bytes.len() == 32 {
+                    if let Ok(public_key) = VerifyingKey::from_bytes(&key_bytes.try_into().unwrap()) {
+                        if public_key.verify(plugin_bytes, &signature).is_ok() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // No valid signature found
         Ok(false)
     }
 
     async fn get_trusted_keys(&self) -> Result<Vec<String>> {
-        // TODO: Load trusted public keys from secure storage
+        // Load trusted public keys from environment or config file
+        // For security, we check multiple sources in order of preference
+
+        // 1. Environment variable (for CI/CD and production)
+        if let Ok(keys_env) = std::env::var("FLUENT_TRUSTED_KEYS") {
+            let keys: Vec<String> = keys_env
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !keys.is_empty() {
+                return Ok(keys);
+            }
+        }
+
+        // 2. Config file (for development and local testing)
+        let config_path = std::env::var("HOME")
+            .map(|home| PathBuf::from(home).join(".fluent").join("trusted_keys.txt"))
+            .unwrap_or_else(|_| PathBuf::from("trusted_keys.txt"));
+
+        if config_path.exists() {
+            match tokio::fs::read_to_string(&config_path).await {
+                Ok(content) => {
+                    let keys: Vec<String> = content
+                        .lines()
+                        .map(|line| line.trim().to_string())
+                        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                        .collect();
+                    return Ok(keys);
+                }
+                Err(e) => {
+                    log::warn!("Failed to read trusted keys from {:?}: {}", config_path, e);
+                }
+            }
+        }
+
+        // 3. Default: no trusted keys (secure by default)
+        log::warn!("No trusted keys configured. All plugins will be rejected.");
         Ok(vec![])
     }
 }

@@ -1,0 +1,80 @@
+Memory Profiling Report
+======================
+
+Summary:
+  Total Operations: 13
+  Total Memory Used: 0 bytes
+  Average Memory per Operation: 0 bytes
+  Peak Memory Usage: 0 bytes
+  Total Duration: 348.749µs
+
+Operation Details:
+------------------
+1. Operation: iteration_1
+   Memory Used: 0 bytes
+   Duration: 22.917µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729404208 }
+
+2. Operation: iteration_2
+   Memory Used: 0 bytes
+   Duration: 8.416µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729435000 }
+
+3. Operation: iteration_3
+   Memory Used: 0 bytes
+   Duration: 7.708µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729447875 }
+
+4. Operation: reflection_operation
+   Memory Used: 0 bytes
+   Duration: 60.959µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729457916 }
+
+5. Operation: iteration_4
+   Memory Used: 0 bytes
+   Duration: 10.167µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729534958 }
+
+6. Operation: iteration_5
+   Memory Used: 0 bytes
+   Duration: 12.5µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729550833 }
+
+7. Operation: iteration_6
+   Memory Used: 0 bytes
+   Duration: 53.917µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729569833 }
+
+8. Operation: reflection_operation
+   Memory Used: 0 bytes
+   Duration: 25µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729626333 }
+
+9. Operation: iteration_7
+   Memory Used: 0 bytes
+   Duration: 12.625µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729666750 }
+
+10. Operation: iteration_8
+   Memory Used: 0 bytes
+   Duration: 10.916µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729685500 }
+
+11. Operation: iteration_9
+   Memory Used: 0 bytes
+   Duration: 50.791µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729719000 }
+
+12. Operation: reflection_operation
+   Memory Used: 0 bytes
+   Duration: 24.917µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729774333 }
+
+13. Operation: iteration_10
+   Memory Used: 0 bytes
+   Duration: 47.916µs
+   Timestamp: Instant { tv_sec: 146678, tv_nsec: 729817000 }
+
+Performance Analysis:
+--------------------
+No high memory usage operations detected.

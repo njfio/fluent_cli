@@ -1,7 +1,7 @@
 {
   "engines": [
     {
-      "name": "sonnet3.5",
+      "name": "anthropic",
       "engine": "anthropic",
       "connection": {
         "protocol": "https",
@@ -10,7 +10,7 @@
         "request_path": "/v1/messages"
       },
       "parameters": {
-        "bearer_token": "ANTHROPIC_API_KEY",
+        "bearer_token": "${ANTHROPIC_API_KEY}",
         "max_tokens": 4000,
         "modelName": "claude-3-5-sonnet-20241022",
         "temperature": 0.1,

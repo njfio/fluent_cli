@@ -1,0 +1,64 @@
+{
+  "engines": [
+    {
+      "name": "anthropic-env",
+      "engine": "anthropic",
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "bearer_token": "ENV_ANTHROPIC_API_KEY"
+      }
+    },
+    {
+      "name": "anthropic-dollar",
+      "engine": "anthropic", 
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "bearer_token": "${ANTHROPIC_API_KEY}"
+      }
+    },
+    {
+      "name": "anthropic-credential",
+      "engine": "anthropic",
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022", 
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "bearer_token": "CREDENTIAL_ANTHROPIC_API_KEY"
+      }
+    },
+    {
+      "name": "anthropic-amber",
+      "engine": "anthropic",
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "bearer_token": "AMBER_ANTHROPIC_API_KEY"
+      }
+    },
+    {
+      "name": "openai-env",
+      "engine": "openai",
+      "parameters": {
+        "model": "gpt-4",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "api_key": "ENV_OPENAI_API_KEY"
+      }
+    },
+    {
+      "name": "openai-dollar",
+      "engine": "openai",
+      "parameters": {
+        "model": "gpt-4",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "api_key": "${OPENAI_API_KEY}"
+      }
+    }
+  ]
+}

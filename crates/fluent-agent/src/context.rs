@@ -1,10 +1,52 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::{Duration, SystemTime};
+use tokio::fs;
 
 use crate::goal::Goal;
 use crate::orchestrator::Observation;
 use crate::task::Task;
+
+/// Checkpoint of execution context at a specific point in time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextCheckpoint {
+    pub checkpoint_id: String,
+    pub timestamp: SystemTime,
+    pub iteration_count: u32,
+    pub checkpoint_type: CheckpointType,
+    pub context_snapshot: ExecutionContextSnapshot,
+    pub description: String,
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+/// Type of checkpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CheckpointType {
+    Manual,
+    Automatic,
+    BeforeAction,
+    AfterAction,
+    BeforeReflection,
+    OnError,
+    OnSuccess,
+}
+
+/// Lightweight snapshot of execution context for checkpoints
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionContextSnapshot {
+    pub context_id: String,
+    pub goal_description: Option<String>,
+    pub active_task_count: usize,
+    pub completed_task_count: usize,
+    pub observation_count: usize,
+    pub variable_count: usize,
+    pub iteration_count: u32,
+    pub key_variables: HashMap<String, String>, // Only important variables
+    pub last_action_summary: Option<String>,
+    pub progress_summary: String,
+}
 
 /// Execution context that maintains state throughout agent execution
 ///
@@ -26,6 +68,10 @@ pub struct ExecutionContext {
     pub iteration_count: u32,
     pub available_tools: Vec<String>,
     pub strategy_adjustments: Vec<StrategyAdjustment>,
+    pub checkpoints: Vec<ContextCheckpoint>,
+    pub state_version: u32,
+    pub persistence_enabled: bool,
+    pub auto_checkpoint_interval: Option<u32>, // Checkpoint every N iterations
 }
 
 /// Event in the execution history
@@ -50,6 +96,9 @@ pub enum ExecutionEventType {
     StrategyAdjusted,
     ToolExecuted,
     ErrorOccurred,
+    CheckpointCreated,
+    ContextRestored,
+    StateValidated,
 }
 
 /// Strategy adjustment made during execution
@@ -88,6 +137,10 @@ impl ExecutionContext {
             iteration_count: 0,
             available_tools: Vec::new(),
             strategy_adjustments: Vec::new(),
+            checkpoints: Vec::new(),
+            state_version: 1,
+            persistence_enabled: true,
+            auto_checkpoint_interval: Some(5), // Checkpoint every 5 iterations by default
         }
     }
 
@@ -357,6 +410,12 @@ impl ExecutionContext {
     pub fn increment_iteration(&mut self) {
         self.iteration_count += 1;
         self.last_update = SystemTime::now();
+
+        // Create automatic checkpoint if needed
+        if self.should_create_auto_checkpoint() {
+            let description = format!("Automatic checkpoint at iteration {}", self.iteration_count);
+            self.create_checkpoint(CheckpointType::Automatic, description);
+        }
     }
 
     /// Set available tools
@@ -384,6 +443,200 @@ impl ExecutionContext {
             .duration_since(self.last_update)
             .unwrap_or_default()
             > threshold
+    }
+
+    /// Create a checkpoint of the current context state
+    pub fn create_checkpoint(&mut self, checkpoint_type: CheckpointType, description: String) -> String {
+        let checkpoint_id = uuid::Uuid::new_v4().to_string();
+
+        let snapshot = ExecutionContextSnapshot {
+            context_id: self.context_id.clone(),
+            goal_description: self.current_goal.as_ref().map(|g| g.description.clone()),
+            active_task_count: self.active_tasks.len(),
+            completed_task_count: self.completed_tasks.len(),
+            observation_count: self.observations.len(),
+            variable_count: self.variables.len(),
+            iteration_count: self.iteration_count,
+            key_variables: self.get_key_variables(),
+            last_action_summary: self.get_last_action_summary(),
+            progress_summary: self.get_progress_summary(),
+        };
+
+        let checkpoint = ContextCheckpoint {
+            checkpoint_id: checkpoint_id.clone(),
+            timestamp: SystemTime::now(),
+            iteration_count: self.iteration_count,
+            checkpoint_type,
+            context_snapshot: snapshot,
+            description,
+            metadata: HashMap::new(),
+        };
+
+        self.checkpoints.push(checkpoint);
+        self.state_version += 1;
+        self.last_update = SystemTime::now();
+
+        // Keep only the last 10 checkpoints to prevent memory bloat
+        if self.checkpoints.len() > 10 {
+            self.checkpoints.remove(0);
+        }
+
+        checkpoint_id
+    }
+
+    /// Get key variables (those that have been accessed recently or are important)
+    fn get_key_variables(&self) -> HashMap<String, String> {
+        // For now, return all variables. In the future, we could implement
+        // importance scoring based on usage frequency, recency, etc.
+        self.variables.clone()
+    }
+
+    /// Get a summary of the last action taken
+    fn get_last_action_summary(&self) -> Option<String> {
+        self.execution_history
+            .iter()
+            .rev()
+            .find(|event| matches!(event.event_type, ExecutionEventType::ToolExecuted))
+            .map(|event| event.description.clone())
+    }
+
+    /// Check if an automatic checkpoint should be created
+    pub fn should_create_auto_checkpoint(&self) -> bool {
+        if let Some(interval) = self.auto_checkpoint_interval {
+            self.iteration_count > 0 && self.iteration_count % interval == 0
+        } else {
+            false
+        }
+    }
+
+    /// Get the most recent checkpoint
+    pub fn get_latest_checkpoint(&self) -> Option<&ContextCheckpoint> {
+        self.checkpoints.last()
+    }
+
+    /// Get checkpoint by ID
+    pub fn get_checkpoint(&self, checkpoint_id: &str) -> Option<&ContextCheckpoint> {
+        self.checkpoints.iter().find(|cp| cp.checkpoint_id == checkpoint_id)
+    }
+
+    /// Get all checkpoints of a specific type
+    pub fn get_checkpoints_by_type(&self, checkpoint_type: &CheckpointType) -> Vec<&ContextCheckpoint> {
+        self.checkpoints
+            .iter()
+            .filter(|cp| std::mem::discriminant(&cp.checkpoint_type) == std::mem::discriminant(checkpoint_type))
+            .collect()
+    }
+
+    /// Save the execution context to disk
+    pub async fn save_to_disk<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        if !self.persistence_enabled {
+            return Ok(()); // Skip saving if persistence is disabled
+        }
+
+        let json_data = serde_json::to_string_pretty(self)?;
+        fs::write(path, json_data).await?;
+        Ok(())
+    }
+
+    /// Load execution context from disk
+    pub async fn load_from_disk<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let json_data = fs::read_to_string(path).await?;
+        let context: ExecutionContext = serde_json::from_str(&json_data)?;
+        Ok(context)
+    }
+
+    /// Save a checkpoint to disk
+    pub async fn save_checkpoint_to_disk<P: AsRef<Path>>(&self, checkpoint_id: &str, path: P) -> Result<()> {
+        if let Some(checkpoint) = self.get_checkpoint(checkpoint_id) {
+            let json_data = serde_json::to_string_pretty(checkpoint)?;
+            fs::write(path, json_data).await?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Checkpoint not found: {}", checkpoint_id))
+        }
+    }
+
+    /// Load a checkpoint from disk
+    pub async fn load_checkpoint_from_disk<P: AsRef<Path>>(path: P) -> Result<ContextCheckpoint> {
+        let json_data = fs::read_to_string(path).await?;
+        let checkpoint: ContextCheckpoint = serde_json::from_str(&json_data)?;
+        Ok(checkpoint)
+    }
+
+    /// Restore context from a checkpoint (partial restoration)
+    pub fn restore_from_checkpoint(&mut self, checkpoint: &ContextCheckpoint) {
+        // Restore key state from checkpoint snapshot
+        let snapshot = &checkpoint.context_snapshot;
+
+        // Update variables with key variables from checkpoint
+        for (key, value) in &snapshot.key_variables {
+            self.variables.insert(key.clone(), value.clone());
+        }
+
+        // Add a restoration event to history
+        self.execution_history.push(ExecutionEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            timestamp: SystemTime::now(),
+            event_type: ExecutionEventType::ContextRestored,
+            description: format!("Context restored from checkpoint: {}", checkpoint.checkpoint_id),
+            metadata: {
+                let mut meta = HashMap::new();
+                meta.insert("checkpoint_id".to_string(), serde_json::json!(checkpoint.checkpoint_id));
+                meta.insert("checkpoint_type".to_string(), serde_json::json!(checkpoint.checkpoint_type));
+                meta
+            },
+        });
+
+        self.state_version += 1;
+        self.last_update = SystemTime::now();
+    }
+
+    /// Enable or disable persistence
+    pub fn set_persistence_enabled(&mut self, enabled: bool) {
+        self.persistence_enabled = enabled;
+        self.last_update = SystemTime::now();
+    }
+
+    /// Set auto-checkpoint interval
+    pub fn set_auto_checkpoint_interval(&mut self, interval: Option<u32>) {
+        self.auto_checkpoint_interval = interval;
+        self.last_update = SystemTime::now();
+    }
+
+    /// Get state version (increments on each significant change)
+    pub fn get_state_version(&self) -> u32 {
+        self.state_version
+    }
+
+    /// Validate context state consistency
+    pub fn validate_state(&self) -> Result<()> {
+        // Check basic consistency
+        if self.context_id.is_empty() {
+            return Err(anyhow::anyhow!("Context ID cannot be empty"));
+        }
+
+        if self.iteration_count > 0 && self.execution_history.is_empty() {
+            return Err(anyhow::anyhow!("Execution history should not be empty with non-zero iterations"));
+        }
+
+        // Check that completed tasks have completion timestamps
+        for task in &self.completed_tasks {
+            if task.completed_at.is_none() {
+                return Err(anyhow::anyhow!("Completed task missing completion timestamp: {}", task.task_id));
+            }
+        }
+
+        // Check checkpoint consistency
+        for checkpoint in &self.checkpoints {
+            if checkpoint.checkpoint_id.is_empty() {
+                return Err(anyhow::anyhow!("Checkpoint ID cannot be empty"));
+            }
+            if checkpoint.iteration_count > self.iteration_count {
+                return Err(anyhow::anyhow!("Checkpoint iteration count cannot exceed current iteration count"));
+            }
+        }
+
+        Ok(())
     }
 
     /// Get context statistics
@@ -431,6 +684,10 @@ impl Default for ExecutionContext {
             iteration_count: 0,
             available_tools: Vec::new(),
             strategy_adjustments: Vec::new(),
+            checkpoints: Vec::new(),
+            state_version: 1,
+            persistence_enabled: false, // Disabled by default in Default impl
+            auto_checkpoint_interval: None,
         }
     }
 }
@@ -531,5 +788,124 @@ mod tests {
         assert_eq!(stats.completed_tasks, 0);
         assert_eq!(stats.iteration_count, 0);
         assert_eq!(stats.execution_events, 1); // Goal set event
+    }
+
+    #[test]
+    fn test_checkpoint_creation() {
+        let goal = Goal {
+            goal_id: "test-goal".to_string(),
+            description: "Test goal".to_string(),
+            goal_type: GoalType::Analysis,
+            priority: GoalPriority::Medium,
+            success_criteria: Vec::new(),
+            max_iterations: None,
+            timeout: None,
+            metadata: HashMap::new(),
+        };
+
+        let mut context = ExecutionContext::new(goal);
+
+        // Create a manual checkpoint
+        let checkpoint_id = context.create_checkpoint(
+            CheckpointType::Manual,
+            "Test checkpoint".to_string()
+        );
+
+        assert!(!checkpoint_id.is_empty());
+        assert_eq!(context.checkpoints.len(), 1);
+        assert_eq!(context.state_version, 2); // Incremented from initial 1
+
+        let checkpoint = context.get_checkpoint(&checkpoint_id).unwrap();
+        assert_eq!(checkpoint.description, "Test checkpoint");
+        assert!(matches!(checkpoint.checkpoint_type, CheckpointType::Manual));
+    }
+
+    #[test]
+    fn test_auto_checkpoint() {
+        let goal = Goal {
+            goal_id: "test-goal".to_string(),
+            description: "Test goal".to_string(),
+            goal_type: GoalType::FileOperation,
+            priority: GoalPriority::High,
+            success_criteria: Vec::new(),
+            max_iterations: None,
+            timeout: None,
+            metadata: HashMap::new(),
+        };
+
+        let mut context = ExecutionContext::new(goal);
+        context.set_auto_checkpoint_interval(Some(3)); // Checkpoint every 3 iterations
+
+        // Increment iterations
+        for i in 1..=6 {
+            context.increment_iteration();
+
+            if i % 3 == 0 {
+                // Should have created automatic checkpoints at iterations 3 and 6
+                let auto_checkpoints = context.get_checkpoints_by_type(&CheckpointType::Automatic);
+                assert_eq!(auto_checkpoints.len(), i / 3);
+            }
+        }
+
+        assert_eq!(context.iteration_count, 6);
+        assert_eq!(context.checkpoints.len(), 2); // Two automatic checkpoints
+    }
+
+    #[test]
+    fn test_state_validation() {
+        let goal = Goal {
+            goal_id: "test-goal".to_string(),
+            description: "Test goal".to_string(),
+            goal_type: GoalType::CodeGeneration,
+            priority: GoalPriority::Low,
+            success_criteria: Vec::new(),
+            max_iterations: None,
+            timeout: None,
+            metadata: HashMap::new(),
+        };
+
+        let context = ExecutionContext::new(goal);
+
+        // Valid context should pass validation
+        assert!(context.validate_state().is_ok());
+
+        // Test with invalid context
+        let mut invalid_context = context.clone();
+        invalid_context.context_id = String::new(); // Empty context ID should fail
+        assert!(invalid_context.validate_state().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_context_persistence() {
+        use tempfile::tempdir;
+
+        let goal = Goal {
+            goal_id: "test-goal".to_string(),
+            description: "Test goal".to_string(),
+            goal_type: GoalType::Analysis,
+            priority: GoalPriority::Medium,
+            success_criteria: Vec::new(),
+            max_iterations: None,
+            timeout: None,
+            metadata: HashMap::new(),
+        };
+
+        let mut context = ExecutionContext::new(goal);
+        context.set_variable("test_key".to_string(), "test_value".to_string());
+        context.increment_iteration();
+
+        // Save to temporary file
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("context.json");
+
+        context.save_to_disk(&file_path).await.unwrap();
+
+        // Load from file
+        let loaded_context = ExecutionContext::load_from_disk(&file_path).await.unwrap();
+
+        assert_eq!(context.context_id, loaded_context.context_id);
+        assert_eq!(context.iteration_count, loaded_context.iteration_count);
+        assert_eq!(context.variables, loaded_context.variables);
+        assert_eq!(context.state_version, loaded_context.state_version);
     }
 }

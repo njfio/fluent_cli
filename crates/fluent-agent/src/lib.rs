@@ -20,8 +20,11 @@ pub mod memory;
 pub mod observation;
 pub mod orchestrator;
 pub mod performance;
+pub mod profiling;
 pub mod reasoning;
+pub mod reflection;
 pub mod security;
+pub mod state_manager;
 pub mod task;
 pub mod tools;
 pub mod transport;
@@ -37,6 +40,8 @@ pub use memory::{MemoryConfig, MemoryStats, MemorySystem};
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
 pub use reasoning::{LLMReasoningEngine, ReasoningCapability, ReasoningEngine};
+pub use reflection::{ReflectionEngine, ReflectionConfig, ReflectionResult, ReflectionType};
+pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
 pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
 
 /// Simple agent that keeps a history of prompt/response pairs.

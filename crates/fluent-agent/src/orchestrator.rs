@@ -7,11 +7,13 @@ use tokio::sync::RwLock;
 
 use crate::action::{ActionExecutor, ActionPlanner};
 use crate::config::AgentRuntimeConfig;
-use crate::context::ExecutionContext;
+use crate::context::{ExecutionContext, CheckpointType};
 use crate::goal::{Goal, GoalResult};
 use crate::memory::MemorySystem;
 use crate::observation::ObservationProcessor;
 use crate::reasoning::{LLMReasoningEngine, ReasoningEngine};
+use crate::reflection::ReflectionEngine;
+use crate::state_manager::StateManager as PersistentStateManager;
 use crate::task::{Task, TaskResult};
 
 /// Core agent orchestrator implementing the ReAct (Reasoning, Acting, Observing) pattern
@@ -30,6 +32,8 @@ pub struct AgentOrchestrator {
     observation_processor: Box<dyn ObservationProcessor>,
     memory_system: Arc<MemorySystem>,
     state_manager: Arc<StateManager>,
+    persistent_state_manager: Arc<PersistentStateManager>,
+    reflection_engine: Arc<RwLock<ReflectionEngine>>,
     metrics: Arc<RwLock<OrchestrationMetrics>>,
 }
 
@@ -150,12 +154,14 @@ pub struct OrchestrationMetrics {
 
 impl AgentOrchestrator {
     /// Create a new agent orchestrator with the specified components
-    pub fn new(
+    pub async fn new(
         reasoning_engine: Box<dyn ReasoningEngine>,
         action_planner: Box<dyn ActionPlanner>,
         action_executor: Box<dyn ActionExecutor>,
         observation_processor: Box<dyn ObservationProcessor>,
         memory_system: Arc<MemorySystem>,
+        persistent_state_manager: Arc<PersistentStateManager>,
+        reflection_engine: ReflectionEngine,
     ) -> Self {
         Self {
             reasoning_engine,
@@ -164,6 +170,8 @@ impl AgentOrchestrator {
             observation_processor,
             memory_system,
             state_manager: Arc::new(StateManager::new()),
+            persistent_state_manager,
+            reflection_engine: Arc::new(RwLock::new(reflection_engine)),
             metrics: Arc::new(RwLock::new(OrchestrationMetrics::default())),
         }
     }
@@ -175,6 +183,8 @@ impl AgentOrchestrator {
         action_executor: Box<dyn ActionExecutor>,
         observation_processor: Box<dyn ObservationProcessor>,
         memory_system: Arc<MemorySystem>,
+        persistent_state_manager: Arc<PersistentStateManager>,
+        reflection_engine: ReflectionEngine,
     ) -> Result<Self> {
         let reasoning_engine = Box::new(LLMReasoningEngine::new(
             runtime_config.reasoning_engine.clone(),
@@ -186,7 +196,9 @@ impl AgentOrchestrator {
             action_executor,
             observation_processor,
             memory_system,
-        ))
+            persistent_state_manager,
+            reflection_engine,
+        ).await)
     }
 
     /// Execute a goal using the ReAct pattern
@@ -200,6 +212,15 @@ impl AgentOrchestrator {
 
         // Initialize agent state
         self.initialize_state(goal.clone(), &context).await?;
+
+        // Set context in persistent state manager
+        self.persistent_state_manager.set_context(context.clone()).await?;
+
+        // Create initial checkpoint
+        self.persistent_state_manager.create_checkpoint(
+            CheckpointType::BeforeAction,
+            "Goal execution started".to_string()
+        ).await?;
 
         // Update metrics
         {
@@ -245,6 +266,12 @@ impl AgentOrchestrator {
                 .plan_action(reasoning_result, &context)
                 .await?;
 
+            // Create checkpoint before action execution
+            self.persistent_state_manager.create_checkpoint(
+                CheckpointType::BeforeAction,
+                format!("Before action execution at iteration {}", iteration_count)
+            ).await?;
+
             // Execution Phase: Execute the planned action
             let action_start = SystemTime::now();
             let action_execution_result = self
@@ -252,6 +279,12 @@ impl AgentOrchestrator {
                 .execute(action_plan, &mut context)
                 .await?;
             let action_duration = action_start.elapsed().unwrap_or_default();
+
+            // Create checkpoint after action execution
+            self.persistent_state_manager.create_checkpoint(
+                CheckpointType::AfterAction,
+                format!("After action execution at iteration {}", iteration_count)
+            ).await?;
 
             // Convert to orchestrator ActionResult for recording
             let action_result = ActionResult {
@@ -280,18 +313,41 @@ impl AgentOrchestrator {
             // Update memory system with new learnings
             self.memory_system.update(&context).await?;
 
-            // Self-reflection: Evaluate progress and adjust strategy if needed
-            if iteration_count % 5 == 0 {
-                // Reflect every 5 iterations
-                let reflection_result = self.self_reflect(&context).await?;
-                if reflection_result.strategy_adjustment_needed {
-                    self.adjust_strategy(&mut context, reflection_result)
+            // Advanced Self-reflection: Evaluate progress and adjust strategy if needed
+            let mut reflection_engine = self.reflection_engine.write().await;
+            if let Some(trigger) = reflection_engine.should_reflect(&context) {
+                // Create checkpoint before reflection
+                self.persistent_state_manager.create_checkpoint(
+                    CheckpointType::BeforeReflection,
+                    format!("Before reflection at iteration {} (trigger: {:?})", iteration_count, trigger)
+                ).await?;
+
+                // Perform comprehensive reflection
+                let reflection_result = reflection_engine.reflect(
+                    &context,
+                    self.reasoning_engine.as_ref(),
+                    trigger
+                ).await?;
+
+                // Apply strategy adjustments
+                if !reflection_result.strategy_adjustments.is_empty() {
+                    self.apply_strategy_adjustments(&mut context, &reflection_result.strategy_adjustments)
                         .await?;
                 }
+
+                // Log reflection insights
+                log::info!("Reflection completed: {} insights, {} adjustments, confidence: {:.2}",
+                          reflection_result.learning_insights.len(),
+                          reflection_result.strategy_adjustments.len(),
+                          reflection_result.confidence_assessment);
             }
+            drop(reflection_engine); // Release the lock
 
             // Update agent state
             self.update_state(&context, iteration_count).await?;
+
+            // Update persistent state manager with current context
+            self.persistent_state_manager.set_context(context.clone()).await?;
         }
     }
 
@@ -332,35 +388,52 @@ impl AgentOrchestrator {
         Ok(reasoning.goal_achieved_confidence > 0.8)
     }
 
-    /// Perform self-reflection on current progress
-    async fn self_reflect(&self, context: &ExecutionContext) -> Result<ReflectionResult> {
-        // Analyze current progress, identify bottlenecks, and suggest improvements
-        let _reflection_prompt = format!(
-            "Reflect on the current progress towards the goal. Context: {:?}",
-            context
-        );
-
-        // Use reasoning engine for self-reflection
-        let reflection_context = ExecutionContext::new_for_reflection(context);
-        let reasoning_result = self.reasoning_engine.reason(&reflection_context).await?;
-
-        Ok(ReflectionResult {
-            strategy_adjustment_needed: reasoning_result.confidence_score < 0.6,
-            suggested_adjustments: reasoning_result.next_actions,
-            confidence_assessment: reasoning_result.confidence_score,
-            progress_evaluation: reasoning_result.reasoning_output,
-        })
-    }
-
-    /// Adjust strategy based on reflection results
-    async fn adjust_strategy(
+    /// Apply strategy adjustments from reflection results
+    async fn apply_strategy_adjustments(
         &self,
         context: &mut ExecutionContext,
-        reflection: ReflectionResult,
+        adjustments: &[crate::reflection::StrategyAdjustment],
     ) -> Result<()> {
-        // Implement strategy adjustments based on reflection
-        context.add_strategy_adjustment(reflection.suggested_adjustments);
+        for adjustment in adjustments {
+            // Apply the adjustment to the context
+            let adjustment_description = format!(
+                "{}: {} (Expected impact: {:?})",
+                adjustment.adjustment_type,
+                adjustment.description,
+                adjustment.expected_impact
+            );
+
+            context.add_strategy_adjustment(vec![adjustment_description]);
+
+            // Log the adjustment
+            log::info!("Applied strategy adjustment: {} - {}",
+                      adjustment.adjustment_id, adjustment.description);
+
+            // Create checkpoint after applying adjustment
+            self.persistent_state_manager.create_checkpoint(
+                CheckpointType::AfterAction,
+                format!("After applying strategy adjustment: {}", adjustment.adjustment_id)
+            ).await?;
+        }
+
         Ok(())
+    }
+
+    /// Get reflection engine for external access
+    pub fn get_reflection_engine(&self) -> Arc<RwLock<ReflectionEngine>> {
+        self.reflection_engine.clone()
+    }
+
+    /// Trigger manual reflection
+    pub async fn trigger_reflection(&self, context: &ExecutionContext, _reason: String) -> Result<crate::reflection::ReflectionResult> {
+        let mut reflection_engine = self.reflection_engine.write().await;
+        let trigger = crate::reflection::ReflectionTrigger::UserRequest;
+
+        reflection_engine.reflect(
+            context,
+            self.reasoning_engine.as_ref(),
+            trigger
+        ).await
     }
 
     /// Record a reasoning step for analysis and debugging
@@ -483,6 +556,22 @@ impl AgentOrchestrator {
     pub async fn get_current_state(&self) -> AgentState {
         self.state_manager.current_state.read().await.clone()
     }
+
+    /// Get the persistent state manager for advanced state operations
+    pub fn get_persistent_state_manager(&self) -> Arc<PersistentStateManager> {
+        self.persistent_state_manager.clone()
+    }
+
+    /// Save current execution state to disk
+    pub async fn save_execution_state(&self) -> Result<()> {
+        self.persistent_state_manager.save_context().await
+    }
+
+    /// Load execution state from disk
+    pub async fn load_execution_state(&self, context_id: &str) -> Result<()> {
+        let context = self.persistent_state_manager.load_context(context_id).await?;
+        self.persistent_state_manager.set_context(context).await
+    }
 }
 
 impl StateManager {
@@ -511,14 +600,7 @@ impl Default for AgentState {
     }
 }
 
-/// Result of self-reflection process
-#[derive(Debug, Clone)]
-pub struct ReflectionResult {
-    pub strategy_adjustment_needed: bool,
-    pub suggested_adjustments: Vec<String>,
-    pub confidence_assessment: f64,
-    pub progress_evaluation: String,
-}
+
 
 /// Result of reasoning process
 #[derive(Debug, Clone)]

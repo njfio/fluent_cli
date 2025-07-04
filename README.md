@@ -27,6 +27,8 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Workflow Engine**: DAG-based execution with proper timing and retry logic
 - **String Replace Editor**: Surgical file editing with comprehensive test coverage
 - **MCP Integration**: Full Model Context Protocol client and server support
+- **Self-Reflection Engine**: Advanced learning and strategy adjustment capabilities
+- **State Management**: Execution context persistence with checkpoint/restore functionality
 
 ### 📊 **Quality & Testing**
 
@@ -61,6 +63,15 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **String Replace Editor**: Surgical file editing with precision targeting and validation
 - **Memory System**: SQLite-based persistent memory with performance optimization
 - **Security Sandboxing**: Rate limiting, input validation, and secure execution environment
+
+### 🧠 **Self-Reflection & Learning System**
+
+- **Multi-Type Reflection**: Routine, triggered, deep, meta, and crisis reflection modes
+- **Strategy Adjustment**: Automatic strategy optimization based on performance analysis
+- **Learning Retention**: Experience-based learning with configurable retention periods
+- **Pattern Recognition**: Success and failure pattern identification and application
+- **Performance Metrics**: Comprehensive performance tracking and confidence assessment
+- **State Persistence**: Execution context and learning experience persistence
 
 ### 🔒 **Security & Quality Features**
 
@@ -114,14 +125,18 @@ fluent openai "Complex analysis task" --cache
 #### Agent Commands
 
 ```bash
-# Interactive agent session
-fluent agent --interactive
+# Interactive agent session (requires API keys)
+fluent openai agent
 
-# Agentic mode with specific goal
-fluent agent --agentic --goal "Build a simple web server" --max-iterations 10
+# Agentic mode with specific goal (requires API keys)
+fluent openai --agentic --goal "Build a simple web server" --max-iterations 10 --enable-tools
 
-# Agent with tools enabled
-fluent agent --tools --config agent_config.json
+# Agent with MCP capabilities (requires API keys)
+fluent agent-mcp --engine openai --task "Analyze codebase" --mcp-servers "filesystem:mcp-server-filesystem"
+
+# Note: Set appropriate API keys before running:
+# export OPENAI_API_KEY="your-api-key-here"
+# export ANTHROPIC_API_KEY="your-api-key-here"
 ```
 
 #### Pipeline Commands
@@ -219,6 +234,62 @@ steps:
       prompt: "Analyze this code and suggest improvements: {{previous_output}}"
 ```
 
+### Self-Reflection Configuration
+
+Configure the agent's self-reflection and learning capabilities:
+
+```yaml
+# reflection_config.yaml
+reflection:
+  reflection_frequency: 5              # Reflect every 5 iterations
+  deep_reflection_frequency: 20        # Deep reflection every 20 reflections
+  learning_retention_days: 30          # Keep learning experiences for 30 days
+  confidence_threshold: 0.6            # Trigger reflection if confidence < 0.6
+  performance_threshold: 0.7           # Trigger adjustment if performance < 0.7
+  enable_meta_reflection: true         # Enable reflection on reflection process
+  strategy_adjustment_sensitivity: 0.8 # How readily to adjust strategy (0.0-1.0)
+
+state_management:
+  state_directory: "./agent_state"     # Directory for state persistence
+  auto_save_enabled: true              # Enable automatic state saving
+  auto_save_interval_seconds: 30       # Save state every 30 seconds
+  max_checkpoints: 50                  # Maximum checkpoints to retain
+  backup_retention_days: 7             # Keep backups for 7 days
+```
+
+### Agent Configuration
+
+Complete agent configuration with all capabilities:
+
+```yaml
+# agent_config.yaml
+agent:
+  max_iterations: 20
+  enable_tools: true
+  memory_enabled: true
+  reflection_enabled: true
+
+reasoning:
+  engine: "openai"
+  model: "gpt-4"
+  temperature: 0.7
+
+tools:
+  string_replace_editor:
+    allowed_paths: ["./src", "./docs", "./examples"]
+    create_backups: true
+    case_sensitive: false
+    max_file_size: 10485760  # 10MB
+
+  filesystem:
+    allowed_paths: ["./"]
+    max_file_size: 10485760
+
+  shell:
+    allowed_commands: ["cargo", "git", "ls", "cat"]
+    timeout_seconds: 30
+```
+
 ## 🤖 Experimental Features
 
 ### Agent Mode
@@ -226,10 +297,10 @@ steps:
 Interactive agent sessions with basic memory and tool access:
 
 ```bash
-# Start an interactive agent session
+# Start an interactive agent session (requires OPENAI_API_KEY)
 fluent openai agent
 
-# Agent with specific goal (experimental)
+# Agent with specific goal (requires OPENAI_API_KEY)
 fluent openai --agentic --goal "Analyze project structure" --enable-tools
 ```
 
@@ -325,13 +396,16 @@ export GOOGLE_API_KEY="your-key"
 - **Advanced Tool System**: ✅ Production-ready file operations and code analysis
 - **String Replace Editor**: ✅ Surgical file editing with precision targeting
 - **Memory System**: ✅ SQLite-based persistent memory with optimization
+- **Self-Reflection Engine**: ✅ Advanced learning and strategy adjustment
+- **State Management**: ✅ Execution context persistence with checkpoint/restore
 
 ### Planned Features
 
-- Enhanced agent capabilities
+- Enhanced multi-modal capabilities
 - Expanded tool ecosystem
-- Advanced MCP client/server features
-- Improved memory and learning systems
+- Advanced workflow orchestration
+- Real-time collaboration features
+- Plugin system for custom tools
 
 ## 🧪 Development
 
@@ -354,6 +428,26 @@ cargo test --package fluent-agent
 
 # Run integration tests
 cargo test --test integration
+
+# Run reflection system tests
+cargo test -p fluent-agent reflection
+```
+
+### Running Examples
+
+```bash
+# Run the self-reflection and strategy adjustment demo
+cargo run --example reflection_demo
+
+# Run the state management demo
+cargo run --example state_management_demo
+
+# Run the string replace editor demo
+cargo run --example string_replace_demo
+
+# Run other available examples
+cargo run --example real_agentic_demo
+cargo run --example working_agentic_demo
 ```
 
 ### Quality Assurance Tools

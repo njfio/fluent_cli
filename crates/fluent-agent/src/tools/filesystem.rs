@@ -44,7 +44,10 @@ impl FileSystemExecutor {
                             e
                         )
                     })?;
-                    canonical_parent.join(validated_path.file_name().unwrap_or_default())
+                    let file_name = validated_path
+                        .file_name()
+                        .ok_or_else(|| anyhow!("Path '{}' has no file name component", validated_path.display()))?;
+                    canonical_parent.join(file_name)
                 } else {
                     validated_path.clone()
                 }
@@ -275,7 +278,7 @@ impl ToolExecutor for FileSystemExecutor {
                 let file_info = FileInfo {
                     name: path
                         .file_name()
-                        .unwrap_or_default()
+                        .ok_or_else(|| anyhow!("Path '{}' has no file name component", path.display()))?
                         .to_string_lossy()
                         .to_string(),
                     is_directory: metadata.is_dir(),
