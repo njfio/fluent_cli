@@ -95,17 +95,20 @@ impl OptimizedOpenAIEngine {
 
         // Get reusable buffers from pool
         let mut string_buffer = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_string_buffer()
         };
 
         let mut payload_builder = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_payload_builder()
         };
 
         let mut response_parser = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_response_parser()
         };
 
@@ -175,7 +178,8 @@ impl OptimizedOpenAIEngine {
 
         // Return buffers to pool for reuse
         {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.return_string_buffer(string_buffer);
             pool.return_payload_builder(payload_builder);
             pool.return_response_parser(response_parser);
@@ -198,14 +202,16 @@ impl OptimizedOpenAIEngine {
         // Check cache first
         let cache_key_str = {
             let mut string_buffer = {
-                let mut pool = self.memory_pool.lock().unwrap();
+                let mut pool = self.memory_pool.lock()
+                    .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
                 pool.get_string_buffer()
             };
             let key = string_buffer
                 .build_cache_key(&request.payload, Some(&file_path.display().to_string()));
             let result = key.to_string();
             {
-                let mut pool = self.memory_pool.lock().unwrap();
+                let mut pool = self.memory_pool.lock()
+                    .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
                 pool.return_string_buffer(string_buffer);
             }
             result
@@ -219,7 +225,8 @@ impl OptimizedOpenAIEngine {
 
         // Read file using reusable buffer
         let mut file_buffer = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_file_buffer()
         };
 
@@ -231,7 +238,8 @@ impl OptimizedOpenAIEngine {
 
         // Build vision payload
         let mut payload_builder = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_payload_builder()
         };
 
@@ -240,7 +248,8 @@ impl OptimizedOpenAIEngine {
 
         // Build URL
         let mut string_buffer = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_string_buffer()
         };
 
@@ -272,7 +281,8 @@ impl OptimizedOpenAIEngine {
 
         // Parse response
         let mut response_parser = {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.get_response_parser()
         };
 
@@ -306,7 +316,8 @@ impl OptimizedOpenAIEngine {
 
         // Return buffers to pool
         {
-            let mut pool = self.memory_pool.lock().unwrap();
+            let mut pool = self.memory_pool.lock()
+                .map_err(|e| anyhow!("Memory pool mutex poisoned: {}", e))?;
             pool.return_file_buffer(file_buffer);
             pool.return_payload_builder(payload_builder);
             pool.return_string_buffer(string_buffer);
