@@ -1028,7 +1028,10 @@ pub mod cli {
                         ## Analysis\n{}\n\n\
                         ## Action Taken\n{}\n\n",
                         iteration,
-                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0),
                         goal.description,
                         analysis_response,
                         action_response
@@ -1855,7 +1858,8 @@ fn main() -> io::Result<()> {
                     let permit = semaphore.clone();
 
                     let handle = tokio::spawn(async move {
-                        let _permit = permit.acquire().await.unwrap();
+                        let _permit = permit.acquire().await
+                            .map_err(|e| anyhow::anyhow!("Failed to acquire semaphore permit: {}", e))?;
                         let document_id = neo4j_client.upsert_document(&path, &metadata).await?;
                         Ok::<(PathBuf, String), anyhow::Error>((path, document_id))
                     });

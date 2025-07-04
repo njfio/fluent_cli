@@ -5,7 +5,7 @@ use std::time::Duration;
 const GAME_WIDTH: usize = 20;
 const GAME_HEIGHT: usize = 15;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Cell {
     Empty,
     Frog,
@@ -201,7 +201,7 @@ impl Game {
             println!("\n💀 Game Over! Final Score: {}", self.score);
         }
 
-        io::stdout().flush().unwrap();
+        let _ = io::stdout().flush(); // Ignore flush errors in game display
     }
 }
 
