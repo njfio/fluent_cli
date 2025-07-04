@@ -160,9 +160,11 @@ impl SignatureVerifier for DefaultSignatureVerifier {
         for key_str in trusted_keys {
             if let Ok(key_bytes) = Base64.decode(&key_str) {
                 if key_bytes.len() == 32 {
-                    if let Ok(public_key) = VerifyingKey::from_bytes(&key_bytes.try_into().unwrap()) {
-                        if public_key.verify(plugin_bytes, &signature).is_ok() {
-                            return Ok(true);
+                    if let Ok(key_array) = key_bytes.try_into() {
+                        if let Ok(public_key) = VerifyingKey::from_bytes(&key_array) {
+                            if public_key.verify(plugin_bytes, &signature).is_ok() {
+                                return Ok(true);
+                            }
                         }
                     }
                 }
@@ -490,16 +492,27 @@ impl Engine for SecurePluginEngine {
         _request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            // TODO: Execute WASM plugin with request
-            // This would involve:
-            // 1. Setting up WASM runtime (wasmtime/wasmer)
-            // 2. Injecting capabilities based on permissions
-            // 3. Monitoring resource usage
-            // 4. Enforcing timeouts and limits
-            // 5. Logging all actions
+            #[cfg(feature = "wasm-runtime")]
+            {
+                // WASM runtime execution would be implemented here when the feature is enabled
+                // This would involve:
+                // 1. Setting up WASM runtime (wasmtime/wasmer)
+                // 2. Injecting capabilities based on permissions
+                // 3. Monitoring resource usage
+                // 4. Enforcing timeouts and limits
+                // 5. Logging all actions
 
-            // For now, return a placeholder response
-            Err(anyhow!("WASM plugin execution not yet implemented"))
+                // Implementation would go here...
+                Err(anyhow!("WASM plugin execution requires implementation"))
+            }
+
+            #[cfg(not(feature = "wasm-runtime"))]
+            {
+                // WASM runtime not enabled - return appropriate error
+                Err(anyhow!(
+                    "WASM plugin execution not available. Enable 'wasm-runtime' feature to use WASM plugins."
+                ))
+            }
         })
     }
 
@@ -507,7 +520,21 @@ impl Engine for SecurePluginEngine {
         &'a self,
         _request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a> {
-        Box::new(async move { Err(anyhow!("Plugin upsert not implemented")) })
+        Box::new(async move {
+            #[cfg(feature = "wasm-runtime")]
+            {
+                // WASM plugin upsert would be implemented here when the feature is enabled
+                Err(anyhow!("WASM plugin upsert requires implementation"))
+            }
+
+            #[cfg(not(feature = "wasm-runtime"))]
+            {
+                // WASM runtime not enabled - return appropriate error
+                Err(anyhow!(
+                    "WASM plugin upsert not available. Enable 'wasm-runtime' feature to use WASM plugins."
+                ))
+            }
+        })
     }
 
     fn get_neo4j_client(&self) -> Option<&Arc<fluent_core::neo4j_client::Neo4jClient>> {

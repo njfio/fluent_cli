@@ -4,6 +4,10 @@ name = "fluent-engines"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+wasm-runtime = []  # Feature flag for WASM plugin execution
+
 [dependencies]
 fluent-core = { workspace = true }
 reqwest = { workspace = true }
