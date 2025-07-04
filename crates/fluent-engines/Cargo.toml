@@ -38,6 +38,7 @@ chrono = { version = "0.4", features = ["serde"] }
 which = "6.0"
 clap = { version = "4.0", features = ["derive"] }
 hex = { workspace = true }
+ed25519-dalek = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

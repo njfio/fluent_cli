@@ -66,7 +66,22 @@ impl ShellExecutor {
         let sanitized_stderr = validation::sanitize_output(&stderr, self.config.max_output_size);
 
         Ok(CommandResult {
-            exit_code: output.status.code().unwrap_or(-1),
+            exit_code: output.status.code().unwrap_or_else(|| {
+                // Different error codes for different failure scenarios
+                if output.status.success() {
+                    0  // Success but no code (shouldn't happen)
+                } else {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        // Check if process was terminated by signal
+                        if let Some(signal) = output.status.signal() {
+                            return -signal; // Negative signal number
+                        }
+                    }
+                    -1 // Generic failure
+                }
+            }),
             stdout: sanitized_stdout,
             stderr: sanitized_stderr,
             execution_time_ms: execution_time.as_millis() as u64,

@@ -123,6 +123,8 @@ jsonschema = "0.17.1"
 sled = "0.34.7"
 # Cryptographic hashing - allow minor updates within 0.10.x
 sha2 = "~0.10.8"
+# Ed25519 digital signatures - pin to exact version for security
+ed25519-dalek = "2.1.1"
 # MCP protocol implementation - pin to exact version for stability
 rmcp = { version = "0.1.0", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
 
