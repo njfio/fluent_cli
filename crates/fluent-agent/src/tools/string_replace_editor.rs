@@ -153,17 +153,17 @@ impl StringReplaceEditor {
                 )?
             };
 
-        // If no replacements were made
+        // If no replacements were made, this is still a successful operation
         if replacements_made == 0 {
             let preview = self.create_preview(&original_content, &params.old_str);
             return Ok(StringReplaceResult {
-                success: false,
+                success: true,
                 replacements_made: 0,
-                original_content: Some(original_content),
-                new_content: None,
+                original_content: Some(original_content.clone()),
+                new_content: Some(original_content), // Content unchanged
                 backup_path: None,
                 preview: Some(preview),
-                error: Some("No matches found for the specified string".to_string()),
+                error: None, // No error - this is a valid result
             });
         }
 
