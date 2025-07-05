@@ -21,7 +21,7 @@ pub use validation::{validate_engine_name, validate_file_path_secure, parse_key_
 pub use memory::MemoryManager;
 
 pub mod cli {
-    use anyhow::{anyhow, Result};
+    use anyhow::{anyhow, Error, Result};
     use clap::{Arg, ArgAction, ArgMatches, Command};
     use fluent_core::config::{load_config, Config, EngineConfig};
     use fluent_core::error::{FluentError, FluentResult, ValidationError};
@@ -30,30 +30,28 @@ pub mod cli {
     use fluent_core::traits::Engine;
     use fluent_core::types::{Request, Response};
     use fluent_engines::anthropic::AnthropicEngine;
-    
+    use fluent_engines::create_engine;
     use fluent_engines::openai::OpenAIEngine;
-    
-    
-    use std::collections::HashSet;
+    use indicatif::{ProgressBar, ProgressStyle};
+    use owo_colors::OwoColorize;
+    use std::collections::{HashMap, HashSet};
     use std::fs;
-    
+    use std::io::IsTerminal;
     use std::path::{Path, PathBuf};
     use std::pin::Pin;
-    
-    
+    use std::time::Duration;
+    use std::{env, io};
 
-    use log::debug;
+    use log::{debug, error, info};
     use serde_json::Value;
-
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
     /// Convert anyhow errors to FluentError with context
-    #[allow(dead_code)]
     fn to_fluent_error(err: anyhow::Error, context: &str) -> FluentError {
         FluentError::Internal(format!("{}: {}", context, err))
     }
 
     /// Validate required CLI arguments
-    #[allow(dead_code)]
     fn validate_required_string(
         matches: &ArgMatches,
         arg_name: &str,
@@ -68,7 +66,6 @@ pub mod cli {
     }
 
     /// Enhanced validation for file paths with security checks
-    #[allow(dead_code)]
     fn validate_file_path_secure(path: &str, context: &str) -> FluentResult<String> {
         if path.is_empty() {
             return Err(FluentError::Validation(ValidationError::MissingField(
@@ -87,7 +84,6 @@ pub mod cli {
     }
 
     /// Validate request payload with comprehensive checks
-    #[allow(dead_code)]
     fn validate_request_payload(payload: &str, context: &str) -> FluentResult<String> {
         match InputValidator::validate_request_payload(payload) {
             Ok(validated_payload) => Ok(validated_payload),
@@ -99,7 +95,6 @@ pub mod cli {
     }
 
     /// Validate numeric parameters with bounds checking
-    #[allow(dead_code)]
     fn validate_numeric_parameter(
         value: u32,
         min: u32,
@@ -116,7 +111,6 @@ pub mod cli {
     }
 
     /// Validate engine name against supported engines
-    #[allow(dead_code)]
     fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
         if engine_name.is_empty() {
             return Err(FluentError::Validation(ValidationError::MissingField(
@@ -150,12 +144,10 @@ pub mod cli {
     }
 
     /// Memory monitoring and cleanup utilities
-    #[allow(dead_code)]
     struct MemoryManager;
 
     impl MemoryManager {
         /// Force garbage collection and memory cleanup
-        #[allow(dead_code)]
         fn force_cleanup() {
             // In Rust, we can't force GC, but we can drop large allocations
             // and encourage the allocator to return memory to the OS
@@ -163,14 +155,12 @@ pub mod cli {
         }
 
         /// Log current memory usage (basic implementation)
-        #[allow(dead_code)]
         fn log_memory_usage(context: &str) {
             // This is a basic implementation - in production you might use a proper memory profiler
             debug!("Memory checkpoint: {}", context);
         }
 
         /// Cleanup temporary files and resources
-        #[allow(dead_code)]
         fn cleanup_temp_resources() -> Result<()> {
             // Clean up any temporary files that might have been created
             if let Ok(temp_dir) = std::env::temp_dir().read_dir() {
@@ -190,7 +180,6 @@ pub mod cli {
     }
 
     /// Process response output with all requested transformations
-    #[allow(dead_code)]
     async fn process_response_output(
         response_content: &str,
         mut output: String,
@@ -226,29 +215,30 @@ pub mod cli {
         Ok(output)
     }
 
-    use crate::create_llm_engine;
-    use fluent_core::neo4j_client::Neo4jClient;
+    use crate::{create_llm_engine, generate_and_execute_cypher};
+    use fluent_core::neo4j_client::{InteractionStats, Neo4jClient};
     use fluent_core::output_processor::OutputProcessor;
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    use fluent_engines::cohere::CohereEngine;
+    use fluent_engines::dalle::DalleEngine;
+    use fluent_engines::flowise_chain::FlowiseChainEngine;
+    use fluent_engines::google_gemini::GoogleGeminiEngine;
+    use fluent_engines::groqlpu::GroqLPUEngine;
+    use fluent_engines::imagepro::ImagineProEngine;
+    use fluent_engines::langflow::LangflowEngine;
+    use fluent_engines::leonardoai::LeonardoAIEngine;
+    use fluent_engines::mistral::MistralEngine;
+    use fluent_engines::perplexity::PerplexityEngine;
+    use fluent_engines::replicate::ReplicateEngine;
 
-    
-    
-    
-    
-    
-    
+    use fluent_agent::Agent;
+    use fluent_engines::pipeline_executor::{
+        validate_pipeline_yaml, FileStateStore, Pipeline, PipelineExecutor, StateStore,
+    };
+    use fluent_engines::stabilityai::StabilityAIEngine;
+    use fluent_engines::webhook::WebhookEngine;
+    use tokio::time::Instant;
+    use uuid::Uuid;
 
-    #[allow(dead_code)]
     fn parse_key_value_pair(s: &str) -> Option<(String, String)> {
         if let Some((key, value)) = s.split_once('=') {
             Some((key.to_string(), value.to_string()))
@@ -1230,7 +1220,578 @@ fn main() -> io::Result<()> {
         run_modular().await
     }
 
-    #[allow(dead_code)]
+                        eprintln!("Warning: FLUENT_STATE_STORE environment variable not set. Using default path.");
+                        PathBuf::from("./pipeline_states")
+                    }
+                };
+                tokio::fs::create_dir_all(&state_store_dir).await?;
+                let state_store = FileStateStore {
+                    directory: state_store_dir,
+                };
+                let executor = PipelineExecutor::new(state_store.clone(), json_output);
+
+                executor
+                    .execute(&pipeline, &input, force_fresh, run_id.clone())
+                    .await?;
+
+                if json_output {
+                    // Read the state file and print its contents to stdout
+                    let state_key = format!(
+                        "{}-{}",
+                        pipeline.name,
+                        run_id.unwrap_or_else(|| "unknown".to_string())
+                    );
+                    if let Some(state) = state_store.load_state(&state_key).await? {
+                        println!("{}", serde_json::to_string_pretty(&state)?);
+                    } else {
+                        eprintln!("No state file found for the given run ID.");
+                        std::process::exit(1);
+                    }
+                }
+
+                std::process::exit(0);
+            }
+
+            Some(("build-pipeline", _sub_matches)) => {
+                crate::pipeline_builder::build_interactively().await?;
+                std::process::exit(0);
+            }
+
+            Some(("mcp", sub_matches)) => {
+                run_mcp_server(sub_matches).await?;
+                std::process::exit(0);
+            }
+
+            Some(("agent-mcp", sub_matches)) => {
+                let engine_name = validate_required_string(sub_matches, "engine", "agent-mcp")
+                    .map_err(|e| anyhow!("{}", e))?;
+                let task = validate_required_string(sub_matches, "task", "agent-mcp")
+                    .map_err(|e| anyhow!("{}", e))?;
+                let mcp_servers_str =
+                    validate_required_string(sub_matches, "mcp-servers", "agent-mcp")
+                        .map_err(|e| anyhow!("{}", e))?;
+                let config_path = sub_matches.get_one::<String>("config")
+                    .map(|s| s.to_string())
+                    .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
+                    .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
+
+                // Parse MCP servers
+                let mcp_servers: Vec<String> = mcp_servers_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                let config = load_config(&config_path, &engine_name, &HashMap::new())?;
+                run_agent_with_mcp(&engine_name, &task, mcp_servers, &config).await?;
+                std::process::exit(0);
+            }
+
+            _ => Ok(()), // Default case, do nothing
+        };
+
+        // Check for agentic mode
+        if matches.get_flag("agentic") {
+            let goal = matches.get_one::<String>("goal").ok_or_else(|| {
+                anyhow!("Goal is required when using agentic mode. Use --goal to specify the goal.")
+            })?;
+
+            let agent_config_path = matches
+                .get_one::<String>("agent_config")
+                .ok_or_else(|| anyhow!("Agent config path is required for agentic mode"))?;
+            let max_iterations_str = matches
+                .get_one::<String>("max_iterations")
+                .ok_or_else(|| anyhow!("Max iterations is required for agentic mode"))?;
+            let max_iterations: u32 = max_iterations_str
+                .parse()
+                .map_err(|_| anyhow!("Invalid max_iterations value: {}", max_iterations_str))?;
+
+            // Validate max_iterations is within reasonable bounds
+            let validated_max_iterations =
+                validate_numeric_parameter(max_iterations, 1, 1000, "max_iterations")
+                    .map_err(|e| anyhow!("{}", e))?;
+            let enable_tools = matches.get_flag("enable_tools");
+
+            // Load the main config for engine credentials
+            let config_path = matches.get_one::<String>("config")
+                .map(|s| s.to_string())
+                .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
+                .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
+
+            let engine_name = matches
+                .get_one::<String>("engine")
+                .ok_or_else(|| anyhow!("Engine name is required"))?;
+            let overrides: HashMap<String, String> = matches
+                .get_many::<String>("override")
+                .map(|values| values.filter_map(|s| parse_key_value_pair(s)).collect())
+                .unwrap_or_default();
+
+            let config = load_config(&config_path, engine_name, &overrides)?;
+
+            return run_agentic_mode(
+                goal,
+                agent_config_path,
+                validated_max_iterations,
+                enable_tools,
+                &config,
+                &config_path,
+            )
+            .await;
+        }
+
+        let config_path = matches.get_one::<String>("config")
+            .map(|s| s.to_string())
+            .or_else(|| env::var("FLUENT_CLI_V2_CONFIG_PATH").ok())
+            .ok_or_else(|| anyhow!("No config file specified and FLUENT_CLI_V2_CONFIG_PATH environment variable not set"))?;
+
+        let engine_name = matches
+            .get_one::<String>("engine")
+            .ok_or_else(|| anyhow!("Engine name is required"))?;
+        let validated_engine_name =
+            validate_engine_name(engine_name).map_err(|e| anyhow!("{}", e))?;
+
+        let overrides: HashMap<String, String> = matches
+            .get_many::<String>("override")
+            .map(|values| values.filter_map(|s| parse_key_value_pair(s)).collect())
+            .unwrap_or_default();
+
+        let config = load_config(&config_path, &validated_engine_name, &overrides)?;
+        let spinner_config = config.engines[0].spinner.clone().unwrap_or_default();
+        let pb = ProgressBar::new_spinner();
+        let engine_config = &config.engines[0];
+        let start_time = Instant::now();
+        let mut cumulative_cost = 0.0;
+
+        let spinner_style = ProgressStyle::default_spinner()
+            .tick_chars(&spinner_config.frames)
+            .template("{spinner:.green} {msg}")
+            .map_err(|e| anyhow!("Failed to create spinner template: {}", e))?;
+
+        pb.set_style(spinner_style);
+        pb.set_message(format!("Processing {} request...", validated_engine_name));
+        pb.enable_steady_tick(Duration::from_millis(spinner_config.interval));
+        pb.set_length(100);
+
+        if matches.subcommand_matches("agent").is_some() {
+            let engine: Box<dyn Engine> = create_engine(engine_config).await?;
+            let mut agent = Agent::new(engine);
+            let mut reader = BufReader::new(tokio::io::stdin());
+            let mut line = String::new();
+            println!("Starting agent loop. Type 'exit' to quit.");
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).await? == 0 {
+                    break;
+                }
+                let prompt = line.trim();
+                if prompt.eq_ignore_ascii_case("exit") {
+                    break;
+                }
+                if prompt.is_empty() {
+                    continue;
+                }
+                if let Err(e) = agent.run_cycle(prompt).await {
+                    eprintln!("Agent error: {}", e);
+                }
+            }
+            return Ok(());
+        }
+
+        if let Some(cypher_query) = matches.get_one::<String>("generate-cypher") {
+            let neo4j_config = engine_config
+                .neo4j
+                .as_ref()
+                .ok_or_else(|| anyhow!("Neo4j configuration not found in the engine config"))?;
+
+            let query_llm_name = neo4j_config
+                .query_llm
+                .as_ref()
+                .ok_or_else(|| anyhow!("No query LLM specified for Neo4j"))?;
+
+            // Load the configuration for the query LLM
+            let query_llm_config = load_config(&config_path, query_llm_name, &HashMap::new())?;
+            let query_llm_engine_config = &query_llm_config.engines[0];
+
+            let query_llm_engine = create_llm_engine(query_llm_engine_config).await?;
+
+            let cypher_result = generate_and_execute_cypher(
+                neo4j_config,
+                query_llm_engine_config,
+                cypher_query,
+                &*query_llm_engine,
+            )
+            .await?;
+
+            if engine_config.engine == "neo4j" {
+                println!("{}", cypher_result);
+            } else {
+                let engine: Box<dyn Engine> = create_engine(engine_config).await?;
+
+                let max_tokens = engine_config
+                    .parameters
+                    .get("max_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(-1);
+
+                let user_request = matches
+                    .get_one::<String>("request")
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+
+                let mut combined_request = format!(
+                    "Cypher query: {}\n\nCypher result:\n{}\n\nBased on the above Cypher query and its result, please provide an analysis or answer the following question: {}",
+                    cypher_query, cypher_result, user_request
+                );
+
+                // Truncate the combined request if it exceeds the max tokens
+                if max_tokens > 0 && combined_request.len() > max_tokens as usize {
+                    combined_request.truncate(max_tokens as usize);
+                    combined_request += "... [truncated]";
+                }
+                info!("Combined request: {}", combined_request);
+                let request = Request {
+                    flowname: engine_name.to_string(),
+                    payload: combined_request,
+                };
+
+                let response = Pin::from(engine.execute(&request)).await?;
+                cumulative_cost += response.cost.total_cost;
+                let mut output = response.content.clone();
+
+                output = process_response_output(&response.content, output, &matches).await?;
+
+                let response_time = start_time.elapsed().as_secs_f64();
+
+                if let Some(neo4j_client) = engine.get_neo4j_client() {
+                    let session_id = engine
+                        .get_session_id()
+                        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+                    let stats = InteractionStats {
+                        prompt_tokens: response.usage.prompt_tokens,
+                        completion_tokens: response.usage.completion_tokens,
+                        total_tokens: response.usage.total_tokens,
+                        response_time,
+                        finish_reason: response
+                            .finish_reason
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string()),
+                    };
+
+                    debug!("Attempting to create interaction in Neo4j");
+                    debug!("Using session ID: {}", session_id);
+                    match neo4j_client
+                        .create_interaction(
+                            &session_id,
+                            &request.payload,
+                            &response.content,
+                            &response.model,
+                            &stats,
+                        )
+                        .await
+                    {
+                        Ok(interaction_id) => debug!(
+                            "Successfully created interaction with id: {}",
+                            interaction_id
+                        ),
+                        Err(e) => error!("Failed to create interaction in Neo4j: {:?}", e),
+                    }
+                } else {
+                    debug!("Neo4j client not available, skipping interaction logging");
+                }
+
+                pb.finish_and_clear();
+                eprintln!();
+                println!("{}", output);
+
+                let use_colors = std::io::stderr().is_terminal();
+                let response_time_str = format!("{:.2}s", response_time);
+
+                eprintln!(
+                    "{} | {} | Time: {} | Usage: {}↑ {}↓ {}Σ | {}\n",
+                    spinner_config.success_symbol,
+                    if use_colors {
+                        response.model.cyan().to_string()
+                    } else {
+                        response.model
+                    },
+                    if use_colors {
+                        response_time_str.bright_blue().to_string()
+                    } else {
+                        response_time_str
+                    },
+                    if use_colors {
+                        response
+                            .usage
+                            .prompt_tokens
+                            .to_string()
+                            .yellow()
+                            .to_string()
+                    } else {
+                        response.usage.prompt_tokens.to_string()
+                    },
+                    if use_colors {
+                        response
+                            .usage
+                            .completion_tokens
+                            .to_string()
+                            .yellow()
+                            .to_string()
+                    } else {
+                        response.usage.completion_tokens.to_string()
+                    },
+                    if use_colors {
+                        response.usage.total_tokens.to_string().yellow().to_string()
+                    } else {
+                        response.usage.total_tokens.to_string()
+                    },
+                    if use_colors {
+                        response
+                            .finish_reason
+                            .as_deref()
+                            .unwrap_or("No finish reason")
+                            .italic()
+                            .to_string()
+                    } else {
+                        response
+                            .finish_reason
+                            .as_deref()
+                            .unwrap_or("No finish reason")
+                            .to_string()
+                    }
+                );
+            }
+        } else if matches.get_flag("upsert") {
+            debug!("Upsert mode enabled");
+            handle_upsert(engine_config, &matches).await?;
+        } else {
+            debug!("No mode specified, defaulting to interactive mode");
+            let request = matches
+                .get_one::<String>("request")
+                .ok_or_else(|| anyhow!("Request is required"))?;
+
+            let engine: Box<dyn Engine> = match engine_config.engine.as_str() {
+                "anthropic" => Box::new(AnthropicEngine::new(engine_config.clone()).await?),
+                "openai" => Box::new(OpenAIEngine::new(engine_config.clone()).await?),
+                "cohere" => Box::new(CohereEngine::new(engine_config.clone()).await?),
+                "google_gemini" => Box::new(GoogleGeminiEngine::new(engine_config.clone()).await?),
+                "mistral" => Box::new(MistralEngine::new(engine_config.clone()).await?),
+                "groq_lpu" => Box::new(GroqLPUEngine::new(engine_config.clone()).await?),
+                "perplexity" => Box::new(PerplexityEngine::new(engine_config.clone()).await?),
+                "webhook" => Box::new(WebhookEngine::new(engine_config.clone()).await?),
+                "flowise_chain" => Box::new(FlowiseChainEngine::new(engine_config.clone()).await?),
+                "langflow_chain" => Box::new(LangflowEngine::new(engine_config.clone()).await?),
+                "replicate" => {
+                    let mut engine = Box::new(ReplicateEngine::new(engine_config.clone()).await?);
+                    // Set download directory if provided
+                    if let Some(download_dir) = matches.get_one::<String>("download-media") {
+                        engine.set_download_dir(download_dir.to_string());
+                    }
+                    engine // Return the engine
+                }
+
+                "dalle" => Box::new(DalleEngine::new(engine_config.clone()).await?),
+                "stabilityai" => {
+                    let mut engine = Box::new(StabilityAIEngine::new(engine_config.clone()).await?);
+                    if let Some(download_dir) = matches.get_one::<String>("download-media") {
+                        engine.set_download_dir(download_dir.to_string());
+                    }
+                    engine
+                }
+                "leonardo_ai" => Box::new(LeonardoAIEngine::new(engine_config.clone()).await?),
+                "imagine_pro" => {
+                    let mut engine = Box::new(ImagineProEngine::new(engine_config.clone()).await?);
+                    if let Some(download_dir) = matches.get_one::<String>("download-media") {
+                        engine.set_download_dir(download_dir.to_string());
+                    }
+                    engine
+                }
+                _ => return Err(anyhow!("Unsupported engine: {}", engine_config.engine)),
+            };
+
+            // Read context from stdin if available
+            let context = if !io::stdin().is_terminal() {
+                // In CLI context, read from stdin
+                let mut input = String::new();
+                tokio::io::stdin().read_to_string(&mut input).await?;
+                input
+            } else {
+                // In API context, leave context empty
+                String::new()
+            };
+
+            // Read additional context from file if provided
+            let mut file_contents = String::new();
+            if let Some(file_path) = matches.get_one::<String>("additional-context-file") {
+                file_contents = fs::read_to_string(file_path)?;
+            }
+
+            // Combine all inputs
+            let combined_request = {
+                let mut parts = Vec::with_capacity(3); // Pre-allocate for known max size
+
+                // Always add the request first
+                parts.push(request.trim());
+
+                // Add context if it's not empty
+                if !context.trim().is_empty() {
+                    parts.push("Context:");
+                    parts.push(context.trim());
+                }
+
+                // Add file contents if provided
+                if !file_contents.trim().is_empty() {
+                    parts.push("Additional Context:");
+                    parts.push(file_contents.trim());
+                }
+
+                // Simple string concatenation
+                parts.join(" ")
+            };
+            debug!("Combined Request:\n{}", combined_request);
+
+            // Validate the combined request payload
+            let validated_payload = validate_request_payload(&combined_request, "engine request")
+                .map_err(|e| anyhow!("{}", e))?;
+
+            let request = Request {
+                flowname: validated_engine_name.to_string(),
+                payload: validated_payload,
+            };
+            debug!("Combined Request: {:?}", request);
+
+            let response = if let Some(file_path) = matches.get_one::<String>("upload-image-file") {
+                // Validate file path for security
+                let validated_path = validate_file_path_secure(file_path, "image upload")
+                    .map_err(|e| anyhow!("{}", e))?;
+
+                debug!("Processing request with validated file: {}", validated_path);
+                pb.set_message("Processing request with file...");
+                Pin::from(engine.process_request_with_file(&request, Path::new(&validated_path)))
+                    .await?
+            } else {
+                pb.set_message("Executing request...");
+                Pin::from(engine.execute(&request)).await?
+            };
+            cumulative_cost += response.cost.total_cost;
+
+            let mut output = response.content.clone();
+
+            output = process_response_output(&response.content, output, &matches).await?;
+
+            let response_time = start_time.elapsed().as_secs_f64();
+
+            if let Some(neo4j_client) = engine.get_neo4j_client() {
+                let session_id = engine
+                    .get_session_id()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+                let stats = InteractionStats {
+                    prompt_tokens: response.usage.prompt_tokens,
+                    completion_tokens: response.usage.completion_tokens,
+                    total_tokens: response.usage.total_tokens,
+                    response_time,
+                    finish_reason: response
+                        .finish_reason
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                };
+
+                debug!("Attempting to create interaction in Neo4j");
+                debug!("Using session ID: {}", session_id);
+                match neo4j_client
+                    .create_interaction(
+                        &session_id,
+                        &request.payload,
+                        &response.content,
+                        &response.model,
+                        &stats,
+                    )
+                    .await
+                {
+                    Ok(interaction_id) => debug!(
+                        "Successfully created interaction with id: {}",
+                        interaction_id
+                    ),
+                    Err(e) => error!("Failed to create interaction in Neo4j: {:?}", e),
+                }
+            } else {
+                debug!("Neo4j client not available, skipping interaction logging");
+            }
+
+            pb.finish_and_clear();
+            eprintln!();
+            println!("{}", output);
+
+            let use_colors = std::io::stderr().is_terminal();
+            let response_time_str = format!("{:.2}s", response_time);
+
+            eprintln!(
+                "{} | {} | Time: {} | Usage: {}↑ {}↓ {}Σ | {}\n",
+                spinner_config.success_symbol,
+                if use_colors {
+                    response.model.cyan().to_string()
+                } else {
+                    response.model
+                },
+                if use_colors {
+                    response_time_str.bright_blue().to_string()
+                } else {
+                    response_time_str
+                },
+                if use_colors {
+                    response
+                        .usage
+                        .prompt_tokens
+                        .to_string()
+                        .yellow()
+                        .to_string()
+                } else {
+                    response.usage.prompt_tokens.to_string()
+                },
+                if use_colors {
+                    response
+                        .usage
+                        .completion_tokens
+                        .to_string()
+                        .yellow()
+                        .to_string()
+                } else {
+                    response.usage.completion_tokens.to_string()
+                },
+                if use_colors {
+                    response.usage.total_tokens.to_string().yellow().to_string()
+                } else {
+                    response.usage.total_tokens.to_string()
+                },
+                if use_colors {
+                    response
+                        .finish_reason
+                        .as_deref()
+                        .unwrap_or("No finish reason")
+                        .italic()
+                        .to_string()
+                } else {
+                    response
+                        .finish_reason
+                        .as_deref()
+                        .unwrap_or("No finish reason")
+                        .to_string()
+                }
+            );
+        }
+
+        eprintln!("Total cost: ${:.6}", cumulative_cost);
+
+        // Perform memory cleanup before exit
+        MemoryManager::log_memory_usage("before cleanup");
+        MemoryManager::cleanup_temp_resources()?;
+        MemoryManager::force_cleanup();
+        MemoryManager::log_memory_usage("after cleanup");
+
+        Ok(())
+    }
+
     async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {
         if let Some(neo4j_config) = &engine_config.neo4j {
             let neo4j_client = std::sync::Arc::new(Neo4jClient::new(neo4j_config).await?);
@@ -1343,7 +1904,6 @@ fn main() -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
 async fn generate_and_execute_cypher(
     neo4j_config: &Neo4jConfig,
     _llm_config: &EngineConfig,
