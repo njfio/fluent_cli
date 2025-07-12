@@ -276,7 +276,7 @@ impl<S: StateStore + Clone + Send + Sync + 'static> EnhancedPipelineExecutor<S> 
                     run_id: run_id.clone(),
                     start_time: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 })
         };
@@ -392,10 +392,17 @@ impl<S: StateStore + Clone + Send + Sync + 'static> EnhancedPipelineExecutor<S> 
                     .all(|dep| completed_steps.contains(dep));
 
                 if dependencies_satisfied {
-                    let (step, context) = remaining_steps.remove(i).unwrap();
-                    current_batch.push((step.clone(), context.clone()));
-                    batch_duration = batch_duration.max(context.estimated_duration);
-                    completed_steps.insert(context.step_id.clone());
+                    if i < remaining_steps.len() {
+                        if let Some((step, context)) = remaining_steps.remove(i) {
+                            current_batch.push((step.clone(), context.clone()));
+                            batch_duration = batch_duration.max(context.estimated_duration);
+                            completed_steps.insert(context.step_id.clone());
+                        } else {
+                            return Err(anyhow!("Failed to remove step from remaining steps"));
+                        }
+                    } else {
+                        return Err(anyhow!("Invalid step index during batch creation"));
+                    }
                 } else {
                     i += 1;
                 }
@@ -732,13 +739,13 @@ mod tests {
             PipelineStep::Command {
                 name: "test1".to_string(),
                 command: "echo test1".to_string(),
-                save_output: true,
+                save_output: Some("output1".to_string()),
                 retry: None,
             },
             PipelineStep::Command {
                 name: "test2".to_string(),
                 command: "echo test2".to_string(),
-                save_output: true,
+                save_output: Some("output2".to_string()),
                 retry: None,
             },
         ];

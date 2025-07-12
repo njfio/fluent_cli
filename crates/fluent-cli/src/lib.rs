@@ -1,4 +1,57 @@
+//! Fluent CLI Library
+//!
+//! This crate provides the main command-line interface for the Fluent CLI system,
+//! including agentic capabilities, command handling, pipeline execution,
+//! and various utility functions.
+//!
+//! # Key Modules
+//!
+//! - [`agentic`] - Autonomous agentic execution capabilities
+//! - [`commands`] - Modular command handlers for different CLI operations
+//! - [`pipeline_builder`] - Pipeline construction and execution
+//! - [`memory`] - Memory management for conversations and context
+//! - [`utils`] - Utility functions for text processing and validation
+//! - [`cli`] - Core CLI functionality and argument parsing
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use fluent_cli::cli::run;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! // Run the CLI with command line arguments
+//! run().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Agentic Mode
+//!
+//! The CLI supports autonomous agentic execution:
+//!
+//! ```rust,no_run
+//! use fluent_cli::agentic::{AgenticConfig, AgenticExecutor};
+//! use fluent_core::config::Config;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let config = AgenticConfig::new(
+//!     "Create a simple game".to_string(),
+//!     "agent_config.json".to_string(),
+//!     10,
+//!     true,
+//!     "config.yaml".to_string(),
+//! );
+//!
+//! let executor = AgenticExecutor::new(config);
+//! let fluent_config = Config::default();
+//! executor.run(&fluent_config).await?;
+//! # Ok(())
+//! # }
+//! ```
+
+pub mod agentic;
 pub mod commands;
+pub mod neo4j_operations;
 pub mod pipeline_builder;
 pub mod validation;
 pub mod memory;
@@ -6,14 +59,9 @@ pub mod utils;
 pub mod frogger;
 
 use anyhow::Error;
-use std::pin::Pin;
-
 use fluent_core::config::{EngineConfig, Neo4jConfig};
-use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::Request;
 use fluent_engines::create_engine;
-use log::debug;
 
 // Re-export commonly used functions
 pub use utils::{extract_cypher_query, is_valid_cypher, format_as_csv, extract_code};
@@ -227,7 +275,6 @@ pub mod cli {
     }
 
     use crate::create_llm_engine;
-    use fluent_core::neo4j_client::Neo4jClient;
     use fluent_core::output_processor::OutputProcessor;
     
     
@@ -331,7 +378,7 @@ pub mod cli {
 
     pub fn build_cli() -> Command {
         Command::new("Fluent CLI")
-            .version("2.0")
+            .version("0.1.0")
             .author("Your Name <your.email@example.com>")
             .about("A powerful CLI for interacting with various AI engines")
             .arg(
@@ -625,111 +672,22 @@ pub mod cli {
         agent_config_path: &str,
         max_iterations: u32,
         enable_tools: bool,
-        _config: &Config,
+        config: &Config,
         config_path: &str,
     ) -> Result<()> {
-        use fluent_agent::config::{credentials, AgentEngineConfig};
-        use fluent_agent::goal::{Goal, GoalType};
+        use crate::agentic::{AgenticConfig, AgenticExecutor};
 
-        println!("🤖 Starting Agentic Mode");
-        println!("Goal: {}", goal_description);
-        println!("Max iterations: {}", max_iterations);
-        println!("Tools enabled: {}", enable_tools);
-
-
-
-        // Load agent configuration
-        let agent_config = AgentEngineConfig::load_from_file(agent_config_path)
-            .await
-            .map_err(|e| anyhow!("Failed to load agent config: {}", e))?;
-
-        println!("✅ Agent configuration loaded:");
-        println!("   - Reasoning engine: {}", agent_config.reasoning_engine);
-        println!("   - Action engine: {}", agent_config.action_engine);
-        println!("   - Reflection engine: {}", agent_config.reflection_engine);
-        println!("   - Memory database: {}", agent_config.memory_database);
-
-        // Load credentials using fluent_cli's comprehensive system
-        let credentials = credentials::load_from_environment();
-        println!(
-            "🔑 Loaded {} credential(s) from environment",
-            credentials.len()
+        let agentic_config = AgenticConfig::new(
+            goal_description.to_string(),
+            agent_config_path.to_string(),
+            max_iterations,
+            enable_tools,
+            config_path.to_string(),
         );
 
-        // Validate required credentials
-        let required_engines = vec![
-            agent_config.reasoning_engine.clone(),
-            agent_config.action_engine.clone(),
-            agent_config.reflection_engine.clone(),
-        ];
-        credentials::validate_credentials(&credentials, &required_engines)?;
+        let executor = AgenticExecutor::new(agentic_config);
+        executor.run(config).await
 
-        // Create runtime configuration with real engines
-        println!("🔧 Creating LLM engines...");
-        let runtime_config = agent_config
-            .create_runtime_config(
-                config_path, // Use the actual config file path
-                credentials,
-            )
-            .await?;
-
-        println!("✅ LLM engines created successfully!");
-
-        // Create a goal with success criteria
-        let goal = Goal::builder(goal_description.to_string(), GoalType::CodeGeneration)
-            .max_iterations(max_iterations)
-            .success_criterion("Code compiles without errors".to_string())
-            .success_criterion("Code runs successfully".to_string())
-            .success_criterion("Code meets the specified requirements".to_string())
-            .build()?;
-
-        println!("🎯 Goal: {}", goal.description);
-        println!("🔄 Max iterations: {:?}", goal.max_iterations);
-
-        // For now, demonstrate the engines are working by making a simple call
-        println!("\n🧠 Testing reasoning engine...");
-        let test_request = fluent_core::types::Request {
-            flowname: "agentic_test".to_string(),
-            payload: "Hello! Please respond with 'Agentic mode is working!' to confirm the engine is operational.".to_string(),
-        };
-
-        match Pin::from(runtime_config.reasoning_engine.execute(&test_request)).await {
-            Ok(response) => {
-                println!("✅ Reasoning engine response: {}", response.content);
-
-                // If we get here, the engines are working!
-                println!("\n🚀 AGENTIC MODE IS FULLY OPERATIONAL!");
-                println!("🎯 Goal: {}", goal.description);
-                println!("🔧 All systems ready:");
-                println!("   ✅ LLM engines connected and tested");
-                println!("   ✅ Configuration system integrated");
-                println!("   ✅ Credential management working");
-                println!("   ✅ Goal system operational");
-
-                if enable_tools {
-                    println!("   ✅ Tool execution enabled");
-                } else {
-                    println!("   ⚠️  Tool execution disabled (use --enable-tools to enable)");
-                }
-
-                println!("\n🎉 The agentic coding platform is ready for autonomous operation!");
-
-                // Now run the actual autonomous execution loop
-                if enable_tools {
-                    println!("\n🚀 Starting autonomous execution...");
-                    run_autonomous_execution(&goal, &runtime_config, max_iterations).await?;
-                } else {
-                    println!("📝 Tools disabled - would need --enable-tools for full autonomous operation");
-                }
-            }
-            Err(e) => {
-                println!("❌ Engine test failed: {}", e);
-                println!("🔧 Please check your API keys and configuration");
-                return Err(anyhow!("Engine test failed: {}", e));
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn run_agent_with_mcp(
@@ -821,364 +779,11 @@ pub mod cli {
         Ok(())
     }
 
-    async fn run_autonomous_execution(
-        goal: &fluent_agent::goal::Goal,
-        runtime_config: &fluent_agent::config::AgentRuntimeConfig,
-        max_iterations: u32,
-    ) -> Result<()> {
-        use fluent_agent::context::ExecutionContext;
-        use std::fs;
+    // Autonomous execution moved to agentic module
 
-        println!(
-            "🎯 Starting autonomous execution for goal: {}",
-            goal.description
-        );
 
-        // Create execution context
-        let mut context = ExecutionContext::new(goal.clone());
 
-        for iteration in 1..=max_iterations {
-            println!("\n🔄 Iteration {}/{}", iteration, max_iterations);
-
-            // Real agentic reasoning: analyze the goal and determine next action
-            println!("🧠 Analyzing goal and determining next action...");
-
-            let tools_available = "file operations, shell commands, code analysis";
-
-            let reasoning_request = fluent_core::types::Request {
-                flowname: "agentic_reasoning".to_string(),
-                payload: format!(
-                    "You are an autonomous AI agent. Analyze this goal and determine the next specific action to take:\n\n\
-                    Goal: {}\n\n\
-                    Current iteration: {}/{}\n\
-                    Tools available: {}\n\n\
-                    Based on this goal, what is the most logical next step? Respond with:\n\
-                    1. A brief analysis of what the goal requires\n\
-                    2. The specific next action to take\n\
-                    3. Why this action moves us toward the goal\n\n\
-                    Be specific and actionable. Focus on the actual goal, not creating games unless the goal specifically asks for a game.",
-                    goal.description,
-                    iteration,
-                    max_iterations,
-                    tools_available
-                ),
-            };
-
-            let reasoning_response = match Pin::from(runtime_config.reasoning_engine.execute(&reasoning_request)).await {
-                Ok(response) => {
-                    println!("🤖 Agent reasoning: {}", response.content);
-                    response.content
-                }
-                Err(e) => {
-                    println!("❌ Reasoning failed: {}", e);
-                    break;
-                }
-            };
-
-            // Determine if this is a game creation goal or something else
-            let is_game_goal = goal.description.to_lowercase().contains("game")
-                || goal.description.to_lowercase().contains("frogger")
-                || goal.description.to_lowercase().contains("javascript")
-                || goal.description.to_lowercase().contains("html");
-
-            if is_game_goal {
-                println!("🎮 Agent decision: Create the game now!");
-
-                // Determine what type of game to create based on the goal
-                let (file_extension, code_prompt, file_path) = if goal
-                    .description
-                    .to_lowercase()
-                    .contains("javascript")
-                    || goal.description.to_lowercase().contains("html")
-                    || goal.description.to_lowercase().contains("web")
-                {
-                    (
-                        "html",
-                        format!(
-                            "Create a complete, working Frogger-like game using HTML5, CSS, and JavaScript. Requirements:\n\
-                            - Complete HTML file with embedded CSS and JavaScript\n\
-                            - HTML5 Canvas for game rendering\n\
-                            - Frog character that moves with arrow keys or WASD\n\
-                            - Cars moving horizontally that the frog must avoid\n\
-                            - Goal area at the top that the frog needs to reach\n\
-                            - Collision detection between frog and cars\n\
-                            - Scoring system and lives system\n\
-                            - Smooth animations and game loop\n\
-                            - Professional styling and responsive design\n\n\
-                            Provide ONLY the complete HTML file with embedded CSS and JavaScript:"
-                        ),
-                        "examples/web_frogger.html"
-                    )
-                } else {
-                    (
-                        "rs",
-                        format!(
-                            "Create a complete, working Frogger-like game in Rust. Requirements:\n\
-                            - Terminal-based interface using crossterm crate\n\
-                            - Frog character that moves up/down/left/right with WASD keys\n\
-                            - Cars moving horizontally that the frog must avoid\n\
-                            - Goal area at the top that the frog needs to reach\n\
-                            - Collision detection between frog and cars\n\
-                            - Scoring system that increases when reaching goal\n\
-                            - Game over mechanics when hitting cars\n\
-                            - Lives system (3 lives)\n\
-                            - Game loop with proper input handling\n\n\
-                            Provide ONLY the complete, compilable Rust code with all necessary imports:"
-                        ),
-                        "examples/agent_frogger.rs"
-                    )
-                };
-
-                let code_request = fluent_core::types::Request {
-                    flowname: "code_generation".to_string(),
-                    payload: code_prompt,
-                };
-
-                println!(
-                    "🧠 Generating {} game code with Claude...",
-                    file_extension.to_uppercase()
-                );
-                let code_response =
-                    Pin::from(runtime_config.reasoning_engine.execute(&code_request)).await?;
-
-                // Extract the code from the response
-                let game_code = extract_code(&code_response.content, file_extension);
-
-                // Write the game to the file
-                fs::write(file_path, &game_code)?;
-
-                println!(
-                    "✅ Created {} game at: {}",
-                    file_extension.to_uppercase(),
-                    file_path
-                );
-                println!("📝 Game code length: {} characters", game_code.len());
-
-                // Update context
-                context.set_variable("game_created".to_string(), "true".to_string());
-                context.set_variable("game_path".to_string(), file_path.to_string());
-                context.set_variable("game_type".to_string(), file_extension.to_string());
-
-                println!(
-                    "🎉 Goal achieved! {} game created successfully!",
-                    file_extension.to_uppercase()
-                );
-                return Ok(());
-            } else {
-                // Handle non-game goals with intelligent reasoning
-                println!("🔍 Processing complex analytical goal...");
-
-                // Determine the specific action based on the reasoning response
-                let action_request = fluent_core::types::Request {
-                    flowname: "action_planning".to_string(),
-                    payload: format!(
-                        "Based on this goal and reasoning, determine the specific action to take:\n\n\
-                        Goal: {}\n\
-                        Reasoning: {}\n\
-                        Iteration: {}/{}\n\n\
-                        What specific file should be analyzed, created, or modified? \
-                        Respond with just the file path and a brief description of what to do with it.",
-                        goal.description,
-                        reasoning_response,
-                        iteration,
-                        max_iterations
-                    ),
-                };
-
-                let action_response = match Pin::from(runtime_config.reasoning_engine.execute(&action_request)).await {
-                    Ok(response) => {
-                        println!("📋 Planned action: {}", response.content);
-                        response.content
-                    }
-                    Err(e) => {
-                        println!("❌ Action planning failed: {}", e);
-                        continue;
-                    }
-                };
-
-                // For reflection system analysis, start by examining the reflection.rs file
-                if goal.description.to_lowercase().contains("reflection") {
-                    let analysis_file = "analysis/reflection_system_analysis.md";
-
-                    // Create analysis directory
-                    if let Err(e) = fs::create_dir_all("analysis") {
-                        println!("⚠️ Could not create analysis directory: {}", e);
-                    }
-
-                    let analysis_request = fluent_core::types::Request {
-                        flowname: "reflection_analysis".to_string(),
-                        payload: format!(
-                            "Conduct a comprehensive analysis of the fluent_cli self-reflection system. \
-                            Focus on iteration {}/{}.\n\n\
-                            Analyze the following aspects:\n\
-                            1. Architecture and design patterns\n\
-                            2. Performance characteristics\n\
-                            3. Memory usage patterns\n\
-                            4. Potential bottlenecks\n\
-                            5. Optimization opportunities\n\n\
-                            Provide a detailed technical analysis with specific recommendations.",
-                            iteration,
-                            max_iterations
-                        ),
-                    };
-
-                    let analysis_response = match Pin::from(runtime_config.reasoning_engine.execute(&analysis_request)).await {
-                        Ok(response) => response.content,
-                        Err(e) => {
-                            println!("❌ Analysis failed: {}", e);
-                            continue;
-                        }
-                    };
-
-                    // Write analysis to file
-                    let analysis_content = format!(
-                        "# Reflection System Analysis - Iteration {}\n\n\
-                        Generated: {}\n\n\
-                        ## Goal\n{}\n\n\
-                        ## Analysis\n{}\n\n\
-                        ## Action Taken\n{}\n\n",
-                        iteration,
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0),
-                        goal.description,
-                        analysis_response,
-                        action_response
-                    );
-
-                    if let Err(e) = fs::write(analysis_file, &analysis_content) {
-                        println!("❌ Failed to write analysis: {}", e);
-                    } else {
-                        println!("✅ Analysis written to: {}", analysis_file);
-                        println!("📝 Analysis length: {} characters", analysis_content.len());
-                    }
-
-                    // Update context with progress
-                    context.set_variable("analysis_iteration".to_string(), iteration.to_string());
-                    context.set_variable("analysis_file".to_string(), analysis_file.to_string());
-                    context.increment_iteration();
-
-                    // Check if we should continue or if goal is achieved
-                    if iteration >= max_iterations / 2 {
-                        println!("🎯 Comprehensive analysis completed across {} iterations!", iteration);
-                        return Ok(());
-                    }
-                } else {
-                    // Handle other types of goals
-                    println!("🔧 Processing general goal: {}", goal.description);
-                    context.increment_iteration();
-                }
-            }
-        }
-
-        println!("⚠️ Reached maximum iterations without completing goal");
-        Ok(())
-    }
-
-    fn extract_code(response: &str, file_type: &str) -> String {
-        // Extract code from markdown code blocks based on file type
-        let code_block_start = match file_type {
-            "html" => "```html",
-            "js" => "```javascript",
-            "rs" => "```rust",
-            _ => "```",
-        };
-
-        if let Some(start) = response.find(code_block_start) {
-            let code_start = start + code_block_start.len();
-            if let Some(end_pos) = response[code_start..].find("```") {
-                let code_end = code_start + end_pos;
-                return response[code_start..code_end].trim().to_string();
-            }
-        }
-
-        // Try generic code blocks
-        if let Some(start) = response.find("```") {
-            let code_start = start + 3;
-            // Skip language identifier if present
-            let actual_start = if let Some(newline) = response[code_start..].find('\n') {
-                code_start + newline + 1
-            } else {
-                code_start
-            };
-
-            if let Some(end_pos) = response[actual_start..].find("```") {
-                let code_end = actual_start + end_pos;
-                return response[actual_start..code_end].trim().to_string();
-            }
-        }
-
-        // File type specific fallbacks
-        match file_type {
-            "html" => {
-                if response.contains("<!DOCTYPE html") || response.contains("<html") {
-                    return response.trim().to_string();
-                }
-                // HTML fallback template
-                r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Frogger Game - Created by Agentic System</title>
-    <style>
-        body { margin: 0; padding: 20px; background: #222; color: white; font-family: Arial, sans-serif; }
-        canvas { border: 2px solid #fff; background: #000; }
-        .info { margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <h1>🐸 Frogger Game - Created by Agentic System</h1>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div class="info">
-        <p>Use arrow keys to move the frog. Avoid cars and reach the top!</p>
-        <p>Score: <span id="score">0</span> | Lives: <span id="lives">3</span></p>
-    </div>
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-
-        // Basic game placeholder
-        ctx.fillStyle = 'green';
-        ctx.fillRect(400, 550, 20, 20); // Frog
-        ctx.fillStyle = 'white';
-        ctx.font = '20px Arial';
-        ctx.fillText('Frogger Game - Use arrow keys to move!', 200, 300);
-
-        console.log('Frogger game created by agentic system!');
-    </script>
-</body>
-</html>"#.to_string()
-            }
-            "rs" => {
-                if response.contains("fn main()") {
-                    return response.trim().to_string();
-                }
-                // Rust fallback template
-                r#"// Frogger-like Game in Rust - Created by Agentic System
-use std::io::{self, stdout, Write};
-use std::time::{Duration, Instant};
-use std::thread;
-
-fn main() -> io::Result<()> {
-    println!("🐸 Frogger Game - Created by Agentic System");
-    println!("Use WASD to move, Q to quit");
-
-    // Basic game loop placeholder
-    loop {
-        println!("Game running... (Press Ctrl+C to exit)");
-        thread::sleep(Duration::from_millis(1000));
-        break; // Exit for now
-    }
-
-    Ok(())
-}"#
-                .to_string()
-            }
-            _ => response.trim().to_string(),
-        }
-    }
+    // extract_code function moved to utils module
 
     /// New modular run function using command handlers
     pub async fn run_modular() -> Result<()> {
@@ -1232,91 +837,7 @@ fn main() -> io::Result<()> {
 
     #[allow(dead_code)]
     async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {
-        if let Some(neo4j_config) = &engine_config.neo4j {
-            let neo4j_client = std::sync::Arc::new(Neo4jClient::new(neo4j_config).await?);
-
-            let input = matches
-                .get_one::<String>("input")
-                .ok_or_else(|| anyhow!("Input is required for upsert mode"))?;
-            let metadata = matches
-                .get_one::<String>("metadata")
-                .map(|s| s.split(',').map(String::from).collect::<Vec<String>>())
-                .unwrap_or_default();
-
-            let input_path = Path::new(input);
-            if input_path.is_file() {
-                let document_id = neo4j_client.upsert_document(input_path, &metadata).await?;
-                eprintln!(
-                    "Uploaded document with ID: {}. Embeddings and chunks created.",
-                    document_id
-                );
-            } else if input_path.is_dir() {
-                // Collect all files first
-                let mut file_paths = Vec::new();
-                for entry in fs::read_dir(input_path)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if path.is_file() {
-                        file_paths.push(path);
-                    }
-                }
-
-                // Process files concurrently with a reasonable limit
-                let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5)); // Max 5 concurrent uploads
-                let neo4j_client_for_parallel = neo4j_client.clone();
-                let mut handles = Vec::new();
-
-                for path in file_paths {
-                    let neo4j_client = neo4j_client_for_parallel.clone();
-                    let metadata = metadata.clone();
-                    let permit = semaphore.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let _permit = permit.acquire().await
-                            .map_err(|e| anyhow::anyhow!("Failed to acquire semaphore permit: {}", e))?;
-                        let document_id = neo4j_client.upsert_document(&path, &metadata).await?;
-                        Ok::<(PathBuf, String), anyhow::Error>((path, document_id))
-                    });
-                    handles.push(handle);
-                }
-
-                // Wait for all uploads to complete
-                let mut uploaded_count = 0;
-                for handle in handles {
-                    match handle.await? {
-                        Ok((path, document_id)) => {
-                            eprintln!(
-                                "Uploaded document {} with ID: {}. Embeddings and chunks created.",
-                                path.display(),
-                                document_id
-                            );
-                            uploaded_count += 1;
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to upload document: {}", e);
-                        }
-                    }
-                }
-                eprintln!(
-                    "Uploaded {} documents with embeddings and chunks",
-                    uploaded_count
-                );
-            } else {
-                return Err(anyhow!("Input is neither a file nor a directory"));
-            }
-
-            if let Ok(stats) = neo4j_client.get_document_statistics().await {
-                eprintln!("\nDocument Statistics:");
-                eprintln!("Total documents: {}", stats.document_count);
-                eprintln!("Average content length: {:.2}", stats.avg_content_length);
-                eprintln!("Total chunks: {}", stats.chunk_count);
-                eprintln!("Total embeddings: {}", stats.embedding_count);
-            }
-        } else {
-            return Err(anyhow!("Neo4j configuration not found for this engine"));
-        }
-
-        Ok(())
+        crate::neo4j_operations::handle_upsert(engine_config, matches).await
     }
 
     pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result<String> {
@@ -1346,37 +867,11 @@ fn main() -> io::Result<()> {
 #[allow(dead_code)]
 async fn generate_and_execute_cypher(
     neo4j_config: &Neo4jConfig,
-    _llm_config: &EngineConfig,
+    llm_config: &EngineConfig,
     query_string: &str,
     llm_engine: &dyn Engine,
 ) -> Result<String, Error> {
-    debug!("Generating Cypher query using LLM");
-    debug!("Neo4j configuration: {:#?}", neo4j_config);
-    let neo4j_client = Neo4jClient::new(neo4j_config).await?;
-    debug!("Neo4j client created");
-
-    // Fetch the database schema
-    let schema = neo4j_client.get_database_schema().await?;
-    debug!("Database schema: {:#?}", schema);
-
-    // Generate Cypher query using LLM
-    let cypher_request = Request {
-        flowname: "generate_cypher".to_string(),
-        payload: format!(
-            "Given the following database schema:\n\n{}\n\nGenerate a Cypher query for Neo4j based on this request: {}",
-            schema, query_string
-        ),
-    };
-    //info!("Sending request to LLM engine: {:?}", cypher_request);
-    let cypher_response = Pin::from(llm_engine.execute(&cypher_request)).await?;
-    let cypher_query = extract_cypher_query(&cypher_response.content)?;
-
-    // Execute the Cypher query
-    let cypher_result = neo4j_client.execute_cypher(&cypher_query).await?;
-    debug!("Cypher result: {:?}", cypher_result);
-
-    // Format the result based on the output format
-    Ok(format_as_csv(&cypher_result))
+    crate::neo4j_operations::generate_and_execute_cypher(neo4j_config, llm_config, query_string, llm_engine).await
 }
 
 

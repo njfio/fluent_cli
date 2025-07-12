@@ -52,13 +52,14 @@ pub struct CacheEntry {
     access_count: u64,
     last_accessed: u64,
     size_bytes: usize,
+    ttl_seconds: u64, // TTL in seconds
 }
 
 impl CacheEntry {
-    fn new(response: Response) -> Self {
+    pub fn new(response: Response, ttl: Duration) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let size_bytes = serde_json::to_string(&response)
@@ -71,23 +72,24 @@ impl CacheEntry {
             access_count: 1,
             last_accessed: now,
             size_bytes,
+            ttl_seconds: ttl.as_secs(),
         }
     }
 
-    fn is_expired(&self, ttl: Duration) -> bool {
+    pub fn is_expired(&self) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
-        now - self.created_at > ttl.as_secs()
+        now - self.created_at > self.ttl_seconds
     }
 
     fn mark_accessed(&mut self) {
         self.access_count += 1;
         self.last_accessed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
     }
 }
@@ -157,6 +159,11 @@ impl CacheKey {
 
         parts.join(":")
     }
+
+    /// Generate a unique string representation of this cache key
+    pub fn generate(&self) -> String {
+        self.to_string()
+    }
 }
 
 /// Cache statistics
@@ -207,9 +214,9 @@ pub struct EnhancedCache {
 impl EnhancedCache {
     /// Create a new enhanced cache
     pub fn new(config: CacheConfig) -> Result<Self> {
-        let memory_cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(config.memory_cache_size).unwrap(),
-        )));
+        let cache_size = NonZeroUsize::new(config.memory_cache_size)
+            .ok_or_else(|| anyhow::anyhow!("Memory cache size must be greater than 0, got: {}", config.memory_cache_size))?;
+        let memory_cache = Arc::new(RwLock::new(LruCache::new(cache_size)));
 
         let disk_cache = if config.enable_disk_cache {
             let cache_dir = config.disk_cache_dir.as_deref().unwrap_or("fluent_cache");
@@ -239,7 +246,7 @@ impl EnhancedCache {
         {
             let mut memory_cache = self.memory_cache.write().await;
             if let Some(entry) = memory_cache.peek(&key_str) {
-                if !entry.is_expired(self.config.ttl) {
+                if !entry.is_expired() {
                     // Entry is valid, get it and mark as accessed
                     if let Some(entry) = memory_cache.get_mut(&key_str) {
                         entry.mark_accessed();
@@ -261,7 +268,7 @@ impl EnhancedCache {
             if let Some(data) = disk_cache.get(&key_str)? {
                 match serde_json::from_slice::<CacheEntry>(&data) {
                     Ok(mut entry) => {
-                        if !entry.is_expired(self.config.ttl) {
+                        if !entry.is_expired() {
                             entry.mark_accessed();
 
                             // Promote to memory cache
@@ -297,7 +304,7 @@ impl EnhancedCache {
         }
 
         let key_str = key.to_string();
-        let entry = CacheEntry::new(response.clone());
+        let entry = CacheEntry::new(response.clone(), self.config.ttl);
 
         // Check size limit
         if entry.size_bytes > self.config.max_entry_size {
@@ -358,7 +365,7 @@ impl EnhancedCache {
             let mut keys_to_remove = Vec::new();
 
             for (key, entry) in memory_cache.iter() {
-                if entry.is_expired(self.config.ttl) {
+                if entry.is_expired() {
                     keys_to_remove.push(key.clone());
                 }
             }
@@ -376,7 +383,7 @@ impl EnhancedCache {
             for item in disk_cache.iter() {
                 if let Ok((key, data)) = item {
                     if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
-                        if entry.is_expired(self.config.ttl) {
+                        if entry.is_expired() {
                             keys_to_remove.push(key);
                         }
                     }
@@ -398,7 +405,9 @@ impl EnhancedCache {
 
     /// Get cache statistics
     pub fn get_stats(&self) -> CacheStats {
-        self.stats.lock().unwrap().clone()
+        self.stats.lock()
+            .map(|stats| stats.clone())
+            .unwrap_or_default()
     }
 
     /// Get cache size information

@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Error, Result};
 use neo4rs::{
-    query, BoltFloat, BoltInteger, BoltList, BoltMap, BoltNull, BoltString, BoltType,
-    ConfigBuilder, Database, Graph, Row,
+    query, BoltFloat, BoltInteger, BoltList, BoltString, BoltType,
+    ConfigBuilder, Database, Graph,
 };
 
 use chrono::Duration as ChronoDuration;
 
 use chrono::{DateTime, Utc};
-use log::{debug, error, info, warn};
-use pdf_extract::extract_text;
-use serde_json::{json, Value};
+use log::{debug, error, warn};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::RwLock;
@@ -19,12 +18,8 @@ use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 
 use crate::config::Neo4jConfig;
-use crate::traits::{DocumentProcessor, DocxProcessor};
 use crate::types::DocumentStatistics;
-use crate::utils::chunking::chunk_document;
 use crate::voyageai_client::{get_voyage_embedding, EMBEDDING_DIMENSION};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VoyageAIConfig {
@@ -441,154 +436,14 @@ impl Neo4jClient {
     }
 
     pub async fn upsert_document(&self, file_path: &Path, metadata: &[String]) -> Result<String> {
-        debug!("Upserting document from file: {:?}", file_path);
+        use crate::neo4j::document_processor::DocumentUpsertManager;
 
-        let content = self.extract_content(file_path).await?;
-
-        let document_id = Uuid::new_v4().to_string();
-        let query = query(
-            "
-        MERGE (d:Document {content: $content})
-        ON CREATE SET
-            d.id = $id,
-            d.metadata = $metadata,
-            d.created_at = datetime()
-        ON MATCH SET
-            d.metadata = d.metadata + $new_metadata,
-            d.updated_at = datetime()
-        RETURN d.id as document_id
-        ",
-        )
-        .param("id", document_id.clone())
-        .param("content", content.clone()) // Clone here
-        .param("metadata", metadata)
-        .param("new_metadata", metadata);
-
-        let mut result = self.graph.execute(query).await?;
-
-        let document_id = if let Some(row) = result.next().await? {
-            row.get::<String>("document_id")?
-        } else {
-            return Err(anyhow!("Failed to upsert document"));
-        };
-
-        let config = EnrichmentConfig {
-            themes_keywords_interval: ChronoDuration::hours(1),
-            clustering_interval: ChronoDuration::days(1),
-            sentiment_interval: ChronoDuration::hours(1),
-        };
-
-        let chunks = chunk_document(&content); // Now we can use content here
-        self.create_chunks_and_embeddings(&document_id, &chunks)
-            .await?;
-        self.enrich_document_incrementally(&document_id, "Document", &config)
-            .await?;
-        Ok(document_id)
+        let upsert_manager = DocumentUpsertManager::new(&self.graph, self.voyage_ai_config.as_ref());
+        upsert_manager.upsert_document(file_path, metadata).await
     }
 
-    async fn extract_content(&self, file_path: &Path) -> Result<String> {
-        let extension = file_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .ok_or_else(|| anyhow!("Unable to determine file type"))?;
 
-        match extension.to_lowercase().as_str() {
-            "pdf" => {
-                let path_buf = file_path.to_path_buf();
-                Ok(tokio::task::spawn_blocking(move || extract_text(&path_buf)).await??)
-            }
-            "txt" | "json" | "csv" | "tsv" | "md" | "html" | "xml" | "yml" | "yaml" | "json5"
-            | "py" | "rb" | "rs" | "js" | "ts" | "php" | "java" | "c" | "cpp" | "go" | "sh"
-            | "bat" | "ps1" | "psm1" | "psd1" | "ps1xml" | "psc1" | "pssc" | "pss1" | "psh" => {
-                let mut file = File::open(file_path).await?;
-                let mut content = String::new();
-                file.read_to_string(&mut content).await?;
-                Ok(content)
-            }
-            "docx" => {
-                let processor = DocxProcessor;
-                let (content, _metadata) = processor.process(file_path).await?;
-                Ok(content)
-            }
-            // Add more file types here as needed
-            _ => Err(anyhow!("Unsupported file type: {}", extension)),
-        }
-    }
-    async fn create_chunks_and_embeddings(
-        &self,
-        document_id: &str,
-        chunks: &[String],
-    ) -> Result<()> {
-        debug!(
-            "Creating chunks and embeddings for document {}",
-            document_id
-        );
-        if let Some(voyage_config) = &self.voyage_ai_config {
-            for (i, chunk) in chunks.iter().enumerate() {
-                let embedding = get_voyage_embedding(chunk, voyage_config).await?;
 
-                if embedding.len() != EMBEDDING_DIMENSION {
-                    return Err(anyhow!("Embedding dimension mismatch"));
-                }
-
-                let query = query(
-                    "
-            MATCH (d:Document {id: $document_id})
-            MERGE (c:Chunk {content: $content})
-            ON CREATE SET
-                c.id = $chunk_id,
-                c.index = $index
-            MERGE (e:Embedding {vector: $vector})
-            ON CREATE SET
-                e.id = $embedding_id
-            MERGE (d)-[:HAS_CHUNK]->(c)
-            MERGE (c)-[:HAS_EMBEDDING]->(e)
-            WITH c, e, $prev_chunk_id AS prev_id
-            OPTIONAL MATCH (prev:Chunk {id: prev_id})
-            FOREACH (_ IN CASE WHEN prev IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (prev)-[:NEXT]->(c)
-            )
-            RETURN c.id as chunk_id, e.id as embedding_id
-            ",
-                )
-                .param(
-                    "document_id",
-                    BoltType::String(BoltString::from(document_id)),
-                )
-                .param(
-                    "chunk_id",
-                    BoltType::String(BoltString::from(Uuid::new_v4().to_string())),
-                )
-                .param(
-                    "content",
-                    BoltType::String(BoltString::from(chunk.as_str())),
-                )
-                .param("index", BoltType::Integer(BoltInteger::new(i as i64)))
-                .param(
-                    "embedding_id",
-                    BoltType::String(BoltString::from(Uuid::new_v4().to_string())),
-                )
-                .param("vector", embedding)
-                .param(
-                    "prev_chunk_id",
-                    if i > 0 {
-                        BoltType::String(BoltString::from(chunks[i - 1].as_str()))
-                    } else {
-                        BoltType::Null(BoltNull)
-                    },
-                );
-
-                let mut result = self.graph.execute(query).await?;
-
-                if result.next().await?.is_none() {
-                    return Err(anyhow!("Failed to create or merge chunk and embedding"));
-                }
-            }
-            Ok(())
-        } else {
-            Err(anyhow!("VoyageAI configuration not found"))
-        }
-    }
 
     pub async fn get_document_statistics(&self) -> Result<DocumentStatistics> {
         let query = query(
@@ -701,14 +556,13 @@ impl Neo4jClient {
         debug!("Updating themes and keywords for {} {}", node_type, node_id);
         let content = self.get_node_content(node_id, node_type).await?;
         let (themes, keywords) = self
-            .extract_themes_and_keywords(&content, voyage_config)
-            .await?;
+            .extract_themes_and_keywords(&content, voyage_config)?;
         self.create_theme_and_keyword_nodes(node_id, node_type, &themes, &keywords)
             .await?;
         Ok(())
     }
 
-    async fn extract_sentiment(&self, content: &str) -> Result<f32> {
+    fn extract_sentiment(&self, content: &str) -> Result<f32> {
         // Define a simple sentiment lexicon
         let lexicon: HashMap<&str, f32> = [
             ("good", 1.0),
@@ -896,7 +750,7 @@ impl Neo4jClient {
         let content = self.get_node_content(node_id, node_type).await?;
 
         // Extract sentiment
-        let sentiment = self.extract_sentiment(&content).await?;
+        let sentiment = self.extract_sentiment(&content)?;
 
         // Create and assign sentiment to the node
         match self
@@ -1275,55 +1129,10 @@ impl Neo4jClient {
         question: &Neo4jQuestion,
         interaction_id: &str,
     ) -> Result<String> {
-        let query_str = r#"
-        MERGE (q:Question {content: $content})
-        ON CREATE SET
-            q = $props
-        ON MATCH SET
-            q.vector = $props.vector,
-            q.timestamp = $props.timestamp
-        WITH q
-        MATCH (i:Interaction {id: $interaction_id})
-        MERGE (i)-[:HAS_QUESTION]->(q)
-        RETURN q.id as question_id
-        "#;
+        use crate::neo4j::interaction_manager::InteractionManager;
 
-        let mut props = BoltMap::new();
-        props.put(
-            BoltString::from("id"),
-            BoltType::String(BoltString::from(question.id.as_str())),
-        );
-        props.put(
-            BoltString::from("content"),
-            BoltType::String(BoltString::from(question.content.as_str())),
-        );
-
-        let mut vector_list = BoltList::new();
-        for &value in &question.vector {
-            vector_list.push(BoltType::Float(BoltFloat::new(value as f64)));
-        }
-        props.put(BoltString::from("vector"), BoltType::List(vector_list));
-
-        props.put(
-            BoltString::from("timestamp"),
-            BoltType::String(BoltString::from(question.timestamp.to_rfc3339().as_str())),
-        );
-
-        let mut result = self
-            .graph
-            .execute(
-                query(query_str)
-                    .param("content", question.content.as_str())
-                    .param("props", BoltType::Map(props))
-                    .param("interaction_id", interaction_id),
-            )
-            .await?;
-
-        if let Some(row) = result.next().await? {
-            Ok(row.get("question_id")?)
-        } else {
-            Err(anyhow::anyhow!("Failed to create or update question"))
-        }
+        let interaction_manager = InteractionManager::new(&self.graph);
+        interaction_manager.create_or_update_question(question, interaction_id).await
     }
 
     pub async fn create_response(
@@ -1332,49 +1141,13 @@ impl Neo4jClient {
         interaction_id: &str,
         model_id: &str,
     ) -> Result<String> {
-        let query_str = r#"
-        CREATE (r:Response {
-            id: $id,
-            content: $content,
-            vector: $vector,
-            timestamp: $timestamp,
-            confidence: $confidence,
-            llm_specific_data: $llm_specific_data
-        })
-        WITH r
-        MATCH (i:Interaction {id: $interaction_id})
-        MATCH (m:Model {id: $model_id})
-        CREATE (i)-[:HAS_RESPONSE]->(r)
-        CREATE (r)-[:GENERATED_BY]->(m)
-        RETURN r.id as response_id
-        "#;
+        use crate::neo4j::interaction_manager::InteractionManager;
 
-        let mut result = self
-            .graph
-            .execute(
-                query(query_str)
-                    .param("id", response.id.clone())
-                    .param("content", response.content.clone())
-                    .param("vector", BoltType::List(response.vector.clone()))
-                    .param("timestamp", response.timestamp.to_rfc3339())
-                    .param("confidence", response.confidence)
-                    .param(
-                        "llm_specific_data",
-                        serde_json::to_string(&response.llm_specific_data)?,
-                    )
-                    .param("interaction_id", interaction_id)
-                    .param("model_id", model_id),
-            )
-            .await?;
-
-        if let Some(row) = result.next().await? {
-            Ok(row.get("response_id")?)
-        } else {
-            Err(anyhow::anyhow!("Failed to create response"))
-        }
+        let interaction_manager = InteractionManager::new(&self.graph);
+        interaction_manager.create_response(response, interaction_id, model_id).await
     }
 
-    async fn extract_themes_and_keywords(
+    fn extract_themes_and_keywords(
         &self,
         content: &str,
         _config: &VoyageAIConfig,
@@ -1498,43 +1271,19 @@ impl Neo4jClient {
     }
 
     pub async fn execute_cypher(&self, cypher_query: &str) -> Result<Value> {
-        info!("Executing Cypher query: {}", cypher_query);
+        use crate::neo4j::query_executor::QueryExecutor;
 
-        let query = query(cypher_query);
-
-        let mut txn = self.graph.start_txn().await?;
-        let mut result = txn.execute(query).await?;
-
-        let mut rows = Vec::new();
-
-        while let Some(row) = result.next(txn.handle()).await? {
-            let row_value = self.row_to_json(&row)?;
-            rows.push(row_value);
-        }
-
-        txn.commit().await?;
-
-        Ok(json!(rows))
+        let query_executor = QueryExecutor::new(&self.graph);
+        query_executor.execute_cypher(cypher_query).await
     }
 
-    fn row_to_json(&self, row: &Row) -> Result<Value> {
-        row.to::<Value>()
-            .map_err(|e| anyhow!("Failed to convert row to JSON: {}", e))
-    }
+
 
     pub async fn get_database_schema(&self) -> Result<String, Error> {
-        let query = "
-        CALL apoc.meta.schema()
-        YIELD value
-        RETURN value
-        ";
+        use crate::neo4j::query_executor::QueryExecutor;
 
-        let result = self.execute_cypher(query).await?;
-
-        // Convert the schema to a string representation
-        let schema_str = serde_json::to_string_pretty(&result)?;
-
-        Ok(schema_str)
+        let query_executor = QueryExecutor::new(&self.graph);
+        query_executor.get_database_schema().await
     }
 }
 

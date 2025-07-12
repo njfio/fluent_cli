@@ -4,13 +4,21 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::time::timeout;
 use uuid::Uuid;
 
 /// MCP Protocol version
 const MCP_VERSION: &str = "2025-06-18";
+
+/// Default timeout for MCP operations
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum response size to prevent memory exhaustion
+const MAX_RESPONSE_SIZE: usize = 10 * 1024 * 1024; // 10MB
 
 /// JSON-RPC 2.0 request
 #[derive(Debug, Serialize)]
@@ -123,6 +131,26 @@ pub struct McpResource {
     pub mime_type: Option<String>,
 }
 
+/// MCP Client configuration
+#[derive(Debug, Clone)]
+pub struct McpClientConfig {
+    pub timeout: Duration,
+    pub max_response_size: usize,
+    pub retry_attempts: u32,
+    pub retry_delay: Duration,
+}
+
+impl Default for McpClientConfig {
+    fn default() -> Self {
+        Self {
+            timeout: DEFAULT_TIMEOUT,
+            max_response_size: MAX_RESPONSE_SIZE,
+            retry_attempts: 3,
+            retry_delay: Duration::from_millis(1000),
+        }
+    }
+}
+
 /// MCP Client for connecting to and interacting with MCP servers
 pub struct McpClient {
     server_process: Option<Child>,
@@ -131,11 +159,19 @@ pub struct McpClient {
     capabilities: Option<ServerCapabilities>,
     tools: Arc<RwLock<Vec<McpTool>>>,
     resources: Arc<RwLock<Vec<McpResource>>>,
+    config: McpClientConfig,
+    connection_time: Option<Instant>,
+    is_connected: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl McpClient {
-    /// Create a new MCP client
+    /// Create a new MCP client with default configuration
     pub fn new() -> Self {
+        Self::with_config(McpClientConfig::default())
+    }
+
+    /// Create a new MCP client with custom configuration
+    pub fn with_config(config: McpClientConfig) -> Self {
         Self {
             server_process: None,
             stdin: None,
@@ -143,11 +179,51 @@ impl McpClient {
             capabilities: None,
             tools: Arc::new(RwLock::new(Vec::new())),
             resources: Arc::new(RwLock::new(Vec::new())),
+            config,
+            connection_time: None,
+            is_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
-    /// Connect to an MCP server via command execution
+    /// Check if the client is connected
+    pub fn is_connected(&self) -> bool {
+        self.is_connected.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Get connection uptime
+    pub fn connection_uptime(&self) -> Option<Duration> {
+        self.connection_time.map(|start| start.elapsed())
+    }
+
+    /// Connect to an MCP server via command execution with retry logic
     pub async fn connect_to_server(&mut self, command: &str, args: &[&str]) -> Result<()> {
+        let mut last_error = None;
+
+        for attempt in 1..=self.config.retry_attempts {
+            match self.try_connect_to_server(command, args).await {
+                Ok(()) => {
+                    self.connection_time = Some(Instant::now());
+                    self.is_connected.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < self.config.retry_attempts {
+                        eprintln!(
+                            "MCP connection attempt {} failed, retrying in {:?}...",
+                            attempt, self.config.retry_delay
+                        );
+                        tokio::time::sleep(self.config.retry_delay).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("Failed to connect after {} attempts", self.config.retry_attempts)))
+    }
+
+    /// Internal method to attempt connection
+    async fn try_connect_to_server(&mut self, command: &str, args: &[&str]) -> Result<()> {
         // Start the server process
         let mut cmd = Command::new(command);
         cmd.args(args)
@@ -157,7 +233,7 @@ impl McpClient {
 
         let mut child = tokio::process::Command::from(cmd)
             .spawn()
-            .map_err(|e| anyhow!("Failed to start MCP server: {}", e))?;
+            .map_err(|e| anyhow!("Failed to start MCP server '{}': {}", command, e))?;
 
         let stdin = child
             .stdin
@@ -171,11 +247,27 @@ impl McpClient {
         self.stdin = Some(Arc::new(Mutex::new(stdin)));
         self.server_process = Some(child);
 
-        // Start reading responses
-        self.start_response_reader(stdout).await;
+        // Start reading responses with timeout
+        timeout(self.config.timeout, self.start_response_reader(stdout))
+            .await
+            .map_err(|_| anyhow!("Timeout starting response reader"))?;
 
-        // Initialize the connection
-        self.initialize().await?;
+        // Initialize the connection with timeout
+        timeout(self.config.timeout, self.initialize())
+            .await
+            .map_err(|_| anyhow!("Timeout during initialization"))?
+            .map_err(|e| anyhow!("Failed to initialize connection: {}", e))?;
+
+        // Load available tools and resources with timeout
+        timeout(self.config.timeout, self.refresh_tools())
+            .await
+            .map_err(|_| anyhow!("Timeout refreshing tools"))?
+            .map_err(|e| anyhow!("Failed to refresh tools: {}", e))?;
+
+        timeout(self.config.timeout, self.refresh_resources())
+            .await
+            .map_err(|_| anyhow!("Timeout refreshing resources"))?
+            .map_err(|e| anyhow!("Failed to refresh resources: {}", e))?;
 
         Ok(())
     }
@@ -210,8 +302,12 @@ impl McpClient {
         });
     }
 
-    /// Send a JSON-RPC request and wait for response
+    /// Send a JSON-RPC request and wait for response with timeout
     async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value> {
+        if !self.is_connected() {
+            return Err(anyhow!("Not connected to MCP server"));
+        }
+
         let id = Uuid::new_v4().to_string();
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -227,21 +323,30 @@ impl McpClient {
             handlers.insert(id.clone(), tx);
         }
 
-        // Send request
-        let request_json = serde_json::to_string(&request)?;
+        // Send request with size validation
+        let request_json = serde_json::to_string(&request)
+            .map_err(|e| anyhow!("Failed to serialize request: {}", e))?;
+
+        if request_json.len() > self.config.max_response_size {
+            return Err(anyhow!("Request too large: {} bytes", request_json.len()));
+        }
+
         if let Some(stdin) = &self.stdin {
             let mut stdin_guard = stdin.lock().await;
-            stdin_guard.write_all(request_json.as_bytes()).await?;
-            stdin_guard.write_all(b"\n").await?;
-            stdin_guard.flush().await?;
+            stdin_guard.write_all(request_json.as_bytes()).await
+                .map_err(|e| anyhow!("Failed to write request: {}", e))?;
+            stdin_guard.write_all(b"\n").await
+                .map_err(|e| anyhow!("Failed to write newline: {}", e))?;
+            stdin_guard.flush().await
+                .map_err(|e| anyhow!("Failed to flush request: {}", e))?;
         } else {
             return Err(anyhow!("Not connected to server"));
         }
 
-        // Wait for response
-        let response = rx
-            .recv()
+        // Wait for response with timeout
+        let response = timeout(self.config.timeout, rx.recv())
             .await
+            .map_err(|_| anyhow!("Request timeout after {:?}", self.config.timeout))?
             .ok_or_else(|| anyhow!("No response received"))?;
 
         // Clean up handler
@@ -250,13 +355,19 @@ impl McpClient {
             handlers.remove(&id);
         }
 
+        // Handle JSON-RPC errors
         if let Some(error) = response.error {
-            return Err(anyhow!("MCP Error {}: {}", error.code, error.message));
+            return Err(anyhow!(
+                "MCP Error {}: {} (method: {})",
+                error.code,
+                error.message,
+                method
+            ));
         }
 
         response
             .result
-            .ok_or_else(|| anyhow!("No result in response"))
+            .ok_or_else(|| anyhow!("No result in response for method: {}", method))
     }
 
     /// Initialize the MCP connection
@@ -399,20 +510,71 @@ impl McpClient {
             .is_some()
     }
 
-    /// Disconnect from the server
+    /// Disconnect from the server with proper cleanup
     pub async fn disconnect(&mut self) -> Result<()> {
-        if let Some(mut process) = self.server_process.take() {
-            process.kill().await?;
+        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        // Clear response handlers
+        {
+            let mut handlers = self.response_handlers.write().await;
+            handlers.clear();
         }
+
+        // Close stdin
         self.stdin = None;
+
+        // Terminate server process
+        if let Some(mut process) = self.server_process.take() {
+            // Try graceful shutdown first
+            if let Err(e) = process.kill().await {
+                eprintln!("Warning: Failed to kill MCP server process: {}", e);
+            }
+
+            // Wait for process to exit with timeout
+            match timeout(Duration::from_secs(5), process.wait()).await {
+                Ok(Ok(status)) => {
+                    if !status.success() {
+                        eprintln!("Warning: MCP server exited with status: {}", status);
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Warning: Error waiting for MCP server to exit: {}", e);
+                }
+                Err(_) => {
+                    eprintln!("Warning: Timeout waiting for MCP server to exit");
+                }
+            }
+        }
+
+        // Clear cached data
+        {
+            let mut tools = self.tools.write().await;
+            tools.clear();
+        }
+        {
+            let mut resources = self.resources.write().await;
+            resources.clear();
+        }
+
+        self.capabilities = None;
+        self.connection_time = None;
+
         Ok(())
     }
 }
 
 impl Drop for McpClient {
     fn drop(&mut self) {
+        // Mark as disconnected
+        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        // Kill server process if still running
         if let Some(mut process) = self.server_process.take() {
-            let _ = futures::executor::block_on(process.kill());
+            let _ = futures::executor::block_on(async {
+                if let Err(e) = process.kill().await {
+                    eprintln!("Warning: Failed to kill MCP server process in Drop: {}", e);
+                }
+            });
         }
     }
 }
@@ -420,20 +582,53 @@ impl Drop for McpClient {
 /// MCP Client Manager for handling multiple server connections
 pub struct McpClientManager {
     clients: HashMap<String, McpClient>,
+    default_config: McpClientConfig,
 }
 
 impl McpClientManager {
-    /// Create a new MCP client manager
+    /// Create a new MCP client manager with default configuration
     pub fn new() -> Self {
+        Self::with_config(McpClientConfig::default())
+    }
+
+    /// Create a new MCP client manager with custom configuration
+    pub fn with_config(config: McpClientConfig) -> Self {
         Self {
             clients: HashMap::new(),
+            default_config: config,
         }
     }
 
     /// Add a new MCP server connection
     pub async fn add_server(&mut self, name: String, command: &str, args: &[&str]) -> Result<()> {
-        let mut client = McpClient::new();
-        client.connect_to_server(command, args).await?;
+        if self.clients.contains_key(&name) {
+            return Err(anyhow!("Server '{}' already exists", name));
+        }
+
+        let mut client = McpClient::with_config(self.default_config.clone());
+        client.connect_to_server(command, args).await
+            .map_err(|e| anyhow!("Failed to connect to server '{}': {}", name, e))?;
+
+        self.clients.insert(name, client);
+        Ok(())
+    }
+
+    /// Add a new MCP server connection with custom configuration
+    pub async fn add_server_with_config(
+        &mut self,
+        name: String,
+        command: &str,
+        args: &[&str],
+        config: McpClientConfig,
+    ) -> Result<()> {
+        if self.clients.contains_key(&name) {
+            return Err(anyhow!("Server '{}' already exists", name));
+        }
+
+        let mut client = McpClient::with_config(config);
+        client.connect_to_server(command, args).await
+            .map_err(|e| anyhow!("Failed to connect to server '{}': {}", name, e))?;
+
         self.clients.insert(name, client);
         Ok(())
     }
@@ -441,6 +636,38 @@ impl McpClientManager {
     /// Get a client by name
     pub fn get_client(&self, name: &str) -> Option<&McpClient> {
         self.clients.get(name)
+    }
+
+    /// Get a mutable client by name
+    pub fn get_client_mut(&mut self, name: &str) -> Option<&mut McpClient> {
+        self.clients.get_mut(name)
+    }
+
+    /// Check if a server is connected
+    pub fn is_server_connected(&self, name: &str) -> bool {
+        self.clients.get(name)
+            .map(|client| client.is_connected())
+            .unwrap_or(false)
+    }
+
+    /// Get connection status for all servers
+    pub fn get_connection_status(&self) -> HashMap<String, bool> {
+        self.clients.iter()
+            .map(|(name, client)| (name.clone(), client.is_connected()))
+            .collect()
+    }
+
+    /// Remove a server connection
+    pub async fn remove_server(&mut self, name: &str) -> Result<()> {
+        if let Some(mut client) = self.clients.remove(name) {
+            client.disconnect().await?;
+        }
+        Ok(())
+    }
+
+    /// List all connected server names
+    pub fn list_servers(&self) -> Vec<String> {
+        self.clients.keys().cloned().collect()
     }
 
     /// Get all available tools from all connected servers

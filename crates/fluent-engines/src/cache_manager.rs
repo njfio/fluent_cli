@@ -7,8 +7,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Centralized cache manager for all engines
+#[derive(Clone)]
 pub struct CacheManager {
-    caches: RwLock<HashMap<String, Arc<EnhancedCache>>>,
+    caches: Arc<RwLock<HashMap<String, Arc<EnhancedCache>>>>,
     default_config: CacheConfig,
 }
 
@@ -16,7 +17,7 @@ impl CacheManager {
     /// Create a new cache manager
     pub fn new() -> Self {
         Self {
-            caches: RwLock::new(HashMap::new()),
+            caches: Arc::new(RwLock::new(HashMap::new())),
             default_config: CacheConfig::default(),
         }
     }
@@ -24,7 +25,7 @@ impl CacheManager {
     /// Create a cache manager with custom config
     pub fn with_config(config: CacheConfig) -> Self {
         Self {
-            caches: RwLock::new(HashMap::new()),
+            caches: Arc::new(RwLock::new(HashMap::new())),
             default_config: config,
         }
     }
@@ -284,23 +285,24 @@ mod tests {
         let manager = CacheManager::new();
         let request = create_test_request();
         let response = create_test_response();
+        let engine_name = format!("test_engine_ops_{}", uuid::Uuid::new_v4());
 
         // Should be cache miss initially
         let cached = manager
-            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .get_cached_response(&engine_name, &request, Some("test-model"), None)
             .await
             .unwrap();
         assert!(cached.is_none());
 
         // Cache the response
         manager
-            .cache_response("test_engine", &request, &response, Some("test-model"), None)
+            .cache_response(&engine_name, &request, &response, Some("test-model"), None)
             .await
             .unwrap();
 
         // Should be cache hit now
         let cached = manager
-            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .get_cached_response(&engine_name, &request, Some("test-model"), None)
             .await
             .unwrap();
         assert!(cached.is_some());

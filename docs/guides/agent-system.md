@@ -49,14 +49,14 @@ The Fluent CLI Agent System provides production-ready agentic capabilities with 
 ### Basic Agent Usage
 
 ```bash
-# Interactive agent session
-fluent agent --interactive
+# Interactive agent session (requires API key)
+fluent openai agent
 
-# Agent with specific goal
-fluent agent --agentic --goal "Analyze project structure" --max-iterations 10
+# Agent with MCP capabilities (experimental)
+fluent agent-mcp -e openai -t "Analyze project structure" -s "filesystem:mcp-server-filesystem"
 
-# Agent with tools enabled
-fluent agent --tools --config agent_config.json
+# Note: Advanced agent features like --agentic, --tools, and --config are not yet implemented
+# Use the interactive mode or MCP agent for current functionality
 ```
 
 ### Configuration
@@ -100,14 +100,14 @@ The String Replace Editor provides surgical file editing capabilities:
 #### Usage Examples
 
 ```bash
-# Replace first occurrence
-fluent agent --tools --task "Replace 'old_text' with 'new_text' in file.rs"
+# Note: Advanced tool integration is not yet fully implemented in the CLI
+# Current functionality is available through:
 
-# Replace in specific line range
-fluent agent --tools --task "Replace 'pattern' with 'replacement' in lines 10-20 of file.rs"
+# Interactive agent session
+fluent openai agent
 
-# Dry run to preview changes
-fluent agent --tools --task "Preview replacing 'old' with 'new' in file.rs"
+# MCP agent with tool capabilities (experimental)
+fluent agent-mcp -e openai -t "Replace 'old_text' with 'new_text' in file.rs" -s "filesystem:mcp-server-filesystem"
 ```
 
 ### Available Tools

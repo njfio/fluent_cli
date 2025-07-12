@@ -74,23 +74,24 @@ mod comprehensive_cache_tests {
         let manager = CacheManager::new();
         let request = create_test_request();
         let response = create_test_response();
+        let engine_name = format!("test_engine_basic_{}", uuid::Uuid::new_v4());
 
         // Should be cache miss initially
         let cached = manager
-            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .get_cached_response(&engine_name, &request, Some("test-model"), None)
             .await
             .unwrap();
         assert!(cached.is_none());
 
         // Cache the response
         manager
-            .cache_response("test_engine", &request, &response, Some("test-model"), None)
+            .cache_response(&engine_name, &request, &response, Some("test-model"), None)
             .await
             .unwrap();
 
         // Should be cache hit now
         let cached = manager
-            .get_cached_response("test_engine", &request, Some("test-model"), None)
+            .get_cached_response(&engine_name, &request, Some("test-model"), None)
             .await
             .unwrap();
         assert!(cached.is_some());
@@ -190,23 +191,24 @@ mod comprehensive_cache_tests {
         let manager = CacheManager::new();
         let request = create_test_request();
         let response = create_test_response();
+        let engine_name = format!("test_engine_models_{}", uuid::Uuid::new_v4());
 
         // Cache for model1
         manager
-            .cache_response("test_engine", &request, &response, Some("model1"), None)
+            .cache_response(&engine_name, &request, &response, Some("model1"), None)
             .await
             .unwrap();
 
         // Should hit cache for model1
         let cached_model1 = manager
-            .get_cached_response("test_engine", &request, Some("model1"), None)
+            .get_cached_response(&engine_name, &request, Some("model1"), None)
             .await
             .unwrap();
         assert!(cached_model1.is_some());
 
         // Should miss cache for model2 (different model)
         let cached_model2 = manager
-            .get_cached_response("test_engine", &request, Some("model2"), None)
+            .get_cached_response(&engine_name, &request, Some("model2"), None)
             .await
             .unwrap();
         assert!(cached_model2.is_none());
@@ -294,13 +296,13 @@ mod comprehensive_cache_tests {
     #[tokio::test]
     async fn test_cache_entry_expiration() {
         let response = create_test_response();
-        let ttl = Duration::from_millis(100); // Very short TTL for testing
+        let ttl = Duration::from_secs(1); // 1 second TTL for testing
 
         let entry = CacheEntry::new(response.clone(), ttl);
         assert!(!entry.is_expired());
 
         // Wait for expiration
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
         assert!(entry.is_expired());
     }
 

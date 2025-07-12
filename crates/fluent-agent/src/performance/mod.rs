@@ -174,7 +174,9 @@ pub mod utils {
             self.requests.store(0, Ordering::Relaxed);
             self.errors.store(0, Ordering::Relaxed);
             self.total_duration.store(0, Ordering::Relaxed);
-            *self.last_reset.lock().unwrap() = Instant::now();
+            if let Ok(mut last_reset) = self.last_reset.lock() {
+                *last_reset = Instant::now();
+            }
         }
     }
 

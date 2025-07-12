@@ -3,9 +3,9 @@ use fluent_core::auth::EngineAuth;
 use fluent_core::config::EngineConfig;
 use reqwest::Client;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// Configuration for connection pooling
 #[derive(Debug, Clone)]
@@ -134,7 +134,7 @@ impl ConnectionPool {
             self.update_stats(|stats| {
                 stats.cache_hits += 1;
                 stats.total_clients_reused += 1;
-            });
+            }).await;
             return Ok(client);
         }
 
@@ -144,7 +144,7 @@ impl ConnectionPool {
         self.update_stats(|stats| {
             stats.cache_misses += 1;
             stats.total_clients_created += 1;
-        });
+        }).await;
 
         Ok(client)
     }
@@ -162,7 +162,7 @@ impl ConnectionPool {
 
             self.update_stats(|stats| {
                 stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-            });
+            }).await;
         }
     }
 
@@ -183,12 +183,12 @@ impl ConnectionPool {
         self.update_stats(|stats| {
             stats.total_clients_expired += total_expired as u64;
             stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-        });
+        }).await;
     }
 
     /// Get pool statistics
-    pub fn get_stats(&self) -> PoolStats {
-        self.stats.lock().unwrap().clone()
+    pub async fn get_stats(&self) -> PoolStats {
+        self.stats.lock().await.clone()
     }
 
     /// Clear all pools
@@ -198,7 +198,7 @@ impl ConnectionPool {
 
         self.update_stats(|stats| {
             stats.current_pool_size = 0;
-        });
+        }).await;
     }
 
     /// Get the number of clients in the pool for a specific host
@@ -257,7 +257,7 @@ impl ConnectionPool {
             stats.health_check_failures += total_failures;
             stats.unhealthy_clients_removed += total_removed;
             stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-        });
+        }).await;
 
         Ok(())
     }
@@ -350,13 +350,12 @@ impl ConnectionPool {
         }
     }
 
-    fn update_stats<F>(&self, update_fn: F)
+    async fn update_stats<F>(&self, update_fn: F)
     where
         F: FnOnce(&mut PoolStats),
     {
-        if let Ok(mut stats) = self.stats.lock() {
-            update_fn(&mut *stats);
-        }
+        let mut stats = self.stats.lock().await;
+        update_fn(&mut *stats);
     }
 }
 
@@ -428,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn test_connection_pool_creation() {
         let pool = ConnectionPool::with_defaults();
-        let stats = pool.get_stats();
+        let stats = pool.get_stats().await;
         assert_eq!(stats.current_pool_size, 0);
     }
 
@@ -446,7 +445,7 @@ mod tests {
         // Get another client (should be reused)
         let _client2 = pool.get_client(&config).await.unwrap();
 
-        let stats = pool.get_stats();
+        let stats = pool.get_stats().await;
         assert!(stats.total_clients_created > 0);
     }
 
@@ -470,7 +469,7 @@ mod tests {
         // Cleanup should remove expired clients
         pool.cleanup_expired().await;
 
-        let stats = pool.get_stats();
+        let stats = pool.get_stats().await;
         assert_eq!(stats.current_pool_size, 0);
     }
 
@@ -480,7 +479,7 @@ mod tests {
         let client = get_pooled_client(&config).await.unwrap();
         return_pooled_client(&config, client).await;
 
-        let stats = global_pool().get_stats();
+        let stats = global_pool().get_stats().await;
         assert!(stats.total_clients_created > 0);
     }
 }

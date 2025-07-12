@@ -1,8 +1,8 @@
 # Fluent CLI - Advanced Multi-LLM Command Line Interface
 
-A modern, secure, and modular Rust-based command-line interface for interacting with multiple Large Language Model (LLM) providers. Fluent CLI provides a unified interface for OpenAI, Anthropic, Google Gemini, and other LLM services, with production-ready agentic capabilities, comprehensive security features, and full Model Context Protocol (MCP) integration.
+A modern, secure, and modular Rust-based command-line interface for interacting with multiple Large Language Model (LLM) providers. Fluent CLI provides a unified interface for OpenAI, Anthropic, Google Gemini, and other LLM services, with experimental agentic capabilities, comprehensive security features, and Model Context Protocol (MCP) integration.
 
-## 🎉 **Recent Major Updates (v0.3.0)**
+## 🎉 **Recent Major Updates (v0.1.0)**
 
 ### 🔒 **Security & Stability Improvements**
 
@@ -37,12 +37,13 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Dependency Management**: Pinned critical dependencies for stability
 - **Documentation**: Comprehensive API documentation and usage examples
 
-### ⚠️ **Current Limitations**
+### ⚠️ **Current Status & Limitations**
 
-- **Work in Progress**: Some features are still under development (marked with TODO)
-- **Test Coverage**: Test coverage is expanding but not yet comprehensive
-- **Error Handling**: Ongoing migration from `unwrap()` to proper error handling
-- **Binary Structure**: Consolidating dual binary structure for consistency
+- **Agentic Features**: Advanced agentic capabilities are implemented but CLI access is limited to basic commands
+- **MCP Integration**: Model Context Protocol support is experimental and under active development
+- **Tool Access**: Direct CLI access to specific tools is not yet implemented (available through agent interface)
+- **Documentation**: Some documented commands may not match current CLI implementation
+- **Testing**: Comprehensive test coverage is ongoing
 
 ## 🚀 Key Features
 
@@ -62,14 +63,14 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Pipeline Execution**: YAML-defined multi-step workflows
 - **Caching**: Optional request caching for improved performance
 
-### 🤖 **Production-Ready Agentic Features**
+### 🤖 **Experimental Agentic Features**
 
 - **Modular Agent Architecture**: Clean separation of reasoning, action, and reflection engines
-- **MCP Integration**: Full Model Context Protocol client and server capabilities
-- **Advanced Tool System**: Secure file operations, shell commands, and code analysis
+- **MCP Integration**: Model Context Protocol client and server capabilities (experimental)
+- **Advanced Tool System**: File operations, shell commands, and code analysis (via agent interface)
 - **String Replace Editor**: Surgical file editing with precision targeting and validation
 - **Memory System**: SQLite-based persistent memory with performance optimization
-- **Security Sandboxing**: Rate limiting, input validation, and secure execution environment
+- **Security Features**: Input validation and secure execution patterns (ongoing development)
 
 ### 🧠 **Self-Reflection & Learning System**
 
@@ -120,11 +121,8 @@ fluent openai "Explain quantum computing"
 # Query with Anthropic
 fluent anthropic "Write a Python function to calculate fibonacci"
 
-# Query with image (vision models)
-fluent openai "What's in this image?" --upload_image_file image.jpg
-
-# Enable caching for repeated queries
-fluent openai "Complex analysis task" --cache
+# Note: Image upload and caching features are implemented but may require specific configuration
+# Check the configuration section for details on enabling these features
 ```
 
 ### 3. New Modular Command Structure
@@ -133,15 +131,14 @@ fluent openai "Complex analysis task" --cache
 
 ```bash
 # Interactive agent session (requires API keys)
-fluent openai agent
+fluent agent
 
-# Agentic mode with specific goal (requires API keys)
-fluent openai --agentic --goal "Build a simple web server" --max-iterations 10 --enable-tools
+# Agent with MCP capabilities (experimental - requires API keys)
+fluent agent-mcp -e openai -t "Analyze codebase" -s "filesystem:mcp-server-filesystem"
 
-# Agent with MCP capabilities (requires API keys)
-fluent agent-mcp --engine openai --task "Analyze codebase" --mcp-servers "filesystem:mcp-server-filesystem"
-
-# Note: Set appropriate API keys before running:
+# Note: Advanced agentic features like --agentic, --goal, --max-iterations are not yet implemented in the CLI
+# The agent command provides basic interactive functionality
+# Set appropriate API keys before running:
 # export OPENAI_API_KEY="your-api-key-here"
 # export ANTHROPIC_API_KEY="your-api-key-here"
 ```
@@ -149,50 +146,49 @@ fluent agent-mcp --engine openai --task "Analyze codebase" --mcp-servers "filesy
 #### Pipeline Commands
 
 ```bash
-# Execute a pipeline
-fluent pipeline --file pipeline.yaml --input "process this data"
+# Execute a pipeline (correct syntax)
+fluent pipeline -f pipeline.yaml -i "process this data"
 
-# Pipeline with JSON output
-fluent pipeline --file pipeline.yaml --json-output
+# Build a pipeline interactively
+fluent build-pipeline
 
-# Force fresh execution (ignore cache)
-fluent pipeline --file pipeline.yaml --force-fresh
+# Note: Pipeline execution requires a properly formatted YAML pipeline file
+# See the configuration section for pipeline format details
 ```
 
 #### MCP (Model Context Protocol) Commands
 
 ```bash
-# Start MCP server
-fluent mcp server
+# Start MCP server (STDIO transport by default)
+fluent mcp
 
-# Run agent with MCP integration
-fluent mcp agent --engine openai --task "analyze codebase" --servers server1,server2
+# Start MCP server with specific port (HTTP transport)
+fluent mcp -p 8080
+
+# Run agent with MCP integration (experimental)
+fluent agent-mcp -e openai -t "analyze codebase" -s "server1,server2"
 ```
 
 #### Neo4j Integration Commands
 
 ```bash
-# Query Neo4j with natural language
-fluent neo4j query "Find all connected nodes" --engine openai
+# Neo4j integration commands (requires Neo4j configuration)
+fluent neo4j
 
-# Upsert data to Neo4j
-fluent neo4j upsert --data "user data" --engine anthropic
+# Note: Neo4j integration requires proper database configuration
+# See the configuration section for Neo4j setup details
 ```
 
-#### Direct Engine Commands (Legacy Support)
+#### Direct Engine Commands
 
 ```bash
-# Direct engine queries (still supported)
+# Direct engine queries (primary interface)
 fluent openai "Explain quantum computing"
+fluent anthropic "Write a Python function"
+fluent gemini "Analyze this code"
 
-# Execute a pipeline
-fluent openai pipeline -f pipeline.yaml -i "input data"
-
-# Start MCP server
-fluent openai mcp
-
-# Agent with MCP capabilities (experimental)
-fluent openai agent-mcp -e openai -t "Analyze files" -s "filesystem:mcp-server-filesystem"
+# Note: This is the main command structure - engine name followed by query
+# Other commands (pipeline, agent, mcp) are separate subcommands
 ```
 
 ## 🔧 Configuration
@@ -301,26 +297,27 @@ tools:
 
 ### Agent Mode
 
-Interactive agent sessions with basic memory and tool access:
+Interactive agent sessions with basic functionality:
 
 ```bash
-# Start an interactive agent session (requires OPENAI_API_KEY)
-fluent openai agent
+# Start an interactive agent session (requires API keys)
+fluent agent
 
-# Agent with specific goal (requires OPENAI_API_KEY)
-fluent openai --agentic --goal "Analyze project structure" --enable-tools
+# Note: Advanced agentic features like autonomous goal execution are implemented
+# in the codebase but not yet exposed through simple CLI flags
+# Use the agent command for basic interactive functionality
 ```
 
 ### MCP Integration
 
-Basic Model Context Protocol support:
+Model Context Protocol support for tool integration:
 
 ```bash
-# Start MCP server
-fluent openai mcp
+# Start MCP server (STDIO transport)
+fluent mcp
 
-# Agent with MCP (experimental)
-fluent openai agent-mcp -e openai -t "Read files" -s "filesystem:server"
+# Agent with MCP capabilities (experimental)
+fluent agent-mcp -e openai -t "Read files" -s "filesystem:server"
 ```
 
 **Note**: Agentic features are experimental and under active development.
@@ -332,14 +329,13 @@ fluent openai agent-mcp -e openai -t "Read files" -s "filesystem:server"
 Advanced file editing capabilities with surgical precision:
 
 ```bash
-# Replace first occurrence
-fluent openai agent --tool string_replace --file "src/main.rs" --old "println!" --new "log::info!" --occurrence "First"
+# Note: The string replace editor is implemented as part of the agentic system
+# It's available through the agent interface and MCP integration
+# Direct CLI access to specific tools is not yet implemented
 
-# Replace all occurrences with backup
-fluent openai agent --tool string_replace --file "config.toml" --old "debug = false" --new "debug = true" --occurrence "All" --backup
-
-# Line range replacement (lines 10-20 only)
-fluent openai agent --tool string_replace --file "lib.rs" --old "i32" --new "u32" --line-range "10,20"
+# Tool functionality is accessible through:
+fluent agent  # Interactive agent with tool access
+fluent agent-mcp -e openai -t "edit files" -s "filesystem:server"  # MCP integration
 
 # Dry run preview
 fluent openai agent --tool string_replace --file "app.rs" --old "HashMap" --new "BTreeMap" --dry-run
@@ -452,9 +448,9 @@ cargo run --example state_management_demo
 # Run the string replace editor demo
 cargo run --example string_replace_demo
 
-# Run other available examples
+# Run other available examples (some may require API keys)
 cargo run --example real_agentic_demo
-cargo run --example working_agentic_demo
+# Note: working_agentic_demo currently has issues - use other examples instead
 ```
 
 ### Quality Assurance Tools

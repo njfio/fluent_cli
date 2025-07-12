@@ -140,7 +140,8 @@ impl WorkflowEngine {
             // Execute steps one by one for now (simplified implementation)
             if let Some(node_index) = ready_queue.pop_front() {
                 let step_id = &graph[node_index];
-                let step = step_map.get(step_id).unwrap();
+                let step = step_map.get(step_id)
+                    .ok_or_else(|| anyhow::anyhow!("Step not found in step map: {}", step_id))?;
 
                 // Execute single step
                 self.execute_step(step, context).await?;
@@ -430,7 +431,11 @@ impl WorkflowEngine {
 
         // Handle number literals
         if let Ok(n) = value.parse::<f64>() {
-            return Ok(serde_json::Value::Number(serde_json::Number::from_f64(n).unwrap()));
+            if let Some(number) = serde_json::Number::from_f64(n) {
+                return Ok(serde_json::Value::Number(number));
+            } else {
+                return Err(anyhow::anyhow!("Invalid number value: {}", n));
+            }
         }
 
         // Handle boolean literals
@@ -498,7 +503,8 @@ impl WorkflowEngine {
 
             // Handle array access in part like "field[0]"
             if part.contains('[') && part.ends_with(']') {
-                let bracket_pos = part.find('[').unwrap();
+                let bracket_pos = part.find('[')
+                    .ok_or_else(|| anyhow::anyhow!("Invalid array access syntax: {}", part))?;
                 let field_name = &part[..bracket_pos];
                 let index_str = &part[bracket_pos+1..part.len()-1];
 
@@ -563,7 +569,8 @@ impl WorkflowEngine {
         }
 
         // Field with array access like field[0]
-        let bracket_pos = path.find('[').unwrap();
+        let bracket_pos = path.find('[')
+            .ok_or_else(|| anyhow::anyhow!("Invalid array access syntax in path: {}", path))?;
         let field_name = &path[..bracket_pos];
         let index_part = &path[bracket_pos..];
 

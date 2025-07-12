@@ -25,7 +25,12 @@ impl StringBuffer {
     /// Build URL without allocating new strings
     pub fn build_url(&mut self, protocol: &str, hostname: &str, port: u16, path: &str) -> &str {
         self.buffer.clear();
-        write!(self.buffer, "{}://{}:{}{}", protocol, hostname, port, path).unwrap();
+        // Writing to a String should never fail in practice, but we'll handle it gracefully
+        if write!(self.buffer, "{}://{}:{}{}", protocol, hostname, port, path).is_err() {
+            // Fallback to empty string if write fails (extremely unlikely)
+            self.buffer.clear();
+            self.buffer.push_str("error://invalid");
+        }
         &self.buffer
     }
 

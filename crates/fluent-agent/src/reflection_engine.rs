@@ -115,6 +115,8 @@ pub enum LearningType {
     PatternRecognition,
     ErrorPrevention,
     EfficiencyGain,
+    ErrorRecovery,
+    SkillDevelopment,
 }
 
 /// Strategy adjustment recommendation
@@ -142,6 +144,9 @@ pub enum AdjustmentType {
     QualityStandards,
     RiskManagement,
     StrategyOptimization,
+    ConsistencyImprovement,
+    CapabilityEnhancement,
+    ResourceOptimization,
 }
 
 impl std::fmt::Display for AdjustmentType {
@@ -156,6 +161,9 @@ impl std::fmt::Display for AdjustmentType {
             AdjustmentType::QualityStandards => write!(f, "Quality Standards"),
             AdjustmentType::RiskManagement => write!(f, "Risk Management"),
             AdjustmentType::StrategyOptimization => write!(f, "Strategy Optimization"),
+            AdjustmentType::ConsistencyImprovement => write!(f, "Consistency Improvement"),
+            AdjustmentType::CapabilityEnhancement => write!(f, "Capability Enhancement"),
+            AdjustmentType::ResourceOptimization => write!(f, "Resource Optimization"),
         }
     }
 }
@@ -182,6 +190,11 @@ pub enum InsightType {
     EnvironmentalInfluence,
     ToolEffectiveness,
     StrategyOptimization,
+    TechniqueOptimization,
+    AvoidanceStrategies,
+    ConsistencyImprovement,
+    ResourceOptimization,
+    ContextualFactors,
 }
 
 impl std::fmt::Display for InsightType {
@@ -194,6 +207,11 @@ impl std::fmt::Display for InsightType {
             InsightType::EnvironmentalInfluence => write!(f, "Environmental Influence"),
             InsightType::ToolEffectiveness => write!(f, "Tool Effectiveness"),
             InsightType::StrategyOptimization => write!(f, "Strategy Optimization"),
+            InsightType::TechniqueOptimization => write!(f, "Technique Optimization"),
+            InsightType::AvoidanceStrategies => write!(f, "Avoidance Strategies"),
+            InsightType::ConsistencyImprovement => write!(f, "Consistency Improvement"),
+            InsightType::ResourceOptimization => write!(f, "Resource Optimization"),
+            InsightType::ContextualFactors => write!(f, "Contextual Factors"),
         }
     }
 }
@@ -212,7 +230,7 @@ pub struct Recommendation {
 }
 
 /// Types of recommendations
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RecommendationType {
     ImmediateAction,
     StrategyChange,
@@ -221,6 +239,12 @@ pub enum RecommendationType {
     ProcessImprovement,
     GoalAdjustment,
     ResourceRequest,
+    PerformanceImprovement,
+    RiskMitigation,
+    ResourceOptimization,
+    StrategyRefinement,
+    PreventiveMeasure,
+    StrategicAlignment,
 }
 
 impl std::fmt::Display for RecommendationType {
@@ -233,6 +257,12 @@ impl std::fmt::Display for RecommendationType {
             RecommendationType::ProcessImprovement => write!(f, "Process Improvement"),
             RecommendationType::GoalAdjustment => write!(f, "Goal Adjustment"),
             RecommendationType::ResourceRequest => write!(f, "Resource Request"),
+            RecommendationType::PerformanceImprovement => write!(f, "Performance Improvement"),
+            RecommendationType::RiskMitigation => write!(f, "Risk Mitigation"),
+            RecommendationType::ResourceOptimization => write!(f, "Resource Optimization"),
+            RecommendationType::StrategyRefinement => write!(f, "Strategy Refinement"),
+            RecommendationType::PreventiveMeasure => write!(f, "Preventive Measure"),
+            RecommendationType::StrategicAlignment => write!(f, "Strategic Alignment"),
         }
     }
 }
@@ -282,12 +312,12 @@ pub enum VelocityTrend { Increasing, Stable, Decreasing, Volatile }
 pub enum ImpactLevel { Low, Medium, High, Critical }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DifficultyLevel { Easy, Medium, Hard, Expert }
+pub enum DifficultyLevel { Easy, Medium, Hard, Expert, Low, High }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Priority { Low, Medium, High, Critical }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Urgency { Low, Medium, High, Immediate }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -307,6 +337,8 @@ pub struct QualityMetrics {
     pub completeness: f64,
     pub efficiency: f64,
     pub maintainability: f64,
+    pub consistency: f64,
+    pub reliability: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -325,6 +357,8 @@ pub struct SuccessPattern {
     pub conditions: Vec<String>,
     pub actions: Vec<String>,
     pub success_rate: f64,
+    pub frequency: usize,
+    pub context_factors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,6 +369,8 @@ pub struct FailurePattern {
     pub actions: Vec<String>,
     pub failure_rate: f64,
     pub mitigation_strategies: Vec<String>,
+    pub frequency: usize,
+    pub context_factors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,6 +379,11 @@ pub struct ResourceUtilization {
     pub tool_effectiveness: HashMap<String, f64>,
     pub cognitive_load: f64,
     pub resource_waste: f64,
+    pub cpu_utilization: f64,
+    pub memory_utilization: f64,
+    pub time_utilization: f64,
+    pub efficiency_score: f64,
+    pub resource_bottlenecks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -423,6 +464,10 @@ impl ReflectionEngine {
         reasoning_engine: &dyn ReasoningEngine,
         trigger: ReflectionTrigger,
     ) -> Result<ReflectionResult> {
+        use crate::reflection::strategy::StrategyAdjustmentGenerator;
+        use crate::reflection::learning::LearningInsightExtractor;
+        use crate::reflection::recommendations::RecommendationGenerator;
+
         let reflection_type = self.determine_reflection_type(&trigger, context);
 
         // Perform the appropriate type of reflection
@@ -434,14 +479,22 @@ impl ReflectionEngine {
             ReflectionType::Crisis => self.perform_crisis_reflection(context, reasoning_engine, &trigger).await?,
         };
 
-        // Generate strategy adjustments based on analysis
-        let strategy_adjustments = self.generate_strategy_adjustments(&analysis, context).await?;
+        // Generate strategy adjustments using modular function
+        let strategy_adjustments = StrategyAdjustmentGenerator::generate_adjustments(
+            &analysis,
+            context,
+            self.reflection_config.performance_threshold
+        ).await?;
 
-        // Extract learning insights
-        let learning_insights = self.extract_learning_insights(&analysis, context).await?;
+        // Extract learning insights using modular function
+        let learning_insights = LearningInsightExtractor::extract_insights(&analysis, context).await?;
 
-        // Generate recommendations
-        let recommendations = self.generate_recommendations(&analysis, &strategy_adjustments).await?;
+        // Generate recommendations using modular function
+        let recommendations = RecommendationGenerator::generate_recommendations(
+            &analysis,
+            &strategy_adjustments,
+            &learning_insights
+        ).await?;
 
         // Calculate confidence and performance assessments
         let confidence_assessment = self.calculate_confidence_assessment(&analysis);
@@ -566,13 +619,13 @@ impl ReflectionEngine {
         _reasoning_engine: &dyn ReasoningEngine,
     ) -> Result<ReflectionAnalysis> {
         // Analyze current progress
-        let progress_assessment = self.analyze_progress(context).await?;
+        let progress_assessment = self.analyze_progress(context)?;
 
         // Evaluate strategy effectiveness
-        let strategy_effectiveness = self.evaluate_strategy_effectiveness(context).await?;
+        let strategy_effectiveness = self.evaluate_strategy_effectiveness(context)?;
 
         // Identify learning opportunities
-        let learning_opportunities = self.identify_learning_opportunities(context).await?;
+        let learning_opportunities = self.identify_learning_opportunities(context)?;
 
         // Detect bottlenecks
         let bottlenecks_identified = self.detect_bottlenecks(context).await?;
@@ -708,7 +761,7 @@ impl ReflectionEngine {
     }
 
     /// Analyze current progress towards goals
-    async fn analyze_progress(&self, context: &ExecutionContext) -> Result<ProgressAssessment> {
+    fn analyze_progress(&self, context: &ExecutionContext) -> Result<ProgressAssessment> {
         let total_tasks = context.active_tasks.len() + context.completed_tasks.len();
         let completed_tasks = context.completed_tasks.len();
 
@@ -733,7 +786,7 @@ impl ReflectionEngine {
     }
 
     /// Evaluate the effectiveness of current strategy
-    async fn evaluate_strategy_effectiveness(&self, context: &ExecutionContext) -> Result<StrategyEffectiveness> {
+    fn evaluate_strategy_effectiveness(&self, context: &ExecutionContext) -> Result<StrategyEffectiveness> {
         let current_strategy_score = self.calculate_strategy_score(context);
         let strategy_consistency = self.calculate_strategy_consistency(context);
         let adaptation_frequency = context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
@@ -750,7 +803,7 @@ impl ReflectionEngine {
     }
 
     /// Identify learning opportunities
-    async fn identify_learning_opportunities(&self, context: &ExecutionContext) -> Result<Vec<LearningOpportunity>> {
+    fn identify_learning_opportunities(&self, context: &ExecutionContext) -> Result<Vec<LearningOpportunity>> {
         let mut opportunities = Vec::new();
 
         // Analyze failed tasks for learning opportunities
@@ -840,6 +893,8 @@ impl ReflectionEngine {
                 conditions: vec!["Clear task definition".to_string(), "Adequate resources".to_string()],
                 actions: vec!["Systematic execution".to_string(), "Regular validation".to_string()],
                 success_rate: successful_tasks.len() as f64 / context.completed_tasks.len() as f64,
+                frequency: successful_tasks.len(),
+                context_factors: vec!["favorable_conditions".to_string()],
             });
         }
 
@@ -867,6 +922,8 @@ impl ReflectionEngine {
                     "Enhance validation steps".to_string(),
                     "Allocate sufficient resources".to_string(),
                 ],
+                frequency: failed_tasks.len(),
+                context_factors: vec!["challenging_conditions".to_string()],
             });
         }
 
@@ -888,6 +945,11 @@ impl ReflectionEngine {
             tool_effectiveness,
             cognitive_load: 0.7, // Placeholder
             resource_waste: 0.2, // Placeholder
+            cpu_utilization: 0.6,
+            memory_utilization: 0.4,
+            time_utilization: time_efficiency,
+            efficiency_score: time_efficiency * 0.9,
+            resource_bottlenecks: vec![],
         })
     }
 
@@ -944,6 +1006,8 @@ impl ReflectionEngine {
             completeness: 0.8, // Placeholder
             efficiency: self.calculate_time_efficiency(context),
             maintainability: 0.7, // Placeholder
+            consistency: 0.75,
+            reliability: accuracy,
         }
     }
 
@@ -981,142 +1045,11 @@ impl ReflectionEngine {
         self.assess_quality_metrics(context).accuracy
     }
 
-    /// Generate strategy adjustments based on analysis
-    async fn generate_strategy_adjustments(
-        &self,
-        analysis: &ReflectionAnalysis,
-        _context: &ExecutionContext,
-    ) -> Result<Vec<StrategyAdjustment>> {
-        let mut adjustments = Vec::new();
 
-        // Generate adjustments based on bottlenecks
-        for bottleneck in &analysis.bottlenecks_identified {
-            if bottleneck.severity == ImpactLevel::High || bottleneck.severity == ImpactLevel::Critical {
-                adjustments.push(StrategyAdjustment {
-                    adjustment_id: uuid::Uuid::new_v4().to_string(),
-                    adjustment_type: AdjustmentType::ApproachModification,
-                    description: format!("Address bottleneck: {}", bottleneck.description),
-                    rationale: "High-impact bottleneck requires strategy adjustment".to_string(),
-                    expected_impact: bottleneck.severity.clone(),
-                    implementation_steps: bottleneck.suggested_solutions.clone(),
-                    success_metrics: vec!["Reduced failure rate".to_string(), "Improved efficiency".to_string()],
-                    rollback_plan: Some("Revert to previous approach if no improvement".to_string()),
-                });
-            }
-        }
 
-        // Generate adjustments based on poor performance
-        if analysis.strategy_effectiveness.current_strategy_score < self.reflection_config.performance_threshold {
-            adjustments.push(StrategyAdjustment {
-                adjustment_id: uuid::Uuid::new_v4().to_string(),
-                adjustment_type: AdjustmentType::StrategyOptimization,
-                description: "Optimize overall strategy due to poor performance".to_string(),
-                rationale: format!("Strategy score {:.2} below threshold {:.2}",
-                                 analysis.strategy_effectiveness.current_strategy_score,
-                                 self.reflection_config.performance_threshold),
-                expected_impact: ImpactLevel::High,
-                implementation_steps: vec![
-                    "Review current approach".to_string(),
-                    "Identify alternative strategies".to_string(),
-                    "Implement gradual changes".to_string(),
-                ],
-                success_metrics: vec!["Improved strategy score".to_string(), "Better goal progress".to_string()],
-                rollback_plan: Some("Return to baseline strategy".to_string()),
-            });
-        }
 
-        Ok(adjustments)
-    }
 
-    /// Extract learning insights from analysis
-    async fn extract_learning_insights(
-        &self,
-        analysis: &ReflectionAnalysis,
-        _context: &ExecutionContext,
-    ) -> Result<Vec<LearningInsight>> {
-        let mut insights = Vec::new();
 
-        // Extract insights from success patterns
-        for pattern in &analysis.success_patterns {
-            insights.push(LearningInsight {
-                insight_id: uuid::Uuid::new_v4().to_string(),
-                insight_type: InsightType::SuccessFactors,
-                description: format!("Success pattern identified: {}", pattern.description),
-                evidence: pattern.conditions.clone(),
-                confidence: pattern.success_rate,
-                applicability: Applicability {
-                    context_types: vec!["similar_goals".to_string()],
-                    goal_types: vec!["analysis".to_string(), "problem_solving".to_string()],
-                    confidence_level: pattern.success_rate,
-                    generalizability: 0.7,
-                },
-                retention_value: pattern.success_rate,
-            });
-        }
-
-        // Extract insights from failure patterns
-        for pattern in &analysis.failure_patterns {
-            insights.push(LearningInsight {
-                insight_id: uuid::Uuid::new_v4().to_string(),
-                insight_type: InsightType::FailureFactors,
-                description: format!("Failure pattern identified: {}", pattern.description),
-                evidence: pattern.conditions.clone(),
-                confidence: pattern.failure_rate,
-                applicability: Applicability {
-                    context_types: vec!["similar_goals".to_string()],
-                    goal_types: vec!["analysis".to_string(), "problem_solving".to_string()],
-                    confidence_level: pattern.failure_rate,
-                    generalizability: 0.6,
-                },
-                retention_value: pattern.failure_rate * 0.8, // Slightly lower retention for failure patterns
-            });
-        }
-
-        Ok(insights)
-    }
-
-    /// Generate recommendations based on analysis and adjustments
-    async fn generate_recommendations(
-        &self,
-        analysis: &ReflectionAnalysis,
-        strategy_adjustments: &[StrategyAdjustment],
-    ) -> Result<Vec<Recommendation>> {
-        let mut recommendations = Vec::new();
-
-        // Generate immediate action recommendations
-        for adjustment in strategy_adjustments {
-            if adjustment.expected_impact == ImpactLevel::Critical {
-                recommendations.push(Recommendation {
-                    recommendation_id: uuid::Uuid::new_v4().to_string(),
-                    recommendation_type: RecommendationType::ImmediateAction,
-                    description: format!("Implement critical adjustment: {}", adjustment.description),
-                    priority: Priority::Critical,
-                    urgency: Urgency::Immediate,
-                    implementation_timeline: Duration::from_secs(300), // 5 minutes
-                    expected_benefits: vec!["Prevent further degradation".to_string()],
-                    potential_risks: vec!["Disruption to current workflow".to_string()],
-                });
-            }
-        }
-
-        // Generate learning recommendations
-        for opportunity in &analysis.learning_opportunities {
-            if opportunity.potential_impact == ImpactLevel::High {
-                recommendations.push(Recommendation {
-                    recommendation_id: uuid::Uuid::new_v4().to_string(),
-                    recommendation_type: RecommendationType::SkillDevelopment,
-                    description: format!("Pursue learning opportunity: {}", opportunity.description),
-                    priority: opportunity.priority.clone(),
-                    urgency: Urgency::Medium,
-                    implementation_timeline: Duration::from_secs(3600), // 1 hour
-                    expected_benefits: vec!["Improved capabilities".to_string(), "Better performance".to_string()],
-                    potential_risks: vec!["Time investment required".to_string()],
-                });
-            }
-        }
-
-        Ok(recommendations)
-    }
 
     /// Store learning experience for future reference
     async fn store_learning_experience(
@@ -1165,6 +1098,8 @@ impl ReflectionEngine {
                 conditions: vec!["High confidence".to_string(), "Clear objectives".to_string()],
                 actions: vec!["Systematic approach".to_string(), "Regular validation".to_string()],
                 success_rate: successful_experiences.len() as f64 / self.learning_history.len() as f64,
+                frequency: successful_experiences.len(),
+                context_factors: vec!["historical_success".to_string()],
             });
         }
 
@@ -1192,6 +1127,8 @@ impl ReflectionEngine {
                     "Enhance validation".to_string(),
                     "Seek clarification".to_string(),
                 ],
+                frequency: failed_experiences.len(),
+                context_factors: vec!["historical_failure".to_string()],
             });
         }
 
@@ -1418,6 +1355,8 @@ mod tests {
                     completeness: 0.9,
                     efficiency: 0.9,
                     maintainability: 0.8,
+                    consistency: 0.85,
+                    reliability: 0.9,
                 },
             },
             strategy_effectiveness: StrategyEffectiveness {
@@ -1436,6 +1375,11 @@ mod tests {
                 tool_effectiveness: HashMap::new(),
                 cognitive_load: 0.5,
                 resource_waste: 0.1,
+                cpu_utilization: 0.6,
+                memory_utilization: 0.4,
+                time_utilization: 0.8,
+                efficiency_score: 0.85,
+                resource_bottlenecks: vec![],
             },
         };
 

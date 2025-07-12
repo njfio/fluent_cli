@@ -82,7 +82,7 @@ pub async fn build_interactively() -> Result<()> {
         .with_prompt("Save pipeline to file")
         .interact_text()?;
     let yaml = serde_yaml::to_string(&pipeline)?;
-    std::fs::write(&file, yaml)?;
+    tokio::fs::write(&file, yaml).await?;
     println!("Pipeline saved to {}", file);
 
     if Confirm::new().with_prompt("Run pipeline now?").interact()? {

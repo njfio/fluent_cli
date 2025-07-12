@@ -1,3 +1,9 @@
+//! Core traits for the Fluent CLI system
+//!
+//! This module defines the fundamental traits that enable the plugin
+//! architecture and provide abstractions for LLM engines, file handling,
+//! and other core functionality.
+
 use crate::config::EngineConfig;
 use crate::neo4j_client::Neo4jClient;
 use crate::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
@@ -12,13 +18,48 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
+/// Trait for handling file uploads and processing
+///
+/// Provides functionality for uploading files to LLM services
+/// and processing requests that include file attachments.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use fluent_core::traits::FileUpload;
+/// use fluent_core::types::Request;
+/// use std::path::Path;
+///
+/// async fn upload_document<T: FileUpload>(uploader: &T, path: &Path) -> anyhow::Result<String> {
+///     uploader.upload_file(path).await
+/// }
+/// ```
 #[async_trait]
-
 pub trait FileUpload: Send + Sync {
+    /// Upload a file and return its identifier
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the file to upload
+    ///
+    /// # Returns
+    ///
+    /// A string identifier for the uploaded file
     fn upload_file<'a>(
         &'a self,
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a>;
+
+    /// Process a request that includes a file attachment
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The request to process
+    /// * `file_path` - Path to the file to include
+    ///
+    /// # Returns
+    ///
+    /// A response from the LLM that processed the request and file
     fn process_request_with_file<'a>(
         &'a self,
         request: &'a Request,
@@ -26,24 +67,100 @@ pub trait FileUpload: Send + Sync {
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
 }
 
+/// Core trait for LLM engine implementations
+///
+/// This trait defines the interface that all LLM engines must implement
+/// to work with the Fluent CLI system. It provides methods for executing
+/// requests, managing data, and handling files.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use fluent_core::traits::Engine;
+/// use fluent_core::types::Request;
+///
+/// async fn chat_with_engine<T: Engine>(engine: &T, message: &str) -> anyhow::Result<String> {
+///     let request = Request {
+///         flowname: "chat".to_string(),
+///         payload: message.to_string(),
+///     };
+///     let response = engine.execute(&request).await?;
+///     Ok(response.content)
+/// }
+/// ```
 #[async_trait]
 pub trait Engine: Send + Sync {
+    /// Execute a request against the LLM engine
+    ///
+    /// This is the primary method for sending requests to the LLM
+    /// and receiving responses.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The request containing the flow name and payload
+    ///
+    /// # Returns
+    ///
+    /// A response containing the generated content, usage stats, and cost
     fn execute<'a>(
         &'a self,
         request: &'a Request,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a>;
 
+    /// Upsert data into the knowledge base
+    ///
+    /// Stores conversation history, document content, or other data
+    /// for future retrieval and context.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The upsert request containing input, output, and metadata
+    ///
+    /// # Returns
+    ///
+    /// A response indicating what was processed and any errors
     fn upsert<'a>(
         &'a self,
         request: &'a UpsertRequest,
     ) -> Box<dyn Future<Output = Result<UpsertResponse>> + Send + 'a>;
 
+    /// Get the Neo4j client for graph database operations
+    ///
+    /// # Returns
+    ///
+    /// An optional reference to the Neo4j client if available
     fn get_neo4j_client(&self) -> Option<&Arc<Neo4jClient>>;
 
-    fn get_session_id(&self) -> Option<String>; // New method
+    /// Get the current session identifier
+    ///
+    /// # Returns
+    ///
+    /// An optional session ID string for tracking conversations
+    fn get_session_id(&self) -> Option<String>;
 
+    /// Extract structured content from a JSON value
+    ///
+    /// Parses LLM responses to extract structured information
+    /// like sentiment, themes, and keywords.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The JSON value to extract content from
+    ///
+    /// # Returns
+    ///
+    /// Extracted content structure if parsing succeeds
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent>;
 
+    /// Upload a file to the LLM service
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the file to upload
+    ///
+    /// # Returns
+    ///
+    /// A string identifier for the uploaded file
     fn upload_file<'a>(
         &'a self,
         file_path: &'a Path,

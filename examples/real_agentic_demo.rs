@@ -6,11 +6,11 @@ use fluent_agent::{
     context::ExecutionContext,
     goal::{Goal, GoalType},
     memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType, SqliteMemoryStore},
-    tools::{FileSystemExecutor, ToolExecutionConfig, ToolRegistry},
+    tools::ToolRegistry,
 };
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Arc;
+
 
 #[tokio::main]
 async fn main() -> Result<()> {

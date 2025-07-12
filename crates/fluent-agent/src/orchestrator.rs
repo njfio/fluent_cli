@@ -12,7 +12,7 @@ use crate::goal::{Goal, GoalResult};
 use crate::memory::MemorySystem;
 use crate::observation::ObservationProcessor;
 use crate::reasoning::{LLMReasoningEngine, ReasoningEngine};
-use crate::reflection::ReflectionEngine;
+use crate::reflection_engine::ReflectionEngine;
 use crate::state_manager::StateManager as PersistentStateManager;
 use crate::task::{Task, TaskResult};
 
@@ -40,8 +40,8 @@ pub struct AgentOrchestrator {
 /// Manages the execution state and context throughout the agent workflow
 #[allow(dead_code)]
 pub struct StateManager {
-    current_state: Arc<RwLock<AgentState>>,
-    state_history: Arc<RwLock<Vec<AgentState>>>,
+    current_state: tokio::sync::RwLock<AgentState>,
+    state_history: tokio::sync::RwLock<Vec<AgentState>>,
 }
 
 /// Current state of the agent during execution
@@ -452,11 +452,12 @@ impl AgentOrchestrator {
             next_action_plan: reasoning.next_actions.first().cloned(),
         };
 
+        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
-        state.reasoning_history.push(step);
-
-        // Update metrics
         let mut metrics = self.metrics.write().await;
+
+        // Update both while holding both locks
+        state.reasoning_history.push(step);
         metrics.total_reasoning_steps += 1;
         metrics.average_reasoning_time = (metrics.average_reasoning_time
             * (metrics.total_reasoning_steps - 1) as f64
@@ -477,11 +478,12 @@ impl AgentOrchestrator {
             duration: Some(duration),
         };
 
+        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
-        state.last_action = Some(step);
-
-        // Update metrics
         let mut metrics = self.metrics.write().await;
+
+        // Update both while holding both locks
+        state.last_action = Some(step);
         metrics.total_actions_taken += 1;
         metrics.average_action_time = (metrics.average_action_time
             * (metrics.total_actions_taken - 1) as f64
@@ -493,11 +495,12 @@ impl AgentOrchestrator {
 
     /// Record an observation for analysis and learning
     async fn record_observation(&self, observation: Observation) -> Result<()> {
+        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
-        state.observations.push(observation);
-
-        // Update metrics
         let mut metrics = self.metrics.write().await;
+
+        // Update both while holding both locks
+        state.observations.push(observation);
         metrics.total_observations_made += 1;
 
         Ok(())
@@ -577,8 +580,8 @@ impl AgentOrchestrator {
 impl StateManager {
     pub fn new() -> Self {
         Self {
-            current_state: Arc::new(RwLock::new(AgentState::default())),
-            state_history: Arc::new(RwLock::new(Vec::new())),
+            current_state: tokio::sync::RwLock::new(AgentState::default()),
+            state_history: tokio::sync::RwLock::new(Vec::new()),
         }
     }
 }

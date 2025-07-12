@@ -129,7 +129,7 @@ impl Neo4jCommand {
         let neo4j_client = Neo4jClient::new(neo4j_settings).await?;
 
         // Process input (simplified implementation)
-        let content = std::fs::read_to_string(input_path)
+        let content = tokio::fs::read_to_string(input_path).await
             .map_err(|e| anyhow!("Failed to read input file '{}': {}", input_path, e))?;
 
         println!("📝 Processing content ({} characters)", content.len());

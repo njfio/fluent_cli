@@ -284,8 +284,8 @@ mod tests {
         return_pooled_client(&config, client).await;
 
         // Check that pool stats changed
-        let final_stats = global_pool().get_stats();
-        assert!(final_stats.total_clients_created >= initial_stats.total_clients_created);
+        let final_stats = global_pool().get_stats().await;
+        assert!(final_stats.total_clients_created >= initial_stats.await.total_clients_created);
     }
 
     #[test]
