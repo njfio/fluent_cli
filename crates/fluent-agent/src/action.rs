@@ -293,7 +293,7 @@ impl ActionPlanner for IntelligentActionPlanner {
 
         // Generate alternatives if risk is high
         if matches!(plan.risk_level, RiskLevel::High | RiskLevel::Critical) {
-            plan.alternatives = self.generate_alternatives(&plan, context).await?;
+            plan.alternatives = self.generate_alternatives(&plan, context)?;
         }
 
         Ok(plan)
@@ -310,7 +310,7 @@ impl ActionPlanner for IntelligentActionPlanner {
 
 impl IntelligentActionPlanner {
     /// Generate alternative actions for high-risk plans
-    async fn generate_alternatives(
+    fn generate_alternatives(
         &self,
         plan: &ActionPlan,
         _context: &ExecutionContext,

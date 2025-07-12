@@ -61,9 +61,9 @@ pub struct OptimizedStateStore {
 impl OptimizedStateStore {
     /// Create a new optimized state store
     pub fn new(directory: PathBuf, config: StateStoreConfig) -> Result<Self> {
-        let cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(config.cache_size).unwrap(),
-        )));
+        let cache_size = NonZeroUsize::new(config.cache_size)
+            .ok_or_else(|| anyhow::anyhow!("Cache size must be greater than 0, got: {}", config.cache_size))?;
+        let cache = Arc::new(RwLock::new(LruCache::new(cache_size)));
 
         // Start background flush task
         let flush_cache = Arc::clone(&cache);

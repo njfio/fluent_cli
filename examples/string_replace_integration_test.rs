@@ -1,7 +1,7 @@
 // Comprehensive integration test for the StringReplaceEditor tool
 use anyhow::Result;
 use fluent_agent::config::ToolConfig;
-use fluent_agent::tools::{ToolExecutor, ToolRegistry};
+use fluent_agent::tools::ToolRegistry;
 use serde_json::json;
 use std::collections::HashMap;
 use tempfile::tempdir;

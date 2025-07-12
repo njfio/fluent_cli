@@ -1,0 +1,13 @@
+# Project Instructions: Codebase Audit
+
+## Step-by-Step Description
+1. Review the codebase extensively.
+2. Look for bad code.
+3. Look for incomplete concepts.
+4. Look for all things that need to be improved.
+5. Create a document called GROQ_AUDIT_7102025.md.
+
+## Updated Request - Second Audit
+1. Do another audit.
+2. Remove all outdated and resolved issues from GROQ_AUDIT_7102025.md.
+3. Update with all existing and new issues found in your extensive audit.

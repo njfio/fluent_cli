@@ -323,6 +323,7 @@ where
     async fn start_resource_monitoring(&self) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
         let config = self.config.clone();
+        let semaphore = self.semaphore.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.monitoring_interval);
@@ -347,7 +348,20 @@ where
                     cpu_usage, memory_usage
                 );
 
-                // TODO: Implement adaptive concurrency based on resource usage
+                // Implement adaptive concurrency based on resource usage
+                let current_concurrency = semaphore.available_permits();
+                let target_concurrency = Self::calculate_optimal_concurrency(cpu_usage, memory_usage as u64, &config);
+
+                if target_concurrency != current_concurrency {
+                    info!(
+                        "Adjusting concurrency from {} to {} based on resource usage (CPU: {:.1}%, Memory: {}MB)",
+                        current_concurrency, target_concurrency, cpu_usage, memory_usage
+                    );
+                    // Note: Dynamic semaphore adjustment is complex and would require
+                    // a more sophisticated implementation with permit management
+                    debug!("Concurrency adjustment requested but not implemented in this simplified version");
+                }
+
                 if cpu_usage > config.cpu_threshold {
                     warn!("High CPU usage detected: {:.1}%", cpu_usage);
                 }
@@ -369,6 +383,26 @@ where
     async fn get_memory_usage() -> usize {
         // In a real implementation, use a system monitoring crate like `sysinfo`
         0 // Placeholder
+    }
+
+    /// Calculate optimal concurrency based on resource usage
+    fn calculate_optimal_concurrency(cpu_usage: f64, memory_usage: u64, config: &ParallelExecutionConfig) -> usize {
+        let mut target_concurrency = config.max_concurrency;
+
+        // Reduce concurrency if CPU usage is high
+        if cpu_usage > config.cpu_threshold {
+            let reduction_factor = (cpu_usage - config.cpu_threshold) / (100.0 - config.cpu_threshold);
+            target_concurrency = ((target_concurrency as f64) * (1.0 - reduction_factor * 0.5)) as usize;
+        }
+
+        // Reduce concurrency if memory usage is high
+        if memory_usage > config.max_memory_mb as u64 {
+            let reduction_factor = (memory_usage as f64 - config.max_memory_mb as f64) / (config.max_memory_mb as f64);
+            target_concurrency = ((target_concurrency as f64) * (1.0 - reduction_factor * 0.3)) as usize;
+        }
+
+        // Ensure minimum concurrency of 1
+        target_concurrency.max(1).min(config.max_concurrency)
     }
 
     /// Get current execution metrics

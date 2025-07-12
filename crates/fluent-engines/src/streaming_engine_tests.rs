@@ -3,7 +3,7 @@ mod comprehensive_streaming_tests {
     use crate::streaming_engine::*;
     use fluent_core::config::{ConnectionConfig, EngineConfig};
     use fluent_core::types::Request;
-    use futures::StreamExt;
+
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -31,6 +31,7 @@ mod comprehensive_streaming_tests {
         }
     }
 
+    #[allow(dead_code)]
     fn create_test_request() -> Request {
         Request {
             flowname: "test".to_string(),
@@ -327,10 +328,11 @@ mod comprehensive_streaming_tests {
 
     #[test]
     fn test_streaming_utils_progress_callback() {
-        let mut collected_chunks = Vec::new();
+        let collected_chunks = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let collected_chunks_clone = collected_chunks.clone();
 
-        let mut callback = StreamingUtils::create_progress_callback(|chunk: &str| {
-            collected_chunks.push(chunk.to_string());
+        let mut callback = StreamingUtils::create_progress_callback(move |chunk: &str| {
+            collected_chunks_clone.lock().unwrap().push(chunk.to_string());
         });
 
         let chunk1 = StreamChunk {
@@ -354,7 +356,8 @@ mod comprehensive_streaming_tests {
         callback(chunk1).unwrap();
         callback(chunk2).unwrap();
 
-        assert_eq!(collected_chunks, vec!["Hello ", "World"]);
+        let chunks = collected_chunks.lock().unwrap();
+        assert_eq!(*chunks, vec!["Hello ", "World"]);
     }
 
     #[test]

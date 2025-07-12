@@ -355,10 +355,13 @@ impl CapabilityManager {
 
     /// Remove a session
     pub async fn remove_session(&self, session_id: &str) -> Result<()> {
+        // DEADLOCK PREVENTION: Acquire locks in consistent order
+        // Always acquire active_sessions before rate_limiters to prevent deadlock
         let mut sessions = self.active_sessions.write().await;
-        sessions.remove(session_id);
-
         let mut rate_limiters = self.rate_limiters.write().await;
+
+        // Remove from both collections while holding both locks
+        sessions.remove(session_id);
         rate_limiters.remove(session_id);
 
         Ok(())

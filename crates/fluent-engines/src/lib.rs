@@ -1,3 +1,44 @@
+//! Fluent Engines Library
+//!
+//! This crate provides implementations of various LLM engines for the Fluent CLI system.
+//! It includes support for multiple providers like OpenAI, Anthropic, Google Gemini,
+//! and many others, all implementing the common `Engine` trait.
+//!
+//! # Supported Engines
+//!
+//! - **OpenAI** - GPT models including GPT-4, GPT-3.5-turbo
+//! - **Anthropic** - Claude models including Claude-3
+//! - **Google Gemini** - Gemini Pro and other Google AI models
+//! - **Mistral** - Mistral AI models
+//! - **Cohere** - Cohere language models
+//! - **Perplexity** - Perplexity AI models
+//! - **Groq** - High-speed inference with Groq LPU
+//! - **Stability AI** - Image generation models
+//! - **Leonardo AI** - Creative AI models
+//! - And many more...
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use fluent_engines::{create_engine, EngineType};
+//! use fluent_core::config::EngineConfig;
+//! use fluent_core::types::Request;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let config = EngineConfig::default();
+//! let engine = create_engine(EngineType::OpenAI, &config)?;
+//!
+//! let request = Request {
+//!     flowname: "chat".to_string(),
+//!     payload: "Hello, how are you?".to_string(),
+//! };
+//!
+//! let response = engine.execute(&request).await?;
+//! println!("Response: {}", response.content);
+//! # Ok(())
+//! # }
+//! ```
+
 use log::debug;
 use std::str::FromStr;
 
@@ -36,6 +77,7 @@ pub mod mistral;
 pub mod openai;
 pub mod perplexity;
 pub mod pipeline_executor;
+pub mod pipeline;
 pub mod stabilityai;
 pub mod webhook;
 

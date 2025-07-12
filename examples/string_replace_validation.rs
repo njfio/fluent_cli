@@ -72,7 +72,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
     params.insert("occurrence".to_string(), json!("First"));
     params.insert("create_backup".to_string(), json!(true));
 
-    let result = registry.execute_tool("string_replace", &params).await?;
+    let _result = registry.execute_tool("string_replace", &params).await?;
     println!("   ✅ Debug configuration updated");
 
     // Validation Test 2: Update all println! to use a logging macro
@@ -84,7 +84,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
     params.insert("occurrence".to_string(), json!("All"));
     params.insert("create_backup".to_string(), json!(false));
 
-    let result = registry.execute_tool("string_replace", &params).await?;
+    let _result = registry.execute_tool("string_replace", &params).await?;
     println!("   ✅ All println! statements updated to log::info!");
 
     // Validation Test 3: Update function signature with line range
@@ -97,7 +97,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
     params.insert("line_range".to_string(), json!([18, 25])); // Broader range to catch process_data function
     params.insert("create_backup".to_string(), json!(false));
 
-    let result = registry.execute_tool("string_replace", &params).await?;
+    let _result = registry.execute_tool("string_replace", &params).await?;
     println!("   ✅ Function signature updated in specified range");
 
     // Validation Test 4: Dry run preview of a major change
@@ -109,7 +109,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
     params.insert("occurrence".to_string(), json!("All"));
     params.insert("dry_run".to_string(), json!(true));
 
-    let result = registry.execute_tool("string_replace", &params).await?;
+    let _result = registry.execute_tool("string_replace", &params).await?;
     println!("   ✅ Dry run completed - no changes made to file");
 
     // Show final file content

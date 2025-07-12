@@ -225,8 +225,11 @@ impl StreamingEngine for OpenAIStreaming {
 
                         if !buffer.ends_with('\n') && !lines.is_empty() {
                             // Keep the last incomplete line in buffer
-                            let last_line = lines.last().unwrap();
-                            buffer = last_line.to_string();
+                            if let Some(last_line) = lines.last() {
+                                buffer = last_line.to_string();
+                            } else {
+                                buffer.clear();
+                            }
 
                             // Process all but the last line
                             for line in &lines[..lines.len()-1] {
@@ -404,8 +407,11 @@ impl StreamingEngine for AnthropicStreaming {
 
                         if !buffer.ends_with('\n') && !lines.is_empty() {
                             // Keep the last incomplete line in buffer
-                            let last_line = lines.last().unwrap();
-                            buffer = last_line.to_string();
+                            if let Some(last_line) = lines.last() {
+                                buffer = last_line.to_string();
+                            } else {
+                                buffer.clear();
+                            }
 
                             // Process all but the last line
                             for line in &lines[..lines.len()-1] {

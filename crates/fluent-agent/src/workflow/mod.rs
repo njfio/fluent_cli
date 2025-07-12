@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 pub mod engine;
@@ -352,10 +352,65 @@ pub mod utils {
             }
         }
 
-        // Check for circular dependencies (simplified check)
-        // TODO: Implement proper topological sort validation
+        // Check for circular dependencies using topological sort
+        validate_no_cycles(definition)?;
 
         Ok(())
+    }
+
+    /// Validate that the workflow has no circular dependencies using DFS
+    fn validate_no_cycles(definition: &WorkflowDefinition) -> Result<()> {
+        use std::collections::{HashMap, HashSet};
+
+        // Build adjacency list from dependencies
+        let mut graph: HashMap<String, Vec<String>> = HashMap::new();
+        for step in &definition.steps {
+            graph.insert(step.id.clone(), step.depends_on.clone().unwrap_or_default());
+        }
+
+        // Track visited nodes and recursion stack
+        let mut visited = HashSet::new();
+        let mut rec_stack = HashSet::new();
+
+        // Check each node for cycles
+        for step in &definition.steps {
+            if !visited.contains(&step.id) {
+                if has_cycle_dfs(&step.id, &graph, &mut visited, &mut rec_stack)? {
+                    return Err(anyhow::anyhow!(
+                        "Circular dependency detected in workflow starting from step: {}",
+                        step.id
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// DFS helper to detect cycles
+    fn has_cycle_dfs(
+        node: &str,
+        graph: &HashMap<String, Vec<String>>,
+        visited: &mut HashSet<String>,
+        rec_stack: &mut HashSet<String>,
+    ) -> Result<bool> {
+        visited.insert(node.to_string());
+        rec_stack.insert(node.to_string());
+
+        if let Some(neighbors) = graph.get(node) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    if has_cycle_dfs(neighbor, graph, visited, rec_stack)? {
+                        return Ok(true);
+                    }
+                } else if rec_stack.contains(neighbor) {
+                    return Ok(true); // Back edge found - cycle detected
+                }
+            }
+        }
+
+        rec_stack.remove(node);
+        Ok(false)
     }
 }
 

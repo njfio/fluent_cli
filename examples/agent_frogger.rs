@@ -4,10 +4,9 @@ use crossterm::{
     execute,
     style::{Color, Print, SetForegroundColor},
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
-    Result,
 };
 use std::{
-    io::stdout,
+    io::{stdout, Result},
     time::{Duration, Instant},
 };
 

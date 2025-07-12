@@ -39,7 +39,11 @@ prometheus = { workspace = true }
 # Additional utilities
 base64 = { workspace = true }
 thiserror = { workspace = true }
+bincode = "1.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio-util = "0.7"
+tokio-stream = "0.1"
+futures = { workspace = true }
 

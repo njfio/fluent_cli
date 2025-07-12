@@ -629,7 +629,7 @@ impl ModularPipelineExecutor {
         Duration::from_millis(delay_ms.min(retry_config.max_delay_ms))
     }
 
-    async fn update_pipeline_metrics(&self, result: &Result<ExecutionContext>) -> () {
+    async fn update_pipeline_metrics(&self, result: &Result<ExecutionContext>) {
         let mut metrics = self.metrics.write().await;
         metrics.total_pipelines += 1;
 
@@ -639,7 +639,7 @@ impl ModularPipelineExecutor {
         }
     }
 
-    async fn update_step_metrics(&self, step_type: &str, success: bool, attempts: u32) -> () {
+    async fn update_step_metrics(&self, step_type: &str, success: bool, attempts: u32) {
         let mut metrics = self.metrics.write().await;
         metrics.total_steps += 1;
 

@@ -138,14 +138,17 @@ impl StateStore for FileStateStore {
 }
 
 /// In-memory state store for testing and temporary storage
+#[derive(Clone)]
 pub struct MemoryStateStore {
     contexts: Arc<RwLock<HashMap<String, ExecutionContext>>>,
+    pipeline_states: Arc<RwLock<HashMap<String, crate::pipeline_executor::PipelineState>>>,
 }
 
 impl MemoryStateStore {
     pub fn new() -> Self {
         Self {
             contexts: Arc::new(RwLock::new(HashMap::new())),
+            pipeline_states: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -167,6 +170,21 @@ impl StateStore for MemoryStateStore {
         let mut contexts = self.contexts.write().await;
         contexts.remove(run_id);
         Ok(())
+    }
+}
+
+// Implement the pipeline_executor::StateStore trait as well
+#[async_trait]
+impl crate::pipeline_executor::StateStore for MemoryStateStore {
+    async fn save_state(&self, pipeline_name: &str, state: &crate::pipeline_executor::PipelineState) -> anyhow::Result<()> {
+        let mut states = self.pipeline_states.write().await;
+        states.insert(pipeline_name.to_string(), state.clone());
+        Ok(())
+    }
+
+    async fn load_state(&self, pipeline_name: &str) -> anyhow::Result<Option<crate::pipeline_executor::PipelineState>> {
+        let states = self.pipeline_states.read().await;
+        Ok(states.get(pipeline_name).cloned())
     }
 }
 

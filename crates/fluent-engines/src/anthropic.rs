@@ -13,6 +13,7 @@ use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
+use tokio::time::{timeout, Duration};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
@@ -180,17 +181,25 @@ impl Engine for AnthropicEngine {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let res = self
-                .client
-                .post(&url)
-                .header("x-api-key", auth_token)
-                .header("anthropic-version", "2023-06-01")
-                .header("content-type", "application/json")
-                .json(&payload)
-                .send()
-                .await?;
+            let res = timeout(
+                Duration::from_secs(300), // 5 minute timeout for API calls
+                self.client
+                    .post(&url)
+                    .header("x-api-key", auth_token)
+                    .header("anthropic-version", "2023-06-01")
+                    .header("content-type", "application/json")
+                    .json(&payload)
+                    .send()
+            )
+            .await
+            .map_err(|_| anyhow!("Anthropic API request timed out after 5 minutes"))??;
 
-            let response_body = res.json::<serde_json::Value>().await?;
+            let response_body = timeout(
+                Duration::from_secs(30), // 30 second timeout for response parsing
+                res.json::<serde_json::Value>()
+            )
+            .await
+            .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
             debug!("Response: {:?}", response_body);
 
             if let Some(error) = response_body.get("error") {
@@ -272,12 +281,23 @@ impl Engine for AnthropicEngine {
         file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            // Read and encode the file
-            let mut file = File::open(file_path).await.context("Failed to open file")?;
+            // Read and encode the file with timeout
+            let mut file = timeout(
+                Duration::from_secs(30), // 30 second timeout for file opening
+                File::open(file_path)
+            )
+            .await
+            .map_err(|_| anyhow!("File open timed out after 30 seconds"))?
+            .context("Failed to open file")?;
+
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)
-                .await
-                .context("Failed to read file")?;
+            timeout(
+                Duration::from_secs(60), // 1 minute timeout for file reading
+                file.read_to_end(&mut buffer)
+            )
+            .await
+            .map_err(|_| anyhow!("File read timed out after 1 minute"))?
+            .context("Failed to read file")?;
             let base64_image = Base64.encode(&buffer);
 
             // Guess the MIME type of the file
@@ -323,17 +343,25 @@ impl Engine for AnthropicEngine {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
-            let response = self
-                .client
-                .post(&url)
-                .header("x-api-key", auth_token)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .json(&payload)
-                .send()
-                .await?;
+            let response = timeout(
+                Duration::from_secs(300), // 5 minute timeout for vision API calls
+                self.client
+                    .post(&url)
+                    .header("x-api-key", auth_token)
+                    .header("anthropic-version", "2023-06-01")
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+            )
+            .await
+            .map_err(|_| anyhow!("Vision API request timed out after 5 minutes"))??;
 
-            let response_body = response.json::<serde_json::Value>().await?;
+            let response_body = timeout(
+                Duration::from_secs(30), // 30 second timeout for response parsing
+                response.json::<serde_json::Value>()
+            )
+            .await
+            .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
 
             // Debug print the response
             debug!("Anthropic Response: {:?}", response_body);

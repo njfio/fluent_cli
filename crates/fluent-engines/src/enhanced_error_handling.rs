@@ -570,6 +570,7 @@ impl Clone for EnhancedError {
             FluentError::Cost(e) => FluentError::Internal(format!("Cost error: {}", e)),
             FluentError::Storage(e) => FluentError::Internal(format!("Storage error: {}", e)),
             FluentError::Cache(e) => FluentError::Internal(format!("Cache error: {}", e)),
+            FluentError::LockTimeout(s) => FluentError::LockTimeout(s.clone()),
             FluentError::Internal(s) => FluentError::Internal(s.clone()),
         };
 

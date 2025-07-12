@@ -2,6 +2,7 @@ use super::{
     AuthConfig, AuthType, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpTransport,
     RetryConfig, TimeoutConfig,
 };
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -19,11 +20,11 @@ pub struct WebSocketTransport {
     auth_config: Option<AuthConfig>,
     timeout_config: TimeoutConfig,
     retry_config: RetryConfig,
-    connection: Arc<Mutex<Option<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>>>,
-    response_handlers: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<JsonRpcResponse>>>>,
-    notification_tx: Arc<Mutex<Option<mpsc::UnboundedSender<JsonRpcNotification>>>>,
+    connection: Arc<tokio::sync::Mutex<Option<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>>>,
+    response_handlers: Arc<tokio::sync::RwLock<HashMap<String, mpsc::UnboundedSender<JsonRpcResponse>>>>,
+    notification_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<JsonRpcNotification>>>>,
     is_connected: Arc<std::sync::atomic::AtomicBool>,
-    message_tx: Arc<Mutex<Option<mpsc::UnboundedSender<Message>>>>,
+    message_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<Message>>>>,
 }
 
 impl WebSocketTransport {
@@ -63,24 +64,59 @@ impl WebSocketTransport {
             auth_config,
             timeout_config,
             retry_config,
-            connection: Arc::new(Mutex::new(None)),
-            response_handlers: Arc::new(RwLock::new(HashMap::new())),
-            notification_tx: Arc::new(Mutex::new(None)),
+            connection: Arc::new(tokio::sync::Mutex::new(None)),
+            response_handlers: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            notification_tx: Arc::new(tokio::sync::Mutex::new(None)),
             is_connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            message_tx: Arc::new(Mutex::new(None)),
+            message_tx: Arc::new(tokio::sync::Mutex::new(None)),
         };
 
         transport.connect().await?;
         Ok(transport)
     }
 
+    /// Extract authentication token from URL query parameters or headers
+    fn extract_auth_from_url(&self, url: &Url) -> Result<Option<String>> {
+        // Check for token in query parameters
+        for (key, value) in url.query_pairs() {
+            if key == "token" || key == "auth" || key == "access_token" {
+                return Ok(Some(value.to_string()));
+            }
+        }
+
+        // Check auth config for bearer token
+        if let Some(auth) = &self.auth_config {
+            if let AuthType::Bearer = auth.auth_type {
+                if let Some(token) = auth.credentials.get("token") {
+                    return Ok(Some(token.clone()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     async fn connect(&self) -> Result<()> {
         let url = Url::parse(&self.ws_url)?;
 
-        // TODO: Add custom headers support for authentication
+        // Extract authentication before converting URL to request
+        let auth_token = self.extract_auth_from_url(&url)?;
+
+        // Create request with authentication headers if needed
+        let mut request = url.into_client_request()?;
+
+        // Add authentication headers if available
+        if let Some(auth) = auth_token {
+            request.headers_mut().insert(
+                "Authorization",
+                format!("Bearer {}", auth).parse()
+                    .map_err(|e| anyhow::anyhow!("Invalid auth header: {}", e))?
+            );
+        }
+
         let (ws_stream, _) = timeout(
             Duration::from_millis(self.timeout_config.connect_timeout_ms),
-            connect_async(url),
+            connect_async(request),
         )
         .await??;
 
