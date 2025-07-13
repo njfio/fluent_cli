@@ -396,22 +396,174 @@ impl<'a> DocumentEnrichmentManager<'a> {
     }
 
     // Placeholder methods for actual AI operations
-    fn extract_themes_and_keywords(&self, _content: &str, _voyage_config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
-        // TODO: Implement actual theme and keyword extraction
-        Ok((vec!["theme1".to_string()], vec!["keyword1".to_string()]))
+    fn extract_themes_and_keywords(&self, content: &str, _voyage_config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
+        // Basic theme and keyword extraction using simple text analysis
+        // In production, this would integrate with VoyageAI or other NLP services
+
+        let words: Vec<&str> = content
+            .split_whitespace()
+            .filter(|word| word.len() > 3)
+            .collect();
+
+        // Extract potential keywords (words that appear frequently)
+        let mut word_counts = std::collections::HashMap::new();
+        for word in &words {
+            let clean_word = word.to_lowercase()
+                .chars()
+                .filter(|c| c.is_alphabetic())
+                .collect::<String>();
+            if clean_word.len() > 3 {
+                *word_counts.entry(clean_word).or_insert(0) += 1;
+            }
+        }
+
+        let mut keywords: Vec<String> = word_counts
+            .into_iter()
+            .filter(|(_, count)| *count > 1)
+            .map(|(word, _)| word)
+            .take(10)
+            .collect();
+        keywords.sort();
+
+        // Extract basic themes based on content patterns
+        let mut themes = Vec::new();
+        let content_lower = content.to_lowercase();
+
+        if content_lower.contains("error") || content_lower.contains("fail") || content_lower.contains("exception") {
+            themes.push("error_handling".to_string());
+        }
+        if content_lower.contains("config") || content_lower.contains("setting") || content_lower.contains("parameter") {
+            themes.push("configuration".to_string());
+        }
+        if content_lower.contains("test") || content_lower.contains("spec") || content_lower.contains("assert") {
+            themes.push("testing".to_string());
+        }
+        if content_lower.contains("security") || content_lower.contains("auth") || content_lower.contains("permission") {
+            themes.push("security".to_string());
+        }
+        if content_lower.contains("performance") || content_lower.contains("optimize") || content_lower.contains("cache") {
+            themes.push("performance".to_string());
+        }
+
+        if themes.is_empty() {
+            themes.push("general".to_string());
+        }
+
+        debug!("Extracted {} themes and {} keywords from content", themes.len(), keywords.len());
+        Ok((themes, keywords))
     }
 
-    async fn extract_clusters(&self, _content: &str, _all_documents: &[String]) -> Result<Vec<String>> {
-        // TODO: Implement actual clustering
-        Ok(vec!["cluster1".to_string()])
+    async fn extract_clusters(&self, content: &str, all_documents: &[String]) -> Result<Vec<String>> {
+        // Basic clustering using simple similarity analysis
+        // In production, this would use proper clustering algorithms like K-means or DBSCAN
+
+        let mut clusters = Vec::new();
+        let content_words: std::collections::HashSet<String> = content
+            .split_whitespace()
+            .map(|w| w.to_lowercase().chars().filter(|c| c.is_alphabetic()).collect())
+            .filter(|w: &String| w.len() > 3)
+            .collect();
+
+        // Find similar documents based on word overlap
+        for (i, doc) in all_documents.iter().enumerate() {
+            let doc_words: std::collections::HashSet<String> = doc
+                .split_whitespace()
+                .map(|w| w.to_lowercase().chars().filter(|c| c.is_alphabetic()).collect())
+                .filter(|w: &String| w.len() > 3)
+                .collect();
+
+            let intersection: std::collections::HashSet<_> = content_words.intersection(&doc_words).collect();
+            let union: std::collections::HashSet<_> = content_words.union(&doc_words).collect();
+
+            if !union.is_empty() {
+                let similarity = intersection.len() as f64 / union.len() as f64;
+                if similarity > 0.3 {
+                    clusters.push(format!("cluster_{}", i % 5)); // Group into 5 clusters
+                }
+            }
+        }
+
+        if clusters.is_empty() {
+            clusters.push("unclustered".to_string());
+        }
+
+        clusters.sort();
+        clusters.dedup();
+
+        debug!("Assigned content to {} clusters", clusters.len());
+        Ok(clusters)
     }
 
-    async fn analyze_sentiment(&self, _content: &str) -> Result<SentimentAnalysis> {
-        // TODO: Implement actual sentiment analysis
+    async fn analyze_sentiment(&self, content: &str) -> Result<SentimentAnalysis> {
+        // Basic sentiment analysis using simple word-based scoring
+        // In production, this would use proper sentiment analysis models
+
+        let positive_words = [
+            "good", "great", "excellent", "amazing", "wonderful", "fantastic", "awesome",
+            "perfect", "success", "successful", "working", "fixed", "solved", "improved",
+            "better", "best", "love", "like", "happy", "pleased", "satisfied", "efficient"
+        ];
+
+        let negative_words = [
+            "bad", "terrible", "awful", "horrible", "worst", "hate", "dislike", "angry",
+            "frustrated", "broken", "failed", "error", "problem", "issue", "bug", "crash",
+            "slow", "inefficient", "difficult", "hard", "impossible", "wrong", "incorrect"
+        ];
+
+        let content_lower = content.to_lowercase();
+        let words: Vec<&str> = content_lower
+            .split_whitespace()
+            .collect();
+
+        let mut positive_score = 0;
+        let mut negative_score = 0;
+        let mut total_words = 0;
+
+        for word in words {
+            let clean_word = word.chars()
+                .filter(|c| c.is_alphabetic())
+                .collect::<String>();
+
+            if clean_word.len() > 2 {
+                total_words += 1;
+
+                if positive_words.contains(&clean_word.as_str()) {
+                    positive_score += 1;
+                } else if negative_words.contains(&clean_word.as_str()) {
+                    negative_score += 1;
+                }
+            }
+        }
+
+        // Calculate sentiment score between 0.0 (very negative) and 1.0 (very positive)
+        let score = if total_words == 0 {
+            0.5 // Neutral for empty content
+        } else {
+            let net_sentiment = positive_score as f64 - negative_score as f64;
+            let max_possible = total_words as f64;
+
+            // Normalize to 0.0-1.0 range
+            0.5 + (net_sentiment / max_possible) * 0.5
+        };
+
+        let score = score.max(0.0).min(1.0);
+
+        // Determine label and confidence
+        let (label, confidence) = if score > 0.7 {
+            ("positive".to_string(), 0.8)
+        } else if score < 0.3 {
+            ("negative".to_string(), 0.8)
+        } else {
+            ("neutral".to_string(), 0.6)
+        };
+
+        debug!("Analyzed sentiment: {} (score: {}, positive: {}, negative: {}, total: {})",
+               label, score, positive_score, negative_score, total_words);
+
         Ok(SentimentAnalysis {
-            score: 0.5,
-            label: "neutral".to_string(),
-            confidence: 0.8,
+            score,
+            label,
+            confidence,
         })
     }
 

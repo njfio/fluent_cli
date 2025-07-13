@@ -230,16 +230,30 @@ impl EngineCommand {
 
         // Create engine instance
         match create_engine(engine_config).await {
-            Ok(_engine) => {
+            Ok(engine) => {
                 println!("✅ Engine '{}' is available and configured correctly", engine_name);
 
-                // TODO: Add actual connectivity test by making a simple request
-                // let test_request = Request {
-                //     flowname: "test".to_string(),
-                //     payload: "Hello, this is a test.".to_string(),
-                // };
-                // let response = engine.execute(&test_request).await?;
-                // println!("Test response: {}", response.content);
+                // Perform actual connectivity test
+                println!("🔗 Testing connectivity to {} API...", engine_name);
+                let test_request = Request {
+                    flowname: "connectivity_test".to_string(),
+                    payload: "Test connectivity - please respond with 'OK'".to_string(),
+                };
+
+                match Pin::from(engine.execute(&test_request)).await {
+                    Ok(response) => {
+                        println!("✅ Connectivity test successful!");
+                        println!("📝 Test response: {}", response.content.chars().take(100).collect::<String>());
+                        if response.content.len() > 100 {
+                            println!("   ... (truncated)");
+                        }
+                    }
+                    Err(e) => {
+                        println!("⚠️  Engine created but connectivity test failed: {}", e);
+                        println!("🔧 This might indicate API key issues or network problems");
+                        return Err(anyhow!("Connectivity test failed: {}", e));
+                    }
+                }
             }
             Err(e) => {
                 println!("❌ Engine '{}' test failed: {}", engine_name, e);

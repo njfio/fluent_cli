@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
+use std::env;
 
 pub mod capability;
 
@@ -346,7 +347,12 @@ impl Default for SecurityPolicy {
             restrictions: SecurityRestrictions {
                 max_file_size: 100 * 1024 * 1024,             // 100MB
                 max_memory_usage: 1024 * 1024 * 1024,         // 1GB
-                max_execution_time: Duration::from_secs(300), // 5 minutes
+                max_execution_time: Duration::from_secs(
+                    env::var("FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(300)
+                ), // Default: 5 minutes, configurable via FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS
                 allowed_file_extensions: ["txt", "json", "yaml", "md"]
                     .iter()
                     .map(|s| s.to_string())
@@ -409,6 +415,101 @@ impl Default for SecurityPolicy {
                 mount_points: vec![],
             },
         }
+    }
+}
+
+impl SecurityPolicy {
+    /// Load security configuration from environment variables
+    /// This allows runtime configuration of security settings for production deployments
+    ///
+    /// ⚠️  SECURITY WARNING: Environment variable configuration can be dangerous if not properly secured.
+    /// Ensure that:
+    /// - Environment variables are set by trusted processes only
+    /// - Values are validated and sanitized
+    /// - Sensitive settings are not exposed in process lists or logs
+    /// - Default values provide secure fallbacks
+    ///
+    /// Environment Variables:
+    /// - FLUENT_SECURITY_SANDBOX_ENABLED: Enable/disable sandboxing (default: true)
+    /// - FLUENT_SECURITY_MAX_MEMORY: Maximum memory usage in bytes
+    /// - FLUENT_SECURITY_MAX_CPU_PERCENT: Maximum CPU usage percentage
+    /// - FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS: Maximum execution time
+    /// - FLUENT_SECURITY_AUDIT_ENABLED: Enable audit logging (default: true)
+    /// - FLUENT_SECURITY_BLOCKED_SYSCALLS: Comma-separated list of blocked system calls
+    pub fn from_environment() -> Self {
+        let mut config = Self::default();
+
+        // Sandbox configuration from environment
+        if let Ok(enabled) = env::var("FLUENT_SECURITY_SANDBOX_ENABLED") {
+            config.sandbox_config.enabled = enabled.parse().unwrap_or(true);
+        }
+
+        if let Ok(max_memory) = env::var("FLUENT_SECURITY_MAX_MEMORY") {
+            if let Ok(memory_bytes) = max_memory.parse::<u64>() {
+                config.sandbox_config.resource_limits.max_memory = memory_bytes;
+            }
+        }
+
+        if let Ok(max_cpu) = env::var("FLUENT_SECURITY_MAX_CPU_PERCENT") {
+            if let Ok(cpu_percent) = max_cpu.parse::<f64>() {
+                config.sandbox_config.resource_limits.max_cpu_percent = cpu_percent;
+            }
+        }
+
+        if let Ok(max_disk) = env::var("FLUENT_SECURITY_MAX_DISK_SPACE") {
+            if let Ok(disk_bytes) = max_disk.parse::<u64>() {
+                config.sandbox_config.resource_limits.max_disk_space = disk_bytes;
+            }
+        }
+
+        if let Ok(max_processes) = env::var("FLUENT_SECURITY_MAX_PROCESSES") {
+            if let Ok(processes) = max_processes.parse::<u32>() {
+                config.sandbox_config.resource_limits.max_processes = processes;
+            }
+        }
+
+        // Audit configuration from environment
+        if let Ok(audit_enabled) = env::var("FLUENT_SECURITY_AUDIT_ENABLED") {
+            config.audit_config.enabled = audit_enabled.parse().unwrap_or(true);
+        }
+
+        if let Ok(retention_days) = env::var("FLUENT_SECURITY_AUDIT_RETENTION_DAYS") {
+            if let Ok(days) = retention_days.parse::<u32>() {
+                config.audit_config.retention_days = days;
+            }
+        }
+
+        if let Ok(encryption_enabled) = env::var("FLUENT_SECURITY_AUDIT_ENCRYPTION") {
+            config.audit_config.encryption_enabled = encryption_enabled.parse().unwrap_or(false);
+        }
+
+        if let Ok(log_file) = env::var("FLUENT_SECURITY_AUDIT_LOG_FILE") {
+            config.audit_config.log_destinations = vec![AuditDestination::File { path: log_file }];
+        }
+
+        // Alert thresholds from environment
+        if let Ok(failed_attempts) = env::var("FLUENT_SECURITY_ALERT_FAILED_ATTEMPTS") {
+            if let Ok(attempts) = failed_attempts.parse::<u32>() {
+                config.audit_config.alert_thresholds.failed_attempts_per_minute = attempts;
+            }
+        }
+
+        if let Ok(suspicious_score) = env::var("FLUENT_SECURITY_ALERT_SUSPICIOUS_SCORE") {
+            if let Ok(score) = suspicious_score.parse::<u32>() {
+                config.audit_config.alert_thresholds.suspicious_activity_score = score;
+            }
+        }
+
+        // Blocked syscalls from environment (comma-separated)
+        if let Ok(blocked_syscalls) = env::var("FLUENT_SECURITY_BLOCKED_SYSCALLS") {
+            config.sandbox_config.blocked_syscalls = blocked_syscalls
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+
+        config
     }
 }
 

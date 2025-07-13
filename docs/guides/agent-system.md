@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Fluent CLI Agent System provides production-ready agentic capabilities with a complete ReAct (Reasoning, Acting, Observing) loop implementation. The system is designed for secure, reliable, and extensible autonomous task execution.
+The Fluent CLI Agent System provides functional agentic capabilities with a complete ReAct (Reasoning, Acting, Observing) loop implementation. The system is designed for secure, reliable, and extensible autonomous task execution.
+
+⚠️  **Development Status**: While the core functionality is stable and secure, thorough testing in your specific environment is recommended before production deployment.
 
 ## Architecture
 

@@ -1,4 +1,7 @@
-// Production-ready MCP client implementation
+// MCP client implementation (Development Stage)
+//
+// ⚠️  DEVELOPMENT STATUS: This client implementation provides core MCP functionality
+// but should be thoroughly tested in your environment before production use.
 
 use super::error::McpError;
 use super::config::ClientConfig;
@@ -12,7 +15,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Mutex};
 
-/// Production-ready MCP client manager
+/// MCP client manager (Development Stage)
+///
+/// ⚠️  DEVELOPMENT STATUS: This client manager provides core functionality
+/// but requires thorough testing before production deployment.
 pub struct ProductionMcpClientManager {
     clients: Arc<RwLock<HashMap<String, Arc<ProductionMcpClient>>>>,
     config: ClientConfig,

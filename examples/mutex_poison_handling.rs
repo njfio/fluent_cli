@@ -1,5 +1,5 @@
 // Comprehensive mutex poison handling example
-use fluent_core::error::{FluentError, PoisonHandlingConfig};
+use fluent_core::error::{FluentError, PoisonHandlingConfig, PoisonRecoveryStrategy, ThreadSafeErrorHandler};
 use fluent_core::{safe_lock, safe_lock_with_config, safe_lock_with_default, safe_lock_with_retry, poison_resistant_operation};
 use std::sync::{Arc, Mutex};
 use std::thread;

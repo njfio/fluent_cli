@@ -1,3 +1,34 @@
+//! # Fluent Agent - Advanced Agentic Framework
+//!
+//! This crate provides advanced agentic capabilities for the Fluent CLI system,
+//! including reasoning engines, action planning, memory systems, and Model Context Protocol (MCP) integration.
+//!
+//! ## ⚠️ Development Status
+//!
+//! This framework is under active development. While core functionality is stable,
+//! some advanced features are experimental and should be thoroughly tested before production use.
+//!
+//! ## 🔒 Security Considerations
+//!
+//! This crate includes security-sensitive components:
+//! - Command execution with validation and sandboxing
+//! - File system operations with permission controls
+//! - MCP client/server implementations with transport security
+//! - Memory systems with data persistence
+//!
+//! Always review security configurations before deployment and follow the security
+//! guidelines provided in individual module documentation.
+//!
+//! ## 🏗️ Architecture
+//!
+//! The agent framework is built around several core components:
+//! - **Reasoning Engine**: LLM-powered decision making
+//! - **Action Planning**: Task decomposition and execution planning
+//! - **Memory System**: Persistent storage for agent state and learning
+//! - **Observation Processing**: Environment feedback analysis
+//! - **Security Framework**: Comprehensive security controls and validation
+//! - **MCP Integration**: Model Context Protocol client and server support
+
 use anyhow::{anyhow, Result};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;

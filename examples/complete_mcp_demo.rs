@@ -311,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resource_manager_initialization() {
-        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap());
+        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap());
         let resource_manager = McpResourceManager::new(memory_system);
         
         resource_manager.initialize_standard_resources().await.unwrap();

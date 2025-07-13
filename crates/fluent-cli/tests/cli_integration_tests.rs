@@ -99,7 +99,7 @@ fn test_engine_configuration() -> Result<()> {
     let engine_config = EngineConfig {
         name: "test_openai".to_string(),
         engine_type: EngineType::OpenAI,
-        api_key: Some("sk-test123".to_string()),
+        api_key: Some("test-api-key-placeholder".to_string()),
         base_url: None,
         model: "gpt-4".to_string(),
         max_tokens: 2000,

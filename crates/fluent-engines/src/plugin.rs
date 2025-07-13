@@ -216,8 +216,11 @@ pub trait EnginePlugin: Send + Sync {
 /// ✅ Comprehensive security testing included
 ///
 /// The previous FFI-based system has been completely replaced with this
-/// secure WebAssembly-based architecture that provides production-ready
-/// security guarantees while maintaining performance and flexibility.
+/// secure WebAssembly-based architecture that provides strong security
+/// foundations while maintaining performance and flexibility.
+///
+/// ⚠️  Note: While this implementation includes comprehensive security measures,
+/// thorough testing in your specific environment is recommended before production use.
 
 /// Secure plugin factory for creating engines from validated plugins
 pub struct SecurePluginFactory {

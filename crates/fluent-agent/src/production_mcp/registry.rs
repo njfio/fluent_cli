@@ -1,4 +1,7 @@
-// Production-ready MCP tool and resource registry
+// MCP tool and resource registry (Development Stage)
+//
+// ⚠️  DEVELOPMENT STATUS: This registry implementation is functional but under active development.
+// Consider thorough testing before production deployment.
 
 
 

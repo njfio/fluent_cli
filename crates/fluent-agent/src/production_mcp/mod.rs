@@ -1,5 +1,15 @@
-// Production-ready MCP implementation for Fluent CLI
-// This module provides a comprehensive, production-ready implementation of the Model Context Protocol
+// MCP implementation for Fluent CLI (Development Stage)
+// This module provides an implementation of the Model Context Protocol
+//
+// ⚠️  DEVELOPMENT STATUS: This implementation is under active development
+// and should be considered experimental. While functional for basic use cases,
+// it may require additional testing and hardening before production deployment.
+//
+// For production use, consider:
+// - Comprehensive integration testing with your specific MCP servers
+// - Performance testing under expected load conditions
+// - Security review of transport and authentication mechanisms
+// - Monitoring and alerting integration
 
 pub mod error;
 pub mod client;
