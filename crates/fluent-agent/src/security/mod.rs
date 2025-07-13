@@ -421,6 +421,21 @@ impl Default for SecurityPolicy {
 impl SecurityPolicy {
     /// Load security configuration from environment variables
     /// This allows runtime configuration of security settings for production deployments
+    ///
+    /// ⚠️  SECURITY WARNING: Environment variable configuration can be dangerous if not properly secured.
+    /// Ensure that:
+    /// - Environment variables are set by trusted processes only
+    /// - Values are validated and sanitized
+    /// - Sensitive settings are not exposed in process lists or logs
+    /// - Default values provide secure fallbacks
+    ///
+    /// Environment Variables:
+    /// - FLUENT_SECURITY_SANDBOX_ENABLED: Enable/disable sandboxing (default: true)
+    /// - FLUENT_SECURITY_MAX_MEMORY: Maximum memory usage in bytes
+    /// - FLUENT_SECURITY_MAX_CPU_PERCENT: Maximum CPU usage percentage
+    /// - FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS: Maximum execution time
+    /// - FLUENT_SECURITY_AUDIT_ENABLED: Enable audit logging (default: true)
+    /// - FLUENT_SECURITY_BLOCKED_SYSCALLS: Comma-separated list of blocked system calls
     pub fn from_environment() -> Self {
         let mut config = Self::default();
 

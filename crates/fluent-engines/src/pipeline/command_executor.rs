@@ -18,15 +18,34 @@ use std::collections::HashSet;
 pub struct CommandExecutor;
 
 /// Security configuration for command execution
+///
+/// ⚠️  SECURITY WARNING: Command execution poses significant security risks.
+/// Misconfiguration can lead to:
+/// - Command injection attacks
+/// - Privilege escalation
+/// - Data exfiltration
+/// - System compromise
+///
+/// ALWAYS:
+/// - Use the most restrictive settings possible for your use case
+/// - Regularly audit the allowed_commands whitelist
+/// - Never allow shell metacharacters unless absolutely necessary
+/// - Set appropriate timeouts to prevent resource exhaustion
+/// - Run in sandboxed environments when possible
+/// - Log all command executions for security monitoring
 #[derive(Debug, Clone)]
 pub struct CommandSecurityConfig {
     /// List of allowed commands (whitelist)
+    /// ⚠️  SECURITY: Only add commands that are absolutely necessary
     pub allowed_commands: HashSet<String>,
     /// Maximum command length
+    /// ⚠️  SECURITY: Keep this as low as possible to prevent buffer overflow attacks
     pub max_command_length: usize,
     /// Whether to allow shell metacharacters
+    /// ⚠️  SECURITY CRITICAL: Setting this to true significantly increases attack surface
     pub allow_shell_metacharacters: bool,
     /// Execution timeout in seconds
+    /// ⚠️  SECURITY: Prevents resource exhaustion attacks
     pub timeout_seconds: u64,
 }
 

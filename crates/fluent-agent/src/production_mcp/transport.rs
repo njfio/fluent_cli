@@ -1,4 +1,7 @@
-// Production-ready MCP transport implementation
+// MCP transport implementation (Development Stage)
+//
+// ⚠️  DEVELOPMENT STATUS: This transport implementation provides basic MCP connectivity
+// but should be thoroughly tested and potentially hardened before production use.
 
 use super::error::McpError;
 use super::config::TransportConfig;

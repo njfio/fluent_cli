@@ -1,5 +1,5 @@
 use super::{utils::PerformanceCounter, CacheConfig};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use moka::future::Cache as MokaCache;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
@@ -226,7 +226,7 @@ where
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
         if !self.available {
-            debug!("Redis cache get operation skipped - Redis not available (fallback mode)");
+            debug!("Redis cache get operation skipped - Redis not available (fallback mode) for URL: {}", self.url);
             return Ok(None);
         }
 
@@ -310,7 +310,7 @@ where
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
         if !self.available {
-            debug!("Database cache get operation skipped - Database caching not available (fallback mode)");
+            debug!("Database cache get operation skipped - Database caching not available (fallback mode) for URL: {}", self.url);
             return Ok(None);
         }
 

@@ -20,14 +20,16 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Async Optimization**: ✅ Proper async/await patterns throughout the codebase
 - **Memory Optimization**: ✅ Reduced allocations and improved resource management
 
-### 🤖 **Production-Ready Agentic Capabilities**
+### 🤖 **Agentic Capabilities (Development Stage)**
 
-- **ReAct Agent Loop**: ✅ Complete reasoning, acting, observing cycle implementation
-- **Advanced Tool System**: ✅ Secure file operations, shell commands, and code analysis
-- **String Replace Editor**: ✅ Surgical file editing with comprehensive test coverage
-- **MCP Integration**: ✅ Full Model Context Protocol client and server support
-- **Self-Reflection Engine**: ✅ Advanced learning and strategy adjustment capabilities
-- **State Management**: ✅ Execution context persistence with checkpoint/restore functionality
+⚠️  **Development Status**: Agentic features are functional but under active development. Thorough testing recommended before production use.
+
+- **ReAct Agent Loop**: ✅ Core reasoning, acting, observing cycle implementation
+- **Tool System**: ✅ File operations, shell commands, and code analysis (with security validation)
+- **String Replace Editor**: ✅ File editing capabilities with test coverage
+- **MCP Integration**: ✅ Model Context Protocol client and server support (basic functionality)
+- **Reflection Engine**: ✅ Learning and strategy adjustment capabilities (experimental)
+- **State Management**: ✅ Execution context persistence with checkpoint/restore
 
 ### 📊 **Quality & Testing**
 
@@ -41,7 +43,7 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Core Functionality**: ✅ Fully functional multi-LLM interface
 - **Tool Access**: ✅ Direct CLI access to tools via `fluent <engine> tools` commands
 - **MCP Integration**: ✅ Working Model Context Protocol implementation with examples
-- **Agent System**: ✅ Production-ready agentic capabilities
+- **Agent System**: ✅ Functional agentic capabilities (development stage)
 - **Testing**: ✅ Comprehensive test suite with all tests passing
 
 ## 🚀 Key Features
