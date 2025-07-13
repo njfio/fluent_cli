@@ -347,7 +347,12 @@ impl Default for SecurityPolicy {
             restrictions: SecurityRestrictions {
                 max_file_size: 100 * 1024 * 1024,             // 100MB
                 max_memory_usage: 1024 * 1024 * 1024,         // 1GB
-                max_execution_time: Duration::from_secs(300), // 5 minutes
+                max_execution_time: Duration::from_secs(
+                    env::var("FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(300)
+                ), // Default: 5 minutes, configurable via FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS
                 allowed_file_extensions: ["txt", "json", "yaml", "md"]
                     .iter()
                     .map(|s| s.to_string())

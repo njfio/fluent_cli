@@ -1,10 +1,11 @@
 use super::{utils::PerformanceCounter, CacheConfig};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use moka::future::Cache as MokaCache;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
+use log::{warn, debug};
 
 /// Multi-level cache system with L1 (memory), L2 (Redis), and L3 (database) levels
 pub struct MultiLevelCache<K, V> {
@@ -185,20 +186,33 @@ where
     async fn clear(&self) -> Result<()>;
 }
 
-/// Redis cache implementation
+/// Redis cache implementation (fallback mode - Redis not available)
+/// This implementation provides a graceful fallback when Redis is not available
+/// or not configured. In production, consider adding the redis crate dependency
+/// and implementing actual Redis connectivity.
 pub struct RedisCache<K, V> {
-    _url: String,
-    _ttl: Duration,
+    url: String,
+    ttl: Duration,
+    available: bool,
     _phantom: std::marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> RedisCache<K, V> {
-    pub async fn new(_url: String, _ttl: Duration) -> Result<Self> {
-        // TODO: Implement actual Redis connection
-        // For now, return a placeholder
+    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+        // Check if Redis URL is provided and warn about fallback mode
+        let available = !url.is_empty() && url != "redis://localhost:6379";
+
+        if !available {
+            warn!("Redis cache initialized in fallback mode - Redis not available or not configured");
+            warn!("To enable Redis caching, add redis dependency and implement actual Redis connectivity");
+        } else {
+            debug!("Redis cache configured for URL: {} (fallback mode)", url);
+        }
+
         Ok(Self {
-            _url,
-            _ttl,
+            url,
+            ttl,
+            available,
             _phantom: std::marker::PhantomData,
         })
     }
@@ -211,40 +225,78 @@ where
     V: Send + Sync + Clone + Serialize + for<'de> Deserialize<'de>,
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
-        // TODO: Implement Redis get
+        if !self.available {
+            debug!("Redis cache get operation skipped - Redis not available (fallback mode)");
+            return Ok(None);
+        }
+
+        // Redis implementation would go here when redis crate is added
+        // For now, return None to indicate cache miss
+        warn!("Redis get operation not implemented - add redis crate dependency for full functionality");
         Ok(None)
     }
 
     async fn set(&self, _key: &K, _value: &V, _ttl: Duration) -> Result<()> {
-        // TODO: Implement Redis set
+        if !self.available {
+            debug!("Redis cache set operation skipped - Redis not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Redis implementation would go here when redis crate is added
+        debug!("Redis set operation not implemented - add redis crate dependency for full functionality");
         Ok(())
     }
 
     async fn remove(&self, _key: &K) -> Result<()> {
-        // TODO: Implement Redis remove
+        if !self.available {
+            debug!("Redis cache remove operation skipped - Redis not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Redis implementation would go here when redis crate is added
+        debug!("Redis remove operation not implemented - add redis crate dependency for full functionality");
         Ok(())
     }
 
     async fn clear(&self) -> Result<()> {
-        // TODO: Implement Redis clear
+        if !self.available {
+            debug!("Redis cache clear operation skipped - Redis not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Redis implementation would go here when redis crate is added
+        debug!("Redis clear operation not implemented - add redis crate dependency for full functionality");
         Ok(())
     }
 }
 
-/// Database cache implementation
+/// Database cache implementation (fallback mode - Database caching not fully implemented)
+/// This implementation provides a graceful fallback when database caching is not available
+/// or not configured. In production, consider implementing actual database connectivity
+/// using sqlx or similar database libraries.
 pub struct DatabaseCache<K, V> {
-    _url: String,
-    _ttl: Duration,
+    url: String,
+    ttl: Duration,
+    available: bool,
     _phantom: std::marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> DatabaseCache<K, V> {
-    pub async fn new(_url: String, _ttl: Duration) -> Result<Self> {
-        // TODO: Implement actual database connection
-        // For now, return a placeholder
+    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+        // Check if database URL is provided and warn about fallback mode
+        let available = !url.is_empty() && !url.starts_with("sqlite://memory");
+
+        if !available {
+            warn!("Database cache initialized in fallback mode - Database caching not fully implemented");
+            warn!("To enable database caching, implement actual database connectivity using sqlx");
+        } else {
+            debug!("Database cache configured for URL: {} (fallback mode)", url);
+        }
+
         Ok(Self {
-            _url,
-            _ttl,
+            url,
+            ttl,
+            available,
             _phantom: std::marker::PhantomData,
         })
     }
@@ -257,22 +309,47 @@ where
     V: Send + Sync + Clone + Serialize + for<'de> Deserialize<'de>,
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
-        // TODO: Implement database get
+        if !self.available {
+            debug!("Database cache get operation skipped - Database caching not available (fallback mode)");
+            return Ok(None);
+        }
+
+        // Database implementation would go here when sqlx integration is added
+        // For now, return None to indicate cache miss
+        debug!("Database get operation not implemented - add sqlx integration for full functionality");
         Ok(None)
     }
 
     async fn set(&self, _key: &K, _value: &V, _ttl: Duration) -> Result<()> {
-        // TODO: Implement database set
+        if !self.available {
+            debug!("Database cache set operation skipped - Database caching not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Database implementation would go here when sqlx integration is added
+        debug!("Database set operation not implemented - add sqlx integration for full functionality");
         Ok(())
     }
 
     async fn remove(&self, _key: &K) -> Result<()> {
-        // TODO: Implement database remove
+        if !self.available {
+            debug!("Database cache remove operation skipped - Database caching not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Database implementation would go here when sqlx integration is added
+        debug!("Database remove operation not implemented - add sqlx integration for full functionality");
         Ok(())
     }
 
     async fn clear(&self) -> Result<()> {
-        // TODO: Implement database clear
+        if !self.available {
+            debug!("Database cache clear operation skipped - Database caching not available (fallback mode)");
+            return Ok(());
+        }
+
+        // Database implementation would go here when sqlx integration is added
+        debug!("Database clear operation not implemented - add sqlx integration for full functionality");
         Ok(())
     }
 }
