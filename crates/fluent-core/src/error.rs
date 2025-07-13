@@ -595,29 +595,8 @@ impl std::error::Error for CostError {}
 impl std::error::Error for StorageError {}
 impl std::error::Error for CacheError {}
 
-// Thread-safety implementations for all error types
-unsafe impl Send for FluentError {}
-unsafe impl Sync for FluentError {}
-unsafe impl Send for ConfigError {}
-unsafe impl Sync for ConfigError {}
-unsafe impl Send for AuthError {}
-unsafe impl Sync for AuthError {}
-unsafe impl Send for NetworkError {}
-unsafe impl Sync for NetworkError {}
-unsafe impl Send for EngineError {}
-unsafe impl Sync for EngineError {}
-unsafe impl Send for PipelineError {}
-unsafe impl Sync for PipelineError {}
-unsafe impl Send for FileError {}
-unsafe impl Sync for FileError {}
-unsafe impl Send for ValidationError {}
-unsafe impl Sync for ValidationError {}
-unsafe impl Send for CostError {}
-unsafe impl Sync for CostError {}
-unsafe impl Send for StorageError {}
-unsafe impl Sync for StorageError {}
-unsafe impl Send for CacheError {}
-unsafe impl Sync for CacheError {}
+// Thread-safety is automatically derived for all error types since they only contain
+// Send + Sync types (String, primitives, Option, etc.). No unsafe implementations needed.
 
 /// Result type alias for fluent operations
 pub type FluentResult<T> = Result<T, FluentError>;

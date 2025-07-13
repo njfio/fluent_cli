@@ -144,9 +144,10 @@ impl CommandHandler for PipelineCommand {
 
         if !result.success {
             if let Some(message) = result.message {
-                eprintln!("Pipeline execution failed: {}", message);
+                return Err(anyhow!("Pipeline execution failed: {}", message));
+            } else {
+                return Err(anyhow!("Pipeline execution failed"));
             }
-            std::process::exit(1);
         }
 
         Ok(())

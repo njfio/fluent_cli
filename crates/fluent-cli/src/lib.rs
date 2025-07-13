@@ -58,6 +58,12 @@ pub mod memory;
 pub mod utils;
 pub mod frogger;
 
+// New modular components
+pub mod cli_builder;
+pub mod engine_factory;
+pub mod request_processor;
+pub mod response_formatter;
+
 use anyhow::Error;
 use fluent_core::config::{EngineConfig, Neo4jConfig};
 use fluent_core::traits::Engine;
@@ -67,6 +73,9 @@ use fluent_engines::create_engine;
 pub use utils::{extract_cypher_query, is_valid_cypher, format_as_csv, extract_code};
 pub use validation::{validate_engine_name, validate_file_path_secure, parse_key_value_pair};
 pub use memory::MemoryManager;
+
+// Re-export agentic functionality
+pub use cli::run_agentic_mode;
 
 pub mod cli {
     use anyhow::{anyhow, Result};
@@ -579,20 +588,197 @@ pub mod cli {
             )
             .subcommand(
                 Command::new("mcp")
-                    .about("Start Model Context Protocol server")
-                    .arg(
-                        Arg::new("port")
-                            .short('p')
-                            .long("port")
-                            .value_name("PORT")
-                            .help("Port to listen on (for HTTP transport)")
-                            .required(false)
+                    .about("Model Context Protocol (MCP) management")
+                    .subcommand(
+                        Command::new("server")
+                            .about("Start MCP server")
+                            .arg(
+                                Arg::new("port")
+                                    .short('p')
+                                    .long("port")
+                                    .value_name("PORT")
+                                    .help("Port to listen on (for HTTP transport)")
+                                    .required(false)
+                            )
+                            .arg(
+                                Arg::new("stdio")
+                                    .long("stdio")
+                                    .help("Use STDIO transport (default)")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("config")
+                                    .short('c')
+                                    .long("config")
+                                    .value_name("FILE")
+                                    .help("Configuration file path")
+                            )
                     )
-                    .arg(
-                        Arg::new("stdio")
-                            .long("stdio")
-                            .help("Use STDIO transport (default)")
-                            .action(ArgAction::SetTrue)
+                    .subcommand(
+                        Command::new("connect")
+                            .about("Connect to an MCP server")
+                            .arg(
+                                Arg::new("name")
+                                    .short('n')
+                                    .long("name")
+                                    .value_name("NAME")
+                                    .help("Server name")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("command")
+                                    .short('c')
+                                    .long("command")
+                                    .value_name("COMMAND")
+                                    .help("Server command to execute")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("args")
+                                    .short('a')
+                                    .long("args")
+                                    .value_name("ARGS")
+                                    .help("Command arguments")
+                                    .action(ArgAction::Append)
+                                    .num_args(0..)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("disconnect")
+                            .about("Disconnect from an MCP server")
+                            .arg(
+                                Arg::new("name")
+                                    .short('n')
+                                    .long("name")
+                                    .value_name("NAME")
+                                    .help("Server name")
+                                    .required(true)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("tools")
+                            .about("List available tools")
+                            .arg(
+                                Arg::new("server")
+                                    .short('s')
+                                    .long("server")
+                                    .value_name("SERVER")
+                                    .help("Filter by server name")
+                            )
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .help("Output in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("execute")
+                            .about("Execute a tool")
+                            .arg(
+                                Arg::new("tool")
+                                    .short('t')
+                                    .long("tool")
+                                    .value_name("TOOL")
+                                    .help("Tool name to execute")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("parameters")
+                                    .short('p')
+                                    .long("parameters")
+                                    .value_name("JSON")
+                                    .help("Tool parameters as JSON")
+                                    .default_value("{}")
+                            )
+                            .arg(
+                                Arg::new("server")
+                                    .short('s')
+                                    .long("server")
+                                    .value_name("SERVER")
+                                    .help("Preferred server name")
+                            )
+                            .arg(
+                                Arg::new("timeout")
+                                    .long("timeout")
+                                    .value_name("SECONDS")
+                                    .help("Execution timeout in seconds")
+                                    .default_value("30")
+                            )
+                    )
+                    .subcommand(
+                        Command::new("status")
+                            .about("Show MCP system status")
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .help("Output in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("detailed")
+                                    .long("detailed")
+                                    .help("Show detailed metrics")
+                                    .action(ArgAction::SetTrue)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("config")
+                            .about("Manage MCP configuration")
+                            .arg(
+                                Arg::new("show")
+                                    .long("show")
+                                    .help("Show current configuration")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("set")
+                                    .long("set")
+                                    .value_name("KEY")
+                                    .help("Configuration key to set")
+                            )
+                            .arg(
+                                Arg::new("value")
+                                    .long("value")
+                                    .value_name("VALUE")
+                                    .help("Configuration value")
+                            )
+                            .arg(
+                                Arg::new("file")
+                                    .short('f')
+                                    .long("file")
+                                    .value_name("FILE")
+                                    .help("Save configuration to file")
+                            )
+                    )
+                    .subcommand(
+                        Command::new("agent")
+                            .about("Run agent with MCP capabilities (legacy)")
+                            .arg(
+                                Arg::new("engine")
+                                    .short('e')
+                                    .long("engine")
+                                    .value_name("ENGINE")
+                                    .help("LLM engine to use")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("task")
+                                    .short('t')
+                                    .long("task")
+                                    .value_name("TASK")
+                                    .help("Task description")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("servers")
+                                    .short('s')
+                                    .long("servers")
+                                    .value_name("SERVERS")
+                                    .help("MCP servers to use")
+                                    .action(ArgAction::Append)
+                                    .num_args(0..)
+                            )
                     )
             )
             .subcommand(
@@ -628,6 +814,138 @@ pub mod cli {
                             .long("config")
                             .value_name("CONFIG")
                             .help("Configuration file path")
+                    )
+            )
+            .subcommand(
+                Command::new("tools")
+                    .about("Direct tool access and management")
+                    .subcommand(
+                        Command::new("list")
+                            .about("List available tools")
+                            .arg(
+                                Arg::new("category")
+                                    .long("category")
+                                    .value_name("CATEGORY")
+                                    .help("Filter by tool category")
+                            )
+                            .arg(
+                                Arg::new("search")
+                                    .long("search")
+                                    .value_name("TERM")
+                                    .help("Search tools by name or description")
+                            )
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .help("Output in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("detailed")
+                                    .long("detailed")
+                                    .help("Show detailed information")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("available")
+                                    .long("available")
+                                    .help("Show only available/enabled tools")
+                                    .action(ArgAction::SetTrue)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("describe")
+                            .about("Describe a specific tool")
+                            .arg(
+                                Arg::new("tool")
+                                    .help("Tool name to describe")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("schema")
+                                    .long("schema")
+                                    .help("Show parameter schema")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("examples")
+                                    .long("examples")
+                                    .help("Show usage examples")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .help("Output in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("exec")
+                            .about("Execute a tool directly")
+                            .arg(
+                                Arg::new("tool")
+                                    .help("Tool name to execute")
+                                    .required(true)
+                            )
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .value_name("JSON")
+                                    .help("Parameters as JSON string")
+                            )
+                            .arg(
+                                Arg::new("params-file")
+                                    .long("params-file")
+                                    .value_name("FILE")
+                                    .help("Parameters from JSON file")
+                            )
+                            .arg(
+                                Arg::new("path")
+                                    .long("path")
+                                    .value_name("PATH")
+                                    .help("File path parameter")
+                            )
+                            .arg(
+                                Arg::new("content")
+                                    .long("content")
+                                    .value_name("CONTENT")
+                                    .help("Content parameter")
+                            )
+                            .arg(
+                                Arg::new("command")
+                                    .long("command")
+                                    .value_name("COMMAND")
+                                    .help("Command parameter")
+                            )
+                            .arg(
+                                Arg::new("dry-run")
+                                    .long("dry-run")
+                                    .help("Show what would be executed without running")
+                                    .action(ArgAction::SetTrue)
+                            )
+                            .arg(
+                                Arg::new("timeout")
+                                    .long("timeout")
+                                    .value_name("DURATION")
+                                    .help("Execution timeout (e.g., 30s, 5m)")
+                            )
+                            .arg(
+                                Arg::new("json-output")
+                                    .long("json-output")
+                                    .help("Output result in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
+                    )
+                    .subcommand(
+                        Command::new("categories")
+                            .about("List tool categories")
+                            .arg(
+                                Arg::new("json")
+                                    .long("json")
+                                    .help("Output in JSON format")
+                                    .action(ArgAction::SetTrue)
+                            )
                     )
             )
     }
@@ -790,13 +1108,18 @@ pub mod cli {
         use crate::commands::*;
 
         let matches = build_cli().get_matches();
-        // Load configuration (simplified for demonstration)
+
+        // Extract engine name from command line
+        let engine_name = matches.get_one::<String>("engine")
+            .ok_or_else(|| anyhow!("Engine name is required"))?;
+
+        // Load configuration
         let config_path = matches
             .get_one::<String>("config")
             .map(|s| s.to_string())
             .unwrap_or_else(|| "config.yaml".to_string());
 
-        let config = load_config(&config_path, "openai", &std::collections::HashMap::new())?;
+        let config = load_config(&config_path, engine_name, &std::collections::HashMap::new())?;
 
         // Route to appropriate command handler
         match matches.subcommand() {
@@ -816,14 +1139,25 @@ pub mod cli {
                 let handler = neo4j::Neo4jCommand::new();
                 handler.execute(sub_matches, &config).await?;
             }
+            Some(("tools", sub_matches)) => {
+                let handler = crate::commands::tools::ToolsCommand::new();
+                handler.execute(sub_matches, &config).await?;
+            }
             Some((_engine_name, sub_matches)) => {
                 // Handle engine commands
                 let handler = engine::EngineCommand::new();
                 handler.execute(sub_matches, &config).await?;
             }
             None => {
-                // Default behavior - show help
-                build_cli().print_help()?;
+                // Check if there's a request to process
+                if matches.get_one::<String>("request").is_some() {
+                    // Handle direct engine query
+                    let handler = engine::EngineCommand::new();
+                    handler.execute(&matches, &config).await?;
+                } else {
+                    // Default behavior - show help
+                    build_cli().print_help()?;
+                }
             }
         }
 

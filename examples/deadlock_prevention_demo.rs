@@ -1,5 +1,5 @@
 // Deadlock prevention demonstration
-use fluent_core::deadlock_prevention::{DeadlockSafeLockManager, DeadlockPreventionUtils, LockOrderRegistry};
+use fluent_core::deadlock_prevention::{DeadlockSafeLockManager, LockOrderRegistry};
 use fluent_core::error::{FluentError, LockTimeoutConfig};
 use std::collections::HashMap;
 use std::sync::Arc;

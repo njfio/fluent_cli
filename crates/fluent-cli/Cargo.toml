@@ -26,6 +26,7 @@ dialoguer = { workspace = true }
 fluent-agent = { path = "../fluent-agent" }
 rmcp = { workspace = true }
 env_logger = { workspace = true }
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -23,6 +23,7 @@ pub mod observation;
 pub mod orchestrator;
 pub mod performance;
 pub mod profiling;
+pub mod production_mcp;
 pub mod reasoning;
 pub mod reflection;
 pub mod reflection_engine;
@@ -42,6 +43,10 @@ pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
 pub use memory::{MemoryConfig, MemoryStats, MemorySystem};
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use production_mcp::{
+    ProductionMcpManager, ProductionMcpConfig, McpError, HealthStatus, McpMetrics,
+    initialize_production_mcp, initialize_production_mcp_with_config,
+};
 pub use reasoning::{LLMReasoningEngine, ReasoningCapability, ReasoningEngine};
 pub use reflection_engine::{ReflectionEngine, ReflectionConfig, ReflectionResult, ReflectionType};
 pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};

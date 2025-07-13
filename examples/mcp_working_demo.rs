@@ -4,7 +4,7 @@ use fluent_agent::{
     mcp_client::{McpClient, McpClientConfig, McpClientManager},
     mcp_tool_registry::{McpToolRegistry},
     mcp_resource_manager::{McpResourceManager},
-    memory::AsyncSqliteMemoryStore,
+    memory::SqliteMemoryStore,
     tools::ToolRegistry,
 };
 use std::sync::Arc;
@@ -126,9 +126,9 @@ async fn demonstrate_resource_management() -> Result<()> {
     println!("\n📦 3. MCP Resource Management");
     println!("-----------------------------");
 
-    // Create memory system
-    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
-    
+    // Create memory system (using SqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+
     // Create resource manager
     let resource_manager = McpResourceManager::new(memory_system);
     
@@ -187,10 +187,10 @@ async fn demonstrate_complete_integration() -> Result<()> {
     println!("\n🔄 4. Complete MCP System Integration");
     println!("------------------------------------");
 
-    // Setup complete MCP system
-    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
+    // Setup complete MCP system (using SqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
     let base_registry = Arc::new(ToolRegistry::new());
-    
+
     let tool_registry = McpToolRegistry::new(base_registry);
     let resource_manager = McpResourceManager::new(memory_system.clone());
     
@@ -278,7 +278,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resource_manager_functionality() {
-        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap());
+        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap());
         let resource_manager = McpResourceManager::new(memory_system);
         
         resource_manager.initialize_standard_resources().await.unwrap();
@@ -295,7 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_complete_system_integration() {
-        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap());
+        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap());
         let base_registry = Arc::new(ToolRegistry::new());
         
         let tool_registry = McpToolRegistry::new(base_registry);

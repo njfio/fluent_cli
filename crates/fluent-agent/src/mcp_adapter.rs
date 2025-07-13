@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use rmcp::{
-    model::{CallToolResult, Content, ServerInfo, Tool, ErrorData, ListToolsResult, PaginatedRequestParamInner, CallToolRequestParam},
+    model::{CallToolResult, Content, ServerInfo, Tool, ErrorData, PaginatedRequestParam, CallToolRequestParam},
     service::RequestContext,
     ServerHandler, RoleServer,
 };
@@ -50,8 +50,9 @@ impl FluentMcpAdapter {
 
         Tool {
             name: name.to_string().into(),
-            description: description.to_string().into(),
+            description: Some(description.to_string().into()),
             input_schema: Arc::new(schema),
+            annotations: None,
         }
     }
 
@@ -298,14 +299,14 @@ impl ServerHandler for FluentMcpAdapter {
 
     async fn list_tools(
         &self,
-        _params: Option<PaginatedRequestParamInner>,
+        _params: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, ErrorData> {
         // For now, return a simple list of available tools
         let tools = vec![
             rmcp::model::Tool {
                 name: "read_file".into(),
-                description: "Read the contents of a file".into(),
+                description: Some("Read the contents of a file".into()),
                 input_schema: Arc::new(serde_json::Map::from_iter([
                     ("type".to_string(), serde_json::Value::String("object".to_string())),
                     ("properties".to_string(), serde_json::json!({
@@ -316,10 +317,11 @@ impl ServerHandler for FluentMcpAdapter {
                     })),
                     ("required".to_string(), serde_json::json!(["path"])),
                 ])),
+                annotations: None,
             },
             rmcp::model::Tool {
                 name: "write_file".into(),
-                description: "Write content to a file".into(),
+                description: Some("Write content to a file".into()),
                 input_schema: Arc::new(serde_json::Map::from_iter([
                     ("type".to_string(), serde_json::Value::String("object".to_string())),
                     ("properties".to_string(), serde_json::json!({
@@ -334,6 +336,7 @@ impl ServerHandler for FluentMcpAdapter {
                     })),
                     ("required".to_string(), serde_json::json!(["path", "content"])),
                 ])),
+                annotations: None,
             },
         ];
 
@@ -412,7 +415,7 @@ impl FluentMcpServer {
 
     /// Start the MCP server with stdio transport and enhanced error handling
     pub async fn start_stdio(&self) -> Result<()> {
-        use rmcp::{transport::stdio, ServiceExt};
+        use rmcp::{transport::io::stdio, ServiceExt};
         use tokio::signal;
 
         println!("🔌 Starting Fluent CLI MCP Server...");
@@ -525,6 +528,6 @@ mod tests {
         let tool = adapter.convert_tool_to_mcp("test_tool", "Test tool description");
 
         assert_eq!(tool.name, "test_tool");
-        assert_eq!(tool.description.as_ref(), "Test tool description");
+        assert_eq!(tool.description.as_ref().map(|s| s.as_ref()), Some("Test tool description"));
     }
 }

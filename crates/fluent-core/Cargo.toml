@@ -31,3 +31,4 @@ pdf-extract = { workspace = true }
 sled = { workspace = true }
 sha2 = { workspace = true }
 which = "6.0"
+serde_yaml.workspace = true

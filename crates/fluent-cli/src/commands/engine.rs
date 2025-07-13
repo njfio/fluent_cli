@@ -154,6 +154,7 @@ impl EngineCommand {
 impl CommandHandler for EngineCommand {
     async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
         // Get engine name and request from arguments
+        // For direct engine queries, the engine name comes from the main CLI args
         let engine_name = matches
             .get_one::<String>("engine")
             .ok_or_else(|| anyhow!("Engine name is required"))?;
@@ -167,9 +168,10 @@ impl CommandHandler for EngineCommand {
 
         if !result.success {
             if let Some(message) = result.message {
-                eprintln!("Engine execution failed: {}", message);
+                return Err(anyhow!("Engine execution failed: {}", message));
+            } else {
+                return Err(anyhow!("Engine execution failed"));
             }
-            std::process::exit(1);
         }
 
         Ok(())

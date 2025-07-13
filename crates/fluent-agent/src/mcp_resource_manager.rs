@@ -94,6 +94,7 @@ pub struct ResourceStats {
 pub struct McpResourceManager {
     resources: Arc<RwLock<HashMap<String, McpResource>>>,
     cache: Arc<RwLock<HashMap<String, CachedResource>>>,
+    #[allow(dead_code)]
     memory_system: Arc<dyn LongTermMemory>,
     stats: Arc<RwLock<HashMap<String, ResourceStats>>>,
     config: ResourceManagerConfig,
@@ -348,7 +349,7 @@ impl McpResourceManager {
         match uri.host_str() {
             Some("memories") => {
                 // Query all memories (simplified for now)
-                let query = MemoryQuery {
+                let _query = MemoryQuery {
                     query_text: "".to_string(),
                     memory_types: vec![],
                     time_range: None,

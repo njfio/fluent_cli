@@ -126,7 +126,8 @@ sha2 = "~0.10.8"
 # Ed25519 digital signatures - pin to exact version for security
 ed25519-dalek = "2.1.1"
 # MCP protocol implementation - pin to exact version for stability
-rmcp = { version = "0.1.0", features = ["server", "client", "transport-async-rw", "transport-io", "transport-child-process"] }
+rmcp = { version = "0.2.1", features = ["server", "client", "macros", "transport-io", "transport-child-process"] }
+toml = "0.8"
 
 # Dynamic library loading - allow minor updates within 0.8.x
 libloading = "~0.8.5"
@@ -168,4 +169,9 @@ tokio-rusqlite = "0.5.1"
 # Executable finder - pin to exact version
 which = "6.0.3"
 
-
+[dev-dependencies]
+# Testing utilities
+tempfile = "3.0"
+tokio-test = "0.4"
+assert_cmd = "2.0"
+predicates = "3.0"

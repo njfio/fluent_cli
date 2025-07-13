@@ -9,6 +9,7 @@ pub mod engine;
 pub mod mcp;
 pub mod neo4j;
 pub mod pipeline;
+pub mod tools;
 
 #[cfg(test)]
 mod tests;

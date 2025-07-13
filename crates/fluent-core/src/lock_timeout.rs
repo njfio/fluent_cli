@@ -2,7 +2,7 @@
 use crate::error::{FluentError, LockTimeoutConfig};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
 /// Lock contention monitor for tracking lock performance
