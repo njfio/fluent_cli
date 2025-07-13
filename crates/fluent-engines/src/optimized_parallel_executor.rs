@@ -262,14 +262,124 @@ where
     /// Sort tasks by priority and resolve dependencies
     async fn sort_tasks_by_priority_and_dependencies(
         &self,
-        mut tasks: Vec<ExecutionTask<T>>,
+        tasks: Vec<ExecutionTask<T>>,
     ) -> Result<Vec<ExecutionTask<T>>> {
-        // Sort by priority first (higher priority first)
-        tasks.sort_by(|a, b| b.priority.cmp(&a.priority));
+        // First, perform topological sort to respect dependencies
+        let sorted_tasks = self.topological_sort(tasks)?;
 
-        // TODO: Implement topological sort for dependencies
-        // For now, just return priority-sorted tasks
-        Ok(tasks)
+        // Then sort by priority within dependency constraints
+        // Group tasks by dependency level and sort each group by priority
+        let mut dependency_levels = self.group_by_dependency_level(&sorted_tasks)?;
+
+        // Sort each level by priority (higher priority first)
+        for level in &mut dependency_levels {
+            level.sort_by(|a, b| b.priority.cmp(&a.priority));
+        }
+
+        // Flatten back to a single vector
+        Ok(dependency_levels.into_iter().flatten().collect())
+    }
+
+    /// Perform topological sort on tasks based on dependencies
+    fn topological_sort(&self, tasks: Vec<ExecutionTask<T>>) -> Result<Vec<ExecutionTask<T>>> {
+        use std::collections::{HashMap, VecDeque};
+
+        // Build adjacency list and in-degree count
+        let mut task_map: HashMap<String, ExecutionTask<T>> = HashMap::new();
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut adj_list: HashMap<String, Vec<String>> = HashMap::new();
+
+        // Initialize data structures
+        for task in tasks {
+            let task_id = task.id.clone();
+            in_degree.insert(task_id.clone(), task.dependencies.len());
+            adj_list.insert(task_id.clone(), Vec::new());
+            task_map.insert(task_id, task);
+        }
+
+        // Build adjacency list (reverse dependencies)
+        for (task_id, task) in &task_map {
+            for dep_id in &task.dependencies {
+                if let Some(deps) = adj_list.get_mut(dep_id) {
+                    deps.push(task_id.clone());
+                } else {
+                    // Dependency not found in task list - this is an error
+                    return Err(anyhow::anyhow!("Task {} depends on {} which is not in the task list", task_id, dep_id));
+                }
+            }
+        }
+
+        // Kahn's algorithm for topological sorting
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut result = Vec::new();
+
+        // Find all tasks with no dependencies
+        for (task_id, degree) in &in_degree {
+            if *degree == 0 {
+                queue.push_back(task_id.clone());
+            }
+        }
+
+        while let Some(current_id) = queue.pop_front() {
+            if let Some(task) = task_map.remove(&current_id) {
+                result.push(task);
+
+                // Reduce in-degree for dependent tasks
+                if let Some(dependents) = adj_list.get(&current_id) {
+                    for dependent_id in dependents {
+                        if let Some(degree) = in_degree.get_mut(dependent_id) {
+                            *degree -= 1;
+                            if *degree == 0 {
+                                queue.push_back(dependent_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for circular dependencies
+        if result.len() != task_map.len() + result.len() {
+            return Err(anyhow::anyhow!("Circular dependency detected in task graph"));
+        }
+
+        Ok(result)
+    }
+
+    /// Group tasks by dependency level for priority sorting within levels
+    fn group_by_dependency_level(&self, tasks: &[ExecutionTask<T>]) -> Result<Vec<Vec<ExecutionTask<T>>>> {
+        use std::collections::{HashMap, HashSet};
+
+        let mut levels = Vec::new();
+        let mut task_to_level: HashMap<String, usize> = HashMap::new();
+        let mut completed_tasks: HashSet<String> = HashSet::new();
+
+        // Process tasks in topological order
+        for task in tasks {
+            let mut max_dep_level = 0;
+
+            // Find the maximum level of all dependencies
+            for dep_id in &task.dependencies {
+                if let Some(&dep_level) = task_to_level.get(dep_id) {
+                    max_dep_level = max_dep_level.max(dep_level + 1);
+                } else if !completed_tasks.contains(dep_id) {
+                    // Dependency not processed yet - this shouldn't happen with proper topological sort
+                    return Err(anyhow::anyhow!("Dependency {} not processed before task {}", dep_id, task.id));
+                }
+            }
+
+            // Ensure we have enough levels
+            while levels.len() <= max_dep_level {
+                levels.push(Vec::new());
+            }
+
+            // Add task to its level
+            levels[max_dep_level].push(task.clone());
+            task_to_level.insert(task.id.clone(), max_dep_level);
+            completed_tasks.insert(task.id.clone());
+        }
+
+        Ok(levels)
     }
 
     /// Create execution batches based on dependencies

@@ -236,14 +236,14 @@ where
         Ok(None)
     }
 
-    async fn set(&self, _key: &K, _value: &V, _ttl: Duration) -> Result<()> {
+    async fn set(&self, _key: &K, _value: &V, ttl: Duration) -> Result<()> {
         if !self.available {
             debug!("Redis cache set operation skipped - Redis not available (fallback mode)");
             return Ok(());
         }
 
         // Redis implementation would go here when redis crate is added
-        debug!("Redis set operation not implemented - add redis crate dependency for full functionality");
+        debug!("Redis set operation not implemented - add redis crate dependency for full functionality (requested TTL: {:?}, default TTL: {:?})", ttl, self.ttl);
         Ok(())
     }
 
@@ -320,14 +320,14 @@ where
         Ok(None)
     }
 
-    async fn set(&self, _key: &K, _value: &V, _ttl: Duration) -> Result<()> {
+    async fn set(&self, _key: &K, _value: &V, ttl: Duration) -> Result<()> {
         if !self.available {
             debug!("Database cache set operation skipped - Database caching not available (fallback mode)");
             return Ok(());
         }
 
         // Database implementation would go here when sqlx integration is added
-        debug!("Database set operation not implemented - add sqlx integration for full functionality");
+        debug!("Database set operation not implemented - add sqlx integration for full functionality (requested TTL: {:?}, default TTL: {:?})", ttl, self.ttl);
         Ok(())
     }
 
@@ -625,7 +625,7 @@ mod tests {
         assert_eq!(result, Some("value1".to_string()));
 
         // Test cache statistics - verify that the cache is working
-        let stats = cache.get_stats();
+        let _stats = cache.get_stats();
         // The main test is that we can retrieve the value, stats may vary based on implementation
         assert!(result.is_some(), "Cache should store and retrieve values even with unavailable backends");
     }

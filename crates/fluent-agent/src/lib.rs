@@ -146,7 +146,7 @@ impl Agent {
         let allowed_commands = Self::get_allowed_commands();
 
         // Check if command is in whitelist
-        if !allowed_commands.contains(&cmd) {
+        if !allowed_commands.iter().any(|allowed| allowed == cmd) {
             return Err(anyhow!("Command '{}' not in allowed list", cmd));
         }
 
@@ -181,17 +181,58 @@ impl Agent {
     }
 
     /// Get allowed commands from environment or defaults
-    fn get_allowed_commands() -> Vec<&'static str> {
+    fn get_allowed_commands() -> Vec<String> {
         // Check environment variable for custom allowed commands
         if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
             log::info!("Custom allowed commands: {}", custom_commands);
-            // TODO: Parse and return custom commands with proper lifetime management
+
+            // Parse comma-separated commands with proper validation
+            let parsed_commands: Vec<String> = custom_commands
+                .split(',')
+                .map(|cmd| cmd.trim().to_string())
+                .filter(|cmd| !cmd.is_empty() && Self::is_valid_command_name(cmd))
+                .collect();
+
+            if !parsed_commands.is_empty() {
+                log::info!("Using {} custom allowed commands", parsed_commands.len());
+                return parsed_commands;
+            } else {
+                log::warn!("No valid commands found in FLUENT_ALLOWED_COMMANDS, using defaults");
+            }
         }
 
         // Default allowed commands for agent operations
         vec![
-            "cargo", "rustc", "git", "ls", "cat", "echo", "pwd", "which", "find"
+            "cargo".to_string(),
+            "rustc".to_string(),
+            "git".to_string(),
+            "ls".to_string(),
+            "cat".to_string(),
+            "echo".to_string(),
+            "pwd".to_string(),
+            "which".to_string(),
+            "find".to_string()
         ]
+    }
+
+    /// Validate that a command name is safe and reasonable
+    fn is_valid_command_name(cmd: &str) -> bool {
+        // Basic validation: alphanumeric, dash, underscore only
+        // No paths, no shell metacharacters
+        if cmd.is_empty() || cmd.len() > 50 {
+            return false;
+        }
+
+        // Must start with alphanumeric
+        if !cmd.chars().next().unwrap_or(' ').is_ascii_alphanumeric() {
+            return false;
+        }
+
+        // Only allow safe characters
+        cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            && !cmd.contains('/') // No paths
+            && !cmd.contains('\\') // No Windows paths
+            && !cmd.contains(' ') // No spaces
     }
 
     /// Commit changes in the current git repository.
