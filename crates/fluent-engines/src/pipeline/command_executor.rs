@@ -12,23 +12,113 @@ use tokio::process::Command as TokioCommand;
 use log::{debug, warn, error};
 use std::time::Duration;
 use std::io::Write;
+use std::collections::HashSet;
 
 /// Handles execution of command and shell command steps
 pub struct CommandExecutor;
 
+/// Security configuration for command execution
+#[derive(Debug, Clone)]
+pub struct CommandSecurityConfig {
+    /// List of allowed commands (whitelist)
+    pub allowed_commands: HashSet<String>,
+    /// Maximum command length
+    pub max_command_length: usize,
+    /// Whether to allow shell metacharacters
+    pub allow_shell_metacharacters: bool,
+    /// Execution timeout in seconds
+    pub timeout_seconds: u64,
+}
+
+impl Default for CommandSecurityConfig {
+    fn default() -> Self {
+        let mut allowed_commands = HashSet::new();
+        // Only allow safe, commonly used commands
+        allowed_commands.insert("echo".to_string());
+        allowed_commands.insert("cat".to_string());
+        allowed_commands.insert("ls".to_string());
+        allowed_commands.insert("pwd".to_string());
+        allowed_commands.insert("date".to_string());
+        allowed_commands.insert("whoami".to_string());
+        allowed_commands.insert("uname".to_string());
+
+        Self {
+            allowed_commands,
+            max_command_length: 1000,
+            allow_shell_metacharacters: false,
+            timeout_seconds: 30,
+        }
+    }
+}
+
 impl CommandExecutor {
-    /// Execute a regular command
+    /// Validate command for security before execution
+    fn validate_command_security(command: &str, config: &CommandSecurityConfig) -> Result<(), Error> {
+        // Check command length
+        if command.len() > config.max_command_length {
+            return Err(anyhow!(
+                "Command too long: {} characters (max: {})",
+                command.len(),
+                config.max_command_length
+            ));
+        }
+
+        // Check for dangerous shell metacharacters if not allowed
+        if !config.allow_shell_metacharacters {
+            let dangerous_chars = ['|', '&', ';', '`', '$', '(', ')', '<', '>', '*', '?', '[', ']', '{', '}'];
+            for ch in dangerous_chars {
+                if command.contains(ch) {
+                    return Err(anyhow!(
+                        "Command contains dangerous shell metacharacter '{}': {}",
+                        ch,
+                        command
+                    ));
+                }
+            }
+        }
+
+        // Extract the first word (command name) and validate against whitelist
+        let command_parts: Vec<&str> = command.trim().split_whitespace().collect();
+        if let Some(cmd_name) = command_parts.first() {
+            if !config.allowed_commands.contains(*cmd_name) {
+                return Err(anyhow!(
+                    "Command '{}' is not in the allowed commands list. Command: {}",
+                    cmd_name,
+                    command
+                ));
+            }
+        } else {
+            return Err(anyhow!("Empty command provided"));
+        }
+
+        Ok(())
+    }
+
+    /// Execute a regular command with security validation
     pub async fn execute_command(
         command: &str,
         save_output: &Option<String>,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing command: {}", command);
-        
-        let output = TokioCommand::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()
-            .await?;
+
+        // Apply security validation
+        let security_config = CommandSecurityConfig::default();
+        Self::validate_command_security(command, &security_config)?;
+
+        warn!("SECURITY WARNING: Executing command after validation: {}", command);
+
+        let output = tokio::time::timeout(
+            Duration::from_secs(security_config.timeout_seconds),
+            TokioCommand::new("sh")
+                .arg("-c")
+                .arg(command)
+                .env_clear() // Clear environment for security
+                .env("PATH", "/usr/bin:/bin") // Minimal PATH
+                .output()
+        )
+        .await
+        .map_err(|_| anyhow!("Command execution timed out after {} seconds", security_config.timeout_seconds))?
+        .map_err(|e| anyhow!("Failed to execute command: {}", e))?;
 
         let stdout = String::from_utf8(output.stdout)?;
         let mut result = HashMap::new();
@@ -40,18 +130,31 @@ impl CommandExecutor {
         Ok(result)
     }
 
-    /// Execute a shell command
+    /// Execute a shell command with security validation
     pub async fn execute_shell_command(
         command: &str,
         save_output: &Option<String>,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing shell command: {}", command);
-        
-        let output = TokioCommand::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()
-            .await?;
+
+        // Apply security validation
+        let security_config = CommandSecurityConfig::default();
+        Self::validate_command_security(command, &security_config)?;
+
+        warn!("SECURITY WARNING: Executing shell command after validation: {}", command);
+
+        let output = tokio::time::timeout(
+            Duration::from_secs(security_config.timeout_seconds),
+            TokioCommand::new("sh")
+                .arg("-c")
+                .arg(command)
+                .env_clear() // Clear environment for security
+                .env("PATH", "/usr/bin:/bin") // Minimal PATH
+                .output()
+        )
+        .await
+        .map_err(|_| anyhow!("Command execution timed out after {} seconds", security_config.timeout_seconds))?
+        .map_err(|e| anyhow!("Failed to execute command: {}", e))?;
 
         let stdout = String::from_utf8(output.stdout)?;
         let mut result = HashMap::new();
