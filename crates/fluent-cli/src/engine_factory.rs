@@ -138,7 +138,7 @@ pub fn create_test_engine_config(engine_type: &str) -> EngineConfig {
     parameters.insert("max_tokens".to_string(), serde_json::Value::Number(serde_json::Number::from(1000)));
     parameters.insert("temperature".to_string(), serde_json::Value::Number(
         serde_json::Number::from_f64(0.7)
-            .ok_or_else(|| anyhow!("Failed to create temperature number from f64"))?
+            .unwrap_or_else(|| serde_json::Number::from(1)) // Fallback to 1 if f64 conversion fails
     ));
 
     EngineConfig {
@@ -171,7 +171,7 @@ mod tests {
         assert!(validate_engine_config(&invalid_config).is_err());
 
         let mut no_api_key_config = valid_config.clone();
-        no_api_key_config.connection.api_key = None;
+        no_api_key_config.parameters.remove("api_key");
         assert!(validate_engine_config(&no_api_key_config).is_err());
     }
 

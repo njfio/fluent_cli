@@ -219,7 +219,10 @@ impl StrategyOptimizer {
             .collect();
 
         // Sort by priority score (highest first)
-        prioritized.sort_by(|a, b| b.priority_score.partial_cmp(&a.priority_score).unwrap());
+        prioritized.sort_by(|a, b| {
+            b.priority_score.partial_cmp(&a.priority_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Set execution order
         for (i, adj) in prioritized.iter_mut().enumerate() {

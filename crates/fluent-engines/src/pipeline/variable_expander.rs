@@ -152,7 +152,13 @@ impl VariableExpander {
             return false;
         }
 
-        let first_char = name.chars().next().unwrap();
+        // Safe to unwrap here since we already checked for empty string
+        // But let's use a safer approach
+        let first_char = match name.chars().next() {
+            Some(c) => c,
+            None => return false, // This should never happen due to empty check above
+        };
+
         if !first_char.is_ascii_alphabetic() && first_char != '_' {
             return false;
         }

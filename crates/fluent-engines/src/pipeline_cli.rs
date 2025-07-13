@@ -238,7 +238,11 @@ impl PipelineCli {
 
         // Create executor with metrics
         let log_file = pipeline_dir.join("logs").join(format!("{}.log", name));
-        tokio::fs::create_dir_all(log_file.parent().unwrap()).await?;
+        if let Some(parent_dir) = log_file.parent() {
+            tokio::fs::create_dir_all(parent_dir).await?;
+        } else {
+            return Err(anyhow!("Invalid log file path: {}", log_file.display()));
+        }
 
         let (builder, metrics_listener) = PipelineExecutorBuilder::new()
             .with_file_state_store(state_dir.clone())

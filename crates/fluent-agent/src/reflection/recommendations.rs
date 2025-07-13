@@ -44,7 +44,7 @@ impl RecommendationGenerator {
         recommendations.sort_by(|a, b| {
             let a_score = Self::calculate_recommendation_score(a);
             let b_score = Self::calculate_recommendation_score(b);
-            b_score.partial_cmp(&a_score).unwrap()
+            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         Ok(recommendations)
@@ -330,7 +330,7 @@ impl RecommendationPrioritizer {
         prioritized.sort_by(|a, b| {
             let a_score = Self::calculate_combined_score(a);
             let b_score = Self::calculate_combined_score(b);
-            b_score.partial_cmp(&a_score).unwrap()
+            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Update execution order

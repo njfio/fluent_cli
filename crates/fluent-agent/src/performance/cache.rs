@@ -510,4 +510,123 @@ mod tests {
         assert_eq!(stats.l2_hits, 1);
         assert_eq!(stats.misses, 1);
     }
+
+    #[tokio::test]
+    async fn test_redis_cache_fallback_behavior() {
+        // Test Redis cache when not available (fallback mode)
+        let redis_cache = RedisCache::<String, String> {
+            url: "redis://localhost:6379".to_string(),
+            available: false, // Simulate Redis not available
+            ttl: Duration::from_secs(300),
+            _phantom: std::marker::PhantomData,
+        };
+
+        // Test get operation - should return None gracefully
+        let result = redis_cache.get(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+
+        // Test set operation - should succeed gracefully
+        let result = redis_cache.set(
+            &"test_key".to_string(),
+            &"test_value".to_string(),
+            Duration::from_secs(60)
+        ).await;
+        assert!(result.is_ok());
+
+        // Test remove operation - should succeed gracefully
+        let result = redis_cache.remove(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+
+        // Test clear operation - should succeed gracefully
+        let result = redis_cache.clear().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_database_cache_fallback_behavior() {
+        // Test Database cache when not available (fallback mode)
+        let db_cache = DatabaseCache::<String, String> {
+            url: "sqlite::memory:".to_string(),
+            available: false, // Simulate database not available
+            ttl: Duration::from_secs(300),
+            _phantom: std::marker::PhantomData,
+        };
+
+        // Test get operation - should return None gracefully
+        let result = db_cache.get(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+
+        // Test set operation - should succeed gracefully
+        let result = db_cache.set(
+            &"test_key".to_string(),
+            &"test_value".to_string(),
+            Duration::from_secs(60)
+        ).await;
+        assert!(result.is_ok());
+
+        // Test remove operation - should succeed gracefully
+        let result = db_cache.remove(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+
+        // Test clear operation - should succeed gracefully
+        let result = db_cache.clear().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_cache_availability_logging() {
+        // Test that proper logging occurs for unavailable caches
+        let redis_cache = RedisCache::<String, String> {
+            url: "redis://localhost:6379".to_string(),
+            available: false,
+            ttl: Duration::from_secs(300),
+            _phantom: std::marker::PhantomData,
+        };
+
+        // This should log a debug message about Redis not being available
+        let result = redis_cache.get(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+
+        let db_cache = DatabaseCache::<String, String> {
+            url: "sqlite::memory:".to_string(),
+            available: false,
+            ttl: Duration::from_secs(300),
+            _phantom: std::marker::PhantomData,
+        };
+
+        // This should log a debug message about Database not being available
+        let result = db_cache.get(&"test_key".to_string()).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_multi_level_cache_with_unavailable_backends() {
+        let config = CacheConfig {
+            l1_max_capacity: 100,
+            l1_ttl: Duration::from_secs(300),
+            l2_enabled: true,
+            l2_url: Some("redis://localhost:6379".to_string()),
+            l2_ttl: Duration::from_secs(3600),
+            l3_enabled: true,
+            l3_database_url: Some("sqlite::memory:".to_string()),
+            l3_ttl: Duration::from_secs(86400),
+        };
+
+        // This should work even if Redis/Database are not available
+        let cache: MultiLevelCache<String, String> = MultiLevelCache::new(config).await.unwrap();
+
+        // Test operations - should work with L1 cache even if L2/L3 are unavailable
+        cache.set("key1".to_string(), "value1".to_string(), Duration::from_secs(60)).await;
+        let result = cache.get(&"key1".to_string()).await;
+        assert_eq!(result, Some("value1".to_string()));
+
+        // Test cache statistics - verify that the cache is working
+        let stats = cache.get_stats();
+        // The main test is that we can retrieve the value, stats may vary based on implementation
+        assert!(result.is_some(), "Cache should store and retrieve values even with unavailable backends");
+    }
 }

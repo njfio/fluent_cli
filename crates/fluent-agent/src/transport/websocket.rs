@@ -311,6 +311,9 @@ impl McpTransport for WebSocketTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::{Mutex, RwLock};
 
     #[tokio::test]
     async fn test_websocket_transport_creation() {
