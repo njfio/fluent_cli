@@ -93,6 +93,7 @@ fn test_neo4j_config() -> Result<()> {
         voyage_ai: None,
         query_llm: Some("gpt-4".to_string()),
         parameters: Some(parameters),
+        tls: None,
     };
 
     assert_eq!(neo4j_config.uri, "bolt://localhost:7687");

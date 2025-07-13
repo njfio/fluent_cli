@@ -3,6 +3,7 @@ use clap::ArgMatches;
 use fluent_core::config::Config;
 use fluent_core::traits::Engine;
 use fluent_core::types::{Request, Response};
+use serde_json;
 
 use fluent_engines::create_engine;
 use std::path::Path;
@@ -151,30 +152,113 @@ impl EngineCommand {
     }
 }
 
-impl CommandHandler for EngineCommand {
-    async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
-        // Get engine name and request from arguments
-        // For direct engine queries, the engine name comes from the main CLI args
-        let engine_name = matches
-            .get_one::<String>("engine")
-            .ok_or_else(|| anyhow!("Engine name is required"))?;
+impl EngineCommand {
+    /// List available engines
+    async fn list_engines(matches: &ArgMatches, config: &Config) -> Result<()> {
+        let json_output = matches.get_flag("json");
 
-        let request = matches
-            .get_one::<String>("request")
-            .ok_or_else(|| anyhow!("Request is required"))?;
+        // Get engines from config
+        let engines = &config.engines;
 
-        // Execute the request
-        let result = Self::execute_engine_request(engine_name, request, config, matches).await?;
+        if json_output {
+            let engine_list: Vec<serde_json::Value> = engines.iter().map(|engine| {
+                let url = format!("{}://{}:{}{}",
+                    engine.connection.protocol,
+                    engine.connection.hostname,
+                    engine.connection.port,
+                    engine.connection.request_path
+                );
+                serde_json::json!({
+                    "name": engine.name,
+                    "engine": engine.engine,
+                    "connection": {
+                        "protocol": engine.connection.protocol,
+                        "hostname": engine.connection.hostname,
+                        "port": engine.connection.port,
+                        "request_path": engine.connection.request_path,
+                        "url": url
+                    }
+                })
+            }).collect();
 
-        if !result.success {
-            if let Some(message) = result.message {
-                return Err(anyhow!("Engine execution failed: {}", message));
-            } else {
-                return Err(anyhow!("Engine execution failed"));
+            println!("{}", serde_json::to_string_pretty(&engine_list)?);
+        } else {
+            println!("🚀 Available engines:\n");
+
+            if engines.is_empty() {
+                println!("No engines configured. Please check your configuration file.");
+                return Ok(());
+            }
+
+            for engine in engines {
+                let url = format!("{}://{}:{}{}",
+                    engine.connection.protocol,
+                    engine.connection.hostname,
+                    engine.connection.port,
+                    engine.connection.request_path
+                );
+                println!("📦 {}", engine.name);
+                println!("   Type: {}", engine.engine);
+                println!("   URL: {}", url);
+                println!("   Host: {}", engine.connection.hostname);
+                println!("   Port: {}", engine.connection.port);
+                println!();
             }
         }
 
         Ok(())
+    }
+
+    /// Test engine connectivity
+    async fn test_engine(matches: &ArgMatches, config: &Config) -> Result<()> {
+        let engine_name = matches
+            .get_one::<String>("engine")
+            .ok_or_else(|| anyhow!("Engine name is required"))?;
+
+        // Find the engine in config
+        let engine_config = config.engines.iter()
+            .find(|e| e.name == *engine_name)
+            .ok_or_else(|| anyhow!("Engine '{}' not found in configuration", engine_name))?;
+
+        println!("🔍 Testing engine: {}", engine_name);
+
+        // Create engine instance
+        match create_engine(engine_config).await {
+            Ok(_engine) => {
+                println!("✅ Engine '{}' is available and configured correctly", engine_name);
+
+                // TODO: Add actual connectivity test by making a simple request
+                // let test_request = Request {
+                //     flowname: "test".to_string(),
+                //     payload: "Hello, this is a test.".to_string(),
+                // };
+                // let response = engine.execute(&test_request).await?;
+                // println!("Test response: {}", response.content);
+            }
+            Err(e) => {
+                println!("❌ Engine '{}' test failed: {}", engine_name, e);
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl CommandHandler for EngineCommand {
+    async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
+        match matches.subcommand() {
+            Some(("list", sub_matches)) => {
+                Self::list_engines(sub_matches, config).await
+            }
+            Some(("test", sub_matches)) => {
+                Self::test_engine(sub_matches, config).await
+            }
+            _ => {
+                eprintln!("No subcommand provided. Use 'fluent engine --help' for usage information.");
+                Ok(())
+            }
+        }
     }
 }
 

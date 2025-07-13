@@ -7,9 +7,9 @@ use clap::{Arg, ArgAction, Command};
 
 /// Build the main CLI command structure
 pub fn build_cli() -> Command {
-    Command::new("Fluent CLI")
+    Command::new("fluent")
         .version("0.1.0")
-        .author("Your Name <your.email@example.com>")
+        .author("Fluent CLI Team")
         .about("A powerful CLI for interacting with various AI engines")
         .arg(
             Arg::new("config")
@@ -17,79 +17,8 @@ pub fn build_cli() -> Command {
                 .long("config")
                 .value_name("FILE")
                 .help("Sets a custom config file")
-                .required(false),
-        )
-        .arg(
-            Arg::new("engine")
-                .help("The engine to use (openai or anthropic)")
-                .required(true),
-        )
-        .arg(
-            Arg::new("request")
-                .help("The request to process")
-                .required(false),
-        )
-        .arg(
-            Arg::new("override")
-                .short('o')
-                .long("override")
-                .value_name("KEY=VALUE")
-                .help("Override configuration values")
-                .action(ArgAction::Append)
-                .num_args(1..),
-        )
-        .arg(
-            Arg::new("file")
-                .short('f')
-                .long("file")
-                .value_name("FILE")
-                .help("File to upload and process")
-                .required(false),
-        )
-        .arg(
-            Arg::new("json")
-                .short('j')
-                .long("json")
-                .help("Output response in JSON format")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("verbose")
-                .short('v')
-                .long("verbose")
-                .help("Enable verbose output")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("no-color")
-                .long("no-color")
-                .help("Disable colored output")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("parse-code")
-                .long("parse-code")
-                .help("Parse and extract code blocks from response")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("execute-output")
-                .long("execute-output")
-                .help("Execute the output code (use with caution)")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("markdown")
-                .long("markdown")
-                .help("Format output as markdown")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("download-media")
-                .long("download-media")
-                .value_name("DIR")
-                .help("Download media files to specified directory")
-                .required(false),
+                .default_value("fluent_config.toml")
+                .global(true),
         )
         .subcommand(
             Command::new("pipeline")
@@ -99,32 +28,26 @@ pub fn build_cli() -> Command {
                         .short('f')
                         .long("file")
                         .value_name("FILE")
-                        .help("Pipeline YAML file")
+                        .help("Pipeline YAML file to execute")
                         .required(true),
                 )
                 .arg(
-                    Arg::new("input")
-                        .short('i')
-                        .long("input")
-                        .value_name("INPUT")
-                        .help("Pipeline input")
-                        .required(true),
+                    Arg::new("variables")
+                        .short('v')
+                        .long("variables")
+                        .value_name("KEY=VALUE")
+                        .help("Pipeline variables")
+                        .action(ArgAction::Append)
+                        .num_args(1..),
                 )
                 .arg(
-                    Arg::new("force_fresh")
-                        .long("force-fresh")
-                        .help("Force fresh execution, ignoring cache")
+                    Arg::new("dry-run")
+                        .long("dry-run")
+                        .help("Show what would be executed without running")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
-                    Arg::new("run_id")
-                        .long("run-id")
-                        .value_name("ID")
-                        .help("Unique run identifier")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("json_output")
+                    Arg::new("json")
                         .long("json")
                         .help("Output in JSON format")
                         .action(ArgAction::SetTrue),
@@ -132,7 +55,7 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("agent")
-                .about("Run in agentic mode")
+                .about("Run agentic workflows")
                 .arg(
                     Arg::new("agentic")
                         .long("agentic")
@@ -144,29 +67,21 @@ pub fn build_cli() -> Command {
                         .short('g')
                         .long("goal")
                         .value_name("GOAL")
-                        .help("Goal for the agent to achieve")
+                        .help("Goal description for the agent")
                         .required(false),
                 )
                 .arg(
-                    Arg::new("agent_config")
-                        .short('c')
-                        .long("config")
-                        .value_name("FILE")
-                        .help("Agent configuration file")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("max_iterations")
+                    Arg::new("max-iterations")
                         .long("max-iterations")
-                        .value_name("NUM")
+                        .value_name("COUNT")
                         .help("Maximum number of iterations")
                         .value_parser(clap::value_parser!(u32))
-                        .required(false),
+                        .default_value("10"),
                 )
                 .arg(
-                    Arg::new("enable_tools")
-                        .long("enable-tools")
-                        .help("Enable tool usage")
+                    Arg::new("reflection")
+                        .long("reflection")
+                        .help("Enable reflection mode")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
@@ -189,32 +104,44 @@ pub fn build_cli() -> Command {
                                 .short('p')
                                 .long("port")
                                 .value_name("PORT")
-                                .help("Port to listen on")
+                                .help("Port to run the server on")
                                 .value_parser(clap::value_parser!(u16))
-                                .required(false),
+                                .default_value("8080"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("client")
+                        .about("Connect as MCP client")
+                        .arg(
+                            Arg::new("server")
+                                .short('s')
+                                .long("server")
+                                .value_name("URL")
+                                .help("MCP server URL to connect to")
+                                .required(true),
                         ),
                 ),
         )
         .subcommand(
             Command::new("neo4j")
-                .about("Neo4j operations")
+                .about("Neo4j database operations")
                 .arg(
                     Arg::new("generate-cypher")
                         .long("generate-cypher")
-                        .value_name("QUERY")
                         .help("Generate Cypher query from natural language")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("upsert")
-                        .long("upsert")
-                        .help("Perform upsert operation")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
-                    Arg::new("input")
-                        .short('i')
-                        .long("input")
+                    Arg::new("query")
+                        .short('q')
+                        .long("query")
+                        .value_name("QUERY")
+                        .help("Natural language query or Cypher query")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("upsert-file")
+                        .long("upsert-file")
                         .value_name("FILE")
                         .help("Input file for upsert operation")
                         .required(false),
@@ -231,31 +158,33 @@ pub fn build_cli() -> Command {
                                 .long("category")
                                 .value_name("CATEGORY")
                                 .help("Filter by tool category")
+                                .required(false),
                         )
                         .arg(
                             Arg::new("search")
                                 .long("search")
                                 .value_name("TERM")
                                 .help("Search tools by name or description")
+                                .required(false),
                         )
                         .arg(
                             Arg::new("json")
                                 .long("json")
                                 .help("Output in JSON format")
-                                .action(ArgAction::SetTrue)
-                        )
-                        .arg(
-                            Arg::new("detailed")
-                                .long("detailed")
-                                .help("Show detailed information")
-                                .action(ArgAction::SetTrue)
+                                .action(ArgAction::SetTrue),
                         )
                         .arg(
                             Arg::new("available")
                                 .long("available")
                                 .help("Show only available/enabled tools")
-                                .action(ArgAction::SetTrue)
+                                .action(ArgAction::SetTrue),
                         )
+                        .arg(
+                            Arg::new("detailed")
+                                .long("detailed")
+                                .help("Show detailed information for each tool")
+                                .action(ArgAction::SetTrue),
+                        ),
                 )
                 .subcommand(
                     Command::new("describe")
@@ -263,26 +192,26 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("tool")
                                 .help("Tool name to describe")
-                                .required(true)
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .long("schema")
-                                .help("Show parameter schema")
-                                .action(ArgAction::SetTrue)
-                        )
-                        .arg(
-                            Arg::new("examples")
-                                .long("examples")
-                                .help("Show usage examples")
-                                .action(ArgAction::SetTrue)
+                                .required(true),
                         )
                         .arg(
                             Arg::new("json")
                                 .long("json")
                                 .help("Output in JSON format")
-                                .action(ArgAction::SetTrue)
+                                .action(ArgAction::SetTrue),
                         )
+                        .arg(
+                            Arg::new("schema")
+                                .long("schema")
+                                .help("Show tool schema/parameters")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("examples")
+                                .long("examples")
+                                .help("Show usage examples")
+                                .action(ArgAction::SetTrue),
+                        ),
                 )
                 .subcommand(
                     Command::new("exec")
@@ -290,56 +219,19 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("tool")
                                 .help("Tool name to execute")
-                                .required(true)
+                                .required(true),
                         )
                         .arg(
-                            Arg::new("json")
-                                .long("json")
-                                .value_name("JSON")
-                                .help("Parameters as JSON string")
-                        )
-                        .arg(
-                            Arg::new("params-file")
-                                .long("params-file")
-                                .value_name("FILE")
-                                .help("Parameters from JSON file")
-                        )
-                        .arg(
-                            Arg::new("path")
-                                .long("path")
-                                .value_name("PATH")
-                                .help("File path parameter")
-                        )
-                        .arg(
-                            Arg::new("content")
-                                .long("content")
-                                .value_name("CONTENT")
-                                .help("Content parameter")
-                        )
-                        .arg(
-                            Arg::new("command")
-                                .long("command")
-                                .value_name("COMMAND")
-                                .help("Command parameter")
-                        )
-                        .arg(
-                            Arg::new("dry-run")
-                                .long("dry-run")
-                                .help("Show what would be executed without running")
-                                .action(ArgAction::SetTrue)
-                        )
-                        .arg(
-                            Arg::new("timeout")
-                                .long("timeout")
-                                .value_name("DURATION")
-                                .help("Execution timeout (e.g., 30s, 5m)")
+                            Arg::new("args")
+                                .help("Tool arguments (JSON format)")
+                                .required(false),
                         )
                         .arg(
                             Arg::new("json-output")
                                 .long("json-output")
                                 .help("Output result in JSON format")
-                                .action(ArgAction::SetTrue)
-                        )
+                                .action(ArgAction::SetTrue),
+                        ),
                 )
                 .subcommand(
                     Command::new("categories")
@@ -348,9 +240,32 @@ pub fn build_cli() -> Command {
                             Arg::new("json")
                                 .long("json")
                                 .help("Output in JSON format")
-                                .action(ArgAction::SetTrue)
-                        )
+                                .action(ArgAction::SetTrue),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("engine")
+                .about("Engine management and configuration")
+                .subcommand(
+                    Command::new("list")
+                        .about("List available engines")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
                 )
+                .subcommand(
+                    Command::new("test")
+                        .about("Test engine connectivity")
+                        .arg(
+                            Arg::new("engine")
+                                .help("Engine name to test")
+                                .required(true),
+                        ),
+                ),
         )
 }
 

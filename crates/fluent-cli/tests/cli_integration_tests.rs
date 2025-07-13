@@ -1,4 +1,5 @@
-use fluent_core::config::{Config, EngineConfig, DatabaseConfig};
+use fluent_core::config::{Config, EngineConfig};
+use fluent_engines::EngineType;
 use std::process::Command;
 use tempfile::TempDir;
 use anyhow::Result;

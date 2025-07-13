@@ -302,7 +302,7 @@ mod tests {
 ///     // Option 1: Use streaming with progress callback
 ///     let response = engine.execute_with_progress(&request, |chunk| {
 ///         print!("{}", chunk); // Print each chunk as it arrives
-///         std::io::stdout().flush().unwrap();
+///         // Note: In real async code, use tokio::io::stdout().flush().await
 ///     }).await?;
 ///     
 ///     // Option 2: Use streaming and collect into single response

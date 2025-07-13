@@ -44,7 +44,7 @@ pub async fn run_agentic_mode(
     config_path: &str,
 ) -> Result<()> {
     use crate::agentic::{AgenticConfig, AgenticExecutor};
-    use fluent_core::config::load_config;
+    // Config loading handled by fluent_core::config::load_config
 
     let config = fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new())?;
     
@@ -91,7 +91,7 @@ pub async fn run_agent_with_mcp(
     let memory = std::sync::Arc::new(SqliteMemoryStore::new(&memory_path)?);
 
     // Create agent
-    let mut agent = AgentWithMcp::new(
+    let agent = AgentWithMcp::new(
         memory,
         Box::new(reasoning_engine),
     );

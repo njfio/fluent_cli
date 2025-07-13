@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use fluent_core::config::load_engine_config;
 use fluent_core::traits::Engine;
 use fluent_engines::create_engine;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -132,8 +133,8 @@ impl AgentEngineConfig {
                 match create_engine(&engine_config).await {
                     Ok(engine) => Ok(engine),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to create engine '{}' with config: {}",
+                        warn!(
+                            "Failed to create engine '{}' with config: {}",
                             engine_name, e
                         );
                         self.create_default_engine(engine_name, credentials).await
@@ -141,8 +142,8 @@ impl AgentEngineConfig {
                 }
             }
             Err(e) => {
-                eprintln!(
-                    "Warning: Engine '{}' not found in config: {}",
+                warn!(
+                    "Engine '{}' not found in config: {}",
                     engine_name, e
                 );
                 self.create_default_engine(engine_name, credentials).await

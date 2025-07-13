@@ -1,5 +1,6 @@
 // Lock timeout utilities and monitoring
 use crate::error::{FluentError, LockTimeoutConfig};
+use log::warn;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
@@ -186,7 +187,7 @@ impl LockTimeoutUtils {
                 
                 let elapsed = start_time.elapsed();
                 if config.log_timeout_events {
-                    eprintln!(
+                    warn!(
                         "⏰ Mutex lock timeout in {} after {:?} (timeout: {:?})",
                         context, elapsed, config.timeout
                     );

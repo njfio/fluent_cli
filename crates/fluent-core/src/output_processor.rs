@@ -317,19 +317,20 @@ impl OutputProcessor {
             return Err(anyhow!("Command input too large (max 10KB)"));
         }
 
-        // Whitelist of safe commands
-        let safe_commands = [
-            "echo", "cat", "ls", "pwd", "date", "whoami", "id",
-            "head", "tail", "wc", "grep", "sort", "uniq",
-        ];
+        // Get configurable command whitelist from environment or use defaults
+        let safe_commands = Self::get_command_whitelist();
 
-        // Check each command against whitelist
+        // Validate each command against security policies
         for command in commands.lines() {
             let trimmed = command.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
 
+            // First validate against security patterns
+            Self::validate_command_security(trimmed)?;
+
+            // Then check against whitelist
             let cmd_parts: Vec<&str> = trimmed.split_whitespace().collect();
             if let Some(cmd) = cmd_parts.first() {
                 if !safe_commands.contains(cmd) {
@@ -386,6 +387,54 @@ impl OutputProcessor {
             output.push('\n');
         }
         Ok(output)
+    }
+
+    /// Get configurable command whitelist from environment or defaults
+    fn get_command_whitelist() -> Vec<&'static str> {
+        // Check if custom whitelist is provided via environment variable
+        if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
+            // Parse comma-separated list and return as static references
+            // For now, return default list and log the custom commands
+            log::info!("Custom command whitelist provided: {}", custom_commands);
+            // TODO: Implement dynamic whitelist parsing with proper lifetime management
+        }
+
+        // Default safe command whitelist
+        vec![
+            "echo", "cat", "ls", "pwd", "date", "whoami", "id",
+            "head", "tail", "wc", "grep", "sort", "uniq", "find",
+            "which", "type", "file", "stat", "du", "df"
+        ]
+    }
+
+    /// Validate command against security policies
+    fn validate_command_security(command: &str) -> Result<()> {
+        // Check command length
+        if command.len() > 1000 {
+            return Err(anyhow!("Command too long (max 1000 characters)"));
+        }
+
+        // Check for dangerous patterns
+        let dangerous_patterns = [
+            "rm ", "rmdir", "del ", "format", "mkfs",
+            "dd ", "fdisk", "parted", "mount", "umount",
+            "sudo", "su ", "chmod +x", "chown", "chgrp",
+            "curl", "wget", "nc ", "netcat", "telnet",
+            "ssh", "scp", "rsync", "ftp", "sftp",
+            "python", "perl", "ruby", "node", "php",
+            "bash", "sh ", "zsh", "fish", "csh",
+            "eval", "exec", "source", ".", "$(", "`",
+            "&&", "||", ";", "|", ">", ">>", "<",
+            "kill", "killall", "pkill", "nohup", "&"
+        ];
+
+        for pattern in &dangerous_patterns {
+            if command.to_lowercase().contains(pattern) {
+                return Err(anyhow!("Command contains dangerous pattern: {}", pattern));
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -364,7 +364,7 @@ impl ServerHandler for FluentMcpAdapter {
         let result = match params.name.as_ref() {
             "read_file" => {
                 if let Some(path) = tool_args.get("path") {
-                    match std::fs::read_to_string(path.as_str().unwrap_or("")) {
+                    match tokio::fs::read_to_string(path.as_str().unwrap_or("")).await {
                         Ok(content) => format!("File content: {}", content),
                         Err(e) => format!("Error reading file: {}", e),
                     }
@@ -375,7 +375,7 @@ impl ServerHandler for FluentMcpAdapter {
             "write_file" => {
                 if let Some(path) = tool_args.get("path") {
                     if let Some(content) = tool_args.get("content") {
-                        match std::fs::write(path.as_str().unwrap_or(""), content.as_str().unwrap_or("")) {
+                        match tokio::fs::write(path.as_str().unwrap_or(""), content.as_str().unwrap_or("")).await {
                             Ok(_) => "File written successfully".to_string(),
                             Err(e) => format!("Error writing file: {}", e),
                         }
