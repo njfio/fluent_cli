@@ -48,6 +48,7 @@ pub struct McpToolExecutionResult {
 /// MCP Tool Registry for managing and executing MCP-compatible tools
 pub struct McpToolRegistry {
     tools: Arc<RwLock<HashMap<String, McpToolDefinition>>>,
+    #[allow(dead_code)]
     executors: Arc<RwLock<HashMap<String, Arc<dyn ToolExecutor>>>>,
     base_tool_registry: Arc<ToolRegistry>,
     execution_stats: Arc<RwLock<HashMap<String, McpToolStats>>>,

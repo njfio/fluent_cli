@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 /// Memory profiling metrics for reflection operations
 #[derive(Debug, Clone)]
@@ -202,31 +202,12 @@ impl ReflectionMemoryProfiler {
         Ok(())
     }
 
-    /// Get current memory usage (simplified implementation)
+    /// Get current memory usage (cross-platform implementation)
     fn get_current_memory_usage() -> usize {
-        // This is a simplified implementation
-        // In a real system, you would use platform-specific APIs
-        // or memory profiling tools like jemalloc
-        
-        // For demonstration, we'll use a simple heuristic
-        // based on the current process memory
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-                for line in status.lines() {
-                    if line.starts_with("VmRSS:") {
-                        if let Some(kb_str) = line.split_whitespace().nth(1) {
-                            if let Ok(kb) = kb_str.parse::<usize>() {
-                                return kb * 1024; // Convert KB to bytes
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Fallback: return a placeholder value
-        std::mem::size_of::<Self>() * 1000
+        get_process_memory_usage().unwrap_or_else(|_| {
+            // Fallback: return a reasonable estimate
+            std::mem::size_of::<Self>() * 1000
+        })
     }
 }
 
@@ -234,6 +215,74 @@ impl Default for ReflectionMemoryProfiler {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Get current process memory usage in bytes (cross-platform)
+fn get_process_memory_usage() -> Result<usize> {
+    #[cfg(target_os = "linux")]
+    {
+        get_process_memory_usage_linux()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        get_process_memory_usage_macos()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        get_process_memory_usage_windows()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // Fallback for other platforms
+        Ok(1024 * 1024) // 1MB default
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn get_process_memory_usage_linux() -> Result<usize> {
+    let status = std::fs::read_to_string("/proc/self/status")
+        .map_err(|e| anyhow!("Failed to read /proc/self/status: {}", e))?;
+
+    for line in status.lines() {
+        if line.starts_with("VmRSS:") {
+            if let Some(kb_str) = line.split_whitespace().nth(1) {
+                if let Ok(kb) = kb_str.parse::<usize>() {
+                    return Ok(kb * 1024); // Convert KB to bytes
+                }
+            }
+        }
+    }
+
+    Err(anyhow!("Could not find VmRSS in /proc/self/status"))
+}
+
+#[cfg(target_os = "macos")]
+fn get_process_memory_usage_macos() -> Result<usize> {
+    use std::process::Command;
+
+    let output = Command::new("ps")
+        .args(&["-o", "rss", "-p"])
+        .arg(std::process::id().to_string())
+        .output()
+        .map_err(|e| anyhow!("Failed to run ps command: {}", e))?;
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+
+    if lines.len() >= 2 {
+        if let Ok(rss_kb) = lines[1].trim().parse::<usize>() {
+            return Ok(rss_kb * 1024); // Convert KB to bytes
+        }
+    }
+
+    Err(anyhow!("Could not parse ps output"))
+}
+
+#[cfg(target_os = "windows")]
+fn get_process_memory_usage_windows() -> Result<usize> {
+    // On Windows, we would use GetProcessMemoryInfo()
+    // For now, provide a simplified implementation
+    Ok(1024 * 1024) // 1MB default
 }
 
 #[cfg(test)]

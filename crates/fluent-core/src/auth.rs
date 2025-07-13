@@ -17,9 +17,9 @@ impl SecureString {
         }
     }
 
-    pub fn as_str(&self) -> &str {
-        // SAFETY: We know this is valid UTF-8 since it came from a String
-        unsafe { std::str::from_utf8_unchecked(&self.data) }
+    pub fn as_str(&self) -> Result<&str> {
+        std::str::from_utf8(&self.data)
+            .map_err(|e| anyhow!("Invalid UTF-8 in secure string: {}", e))
     }
 
     pub fn len(&self) -> usize {
@@ -198,14 +198,16 @@ impl AuthManager {
     pub fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<()> {
         match &self.auth_type {
             AuthType::Bearer => {
-                let auth_value = format!("Bearer {}", self.token.as_str());
+                let token_str = self.token.as_str()?;
+                let auth_value = format!("Bearer {}", token_str);
                 let header_value = HeaderValue::from_str(&auth_value)
                     .map_err(|e| anyhow!("Invalid bearer token format: {}", e))?;
                 headers.insert(AUTHORIZATION, header_value);
             }
 
             AuthType::ApiKey(header_name) => {
-                let header_value = HeaderValue::from_str(self.token.as_str())
+                let token_str = self.token.as_str()?;
+                let header_value = HeaderValue::from_str(token_str)
                     .map_err(|e| anyhow!("Invalid API key format: {}", e))?;
                 let header_name = reqwest::header::HeaderName::from_bytes(header_name.as_bytes())
                     .map_err(|e| anyhow!("Invalid header name: {}", e))?;
@@ -213,7 +215,8 @@ impl AuthManager {
             }
 
             AuthType::Basic { .. } => {
-                let auth_value = format!("Basic {}", self.token.as_str());
+                let token_str = self.token.as_str()?;
+                let auth_value = format!("Basic {}", token_str);
                 let header_value = HeaderValue::from_str(&auth_value)
                     .map_err(|e| anyhow!("Invalid basic auth format: {}", e))?;
                 headers.insert(AUTHORIZATION, header_value);
@@ -261,7 +264,8 @@ impl AuthManager {
 
     /// Validates that the token is still valid (basic checks)
     pub fn validate_current_token(&self) -> Result<()> {
-        Self::validate_token(self.token.as_str())
+        let token_str = self.token.as_str()?;
+        Self::validate_token(token_str)
     }
 }
 

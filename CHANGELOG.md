@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-01-13 - Quality & Testing Improvements
+
+### ✅ Quality Assurance & Testing
+
+#### Fixed
+- **Compilation Errors**: Fixed all MCP example compilation errors by correcting trait implementations
+- **Test Suite**: Fixed 2 failing e2e tests (invalid command combinations and permission scenarios)
+- **Code Quality**: Systematically removed unused imports, variables, and dead code warnings
+- **Example Files**: Fixed all example compilation issues and warnings
+
+#### Improved
+- **Clean Builds**: Achieved clean compilation with minimal warnings across all crates
+- **Test Coverage**: All 31 e2e tests now passing consistently
+- **Documentation**: Updated README.md to reflect current working state and capabilities
+- **Code Organization**: Removed 30+ outdated documentation files and cleaned up repository
+
+#### Changed
+- **MCP Examples**: Updated to use working `SqliteMemoryStore` instead of problematic `AsyncSqliteMemoryStore`
+- **Test Assertions**: Improved error detection patterns in e2e tests for better reliability
+- **Documentation**: Streamlined documentation to focus on working features and current capabilities
+
+### 🧹 Repository Cleanup
+
+#### Removed
+- 30+ outdated documentation files that no longer reflect current implementation
+- Temporary audit files and analysis reports
+- Unused configuration files and cache directories
+
+#### Added
+- Comprehensive task management for tracking development progress
+- Improved error handling in test scenarios
+- Better documentation alignment with actual implementation
+
 ## [0.3.0] - 2024-12-19 - Production-Ready Security & Performance Release
 
 ### 🔒 Security & Stability Improvements

@@ -16,7 +16,7 @@ impl StrategyAdjustmentGenerator {
     /// Generate strategy adjustments based on analysis
     pub async fn generate_adjustments(
         analysis: &ReflectionAnalysis,
-        context: &ExecutionContext,
+        _context: &ExecutionContext,
         performance_threshold: f64,
     ) -> Result<Vec<StrategyAdjustment>> {
         let mut adjustments = Vec::new();
@@ -186,7 +186,7 @@ impl StrategyOptimizer {
     /// Create optimization plan based on adjustments
     pub async fn create_optimization_plan(
         adjustments: &[StrategyAdjustment],
-        context: &ExecutionContext,
+        _context: &ExecutionContext,
     ) -> Result<OptimizationPlan> {
         let prioritized_adjustments = Self::prioritize_adjustments(adjustments);
         let implementation_timeline = Self::create_implementation_timeline(&prioritized_adjustments);

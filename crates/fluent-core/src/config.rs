@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_yaml;
 
 use std::collections::HashMap;
 use std::process::Command;
@@ -73,8 +74,8 @@ pub fn load_engine_config(
     overrides: &HashMap<String, Value>,
     credentials: &HashMap<String, String>,
 ) -> Result<EngineConfig> {
-    //Converts the string into a json value to be manipulated
-    let mut config: Value = serde_json::from_str(config_content)?;
+    //Converts the YAML string into a json value to be manipulated
+    let mut config: Value = serde_yaml::from_str(config_content)?;
 
     debug!("Loading config for engine: {}", engine_name);
 

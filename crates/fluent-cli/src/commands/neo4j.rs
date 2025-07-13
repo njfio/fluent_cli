@@ -163,9 +163,10 @@ impl CommandHandler for Neo4jCommand {
 
             if !result.success {
                 if let Some(message) = result.message {
-                    eprintln!("Cypher generation failed: {}", message);
+                    return Err(anyhow!("Cypher generation failed: {}", message));
+                } else {
+                    return Err(anyhow!("Cypher generation failed"));
                 }
-                std::process::exit(1);
             }
         } else if matches.get_flag("upsert") {
             // Execute upsert operation

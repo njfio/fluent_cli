@@ -2,9 +2,9 @@
 use anyhow::Result;
 use fluent_agent::{
     mcp_client::{McpClient, McpClientConfig, McpClientManager},
-    mcp_tool_registry::{McpToolRegistry, McpToolDefinition},
-    mcp_resource_manager::{McpResourceManager, McpResource, ResourcePermissions, CachePolicy},
-    memory::AsyncSqliteMemoryStore,
+    mcp_tool_registry::McpToolRegistry,
+    mcp_resource_manager::McpResourceManager,
+    memory::SqliteMemoryStore,
     tools::ToolRegistry,
 };
 use serde_json::json;
@@ -43,11 +43,11 @@ async fn demonstrate_enhanced_mcp_client() -> Result<()> {
         retry_delay: Duration::from_millis(500),
     };
 
-    let mut client = McpClient::with_config(config);
+    let client = McpClient::with_config(config);
     println!("✅ Created MCP client with custom configuration");
 
     // Demonstrate client manager
-    let mut manager = McpClientManager::new();
+    let manager = McpClientManager::new();
     
     // Note: In a real scenario, you would connect to actual MCP servers
     println!("📋 MCP Client Manager created");
@@ -122,9 +122,9 @@ async fn demonstrate_mcp_tool_registry() -> Result<()> {
 async fn demonstrate_mcp_resource_management() -> Result<()> {
     println!("\n📦 Example 3: MCP Resource Management");
 
-    // Create memory system
-    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
-    
+    // Create memory system (using SqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+
     // Create resource manager
     let resource_manager = McpResourceManager::new(memory_system);
     
@@ -191,10 +191,10 @@ async fn demonstrate_mcp_resource_management() -> Result<()> {
 async fn demonstrate_complete_mcp_workflow() -> Result<()> {
     println!("\n🔄 Example 4: Complete MCP Workflow");
 
-    // Setup complete MCP system
-    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
+    // Setup complete MCP system (using SqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
     let base_registry = Arc::new(ToolRegistry::new());
-    
+
     let tool_registry = McpToolRegistry::new(base_registry);
     let resource_manager = McpResourceManager::new(memory_system.clone());
     

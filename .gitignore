@@ -89,3 +89,15 @@ yarn-error.log*
 # Cache directories
 .cache/
 cache/
+fluent_cache*
+
+# Audit and analysis files
+*_audit.txt
+*_audit.json
+*profiling_report.txt
+*_analysis.md
+*_report.md
+
+# Large generated files
+enhanced_reflection_profiling_report.txt
+reasoning_engine_profiling_report.txt

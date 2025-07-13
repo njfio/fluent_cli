@@ -108,7 +108,8 @@ impl<'a> ChunkEmbeddingManager<'a> {
         index: usize,
         all_chunks: &[String],
     ) -> Result<()> {
-        let voyage_config = self.voyage_config.unwrap(); // Safe because we checked above
+        let voyage_config = self.voyage_config
+            .ok_or_else(|| anyhow!("VoyageAI configuration not found"))?;
         let embedding = get_voyage_embedding(chunk, voyage_config).await?;
 
         if embedding.len() != EMBEDDING_DIMENSION {

@@ -967,6 +967,7 @@ impl AsyncSqliteMemoryStore {
     }
 
     /// Get a connection from the pool and execute a closure
+    #[allow(dead_code)]
     async fn with_connection<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(&AsyncConnection) -> Result<R> + Send,
@@ -990,7 +991,7 @@ impl AsyncSqliteMemoryStore {
 }
 
 /*
-// Temporarily disabled due to lifetime issues - will be fixed in future iteration
+// AsyncSqliteMemoryStore LongTermMemory implementation - temporarily disabled due to lifetime issues
 #[async_trait]
 impl LongTermMemory for AsyncSqliteMemoryStore {
     async fn store(&self, memory: MemoryItem) -> Result<String> {

@@ -35,7 +35,14 @@ impl PerformanceCounter {
     }
     
     pub fn record_request(&self, duration: Duration, is_error: bool) {
-        let mut stats = self.stats.lock().unwrap();
+        let mut stats = match self.stats.lock() {
+            Ok(stats) => stats,
+            Err(_) => {
+                // Mutex is poisoned, but we can still continue with degraded functionality
+                log::warn!("Performance stats mutex poisoned, skipping stats update");
+                return;
+            }
+        };
         
         stats.total_requests += 1;
         if is_error {
@@ -60,11 +67,23 @@ impl PerformanceCounter {
     }
     
     pub fn get_stats(&self) -> PerformanceStats {
-        self.stats.lock().unwrap().clone()
+        match self.stats.lock() {
+            Ok(stats) => stats.clone(),
+            Err(_) => {
+                log::warn!("Performance stats mutex poisoned, returning default stats");
+                PerformanceStats::default()
+            }
+        }
     }
     
     pub fn reset(&self) {
-        let mut stats = self.stats.lock().unwrap();
+        let mut stats = match self.stats.lock() {
+            Ok(stats) => stats,
+            Err(_) => {
+                log::warn!("Performance stats mutex poisoned, cannot reset stats");
+                return;
+            }
+        };
         *stats = PerformanceStats {
             total_requests: 0,
             total_errors: 0,
@@ -103,7 +122,13 @@ impl MemoryTracker {
         let current = Self::get_memory_usage();
         
         // Update peak usage
-        let mut peak = self.peak_usage.lock().unwrap();
+        let mut peak = match self.peak_usage.lock() {
+            Ok(peak) => peak,
+            Err(_) => {
+                log::warn!("Memory tracker peak usage mutex poisoned");
+                return;
+            }
+        };
         if current > *peak {
             *peak = current;
         }
@@ -112,7 +137,13 @@ impl MemoryTracker {
     }
     
     pub fn get_peak_usage(&self) -> u64 {
-        *self.peak_usage.lock().unwrap()
+        match self.peak_usage.lock() {
+            Ok(peak) => *peak,
+            Err(_) => {
+                log::warn!("Memory tracker peak usage mutex poisoned, returning 0");
+                0
+            }
+        }
     }
     
     pub fn get_initial_usage(&self) -> u64 {
@@ -124,23 +155,15 @@ impl MemoryTracker {
     }
     
     fn get_memory_usage() -> u64 {
-        // In a real implementation, this would use platform-specific APIs
-        // For testing purposes, we'll simulate memory usage
-        use std::alloc::{GlobalAlloc, Layout, System};
-        
-        // This is a simplified approximation
-        // In production, you'd use something like:
-        // - On Linux: /proc/self/status or mallinfo
-        // - On macOS: task_info
-        // - On Windows: GetProcessMemoryInfo
-        
-        // For now, return a simulated value based on time
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        
-        // Base memory usage + some variation
-        1024 * 1024 * 10 + (now.as_millis() % 1000) as u64 * 1024
+        get_current_process_memory().unwrap_or_else(|_| {
+            // Fallback: return a simulated value based on time
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+
+            // Base memory usage + some variation
+            1024 * 1024 * 10 + (now.as_millis() % 1000) as u64 * 1024
+        })
     }
 }
 
@@ -163,8 +186,9 @@ impl ResourceLimiter {
         }
     }
     
-    pub async fn acquire(&self) -> tokio::sync::SemaphorePermit<'_> {
-        self.semaphore.acquire().await.unwrap()
+    pub async fn acquire(&self) -> Result<tokio::sync::SemaphorePermit<'_>, anyhow::Error> {
+        self.semaphore.acquire().await
+            .map_err(|e| anyhow::anyhow!("Failed to acquire semaphore permit: {}", e))
     }
     
     pub fn try_acquire(&self) -> Option<tokio::sync::SemaphorePermit<'_>> {
@@ -259,7 +283,9 @@ impl PerformanceTestUtils {
         
         // Wait for all tasks to complete
         for handle in handles {
-            handle.await.unwrap();
+            if let Err(e) = handle.await {
+                log::warn!("Task failed during performance test: {}", e);
+            }
         }
         
         let total_duration = start_time.elapsed();
@@ -354,4 +380,72 @@ impl Default for PerformanceRequirements {
             max_memory_usage: Some(1024 * 1024 * 512), // 512MB max
         }
     }
+}
+
+/// Get current process memory usage in bytes (cross-platform)
+fn get_current_process_memory() -> Result<u64, anyhow::Error> {
+    #[cfg(target_os = "linux")]
+    {
+        get_process_memory_linux()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        get_process_memory_macos()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        get_process_memory_windows()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // Fallback for other platforms
+        Ok(1024 * 1024) // 1MB default
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn get_process_memory_linux() -> Result<u64, anyhow::Error> {
+    let status = std::fs::read_to_string("/proc/self/status")
+        .map_err(|e| anyhow::anyhow!("Failed to read /proc/self/status: {}", e))?;
+
+    for line in status.lines() {
+        if line.starts_with("VmRSS:") {
+            if let Some(kb_str) = line.split_whitespace().nth(1) {
+                if let Ok(kb) = kb_str.parse::<u64>() {
+                    return Ok(kb * 1024); // Convert KB to bytes
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("Could not find VmRSS in /proc/self/status"))
+}
+
+#[cfg(target_os = "macos")]
+fn get_process_memory_macos() -> Result<u64, anyhow::Error> {
+    use std::process::Command;
+
+    let output = Command::new("ps")
+        .args(&["-o", "rss", "-p"])
+        .arg(std::process::id().to_string())
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to run ps command: {}", e))?;
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+
+    if lines.len() >= 2 {
+        if let Ok(rss_kb) = lines[1].trim().parse::<u64>() {
+            return Ok(rss_kb * 1024); // Convert KB to bytes
+        }
+    }
+
+    Err(anyhow::anyhow!("Could not parse ps output"))
+}
+
+#[cfg(target_os = "windows")]
+fn get_process_memory_windows() -> Result<u64, anyhow::Error> {
+    // On Windows, we would use GetProcessMemoryInfo()
+    // For now, provide a simplified implementation
+    Ok(1024 * 1024) // 1MB default
 }

@@ -1,9 +1,8 @@
 // Thread-safe error handling example
 use fluent_core::error::{ErrorContext, FluentError, ThreadSafeErrorHandler};
-use fluent_core::{safe_lock, safe_read_lock, safe_write_lock};
+use fluent_core::{safe_lock, safe_read_lock};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::Duration;
 
 fn main() -> Result<(), FluentError> {
     println!("🔒 Thread-Safe Error Handling Demo");
