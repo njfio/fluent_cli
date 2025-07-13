@@ -53,14 +53,14 @@ pub async fn read_file_content(file_path: &str) -> Result<String> {
 }
 
 /// Validate file size and type for upload
-pub fn validate_file_for_upload(file_path: &str) -> Result<()> {
+pub async fn validate_file_for_upload(file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
-    
+
     if !path.exists() {
         return Err(anyhow::anyhow!("File does not exist: {}", file_path));
     }
 
-    let metadata = std::fs::metadata(path)?;
+    let metadata = tokio::fs::metadata(path).await?;
     let file_size = metadata.len();
     
     // Check file size (limit to 10MB)

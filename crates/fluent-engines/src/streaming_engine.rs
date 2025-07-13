@@ -1,11 +1,14 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use fluent_core::cost_calculator::CostCalculator;
+use fluent_core::types::{Cost, Usage};
 use futures::stream::{Stream, StreamExt};
 use log::{debug, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 /// Streaming response chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,11 +83,16 @@ impl Default for StreamingConfig {
 pub struct OpenAIStreaming {
     client: Client,
     config: fluent_core::config::EngineConfig,
+    cost_calculator: Arc<Mutex<CostCalculator>>,
 }
 
 impl OpenAIStreaming {
     pub fn new(client: Client, config: fluent_core::config::EngineConfig) -> Self {
-        Self { client, config }
+        Self {
+            client,
+            config,
+            cost_calculator: Arc::new(Mutex::new(CostCalculator::new())),
+        }
     }
 
     /// Parse OpenAI streaming response
@@ -147,6 +155,18 @@ impl OpenAIStreaming {
             model,
             finish_reason,
         }))
+    }
+
+    /// Calculate cost for OpenAI usage using the instance cost calculator
+    pub fn calculate_cost(&self, usage: &Usage, model: &str) -> Cost {
+        let mut calculator = self.cost_calculator.lock()
+            .expect("Failed to acquire cost calculator lock");
+        calculator.calculate_cost("openai", model, usage)
+            .unwrap_or_else(|_| Cost {
+                prompt_cost: 0.0,
+                completion_cost: 0.0,
+                total_cost: 0.0,
+            })
     }
 }
 
@@ -464,6 +484,17 @@ impl StreamingEngine for AnthropicStreaming {
 pub struct StreamingUtils;
 
 impl StreamingUtils {
+    /// Calculate cost for OpenAI usage using a default cost calculator
+    pub fn calculate_openai_cost(usage: &Usage, model: &str) -> Cost {
+        let mut calculator = CostCalculator::new();
+        calculator.calculate_cost("openai", model, usage)
+            .unwrap_or_else(|_| Cost {
+                prompt_cost: 0.0,
+                completion_cost: 0.0,
+                total_cost: 0.0,
+            })
+    }
+
     /// Collect a stream into a single response
     pub async fn collect_stream(
         mut stream: ResponseStream,
@@ -500,22 +531,24 @@ impl StreamingUtils {
 
         let total_tokens = total_prompt_tokens + total_completion_tokens;
 
+        let usage = fluent_core::types::Usage {
+            prompt_tokens: total_prompt_tokens,
+            completion_tokens: total_completion_tokens,
+            total_tokens,
+        };
+
+        let cost = StreamingUtils::calculate_openai_cost(&usage, &model);
+
         Ok(fluent_core::types::Response {
             content,
-            usage: fluent_core::types::Usage {
-                prompt_tokens: total_prompt_tokens,
-                completion_tokens: total_completion_tokens,
-                total_tokens,
-            },
+            usage,
             model,
             finish_reason,
-            cost: fluent_core::types::Cost {
-                prompt_cost: 0.0, // TODO: Calculate based on pricing
-                completion_cost: 0.0,
-                total_cost: 0.0,
-            },
+            cost,
         })
     }
+
+
 
     /// Create a progress callback for streaming
     pub fn create_progress_callback<F>(mut callback: F) -> impl FnMut(StreamChunk) -> Result<()>

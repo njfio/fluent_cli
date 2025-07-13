@@ -216,8 +216,8 @@ pub fn print_success(message: &str, no_color: bool) {
     }
 }
 
-/// Write response to a file
-pub fn write_response_to_file(
+/// Write response to a file asynchronously
+pub async fn write_response_to_file(
     response: &Response,
     file_path: &str,
     format: &str,
@@ -247,7 +247,7 @@ pub fn write_response_to_file(
         _ => response.content.clone(),
     };
 
-    std::fs::write(file_path, content)
+    tokio::fs::write(file_path, content).await
 }
 
 #[cfg(test)]
@@ -284,15 +284,15 @@ mod tests {
         assert!(options.show_cost);
     }
 
-    #[test]
-    fn test_write_response_to_file() {
+    #[tokio::test]
+    async fn test_write_response_to_file() {
         let response = create_test_response();
         let temp_file = "/tmp/test_response.txt";
-        
-        let result = write_response_to_file(&response, temp_file, "text");
+
+        let result = write_response_to_file(&response, temp_file, "text").await;
         assert!(result.is_ok());
-        
+
         // Clean up
-        let _ = std::fs::remove_file(temp_file);
+        let _ = tokio::fs::remove_file(temp_file).await;
     }
 }

@@ -317,10 +317,29 @@ impl VariableResolver for EnvVarResolver {
     }
 }
 
+/// Parse key-value pairs from command line arguments or configuration strings
+///
+/// This is the centralized implementation used throughout the fluent_cli system.
+/// It supports the format "key=value" and handles edge cases like empty values.
+///
+/// # Examples
+///
+/// ```
+/// use fluent_core::config::parse_key_value_pair;
+///
+/// assert_eq!(
+///     parse_key_value_pair("key=value"),
+///     Some(("key".to_string(), "value".to_string()))
+/// );
+/// assert_eq!(
+///     parse_key_value_pair("key="),
+///     Some(("key".to_string(), "".to_string()))
+/// );
+/// assert_eq!(parse_key_value_pair("invalid"), None);
+/// ```
 pub fn parse_key_value_pair(pair: &str) -> Option<(String, String)> {
-    let parts: Vec<&str> = pair.splitn(2, '=').collect();
-    if parts.len() == 2 {
-        Some((parts[0].to_string(), parts[1].to_string()))
+    if let Some((key, value)) = pair.split_once('=') {
+        Some((key.to_string(), value.to_string()))
     } else {
         None
     }

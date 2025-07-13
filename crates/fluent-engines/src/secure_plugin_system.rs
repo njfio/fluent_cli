@@ -92,6 +92,21 @@ pub struct PluginContext {
     pub audit_log: Arc<Mutex<Vec<AuditLogEntry>>>,
 }
 
+impl PluginContext {
+    /// Create a new plugin context
+    pub fn new(plugin_id: String) -> Self {
+        Self {
+            plugin_id,
+            permissions: PluginPermissions::default(),
+            start_time: SystemTime::now(),
+            memory_used: Arc::new(Mutex::new(0)),
+            network_requests_made: Arc::new(Mutex::new(0)),
+            files_accessed: Arc::new(Mutex::new(Vec::new())),
+            audit_log: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
 /// Audit log entry for plugin actions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLogEntry {
@@ -256,10 +271,28 @@ impl AuditLogger for DefaultAuditLogger {
 
 /// Secure plugin engine that wraps WASM plugins
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct SecurePluginEngine {
     plugin_id: String,
     runtime: Arc<PluginRuntime>,
     context: Arc<PluginContext>,
+}
+
+impl SecurePluginEngine {
+    /// Create a new secure plugin engine
+    pub fn new(plugin_id: String, runtime: Arc<PluginRuntime>) -> Self {
+        let context = Arc::new(PluginContext::new(plugin_id.clone()));
+        Self {
+            plugin_id,
+            runtime,
+            context,
+        }
+    }
+
+    /// Get the plugin context for monitoring and statistics
+    pub fn get_context(&self) -> Arc<PluginContext> {
+        self.context.clone()
+    }
 }
 
 impl PluginRuntime {
@@ -445,6 +478,16 @@ impl PluginRuntime {
             use_count: plugin.use_count,
             last_used: plugin.last_used,
         })
+    }
+
+    /// Get plugin manifest for a loaded plugin
+    pub async fn get_plugin_manifest(&self, plugin_id: &str) -> Result<PluginManifest> {
+        let plugins = self.plugins.read().await;
+        if let Some(plugin) = plugins.get(plugin_id) {
+            Ok(plugin.manifest.clone())
+        } else {
+            Err(anyhow!("Plugin '{}' not found", plugin_id))
+        }
     }
 }
 

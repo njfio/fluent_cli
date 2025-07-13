@@ -184,7 +184,8 @@ impl ToolsCommand {
             serde_json::from_str::<HashMap<String, Value>>(json_str)
                 .map_err(|e| anyhow!("Invalid JSON parameters: {}", e))?
         } else if let Some(file_path) = params_file {
-            let file_content = std::fs::read_to_string(file_path)
+            let file_content = tokio::fs::read_to_string(file_path)
+                .await
                 .map_err(|e| anyhow!("Failed to read params file: {}", e))?;
             serde_json::from_str::<HashMap<String, Value>>(&file_content)
                 .map_err(|e| anyhow!("Invalid JSON in params file: {}", e))?

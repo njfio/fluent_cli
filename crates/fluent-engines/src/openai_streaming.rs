@@ -2,15 +2,16 @@ use crate::streaming_engine::{OpenAIStreaming, ResponseStream, StreamingEngine, 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use fluent_core::config::EngineConfig;
+use fluent_core::cost_calculator::CostCalculator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
+use fluent_core::types::{Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
 use log::debug;
 use reqwest::Client;
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// OpenAI engine with streaming support
 pub struct OpenAIStreamingEngine {
@@ -18,6 +19,7 @@ pub struct OpenAIStreamingEngine {
     client: Client,
     neo4j_client: Option<Arc<Neo4jClient>>,
     streaming: OpenAIStreaming,
+    cost_calculator: Arc<Mutex<CostCalculator>>,
 }
 
 impl OpenAIStreamingEngine {
@@ -43,11 +45,15 @@ impl OpenAIStreamingEngine {
         // Create streaming implementation
         let streaming = OpenAIStreaming::new(client.clone(), config.clone());
 
+        // Create cost calculator
+        let cost_calculator = Arc::new(Mutex::new(CostCalculator::new()));
+
         Ok(Self {
             config,
             client,
             neo4j_client,
             streaming,
+            cost_calculator,
         })
     }
 
@@ -122,11 +128,11 @@ impl OpenAIStreamingEngine {
             },
             model,
             finish_reason,
-            cost: fluent_core::types::Cost {
-                prompt_cost: 0.0, // TODO: Calculate based on pricing
-                completion_cost: 0.0,
-                total_cost: 0.0,
-            },
+            cost: self.calculate_cost(&fluent_core::types::Usage {
+                prompt_tokens: total_prompt_tokens,
+                completion_tokens: total_completion_tokens,
+                total_tokens,
+            })?,
         })
     }
 
@@ -137,6 +143,20 @@ impl OpenAIStreamingEngine {
             .get("stream")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
+    }
+
+    /// Calculate cost for the given usage
+    fn calculate_cost(&self, usage: &Usage) -> Result<Cost> {
+        let model = self.config
+            .parameters
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("gpt-3.5-turbo");
+
+        let mut calculator = self.cost_calculator.lock()
+            .map_err(|e| anyhow!("Cost calculator mutex poisoned: {}", e))?;
+
+        calculator.calculate_cost("openai", model, usage)
     }
 }
 
@@ -176,8 +196,19 @@ impl Engine for OpenAIStreamingEngine {
         self.config.session_id.clone()
     }
 
-    fn extract_content(&self, _value: &Value) -> Option<ExtractedContent> {
-        None // TODO: Implement content extraction
+    fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
+        // Extract content from OpenAI response format
+        if let Some(content) = value["choices"][0]["message"]["content"].as_str() {
+            Some(ExtractedContent {
+                main_content: content.to_string(),
+                sentiment: None,
+                clusters: None,
+                themes: None,
+                keywords: None,
+            })
+        } else {
+            None
+        }
     }
 
     fn upload_file<'a>(
@@ -265,6 +296,58 @@ mod tests {
         let streaming_config = engine.get_streaming_config();
         assert!(streaming_config.enabled);
         assert_eq!(streaming_config.buffer_size, 8192);
+    }
+
+    #[tokio::test]
+    async fn test_cost_calculation() {
+        let config = create_openai_config();
+        let engine = OpenAIStreamingEngine::new(config).await.unwrap();
+
+        let usage = fluent_core::types::Usage {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+        };
+
+        let cost = engine.calculate_cost(&usage).unwrap();
+
+        // GPT-4 pricing: $0.01/1M prompt, $0.03/1M completion
+        assert!((cost.prompt_cost - 0.00001).abs() < 0.000001);
+        assert!((cost.completion_cost - 0.000015).abs() < 0.000001);
+        assert!((cost.total_cost - 0.000025).abs() < 0.000001);
+    }
+
+    #[tokio::test]
+    async fn test_content_extraction() {
+        let config = create_openai_config();
+        let engine = OpenAIStreamingEngine::new(config).await.unwrap();
+
+        let response_json = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "Hello, this is a test response!"
+                }
+            }]
+        });
+
+        let extracted = engine.extract_content(&response_json);
+        assert!(extracted.is_some());
+
+        let content = extracted.unwrap();
+        assert_eq!(content.main_content, "Hello, this is a test response!");
+    }
+
+    #[tokio::test]
+    async fn test_content_extraction_missing() {
+        let config = create_openai_config();
+        let engine = OpenAIStreamingEngine::new(config).await.unwrap();
+
+        let response_json = serde_json::json!({
+            "choices": []
+        });
+
+        let extracted = engine.extract_content(&response_json);
+        assert!(extracted.is_none());
     }
 
     #[test]

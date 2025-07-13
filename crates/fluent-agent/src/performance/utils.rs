@@ -405,8 +405,9 @@ fn get_current_process_memory() -> Result<u64, anyhow::Error> {
 }
 
 #[cfg(target_os = "linux")]
-fn get_process_memory_linux() -> Result<u64, anyhow::Error> {
-    let status = std::fs::read_to_string("/proc/self/status")
+async fn get_process_memory_linux() -> Result<u64, anyhow::Error> {
+    let status = tokio::fs::read_to_string("/proc/self/status")
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to read /proc/self/status: {}", e))?;
 
     for line in status.lines() {

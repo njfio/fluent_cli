@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
     println!("{}", demo_report);
     
     // Save profiling report to file
-    demo_profiler.save_report("enhanced_reflection_profiling_report.txt")?;
+    demo_profiler.save_report("enhanced_reflection_profiling_report.txt").await?;
     println!("✅ Profiling report saved to: enhanced_reflection_profiling_report.txt");
 
     // Get reasoning engine profiling data
@@ -244,7 +244,7 @@ async fn main() -> Result<()> {
     let reasoning_report = reasoning_engine.get_profiler().generate_report();
     println!("{}", reasoning_report);
     
-    reasoning_engine.get_profiler().save_report("reasoning_engine_profiling_report.txt")?;
+    reasoning_engine.get_profiler().save_report("reasoning_engine_profiling_report.txt").await?;
     println!("✅ Reasoning profiling report saved to: reasoning_engine_profiling_report.txt");
 
     // Final reflection statistics with memory context

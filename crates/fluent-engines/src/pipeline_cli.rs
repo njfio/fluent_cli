@@ -2,6 +2,7 @@ use crate::modular_pipeline_executor::{ExecutionContext, Pipeline, PipelineStep,
 use crate::pipeline_infrastructure::PipelineExecutorBuilder;
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use fluent_core::centralized_config::ConfigManager;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,16 +15,16 @@ use std::time::Duration;
 #[command(about = "A CLI tool for managing and executing Fluent pipelines")]
 pub struct PipelineCli {
     /// Pipeline directory
-    #[arg(short, long, default_value = "./pipelines")]
-    pipeline_dir: PathBuf,
+    #[arg(short, long)]
+    pipeline_dir: Option<PathBuf>,
 
     /// State directory for execution context
-    #[arg(short, long, default_value = "./pipeline_state")]
-    state_dir: PathBuf,
+    #[arg(short, long)]
+    state_dir: Option<PathBuf>,
 
     /// Log directory for execution logs
-    #[arg(short, long, default_value = "./pipeline_logs")]
-    log_dir: PathBuf,
+    #[arg(short, long)]
+    log_dir: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -88,29 +89,38 @@ enum Commands {
 impl PipelineCli {
     /// Run the CLI application
     pub async fn run() -> Result<()> {
+        // Initialize centralized configuration
+        ConfigManager::initialize()?;
+        let config = ConfigManager::get();
+
         let cli = PipelineCli::parse();
 
+        // Get directories from CLI args or use centralized config defaults
+        let pipeline_dir = cli.pipeline_dir.unwrap_or_else(|| config.get_pipeline_dir());
+        let state_dir = cli.state_dir.unwrap_or_else(|| config.get_pipeline_state_dir());
+        let log_dir = cli.log_dir.unwrap_or_else(|| config.paths.pipeline_logs_directory.clone());
+
         // Ensure directories exist
-        tokio::fs::create_dir_all(&cli.pipeline_dir).await?;
-        tokio::fs::create_dir_all(&cli.state_dir).await?;
-        tokio::fs::create_dir_all(&cli.log_dir).await?;
+        tokio::fs::create_dir_all(&pipeline_dir).await?;
+        tokio::fs::create_dir_all(&state_dir).await?;
+        tokio::fs::create_dir_all(&log_dir).await?;
 
         match cli.command {
-            Commands::List => Self::list_pipelines(&cli.pipeline_dir).await,
-            Commands::Show { name } => Self::show_pipeline(&cli.pipeline_dir, &name).await,
+            Commands::List => Self::list_pipelines(&pipeline_dir).await,
+            Commands::Show { name } => Self::show_pipeline(&pipeline_dir, &name).await,
             Commands::Execute {
                 ref name,
                 ref var,
                 ref resume,
-            } => Self::execute_pipeline(&cli, name, var.clone(), resume.clone()).await,
-            Commands::Validate { name } => Self::validate_pipeline(&cli.pipeline_dir, &name).await,
+            } => Self::execute_pipeline(&pipeline_dir, &state_dir, name, var.clone(), resume.clone()).await,
+            Commands::Validate { name } => Self::validate_pipeline(&pipeline_dir, &name).await,
             Commands::Create { name, description } => {
-                Self::create_pipeline(&cli.pipeline_dir, &name, description.as_deref()).await
+                Self::create_pipeline(&pipeline_dir, &name, description.as_deref()).await
             }
-            Commands::Metrics => Self::show_metrics(&cli).await,
-            Commands::History { limit } => Self::show_history(&cli.state_dir, limit).await,
+            Commands::Metrics => Self::show_metrics(&state_dir).await,
+            Commands::History { limit } => Self::show_history(&state_dir, limit).await,
             Commands::Monitor { run_id, interval } => {
-                Self::monitor_execution(&cli.state_dir, &run_id, interval).await
+                Self::monitor_execution(&state_dir, &run_id, interval).await
             }
             Commands::Cancel { run_id } => Self::cancel_execution(&run_id).await,
         }
@@ -207,12 +217,13 @@ impl PipelineCli {
     }
 
     async fn execute_pipeline(
-        cli: &PipelineCli,
+        pipeline_dir: &PathBuf,
+        state_dir: &PathBuf,
         name: &str,
         variables: Vec<String>,
         resume: Option<String>,
     ) -> Result<()> {
-        let pipeline = Self::load_pipeline(&cli.pipeline_dir, name).await?;
+        let pipeline = Self::load_pipeline(pipeline_dir, name).await?;
 
         // Parse variables
         let mut initial_variables = HashMap::new();
@@ -226,9 +237,11 @@ impl PipelineCli {
         }
 
         // Create executor with metrics
-        let log_file = cli.log_dir.join(format!("{}.log", name));
+        let log_file = pipeline_dir.join("logs").join(format!("{}.log", name));
+        tokio::fs::create_dir_all(log_file.parent().unwrap()).await?;
+
         let (builder, metrics_listener) = PipelineExecutorBuilder::new()
-            .with_file_state_store(cli.state_dir.clone())
+            .with_file_state_store(state_dir.clone())
             .with_simple_variable_expander()
             .with_console_logging()
             .with_file_logging(log_file)
@@ -368,12 +381,12 @@ impl PipelineCli {
                     ]
                     .into_iter()
                     .collect(),
-                    timeout: Some(Duration::from_secs(30)),
+                    timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
                     retry_config: Some(RetryConfig {
-                        max_attempts: 3,
-                        base_delay_ms: 1000,
-                        max_delay_ms: 10000,
-                        backoff_multiplier: 2.0,
+                        max_attempts: ConfigManager::get().pipeline.retry_attempts,
+                        base_delay_ms: ConfigManager::get().pipeline.retry_base_delay_ms,
+                        max_delay_ms: ConfigManager::get().pipeline.retry_max_delay_ms,
+                        backoff_multiplier: ConfigManager::get().pipeline.retry_backoff_multiplier,
                         retry_on: vec!["timeout".to_string()],
                     }),
                     depends_on: Vec::new(),
@@ -389,7 +402,7 @@ impl PipelineCli {
                     )]
                     .into_iter()
                     .collect(),
-                    timeout: Some(Duration::from_secs(30)),
+                    timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
                     retry_config: None,
                     depends_on: vec!["hello".to_string()],
                     condition: None,
@@ -399,17 +412,17 @@ impl PipelineCli {
             global_config: [
                 (
                     "timeout".to_string(),
-                    Value::Number(serde_json::Number::from(300)),
+                    Value::Number(serde_json::Number::from(ConfigManager::get().pipeline.default_timeout_seconds)),
                 ),
                 (
                     "max_parallel".to_string(),
-                    Value::Number(serde_json::Number::from(2)),
+                    Value::Number(serde_json::Number::from(ConfigManager::get().pipeline.max_parallel_steps)),
                 ),
             ]
             .into_iter()
             .collect(),
-            timeout: Some(Duration::from_secs(300)),
-            max_parallel: Some(2),
+            timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
+            max_parallel: Some(ConfigManager::get().pipeline.max_parallel_steps),
         };
 
         let pipeline_file = pipeline_dir.join(format!("{}.json", name));
@@ -428,7 +441,7 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn show_metrics(_cli: &PipelineCli) -> Result<()> {
+    async fn show_metrics(_state_dir: &PathBuf) -> Result<()> {
         println!("📊 Pipeline execution metrics:");
         println!("   [Metrics display not yet implemented]");
         println!("   This would show aggregated metrics across all pipeline executions");

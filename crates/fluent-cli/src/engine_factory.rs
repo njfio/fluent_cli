@@ -136,7 +136,10 @@ pub fn create_test_engine_config(engine_type: &str) -> EngineConfig {
     parameters.insert("api_key".to_string(), serde_json::Value::String("test-key".to_string()));
     parameters.insert("model".to_string(), serde_json::Value::String("test-model".to_string()));
     parameters.insert("max_tokens".to_string(), serde_json::Value::Number(serde_json::Number::from(1000)));
-    parameters.insert("temperature".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(0.7).unwrap()));
+    parameters.insert("temperature".to_string(), serde_json::Value::Number(
+        serde_json::Number::from_f64(0.7)
+            .ok_or_else(|| anyhow!("Failed to create temperature number from f64"))?
+    ));
 
     EngineConfig {
         name: format!("test-{}", engine_type),
