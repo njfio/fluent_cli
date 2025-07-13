@@ -62,7 +62,8 @@ impl PipelineCommand {
         json_output: bool,
     ) -> Result<CommandResult> {
         // Read and validate pipeline file
-        let yaml_str = std::fs::read_to_string(pipeline_file)
+        let yaml_str = tokio::fs::read_to_string(pipeline_file)
+            .await
             .map_err(|e| anyhow!("Failed to read pipeline file '{}': {}", pipeline_file, e))?;
 
         Self::validate_pipeline_yaml(&yaml_str)

@@ -417,15 +417,13 @@ pub mod credentials {
 
     /// Parse a line from amber print output
     fn parse_amber_line(line: &str) -> Option<(String, String)> {
-        if line.contains('=') {
-            let parts: Vec<&str> = line.splitn(2, '=').collect();
-            if parts.len() == 2 {
-                let key = parts[0].trim().to_string();
-                let value = parts[1].trim().trim_matches('"').to_string();
-                return Some((key, value));
-            }
+        if let Some((key, value)) = fluent_core::config::parse_key_value_pair(line) {
+            let key = key.trim().to_string();
+            let value = value.trim().trim_matches('"').to_string();
+            Some((key, value))
+        } else {
+            None
         }
-        None
     }
 
     /// Validate that required credentials are available

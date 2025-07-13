@@ -269,11 +269,5 @@ pub fn build_cli() -> Command {
         )
 }
 
-/// Parse key-value pairs from command line arguments
-pub fn parse_key_value_pair(s: &str) -> Option<(String, String)> {
-    if let Some((key, value)) = s.split_once('=') {
-        Some((key.to_string(), value.to_string()))
-    } else {
-        None
-    }
-}
+// Re-export the centralized parse_key_value_pair function
+pub use fluent_core::config::parse_key_value_pair;

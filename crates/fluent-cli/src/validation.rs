@@ -115,14 +115,8 @@ pub fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
     Ok(engine_name.to_string())
 }
 
-/// Parse key-value pairs from command line arguments
-pub fn parse_key_value_pair(s: &str) -> Option<(String, String)> {
-    if let Some((key, value)) = s.split_once('=') {
-        Some((key.to_string(), value.to_string()))
-    } else {
-        None
-    }
-}
+// Re-export the centralized parse_key_value_pair function
+pub use fluent_core::config::parse_key_value_pair;
 
 #[cfg(test)]
 mod tests {

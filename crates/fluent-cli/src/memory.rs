@@ -420,12 +420,12 @@ impl ResourceGuard {
     }
 
     /// Create a temporary file and add it to cleanup list
-    pub fn create_temp_file(&mut self, prefix: &str) -> Result<std::fs::File> {
+    pub async fn create_temp_file(&mut self, prefix: &str) -> Result<tokio::fs::File> {
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
             .unwrap_or_default().as_nanos();
         let temp_path = format!("/tmp/{}_{}", prefix, timestamp);
-        let file = std::fs::File::create(&temp_path)?;
+        let file = tokio::fs::File::create(&temp_path).await?;
         self.add_temp_file(&temp_path);
         Ok(file)
     }

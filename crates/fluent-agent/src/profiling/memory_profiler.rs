@@ -195,19 +195,34 @@ impl ReflectionMemoryProfiler {
         report
     }
 
-    /// Save the report to a file
-    pub fn save_report(&self, filename: &str) -> Result<()> {
+    /// Save the report to a file asynchronously
+    pub async fn save_report(&self, filename: &str) -> Result<()> {
         let report = self.generate_report();
-        std::fs::write(filename, report)?;
+        tokio::fs::write(filename, report).await?;
         Ok(())
     }
 
     /// Get current memory usage (cross-platform implementation)
     fn get_current_memory_usage() -> usize {
-        get_process_memory_usage().unwrap_or_else(|_| {
-            // Fallback: return a reasonable estimate
-            std::mem::size_of::<Self>() * 1000
-        })
+        // Use a blocking approach for constructor compatibility
+        // In a real implementation, you might want to use a different approach
+        match std::thread::spawn(|| {
+            tokio::runtime::Handle::try_current()
+                .map(|handle| {
+                    handle.block_on(get_process_memory_usage())
+                })
+                .unwrap_or_else(|_| {
+                    // If no tokio runtime, create a minimal one
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(get_process_memory_usage())
+                })
+        }).join() {
+            Ok(Ok(memory)) => memory,
+            _ => {
+                // Fallback: return a reasonable estimate
+                std::mem::size_of::<Self>() * 1000
+            }
+        }
     }
 }
 
@@ -218,10 +233,10 @@ impl Default for ReflectionMemoryProfiler {
 }
 
 /// Get current process memory usage in bytes (cross-platform)
-fn get_process_memory_usage() -> Result<usize> {
+async fn get_process_memory_usage() -> Result<usize> {
     #[cfg(target_os = "linux")]
     {
-        get_process_memory_usage_linux()
+        get_process_memory_usage_linux().await
     }
     #[cfg(target_os = "macos")]
     {
@@ -239,8 +254,9 @@ fn get_process_memory_usage() -> Result<usize> {
 }
 
 #[cfg(target_os = "linux")]
-fn get_process_memory_usage_linux() -> Result<usize> {
-    let status = std::fs::read_to_string("/proc/self/status")
+async fn get_process_memory_usage_linux() -> Result<usize> {
+    let status = tokio::fs::read_to_string("/proc/self/status")
+        .await
         .map_err(|e| anyhow!("Failed to read /proc/self/status: {}", e))?;
 
     for line in status.lines() {

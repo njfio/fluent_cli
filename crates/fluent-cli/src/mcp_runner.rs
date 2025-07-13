@@ -10,6 +10,7 @@ use fluent_core::config::Config;
 /// Run MCP server
 pub async fn run_mcp_server(_sub_matches: &ArgMatches) -> Result<()> {
     use fluent_agent::mcp_adapter::FluentMcpServer;
+    #[allow(deprecated)]
     use fluent_agent::memory::SqliteMemoryStore;
     use fluent_agent::tools::ToolRegistry;
     use std::sync::Arc;
@@ -20,6 +21,7 @@ pub async fn run_mcp_server(_sub_matches: &ArgMatches) -> Result<()> {
     let tool_registry = Arc::new(ToolRegistry::new());
 
     // Initialize memory system
+    #[allow(deprecated)]
     let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
 
     // Create MCP server
@@ -70,6 +72,7 @@ pub async fn run_agent_with_mcp(
     config: &Config,
 ) -> Result<()> {
     use fluent_agent::agent_with_mcp::AgentWithMcp;
+    #[allow(deprecated)]
     use fluent_agent::memory::SqliteMemoryStore;
     use fluent_agent::reasoning::LLMReasoningEngine;
 
@@ -88,6 +91,7 @@ pub async fn run_agent_with_mcp(
 
     // Create memory system
     let memory_path = format!("agent_memory_{}.db", engine_name);
+    #[allow(deprecated)]
     let memory = std::sync::Arc::new(SqliteMemoryStore::new(&memory_path)?);
 
     // Create agent

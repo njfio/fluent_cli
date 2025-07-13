@@ -1,8 +1,8 @@
 use anyhow::Result;
 use dialoguer::{Confirm, Input, Select};
+use fluent_core::centralized_config::ConfigManager;
 use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor, PipelineStep};
 use std::io::stdout;
-use std::path::PathBuf;
 use termimad::crossterm::{
     execute,
     terminal::{Clear, ClearType},
@@ -87,7 +87,10 @@ pub async fn build_interactively() -> Result<()> {
 
     if Confirm::new().with_prompt("Run pipeline now?").interact()? {
         let input: String = Input::new().with_prompt("Pipeline input").interact_text()?;
-        let state_store_dir = PathBuf::from("./pipeline_states");
+
+        // Use centralized configuration for pipeline state directory
+        let config = ConfigManager::get();
+        let state_store_dir = config.get_pipeline_state_dir();
         tokio::fs::create_dir_all(&state_store_dir).await?;
         let state_store = FileStateStore {
             directory: state_store_dir,

@@ -269,17 +269,15 @@ impl ConfigCli {
         let mut parameter_updates = HashMap::new();
 
         for update in updates {
-            let parts: Vec<&str> = update.splitn(2, '=').collect();
-            if parts.len() != 2 {
+            if let Some((key, value_str)) = fluent_core::config::parse_key_value_pair(&update) {
+                let value = Self::parse_value(&value_str)?;
+                parameter_updates.insert(key, value);
+            } else {
                 return Err(anyhow!(
                     "Invalid update format: '{}'. Use KEY=VALUE",
                     update
                 ));
             }
-
-            let key = parts[0].to_string();
-            let value = Self::parse_value(parts[1])?;
-            parameter_updates.insert(key, value);
         }
 
         manager.update_parameters(name, parameter_updates).await?;

@@ -303,8 +303,10 @@ mod tests {
             retry_config: RetryConfig::default(),
         };
 
-        let serialized = serde_json::to_string(&config).unwrap();
-        let deserialized: TransportConfig = serde_json::from_str(&serialized).unwrap();
+        let serialized = serde_json::to_string(&config)
+            .expect("Failed to serialize TransportConfig for test");
+        let deserialized: TransportConfig = serde_json::from_str(&serialized)
+            .expect("Failed to deserialize TransportConfig for test");
 
         assert!(matches!(deserialized.transport_type, TransportType::Http));
     }

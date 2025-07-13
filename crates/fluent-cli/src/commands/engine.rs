@@ -20,6 +20,7 @@ impl EngineCommand {
     }
 
     /// Validate request payload
+    #[allow(dead_code)]
     fn validate_request_payload(payload: &str, _context: &str) -> Result<String> {
         if payload.trim().is_empty() {
             return Err(anyhow!("Request payload cannot be empty"));
@@ -34,6 +35,7 @@ impl EngineCommand {
     }
 
     /// Process request with file upload
+    #[allow(dead_code)]
     async fn process_request_with_file(
         engine: &dyn Engine,
         request_content: &str,
@@ -49,6 +51,7 @@ impl EngineCommand {
     }
 
     /// Process simple request
+    #[allow(dead_code)]
     async fn process_request(engine: &dyn Engine, request_content: &str) -> Result<Response> {
         let request = Request {
             flowname: "default".to_string(),
@@ -59,6 +62,7 @@ impl EngineCommand {
     }
 
     /// Format response for output
+    #[allow(dead_code)]
     fn format_response(response: &Response, parse_code: bool, markdown: bool) -> String {
         let mut output = response.content.clone();
 
@@ -76,6 +80,7 @@ impl EngineCommand {
     }
 
     /// Extract code blocks from response
+    #[allow(dead_code)]
     fn extract_code_blocks(content: &str) -> String {
         // Simplified code block extraction
         let mut result = String::new();
@@ -108,6 +113,7 @@ impl EngineCommand {
     }
 
     /// Execute engine request with all options
+    #[allow(dead_code)]
     async fn execute_engine_request(
         engine_name: &str,
         request: &str,

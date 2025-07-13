@@ -37,6 +37,7 @@
 
 pub mod auth;
 pub mod cache;
+pub mod centralized_config;
 pub mod config;
 pub mod cost_calculator;
 pub mod error;

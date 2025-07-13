@@ -508,7 +508,8 @@ mod tests {
     async fn test_mcp_adapter_creation() {
         let tool_registry = Arc::new(ToolRegistry::new());
         let memory_system =
-            Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
+            Arc::new(SqliteMemoryStore::new(":memory:")
+                .expect("Failed to create in-memory SQLite store for test")) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let info = adapter.get_info();
@@ -522,7 +523,8 @@ mod tests {
     async fn test_tool_conversion() {
         let tool_registry = Arc::new(ToolRegistry::new());
         let memory_system =
-            Arc::new(SqliteMemoryStore::new(":memory:").unwrap()) as Arc<dyn LongTermMemory>;
+            Arc::new(SqliteMemoryStore::new(":memory:")
+                .expect("Failed to create in-memory SQLite store for test")) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let tool = adapter.convert_tool_to_mcp("test_tool", "Test tool description");
