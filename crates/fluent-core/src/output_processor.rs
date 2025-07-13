@@ -242,110 +242,150 @@ impl OutputProcessor {
         block.starts_with("#!/bin/") || block.starts_with("#!/usr/bin/env")
     }
 
-    async fn execute_script(_script: &str) -> Result<String> {
-        // Security check: Disable script execution for security reasons
-        return Err(anyhow!(
-            "Script execution is disabled for security reasons. \
-            To enable script execution, implement proper sandboxing and validation."
-        ));
+    async fn execute_script(script: &str) -> Result<String> {
+        // Enhanced security implementation for script execution
 
-        // TODO: Implement secure script execution with:
-        // 1. Sandboxing (containers, chroot, etc.)
-        // 2. Resource limits (CPU, memory, time)
-        // 3. Network isolation
-        // 4. File system restrictions
-        // 5. Input validation and sanitization
+        // Input validation
+        if script.len() > 50_000 {
+            return Err(anyhow!("Script too large (max 50KB)"));
+        }
 
-        #[allow(unreachable_code)]
+        // Check for dangerous patterns
+        let dangerous_patterns = [
+            "rm -rf", "sudo", "chmod", "chown", "passwd", "su ",
+            "eval", "exec", "system", "shell_exec", "passthru",
+            "curl", "wget", "nc ", "netcat", "telnet", "ssh",
+            "/etc/", "/proc/", "/sys/", "/dev/", "/root/",
+            "import os", "import subprocess", "import sys",
+        ];
+
+        for pattern in &dangerous_patterns {
+            if script.to_lowercase().contains(pattern) {
+                return Err(anyhow!("Script contains potentially dangerous pattern: {}", pattern));
+            }
+        }
+
+        // Check if script execution is explicitly enabled via environment variable
+        if std::env::var("FLUENT_ENABLE_SCRIPT_EXECUTION").unwrap_or_default() != "true" {
+            return Err(anyhow!(
+                "Script execution is disabled for security. Set FLUENT_ENABLE_SCRIPT_EXECUTION=true to enable."
+            ));
+        }
+
+        // Create secure temporary file for script execution
+        let temp_file = Self::create_secure_temp_file(
+            script.as_bytes(),
+            if cfg!(windows) { "bat" } else { "sh" },
+        )
+        .await?;
+
+        // Set executable permissions on Unix-like systems
+        #[cfg(unix)]
         {
-            let temp_file = Self::create_secure_temp_file(
-                _script.as_bytes(),
-                if cfg!(windows) { "bat" } else { "sh" },
-            )
-            .await?;
+            let mut perms = fs::metadata(&temp_file).await?.permissions();
+            perms.set_mode(0o700); // Owner execute only
+            fs::set_permissions(&temp_file, perms).await?;
+        }
 
-            // Set executable permissions on Unix-like systems
-            #[cfg(unix)]
-            {
-                let mut perms = fs::metadata(&temp_file).await?.permissions();
-                perms.set_mode(0o700); // Owner execute only
-                fs::set_permissions(&temp_file, perms).await?;
+        // Execute with timeout and resource limits
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            if cfg!(windows) {
+                Command::new("cmd").arg("/C").arg(&temp_file).output()
+            } else {
+                Command::new("sh").arg(&temp_file).output()
+            },
+        )
+        .await
+        .context("Script execution timed out")?
+        .context("Failed to execute script")?;
+
+        // Clean up temporary file
+        let _ = fs::remove_file(&temp_file).await;
+
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+
+        Ok(format!("Script Output:\n{}\nErrors:\n{}\n", stdout, stderr))
+    }
+
+    async fn execute_commands(commands: &str) -> Result<String> {
+        // Enhanced security implementation for command execution
+
+        // Input validation
+        if commands.len() > 10_000 {
+            return Err(anyhow!("Command input too large (max 10KB)"));
+        }
+
+        // Whitelist of safe commands
+        let safe_commands = [
+            "echo", "cat", "ls", "pwd", "date", "whoami", "id",
+            "head", "tail", "wc", "grep", "sort", "uniq",
+        ];
+
+        // Check each command against whitelist
+        for command in commands.lines() {
+            let trimmed = command.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
             }
 
-            // Execute with timeout and resource limits
+            let cmd_parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if let Some(cmd) = cmd_parts.first() {
+                if !safe_commands.contains(cmd) {
+                    return Err(anyhow!("Command '{}' not in whitelist", cmd));
+                }
+            }
+        }
+
+        // Check if command execution is explicitly enabled via environment variable
+        if std::env::var("FLUENT_ENABLE_COMMAND_EXECUTION").unwrap_or_default() != "true" {
+            return Err(anyhow!(
+                "Command execution is disabled for security. Set FLUENT_ENABLE_COMMAND_EXECUTION=true to enable."
+            ));
+        }
+
+        let mut output = String::new();
+        for command in commands.lines() {
+            let trimmed = command.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+
+            // Enhanced command validation
+            let cmd_parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if let Some(cmd) = cmd_parts.first() {
+                if !safe_commands.contains(cmd) {
+                    output.push_str(&format!("Blocked non-whitelisted command: {}\n", trimmed));
+                    continue;
+                }
+            }
+
+            output.push_str(&format!("Executing: {}\n", trimmed));
+
             let result = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                if cfg!(windows) {
-                    Command::new("cmd").arg("/C").arg(&temp_file).output()
-                } else {
-                    Command::new("sh").arg(&temp_file).output()
-                },
+                std::time::Duration::from_secs(10),
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(trimmed)
+                    .env_clear() // Clear environment variables
+                    .env("PATH", "/usr/bin:/bin") // Minimal PATH
+                    .output(),
             )
             .await
-            .context("Script execution timed out")?
-            .context("Failed to execute script")?;
-
-            // Clean up temporary file
-            let _ = fs::remove_file(&temp_file).await;
+            .context("Command execution timed out")?
+            .context("Failed to execute command")?;
 
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
 
-            Ok(format!("Script Output:\n{}\nErrors:\n{}\n", stdout, stderr))
-        }
-    }
-
-    async fn execute_commands(_commands: &str) -> Result<String> {
-        // Security check: Disable command execution for security reasons
-        return Err(anyhow!(
-            "Command execution is disabled for security reasons. \
-            To enable command execution, implement proper sandboxing, \
-            input validation, and command whitelisting."
-        ));
-
-        // TODO: Implement secure command execution with:
-        // 1. Command whitelisting (only allow safe commands)
-        // 2. Input sanitization and validation
-        // 3. Sandboxing and resource limits
-        // 4. Network and file system restrictions
-        // 5. Timeout controls
-
-        #[allow(unreachable_code)]
-        {
-            let mut output = String::new();
-            for command in _commands.lines() {
-                let trimmed = command.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-
-                // Basic command validation (would need more comprehensive checks)
-                if trimmed.contains("rm") || trimmed.contains("sudo") || trimmed.contains("curl") {
-                    output.push_str(&format!("Blocked dangerous command: {}\n", trimmed));
-                    continue;
-                }
-
-                output.push_str(&format!("Executing: {}\n", trimmed));
-
-                let result = tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    Command::new("sh").arg("-c").arg(trimmed).output(),
-                )
-                .await
-                .context("Command execution timed out")?
-                .context("Failed to execute command")?;
-
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                let stderr = String::from_utf8_lossy(&result.stderr);
-
-                output.push_str(&format!("Output:\n{}\n", stdout));
-                if !stderr.is_empty() {
-                    output.push_str(&format!("Errors:\n{}\n", stderr));
-                }
-                output.push('\n');
+            output.push_str(&format!("Output:\n{}\n", stdout));
+            if !stderr.is_empty() {
+                output.push_str(&format!("Errors:\n{}\n", stderr));
             }
-            Ok(output)
+            output.push('\n');
         }
+        Ok(output)
     }
 }
 

@@ -51,79 +51,108 @@ def execute_fluent():
         if data['engine'] not in allowed_engines:
             return jsonify({'error': f'Invalid engine. Allowed: {allowed_engines}'}), 400
 
-    # Handle config and pipeline files
-    config_file = create_temp_file(data.get('config'), '.json')
-    pipeline_file = create_temp_file(data.get('pipelineFile'), '.yaml')
+        # Handle config and pipeline files
+        config_file = create_temp_file(data.get('config'), '.json')
+        pipeline_file = create_temp_file(data.get('pipelineFile'), '.yaml')
 
-    # Start building the fluent command
-    fluent_command = ["fluent"]
+        # Start building the fluent command
+        fluent_command = ["fluent"]
 
-    # Add the engine
-    fluent_command.append(data['engine'])
+        # Add the engine
+        fluent_command.append(data['engine'])
 
-    # Add the request (optional)
-    if data.get('request'):
-        fluent_command.append(data['request'])
+        # Add the request (optional)
+        if data.get('request'):
+            fluent_command.append(data['request'])
 
-    # Add the options, checking if they have values
-    if config_file:
-        fluent_command.extend(['-c', config_file])
+        # Add the options, checking if they have values
+        if config_file:
+            fluent_command.extend(['-c', config_file])
 
-    for override in data.get('override', '').split():
-        if override:
-            fluent_command.extend(['-o', override])
+        for override in data.get('override', '').split():
+            if override:
+                fluent_command.extend(['-o', override])
 
-    if data.get('additionalContextFile'):
-        fluent_command.extend(['-a', data.get('additionalContextFile')])
+        if data.get('additionalContextFile'):
+            fluent_command.extend(['-a', data.get('additionalContextFile')])
 
-    if data.get('upsert'):
-        fluent_command.append('--upsert')
+        if data.get('upsert'):
+            fluent_command.append('--upsert')
 
-    if data.get('input'):
-        fluent_command.extend(['-i', data.get('input')])
+        if data.get('input'):
+            fluent_command.extend(['-i', data.get('input')])
 
-    if data.get('metadata'):
-        fluent_command.extend(['-t', data.get('metadata')])
+        if data.get('metadata'):
+            fluent_command.extend(['-t', data.get('metadata')])
 
-    if data.get('uploadImageFile'):
-        fluent_command.extend(['-l', data.get('uploadImageFile')])
+        if data.get('uploadImageFile'):
+            fluent_command.extend(['-l', data.get('uploadImageFile')])
 
-    if data.get('downloadMedia'):
-        fluent_command.extend(['-d', data.get('downloadMedia')])
+        if data.get('downloadMedia'):
+            fluent_command.extend(['-d', data.get('downloadMedia')])
 
-    if data.get('parseCode'):
-        fluent_command.append('-p')
+        if data.get('parseCode'):
+            fluent_command.append('-p')
 
-    if data.get('executeOutput'):
-        fluent_command.append('-x')
+        if data.get('executeOutput'):
+            fluent_command.append('-x')
 
-    if data.get('markdown'):
-        fluent_command.append('-m')
+        if data.get('markdown'):
+            fluent_command.append('-m')
 
-    if data.get('generateCypher'):
-        fluent_command.extend(['--generate-cypher', data.get('generateCypher')])
+        if data.get('generateCypher'):
+            fluent_command.extend(['--generate-cypher', data.get('generateCypher')])
 
-    # Handle the pipeline command
-    if pipeline_file:
-        fluent_command.extend(['pipeline', '--file', pipeline_file])
+        # Handle the pipeline command
+        if pipeline_file:
+            fluent_command.extend(['pipeline', '--file', pipeline_file])
 
-        if data.get('pipelineInput'):
-            fluent_command.extend(['--input', data.get('pipelineInput')])
+            if data.get('pipelineInput'):
+                fluent_command.extend(['--input', data.get('pipelineInput')])
 
-        if data.get('jsonOutput'):
-            fluent_command.append('--json-output')
+            if data.get('jsonOutput'):
+                fluent_command.append('--json-output')
 
-        if data.get('runId'):
-            fluent_command.extend(['--run-id', data.get('runId')])
+            if data.get('runId'):
+                fluent_command.extend(['--run-id', data.get('runId')])
 
-        if data.get('forceFresh'):
-            fluent_command.append('--force-fresh')
+            if data.get('forceFresh'):
+                fluent_command.append('--force-fresh')
 
-    try:
-        # Log the command for debugging
-        logging.debug(f"Executing command: {fluent_command}")
-        # Execute the fluent command and capture the output
-        output = subprocess.check_output(fluent_command).decode('utf-8')
+        # Enhanced input validation for command injection prevention
+        dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '<', '>', '"', "'", '\\', '\n', '\r']
+        for arg in fluent_command:
+            if any(char in str(arg) for char in dangerous_chars):
+                logging.warning(f"Blocked command with dangerous characters: {arg}")
+                return jsonify({'error': 'Invalid characters in command arguments'}), 400
+
+            # Check for path traversal attempts
+            if '..' in str(arg) or arg.startswith('/'):
+                logging.warning(f"Blocked potential path traversal: {arg}")
+                return jsonify({'error': 'Invalid path in arguments'}), 400
+
+        # Validate command length
+        if len(' '.join(fluent_command)) > 2000:
+            return jsonify({'error': 'Command too long'}), 400
+
+        # Log the command for debugging (but not in production)
+        if os.environ.get('FLASK_DEBUG', 'false').lower() == 'true':
+            logging.debug(f"Executing command: {fluent_command}")
+
+        # Execute the fluent command with enhanced security restrictions
+        output = subprocess.check_output(
+            fluent_command,
+            timeout=30,  # 30 second timeout
+            stderr=subprocess.STDOUT,
+            env={'PATH': '/usr/bin:/bin'},  # Minimal environment
+            cwd=os.getcwd(),  # Explicit working directory
+            shell=False  # Never use shell=True
+        ).decode('utf-8')
+
+        # Validate output size
+        if len(output) > 1_000_000:  # 1MB limit
+            return jsonify({'error': 'Output too large'}), 413
+
         # Return the output as a JSON response
         return jsonify({'output': output})
     except subprocess.CalledProcessError as e:
@@ -184,8 +213,23 @@ def create_temp_file(content, extension):
         raise
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    logging.debug("Flask app starting...")
-    logging.debug(f"Working directory: {os.getcwd()}")
-    logging.debug(f"Environment variables: {os.environ}")
-    app.run(debug=True, host='0.0.0.0')
+    # Production-safe logging configuration
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    logging.info("Flask app starting...")
+    logging.info(f"Working directory: {os.getcwd()}")
+    # Never log environment variables in production - they may contain secrets
+
+    # Production-safe Flask configuration
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    host = os.environ.get('FLASK_HOST', '127.0.0.1')  # Default to localhost only
+    port = int(os.environ.get('FLASK_PORT', '5000'))
+
+    if debug_mode:
+        logging.warning("Running in debug mode - not suitable for production!")
+
+    app.run(debug=debug_mode, host=host, port=port)

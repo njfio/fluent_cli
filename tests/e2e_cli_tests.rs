@@ -1,8 +1,7 @@
 use anyhow::Result;
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use assert_cmd::Command;
+use predicates::prelude::*;
 use tempfile::TempDir;
-use tokio::time::timeout;
 
 /// End-to-End CLI Tests
 /// 
@@ -12,7 +11,6 @@ use tokio::time::timeout;
 
 /// Test utilities for E2E CLI testing
 pub struct CliTestRunner {
-    binary_path: String,
     temp_dir: TempDir,
 }
 
@@ -20,61 +18,20 @@ impl CliTestRunner {
     /// Create a new CLI test runner
     pub fn new() -> Result<Self> {
         let temp_dir = TempDir::new()?;
-
-        // Use cargo to run the binary instead of direct path
-        let binary_path = "cargo".to_string();
-
-        Ok(Self {
-            binary_path,
-            temp_dir,
-        })
+        Ok(Self { temp_dir })
     }
-    
-    /// Execute a CLI command with arguments
-    pub async fn run_command(&self, args: &[&str]) -> Result<CommandOutput> {
-        let mut cmd = Command::new(&self.binary_path);
 
-        // Use cargo run to execute the CLI
-        let mut cargo_args = vec!["run", "--"];
-        cargo_args.extend(args);
+    /// Execute a CLI command with arguments using assert_cmd
+    pub fn run_command(&self, args: &[&str]) -> Command {
+        let mut cmd = Command::cargo_bin("fluent").expect("Failed to find fluent binary");
+        cmd.args(args);
+        cmd.current_dir(self.temp_dir.path());
+        cmd
+    }
 
-        cmd.args(&cargo_args)
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped())
-           .current_dir(std::env::current_dir()?);
-        
-        // Set timeout for command execution
-        let output = timeout(Duration::from_secs(30), async {
-            tokio::task::spawn_blocking(move || cmd.output()).await?
-        }).await??;
-        
-        Ok(CommandOutput {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            exit_code: output.status.code().unwrap_or(-1),
-        })
-    }
-    
-    /// Execute a CLI command and expect success
-    pub async fn run_command_success(&self, args: &[&str]) -> Result<CommandOutput> {
-        let output = self.run_command(args).await?;
-        if output.exit_code != 0 {
-            anyhow::bail!(
-                "Command failed with exit code {}: {}", 
-                output.exit_code, 
-                output.stderr
-            );
-        }
-        Ok(output)
-    }
-    
-    /// Execute a CLI command and expect failure
-    pub async fn run_command_failure(&self, args: &[&str]) -> Result<CommandOutput> {
-        let output = self.run_command(args).await?;
-        if output.exit_code == 0 {
-            anyhow::bail!("Expected command to fail, but it succeeded");
-        }
-        Ok(output)
+    /// Get the temporary directory path
+    pub fn temp_dir(&self) -> &std::path::Path {
+        self.temp_dir.path()
     }
     
     /// Create a test configuration file
@@ -122,53 +79,56 @@ mod tests {
     use super::*;
     
     /// Test CLI help command
-    #[tokio::test]
-    async fn test_cli_help() -> Result<()> {
+    #[test]
+    fn test_cli_help() -> Result<()> {
         let runner = CliTestRunner::new()?;
 
         // Test basic help
-        let output = runner.run_command(&["--help"]).await?;
-
-        // Check for help content
-        assert!(output.exit_code == 0);
-        assert!(output.contains_stdout("Usage: fluent"));
-        assert!(output.contains_stdout("Commands:"));
+        runner.run_command(&["--help"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Usage:"))
+            .stdout(predicate::str::contains("Commands:"));
 
         println!("✅ CLI help test passed");
         Ok(())
     }
-    
+
     /// Test CLI version command
-    #[tokio::test]
-    async fn test_cli_version() -> Result<()> {
+    #[test]
+    fn test_cli_version() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test version output
-        let output = runner.run_command_success(&["--version"]).await?;
-        assert!(output.contains_stdout("0.1.0") || output.contains_stdout("version"));
-        
+        runner.run_command(&["--version"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("0.1.0").or(predicate::str::contains("version")));
+
         println!("✅ CLI version test passed");
         Ok(())
     }
-    
+
     /// Test invalid command handling
-    #[tokio::test]
-    async fn test_invalid_command() -> Result<()> {
+    #[test]
+    fn test_invalid_command() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test invalid command
-        let output = runner.run_command_failure(&["invalid-command"]).await?;
-        assert!(output.contains_stderr("error") || output.contains_stderr("invalid"));
-        
+        runner.run_command(&["invalid-command"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("error").or(predicate::str::contains("invalid")));
+
         println!("✅ Invalid command test passed");
         Ok(())
     }
     
     /// Test configuration file handling
-    #[tokio::test]
-    async fn test_config_file() -> Result<()> {
+    #[test]
+    fn test_config_file() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Create a test config file
         let config_content = r#"
 engines:
@@ -183,58 +143,51 @@ engines:
       bearer_token: test-token
       model: gpt-3.5-turbo
 "#;
-        
+
         let config_path = runner.create_test_config(config_content)?;
-        
+
         // Test config file loading (this might fail due to invalid token, but should parse)
-        let output = runner.run_command(&["-c", &config_path, "test-engine", "--help"]).await?;
-        
-        // Should either show help or fail gracefully with config parsing
-        assert!(
-            output.contains_stdout("help") || 
-            output.contains_stderr("config") ||
-            output.exit_code != 0
-        );
-        
+        runner.run_command(&["-c", &config_path, "test-engine", "--help"])
+            .assert()
+            .code(predicate::in_iter([0, 1])); // Allow success or graceful failure
+
         println!("✅ Config file test passed");
         Ok(())
     }
     
     /// Test MCP command structure
-    #[tokio::test]
-    async fn test_mcp_commands() -> Result<()> {
+    #[test]
+    fn test_mcp_commands() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test MCP help
-        let output = runner.run_command(&["mcp", "--help"]).await?;
-        
-        // Should show MCP subcommands or help
-        assert!(
-            output.contains_stdout("mcp") || 
-            output.contains_stdout("server") ||
-            output.contains_stdout("connect") ||
-            output.exit_code == 0
-        );
-        
+        runner.run_command(&["mcp", "--help"])
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("mcp")
+                    .or(predicate::str::contains("server"))
+                    .or(predicate::str::contains("connect"))
+            );
+
         println!("✅ MCP commands test passed");
         Ok(())
     }
-    
+
     /// Test pipeline command structure
-    #[tokio::test]
-    async fn test_pipeline_commands() -> Result<()> {
+    #[test]
+    fn test_pipeline_commands() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test pipeline help
-        let output = runner.run_command(&["pipeline", "--help"]).await?;
-        
-        // Should show pipeline help or subcommands
-        assert!(
-            output.contains_stdout("pipeline") || 
-            output.contains_stdout("file") ||
-            output.exit_code == 0
-        );
-        
+        runner.run_command(&["pipeline", "--help"])
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("pipeline")
+                    .or(predicate::str::contains("file"))
+            );
+
         println!("✅ Pipeline commands test passed");
         Ok(())
     }

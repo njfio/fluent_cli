@@ -52,7 +52,8 @@ impl ToolsCommand {
             self.tool_registry = Some(ToolRegistry::with_standard_tools(&tool_config));
         }
 
-        Ok(self.tool_registry.as_ref().unwrap())
+        self.tool_registry.as_ref()
+            .ok_or_else(|| anyhow!("Tool registry initialization failed"))
     }
 
     /// List all available tools

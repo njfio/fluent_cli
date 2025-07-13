@@ -80,7 +80,6 @@ impl AgentCommand {
             _agent_config_path,
             max_iterations,
             enable_tools,
-            config,
             "fluent_config.toml", // Default config path
         ).await {
             Ok(()) => {
@@ -132,7 +131,6 @@ impl AgentCommand {
             "agent_config.json",
             20,
             true,
-            config,
             "fluent_config.toml",
         ).await {
             Ok(()) => {
@@ -255,7 +253,6 @@ impl CommandHandler for AgentCommand {
                             "agent_config.json",
                             10,
                             true,
-                            config,
                             "fluent_config.toml",
                         ).await {
                             Ok(()) => {
@@ -277,7 +274,6 @@ impl CommandHandler for AgentCommand {
                             "agent_config.json",
                             5,
                             false,
-                            config,
                             "fluent_config.toml",
                         ).await {
                             Ok(()) => {
