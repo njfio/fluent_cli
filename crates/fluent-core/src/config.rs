@@ -32,6 +32,32 @@ pub struct Neo4jConfig {
     pub voyage_ai: Option<VoyageAIConfig>,
     pub query_llm: Option<String>,
     pub parameters: Option<HashMap<String, serde_json::Value>>,
+    pub tls: Option<Neo4jTlsConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Neo4jTlsConfig {
+    pub enabled: bool,
+    pub verify_certificates: bool,
+    pub ca_cert_path: Option<String>,
+    pub client_cert_path: Option<String>,
+    pub client_key_path: Option<String>,
+    pub server_name: Option<String>,
+    pub trust_strategy: Option<String>, // "trust_all", "trust_system_ca", "trust_custom_ca"
+}
+
+impl Default for Neo4jTlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            verify_certificates: true,
+            ca_cert_path: None,
+            client_cert_path: None,
+            client_key_path: None,
+            server_name: None,
+            trust_strategy: Some("trust_system_ca".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

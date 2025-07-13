@@ -1,5 +1,6 @@
 // Mutex poison recovery utilities
 use crate::error::{FluentError, PoisonHandlingConfig, PoisonRecoveryStrategy};
+use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -117,7 +118,7 @@ impl PoisonRecoveryUtils {
                 }
                 Err(poison_error) => {
                     attempts += 1;
-                    eprintln!(
+                    warn!(
                         "⚠️  Mutex poisoned in {} (attempt {}/{}): {}",
                         context,
                         attempts,

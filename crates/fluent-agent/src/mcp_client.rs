@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -209,7 +210,7 @@ impl McpClient {
                 Err(e) => {
                     last_error = Some(e);
                     if attempt < self.config.retry_attempts {
-                        eprintln!(
+                        warn!(
                             "MCP connection attempt {} failed, retrying in {:?}...",
                             attempt, self.config.retry_delay
                         );

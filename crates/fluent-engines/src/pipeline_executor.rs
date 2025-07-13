@@ -525,7 +525,9 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     println!("{}", expanded_prompt);
 
                     let mut input = String::new();
-                    std::io::stdin().read_line(&mut input)?;
+                    let stdin = tokio::io::stdin();
+                    let mut reader = tokio::io::BufReader::new(stdin);
+                    tokio::io::AsyncBufReadExt::read_line(&mut reader, &mut input).await?;
 
                     Ok([(save_output.clone(), input.trim().to_string())]
                         .into_iter()

@@ -50,6 +50,7 @@
 //! ```
 
 pub mod agentic;
+pub mod cli;
 pub mod commands;
 pub mod neo4j_operations;
 pub mod pipeline_builder;
@@ -65,13 +66,9 @@ pub mod request_processor;
 pub mod response_formatter;
 
 // Refactored CLI modules
-pub mod cli;
 pub mod mcp_runner;
 pub mod neo4j_runner;
 
-use anyhow::Error;
-use fluent_core::config::EngineConfig;
-use fluent_core::traits::Engine;
 use fluent_engines::create_engine;
 
 // Re-export commonly used functions
@@ -80,6 +77,6 @@ pub use validation::{validate_engine_name, validate_file_path_secure, parse_key_
 pub use memory::MemoryManager;
 
 // Re-export main CLI functionality
-pub use cli::{run, run_modular, build_cli, print_response};
+// CLI functionality moved to main.rs
 pub use mcp_runner::{run_mcp_server, run_agentic_mode, run_agent_with_mcp};
 pub use neo4j_runner::{get_neo4j_query_llm, generate_cypher_query};

@@ -303,10 +303,52 @@ pub mod validation {
         ))
     }
 
-    /// Validate that a command is in the allowed list
+    /// Validate that a command is in the allowed list with enhanced security checks
     pub fn validate_command(command: &str, allowed_commands: &[String]) -> Result<()> {
-        let command_lower = command.to_lowercase();
+        // Basic input validation
+        if command.is_empty() {
+            return Err(anyhow::anyhow!("Command cannot be empty"));
+        }
 
+        if command.len() > 1000 {
+            return Err(anyhow::anyhow!("Command too long (max 1000 characters)"));
+        }
+
+        // Check for null bytes and dangerous control characters
+        if command.contains('\0') || command.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
+            return Err(anyhow::anyhow!("Command contains invalid control characters"));
+        }
+
+        // Enhanced dangerous pattern detection
+        let dangerous_patterns = [
+            // Command injection patterns
+            "$(", "`", ";", "&&", "||", "|", ">", ">>", "<", "<<",
+            // Path traversal
+            "../", "./", "~", "/etc/", "/proc/", "/sys/", "/dev/",
+            // Privilege escalation
+            "sudo", "su ", "doas", "pkexec",
+            // Network operations
+            "curl", "wget", "nc ", "netcat", "telnet", "ssh", "scp",
+            // File operations
+            "rm ", "rmdir", "del ", "format", "mkfs", "dd ",
+            // Process control
+            "kill", "killall", "pkill", "&", "nohup",
+            // Script execution
+            "bash", "sh ", "zsh", "python", "perl", "ruby", "node",
+            "eval", "exec", "source", ".",
+        ];
+
+        let command_lower = command.to_lowercase();
+        for pattern in &dangerous_patterns {
+            if command_lower.contains(pattern) {
+                return Err(anyhow::anyhow!(
+                    "Command contains dangerous pattern '{}': {}",
+                    pattern, command
+                ));
+            }
+        }
+
+        // Check against allowed commands list
         for allowed in allowed_commands {
             if command_lower.starts_with(&allowed.to_lowercase()) {
                 return Ok(());
@@ -314,8 +356,8 @@ pub mod validation {
         }
 
         Err(anyhow::anyhow!(
-            "Command '{}' is not in the allowed commands list",
-            command
+            "Command '{}' is not in the allowed commands list: {:?}",
+            command, allowed_commands
         ))
     }
 

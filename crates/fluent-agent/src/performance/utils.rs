@@ -1,3 +1,4 @@
+use log::{debug, info};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
@@ -218,17 +219,17 @@ impl PerformanceTestUtils {
         let memory_tracker = MemoryTracker::new();
         let start_time = Instant::now();
         
-        println!("Running performance test: {}", name);
-        
+        info!("Running performance test: {}", name);
+
         for i in 0..num_operations {
             let op_start = Instant::now();
             let result = operation(i).await;
             let op_duration = op_start.elapsed();
-            
+
             counter.record_request(op_duration, result.is_err());
-            
+
             if i % (num_operations / 10).max(1) == 0 {
-                println!("  Progress: {}/{}", i + 1, num_operations);
+                debug!("  Progress: {}/{}", i + 1, num_operations);
             }
         }
         
@@ -314,15 +315,15 @@ pub struct PerformanceTestResult {
 
 impl PerformanceTestResult {
     pub fn print_summary(&self) {
-        println!("=== Performance Test Results: {} ===", self.test_name);
-        println!("  Total Duration: {:?}", self.total_duration);
-        println!("  Total Operations: {}", self.stats.total_requests);
-        println!("  Successful Operations: {}", self.stats.total_requests - self.stats.total_errors);
-        println!("  Failed Operations: {}", self.stats.total_errors);
-        println!("  Success Rate: {:.2}%", (1.0 - self.stats.error_rate) * 100.0);
-        println!("  Operations per Second: {:.2}", self.operations_per_second);
-        println!("  Average Operation Time: {:?}", self.stats.average_duration);
-        println!("  Min Operation Time: {:?}", self.stats.min_duration.unwrap_or_default());
+        info!("=== Performance Test Results: {} ===", self.test_name);
+        info!("  Total Duration: {:?}", self.total_duration);
+        info!("  Total Operations: {}", self.stats.total_requests);
+        info!("  Successful Operations: {}", self.stats.total_requests - self.stats.total_errors);
+        info!("  Failed Operations: {}", self.stats.total_errors);
+        info!("  Success Rate: {:.2}%", (1.0 - self.stats.error_rate) * 100.0);
+        info!("  Operations per Second: {:.2}", self.operations_per_second);
+        info!("  Average Operation Time: {:?}", self.stats.average_duration);
+        info!("  Min Operation Time: {:?}", self.stats.min_duration.unwrap_or_default());
         println!("  Max Operation Time: {:?}", self.stats.max_duration.unwrap_or_default());
         println!("  Peak Memory Usage: {} bytes ({:.2} MB)", 
                  self.peak_memory_usage, 

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
-use std::io::{self, Write};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 
 
@@ -193,12 +193,17 @@ impl CommandHandler for AgentCommand {
             println!("✅ Agentic framework initialized");
             println!("Type 'help' for commands, 'quit' to exit");
 
+            // Create async stdin reader
+            let stdin = tokio::io::stdin();
+            let mut reader = BufReader::new(stdin);
+            let mut stdout = tokio::io::stdout();
+
             loop {
-                print!("agent> ");
-                io::stdout().flush()?;
+                stdout.write_all(b"agent> ").await?;
+                stdout.flush().await?;
 
                 let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
+                reader.read_line(&mut input).await?;
                 let input = input.trim();
 
                 match input {

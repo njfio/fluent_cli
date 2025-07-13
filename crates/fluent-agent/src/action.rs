@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
@@ -621,8 +622,8 @@ impl ComprehensiveActionExecutor {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("Message not specified for communication"))?;
 
-        // For now, just log the communication
-        println!("Agent Communication: {}", message);
+        // Log the communication using structured logging
+        info!("Agent communication: {}", message);
 
         let mut metadata = HashMap::new();
         metadata.insert(

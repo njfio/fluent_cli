@@ -89,12 +89,17 @@ impl Agent {
         fs::write(path, content).await.map_err(Into::into)
     }
 
-    /// Run a shell command and capture stdout and stderr.
+    /// Run a shell command and capture stdout and stderr with security validation.
     pub async fn run_command(&self, cmd: &str, args: &[&str]) -> Result<String> {
+        // Validate command against security policies
+        Self::validate_command_security(cmd, args)?;
+
         let output = Command::new(cmd)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .env_clear() // Clear environment for security
+            .env("PATH", "/usr/bin:/bin:/usr/local/bin") // Minimal PATH
             .output()
             .await?;
         let mut result = String::from_utf8_lossy(&output.stdout).to_string();
@@ -102,6 +107,60 @@ impl Agent {
             result.push_str(&String::from_utf8_lossy(&output.stderr));
         }
         Ok(result)
+    }
+
+    /// Validate command and arguments against security policies
+    fn validate_command_security(cmd: &str, args: &[&str]) -> Result<()> {
+        // Get allowed commands from environment or use defaults
+        let allowed_commands = Self::get_allowed_commands();
+
+        // Check if command is in whitelist
+        if !allowed_commands.contains(&cmd) {
+            return Err(anyhow!("Command '{}' not in allowed list", cmd));
+        }
+
+        // Validate command name
+        if cmd.len() > 100 {
+            return Err(anyhow!("Command name too long"));
+        }
+
+        // Check for dangerous patterns in command
+        let dangerous_patterns = ["../", "./", "/", "~", "$", "`", ";", "&", "|", ">", "<"];
+        for pattern in &dangerous_patterns {
+            if cmd.contains(pattern) {
+                return Err(anyhow!("Command contains dangerous pattern: {}", pattern));
+            }
+        }
+
+        // Validate arguments
+        for arg in args {
+            if arg.len() > 1000 {
+                return Err(anyhow!("Argument too long"));
+            }
+
+            // Check for dangerous patterns in arguments
+            for pattern in &dangerous_patterns {
+                if arg.contains(pattern) {
+                    return Err(anyhow!("Argument contains dangerous pattern: {}", pattern));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get allowed commands from environment or defaults
+    fn get_allowed_commands() -> Vec<&'static str> {
+        // Check environment variable for custom allowed commands
+        if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
+            log::info!("Custom allowed commands: {}", custom_commands);
+            // TODO: Parse and return custom commands with proper lifetime management
+        }
+
+        // Default allowed commands for agent operations
+        vec![
+            "cargo", "rustc", "git", "ls", "cat", "echo", "pwd", "which", "find"
+        ]
     }
 
     /// Commit changes in the current git repository.
