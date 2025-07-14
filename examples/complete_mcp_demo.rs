@@ -4,7 +4,7 @@ use fluent_agent::{
     mcp_client::{McpClient, McpClientConfig, McpClientManager},
     mcp_tool_registry::McpToolRegistry,
     mcp_resource_manager::McpResourceManager,
-    memory::SqliteMemoryStore,
+    memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
 };
 use serde_json::json;
@@ -122,9 +122,8 @@ async fn demonstrate_mcp_tool_registry() -> Result<()> {
 async fn demonstrate_mcp_resource_management() -> Result<()> {
     println!("\n📦 Example 3: MCP Resource Management");
 
-    // Create memory system (using SqliteMemoryStore which implements LongTermMemory)
-    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+    // Create memory system (using AsyncSqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
 
     // Create resource manager
     let resource_manager = McpResourceManager::new(memory_system);

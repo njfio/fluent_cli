@@ -3,6 +3,11 @@ use log::{debug, info, warn};
 use std::fs;
 use std::path::Path;
 
+// Thread-local storage for cleanup counter
+std::thread_local! {
+    static CLEANUP_COUNTER: std::cell::RefCell<u64> = std::cell::RefCell::new(0);
+}
+
 /// Memory management utilities for the CLI
 pub struct MemoryManager;
 
@@ -11,11 +16,7 @@ impl MemoryManager {
     pub fn force_cleanup() {
         debug!("Performing comprehensive memory cleanup");
 
-        // Clear thread-local storage
-        std::thread_local! {
-            static CLEANUP_COUNTER: std::cell::RefCell<u64> = std::cell::RefCell::new(0);
-        }
-
+        // Update thread-local cleanup counter
         CLEANUP_COUNTER.with(|counter| {
             let mut count = counter.borrow_mut();
             *count += 1;
@@ -107,42 +108,46 @@ impl MemoryManager {
         Ok(())
     }
 
-    /// Clean up temporary files with enhanced patterns
+    /// Clean up temporary files with enhanced patterns (cross-platform)
     fn cleanup_temp_files() -> Result<()> {
         debug!("Cleaning up temporary files");
 
+        let temp_dir = std::env::temp_dir();
         let temp_patterns = [
-            "/tmp/fluent_*",
-            "/tmp/pipeline_*",
-            "/tmp/agent_*",
-            "/tmp/mcp_*",
-            "/tmp/neo4j_*",
-            "/tmp/checkpoint_*",
-            "/var/tmp/fluent_*",
-            // Platform-specific temp directories
-            #[cfg(windows)]
-            "C:\\Windows\\Temp\\fluent_*",
-            #[cfg(windows)]
-            "C:\\Users\\*\\AppData\\Local\\Temp\\fluent_*",
+            "fluent_*",
+            "pipeline_*",
+            "agent_*",
+            "mcp_*",
+            "neo4j_*",
+            "checkpoint_*",
         ];
 
         let mut cleaned_count = 0;
         let mut failed_count = 0;
 
         for pattern in &temp_patterns {
-            if let Ok(entries) = glob::glob(pattern) {
-                for entry in entries.flatten() {
-                    match fs::remove_file(&entry) {
-                        Ok(_) => {
-                            debug!("Cleaned up temp file: {:?}", entry);
-                            cleaned_count += 1;
-                        }
-                        Err(e) => {
-                            warn!("Failed to remove temp file {:?}: {}", entry, e);
-                            failed_count += 1;
+            let full_pattern = temp_dir.join(pattern);
+            if let Some(pattern_str) = full_pattern.to_str() {
+                if let Ok(entries) = glob::glob(pattern_str) {
+                    for entry in entries.flatten() {
+                        if entry.is_file() {
+                            match fs::remove_file(&entry) {
+                                Ok(_) => {
+                                    debug!("Cleaned up temp file: {:?}", entry);
+                                    cleaned_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to remove temp file {:?}: {}", entry, e);
+                                    failed_count += 1;
+                                }
+                            }
                         }
                     }
+                } else {
+                    debug!("No files found matching pattern: {}", pattern_str);
                 }
+            } else {
+                warn!("Failed to convert temp pattern to string: {:?}", full_pattern);
             }
         }
 
@@ -642,32 +647,40 @@ fn get_system_memory_info_linux() -> Result<SystemMemoryInfo> {
 
 #[cfg(target_os = "macos")]
 fn get_memory_info_macos() -> Result<MemoryInfo> {
-    // On macOS, we would use task_info() system call
-    // For now, provide a simplified implementation
     use std::process::Command;
 
+    // Get process memory info using ps command
     let output = Command::new("ps")
         .args(&["-o", "rss,vsz", "-p"])
         .arg(std::process::id().to_string())
         .output()
-        .map_err(|e| anyhow!("Failed to run ps command: {}", e))?;
+        .map_err(|e| anyhow!("Failed to execute ps command on macOS: {}", e))?;
+
+    if !output.status.success() {
+        return Err(anyhow!("ps command failed on macOS with exit code: {}",
+                          output.status.code().unwrap_or(-1)));
+    }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = output_str.lines().collect();
 
-    if lines.len() >= 2 {
-        let parts: Vec<&str> = lines[1].split_whitespace().collect();
-        if parts.len() >= 2 {
-            let rss_kb = parts[0].parse().unwrap_or(0);
-            let virtual_kb = parts[1].parse().unwrap_or(0);
-            return Ok(MemoryInfo { rss_kb, virtual_kb });
-        }
+    if lines.len() < 2 {
+        return Err(anyhow!("Unexpected ps output format on macOS: expected at least 2 lines, got {}", lines.len()));
     }
 
-    // Fallback
+    let parts: Vec<&str> = lines[1].split_whitespace().collect();
+    if parts.len() < 2 {
+        return Err(anyhow!("Failed to parse ps output on macOS: expected at least 2 columns, got {}", parts.len()));
+    }
+
+    let rss_kb = parts[0].parse::<u64>()
+        .map_err(|e| anyhow!("Failed to parse RSS value '{}' on macOS: {}", parts[0], e))?;
+    let virtual_kb = parts[1].parse::<u64>()
+        .map_err(|e| anyhow!("Failed to parse VSZ value '{}' on macOS: {}", parts[1], e))?;
+
     Ok(MemoryInfo {
-        rss_kb: 0,
-        virtual_kb: 0,
+        rss_kb,
+        virtual_kb
     })
 }
 
@@ -692,11 +705,47 @@ fn get_system_memory_info_macos() -> Result<SystemMemoryInfo> {
 
 #[cfg(target_os = "windows")]
 fn get_memory_info_windows() -> Result<MemoryInfo> {
-    // On Windows, we would use GetProcessMemoryInfo()
-    // For now, provide a simplified implementation
+    use std::process::Command;
+
+    // Try to get memory info using tasklist command
+    let output = Command::new("tasklist")
+        .args(&["/fi", &format!("PID eq {}", std::process::id()), "/fo", "csv"])
+        .output()
+        .map_err(|e| anyhow!("Failed to execute tasklist command on Windows: {}", e))?;
+
+    if !output.status.success() {
+        warn!("tasklist command failed on Windows, using fallback values");
+        return Ok(MemoryInfo {
+            rss_kb: 32 * 1024, // 32MB default
+            virtual_kb: 64 * 1024, // 64MB default
+        });
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+
+    // Parse CSV output from tasklist
+    if lines.len() >= 2 {
+        let data_line = lines[1];
+        let fields: Vec<&str> = data_line.split(',').collect();
+
+        // Memory usage is typically in the 5th field (index 4) in tasklist CSV output
+        if fields.len() > 4 {
+            let memory_str = fields[4].trim_matches('"').replace(",", "").replace(" K", "");
+            if let Ok(memory_kb) = memory_str.parse::<u64>() {
+                return Ok(MemoryInfo {
+                    rss_kb: memory_kb,
+                    virtual_kb: memory_kb * 2, // Estimate virtual memory as 2x physical
+                });
+            }
+        }
+    }
+
+    // Fallback if parsing fails
+    warn!("Failed to parse tasklist output on Windows, using fallback values");
     Ok(MemoryInfo {
-        rss_kb: 0,
-        virtual_kb: 0,
+        rss_kb: 32 * 1024, // 32MB default
+        virtual_kb: 64 * 1024, // 64MB default
     })
 }
 
