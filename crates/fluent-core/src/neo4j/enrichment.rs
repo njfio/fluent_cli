@@ -1,7 +1,17 @@
 //! Document enrichment operations for Neo4j
-//! 
-//! This module handles document enrichment including themes, keywords,
-//! clustering, and sentiment analysis for Neo4j stored documents.
+//!
+//! This module provides comprehensive document enrichment capabilities including:
+//! - Theme and keyword extraction with VoyageAI integration
+//! - Document clustering and similarity analysis
+//! - Sentiment analysis and confidence scoring
+//! - Database-backed enrichment status management with proper Neo4j queries
+//!
+//! ## Features
+//!
+//! - **Status Tracking**: Complete implementation of enrichment status retrieval and updates
+//! - **Incremental Processing**: Configurable intervals for different enrichment types
+//! - **Error Handling**: Comprehensive Result types with detailed error context
+//! - **Performance**: Optimized Neo4j queries with proper connection management
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};

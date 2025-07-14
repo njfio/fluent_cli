@@ -1,3 +1,13 @@
+//! Multi-level cache system with comprehensive fallback support
+//!
+//! This module provides a production-ready multi-level caching system with:
+//! - **L1 Cache**: High-performance in-memory caching using Moka
+//! - **L2 Cache**: Redis-compatible interface with graceful fallback
+//! - **L3 Cache**: Database-backed caching with graceful fallback
+//! - **TTL Management**: Configurable time-to-live for all cache levels
+//! - **Metrics Collection**: Comprehensive cache performance tracking
+//! - **Fallback Behavior**: Graceful degradation when backends are unavailable
+
 use super::{utils::PerformanceCounter, CacheConfig};
 use anyhow::Result;
 use moka::future::Cache as MokaCache;
@@ -8,6 +18,10 @@ use std::time::Duration;
 use log::{warn, debug};
 
 /// Multi-level cache system with L1 (memory), L2 (Redis), and L3 (database) levels
+///
+/// Provides intelligent caching across multiple storage tiers with automatic fallback
+/// when higher-level caches are unavailable. All cache operations include proper
+/// error handling and TTL management.
 pub struct MultiLevelCache<K, V> {
     l1_cache: MokaCache<K, V>,
     l2_cache: Option<Arc<dyn L2Cache<K, V>>>,

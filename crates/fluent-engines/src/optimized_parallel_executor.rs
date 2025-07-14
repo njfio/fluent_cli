@@ -1,3 +1,19 @@
+//! Optimized parallel task execution with dependency resolution
+//!
+//! This module provides advanced parallel execution capabilities with:
+//! - **Topological Dependency Sorting**: Kahn's algorithm implementation for proper task ordering
+//! - **Priority-Based Scheduling**: Tasks sorted by priority within dependency constraints
+//! - **Resource Management**: Configurable concurrency limits and memory tracking
+//! - **Batch Processing**: Intelligent batching based on dependencies and resource availability
+//! - **Comprehensive Error Handling**: Detailed error reporting and recovery mechanisms
+//!
+//! ## Key Features
+//!
+//! - Circular dependency detection and validation
+//! - Memory usage monitoring and limits
+//! - Timeout handling for individual tasks and batches
+//! - Detailed execution metrics and performance tracking
+
 use anyhow::{anyhow, Result};
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{debug, error, info, warn};
