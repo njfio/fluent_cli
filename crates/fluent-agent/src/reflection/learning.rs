@@ -368,7 +368,10 @@ impl KnowledgeRetentionManager {
         }
 
         // Sort by priority score (highest first)
-        priorities.sort_by(|a, b| b.priority_score.partial_cmp(&a.priority_score).unwrap());
+        priorities.sort_by(|a, b| {
+            b.priority_score.partial_cmp(&a.priority_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(priorities)
     }

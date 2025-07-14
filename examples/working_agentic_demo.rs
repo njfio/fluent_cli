@@ -1,4 +1,24 @@
-// Working Agentic System Demo - Real Implementation Examples
+//! Working Agentic System Demo - Production-Ready Implementation
+//!
+//! This example demonstrates the production-ready agentic capabilities of fluent_cli:
+//! - Comprehensive error handling with Result types
+//! - Secure command execution with validation
+//! - Memory persistence with SQLite backend
+//! - Goal-oriented task execution with reflection
+//! - Tool integration with proper security controls
+//!
+//! ## Usage
+//!
+//! ```bash
+//! cargo run --example working_agentic_demo
+//! ```
+//!
+//! ## Features Demonstrated
+//!
+//! - Multi-step goal execution with memory persistence
+//! - File system operations with security validation
+//! - Error recovery and graceful degradation
+//! - Comprehensive logging and debugging output
 use anyhow::Result;
 use chrono::Utc;
 use fluent_agent::{
@@ -46,6 +66,7 @@ async fn main() -> Result<()> {
 
 async fn demo_memory_system() -> Result<()> {
     // Create real SQLite memory store
+    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
     let memory_store = SqliteMemoryStore::new("demo_agent_memory.db")?;
     println!("✅ Created real SQLite database: demo_agent_memory.db");
 

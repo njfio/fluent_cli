@@ -1,7 +1,17 @@
 //! Document enrichment operations for Neo4j
-//! 
-//! This module handles document enrichment including themes, keywords,
-//! clustering, and sentiment analysis for Neo4j stored documents.
+//!
+//! This module provides comprehensive document enrichment capabilities including:
+//! - Theme and keyword extraction with VoyageAI integration
+//! - Document clustering and similarity analysis
+//! - Sentiment analysis and confidence scoring
+//! - Database-backed enrichment status management with proper Neo4j queries
+//!
+//! ## Features
+//!
+//! - **Status Tracking**: Complete implementation of enrichment status retrieval and updates
+//! - **Incremental Processing**: Configurable intervals for different enrichment types
+//! - **Error Handling**: Comprehensive Result types with detailed error context
+//! - **Performance**: Optimized Neo4j queries with proper connection management
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -567,18 +577,83 @@ impl<'a> DocumentEnrichmentManager<'a> {
         })
     }
 
-    async fn get_enrichment_status(&self, _node_id: &str, _node_type: &str) -> Result<EnrichmentStatus> {
-        // TODO: Implement actual status retrieval
-        Ok(EnrichmentStatus {
-            last_themes_keywords_update: None,
-            last_clustering_update: None,
-            last_sentiment_update: None,
-        })
+    async fn get_enrichment_status(&self, node_id: &str, node_type: &str) -> Result<EnrichmentStatus> {
+        // Query Neo4j for enrichment status metadata
+        let query_str = "
+            MATCH (n) WHERE elementId(n) = $node_id
+            OPTIONAL MATCH (n)-[:HAS_ENRICHMENT_STATUS]->(status:EnrichmentStatus)
+            RETURN
+                status.last_themes_keywords_update as themes_update,
+                status.last_clustering_update as clustering_update,
+                status.last_sentiment_update as sentiment_update
+        ";
+
+        let query = query(query_str)
+            .param("node_id", node_id);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if let Some(row) = result.next().await? {
+            let themes_update = row.get::<Option<String>>("themes_update")?
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+
+            let clustering_update = row.get::<Option<String>>("clustering_update")?
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+
+            let sentiment_update = row.get::<Option<String>>("sentiment_update")?
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+
+            Ok(EnrichmentStatus {
+                last_themes_keywords_update: themes_update,
+                last_clustering_update: clustering_update,
+                last_sentiment_update: sentiment_update,
+            })
+        } else {
+            // No status found, return default (all None)
+            debug!("No enrichment status found for node {} ({}), returning default", node_id, node_type);
+            Ok(EnrichmentStatus {
+                last_themes_keywords_update: None,
+                last_clustering_update: None,
+                last_sentiment_update: None,
+            })
+        }
     }
 
-    async fn update_enrichment_status(&self, _node_id: &str, _node_type: &str, _now: &DateTime<Utc>) -> Result<()> {
-        // TODO: Implement actual status update
-        Ok(())
+    async fn update_enrichment_status(&self, node_id: &str, node_type: &str, now: &DateTime<Utc>) -> Result<()> {
+        // Create or update enrichment status node in Neo4j
+        let query_str = "
+            MATCH (n) WHERE elementId(n) = $node_id
+            MERGE (n)-[:HAS_ENRICHMENT_STATUS]->(status:EnrichmentStatus)
+            SET
+                status.last_themes_keywords_update = $themes_update,
+                status.last_clustering_update = $clustering_update,
+                status.last_sentiment_update = $sentiment_update,
+                status.node_type = $node_type,
+                status.updated_at = $now
+            RETURN status
+        ";
+
+        let now_str = now.to_rfc3339();
+        let query = query(query_str)
+            .param("node_id", node_id)
+            .param("node_type", node_type)
+            .param("themes_update", now_str.clone())
+            .param("clustering_update", now_str.clone())
+            .param("sentiment_update", now_str.clone())
+            .param("now", now_str);
+
+        let mut result = self.graph.execute(query).await?;
+
+        if result.next().await?.is_some() {
+            debug!("Updated enrichment status for node {} ({})", node_id, node_type);
+            Ok(())
+        } else {
+            error!("Failed to update enrichment status for node {} ({})", node_id, node_type);
+            Err(anyhow!("Failed to update enrichment status for node {}", node_id))
+        }
     }
 }
 

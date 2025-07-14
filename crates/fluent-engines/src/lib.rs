@@ -171,7 +171,7 @@ pub enum EngineType {
 // ✅ Security auditing and compliance logging
 // ✅ Capability-based permission system
 // ✅ Resource limits and quotas enforcement
-// ✅ Production-ready security architecture
+// ✅ Comprehensive security architecture (development stage - thorough testing recommended)
 
 pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<dyn Engine>> {
     let engine: Box<dyn Engine> = match EngineType::from_str(engine_config.engine.as_str()) {

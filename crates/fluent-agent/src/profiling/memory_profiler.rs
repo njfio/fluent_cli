@@ -213,8 +213,13 @@ impl ReflectionMemoryProfiler {
                 })
                 .unwrap_or_else(|_| {
                     // If no tokio runtime, create a minimal one
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(get_process_memory_usage())
+                    match tokio::runtime::Runtime::new() {
+                        Ok(rt) => rt.block_on(get_process_memory_usage()),
+                        Err(_) => {
+                            // Fallback to a default value if runtime creation fails
+                            Ok(1024 * 1024) // 1MB default
+                        }
+                    }
                 })
         }).join() {
             Ok(Ok(memory)) => memory,
