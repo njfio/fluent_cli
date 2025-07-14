@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
 
 async fn demo_memory_system() -> Result<()> {
     // Create real SQLite memory store
+    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
     let memory_store = SqliteMemoryStore::new("demo_agent_memory.db")?;
     println!("✅ Created real SQLite database: demo_agent_memory.db");
 
