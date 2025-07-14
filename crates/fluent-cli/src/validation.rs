@@ -80,7 +80,7 @@ pub fn validate_numeric_parameter(
     Ok(value)
 }
 
-/// Validate engine name against allowed engines
+/// Validate engine name against allowed engines (configurable)
 pub fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
     if engine_name.is_empty() {
         return Err(FluentError::Validation(ValidationError::MissingField(
@@ -88,31 +88,112 @@ pub fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
         )));
     }
 
-    let allowed_engines = [
-        "openai",
-        "anthropic",
-        "google",
-        "cohere",
-        "mistral",
-        "perplexity",
-        "groq",
-        "replicate",
-        "stabilityai",
-        "leonardoai",
-        "dalle",
-        "webhook",
-        "flowise",
-        "langflow",
-    ];
+    // Normalize engine name to lowercase for comparison
+    let normalized_engine = engine_name.to_lowercase();
 
-    if !allowed_engines.contains(&engine_name) {
+    // Get allowed engines from configuration or environment
+    let allowed_engines = get_allowed_engines();
+
+    if !allowed_engines.contains(&normalized_engine) {
         return Err(FluentError::Validation(ValidationError::InvalidFormat {
             input: engine_name.to_string(),
             expected: format!("One of: {}", allowed_engines.join(", ")),
         }));
     }
 
+    // Return the original case for consistency
     Ok(engine_name.to_string())
+}
+
+/// Get allowed engines from configuration file or environment variables
+fn get_allowed_engines() -> Vec<String> {
+    // First, try to get from environment variable
+    if let Ok(engines_env) = std::env::var("FLUENT_ALLOWED_ENGINES") {
+        let engines: Vec<String> = engines_env
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if !engines.is_empty() {
+            return engines;
+        }
+    }
+
+    // Try to load from configuration file
+    if let Ok(config_engines) = load_engines_from_config() {
+        if !config_engines.is_empty() {
+            return config_engines;
+        }
+    }
+
+    // Fallback to default engines
+    get_default_engines()
+}
+
+/// Load allowed engines from configuration file
+fn load_engines_from_config() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    use std::fs;
+    use std::path::Path;
+
+    // Look for engine configuration in common locations
+    let config_paths = [
+        "fluent_engines.json",
+        "config/fluent_engines.json",
+        ".fluent/engines.json",
+        std::env::var("HOME").unwrap_or_default() + "/.fluent/engines.json",
+    ];
+
+    for config_path in &config_paths {
+        if Path::new(config_path).exists() {
+            let content = fs::read_to_string(config_path)?;
+
+            // Try to parse as JSON
+            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(engines_array) = json_value.get("allowed_engines") {
+                    if let Some(engines) = engines_array.as_array() {
+                        let engine_names: Vec<String> = engines
+                            .iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_lowercase())
+                            .collect();
+
+                        if !engine_names.is_empty() {
+                            return Ok(engine_names);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err("No valid engine configuration found".into())
+}
+
+/// Get default allowed engines
+fn get_default_engines() -> Vec<String> {
+    vec![
+        "openai".to_string(),
+        "anthropic".to_string(),
+        "google".to_string(),
+        "cohere".to_string(),
+        "mistral".to_string(),
+        "perplexity".to_string(),
+        "groq".to_string(),
+        "replicate".to_string(),
+        "stabilityai".to_string(),
+        "leonardoai".to_string(),
+        "dalle".to_string(),
+        "webhook".to_string(),
+        "flowise".to_string(),
+        "langflow".to_string(),
+        "gemini".to_string(),
+        "claude".to_string(),
+        "gpt-4".to_string(),
+        "gpt-4o".to_string(),
+        "sonnet3.5".to_string(),
+        "gemini-flash".to_string(),
+    ]
 }
 
 // Re-export the centralized parse_key_value_pair function
@@ -124,10 +205,41 @@ mod tests {
 
     #[test]
     fn test_validate_engine_name() {
+        // Test valid engines from default list
         assert!(validate_engine_name("openai").is_ok());
         assert!(validate_engine_name("anthropic").is_ok());
+        assert!(validate_engine_name("google").is_ok());
+
+        // Test case insensitivity (should work since we normalize to lowercase)
+        assert!(validate_engine_name("OpenAI").is_ok());
+        assert!(validate_engine_name("ANTHROPIC").is_ok());
+
+        // Test invalid engines
         assert!(validate_engine_name("invalid_engine").is_err());
         assert!(validate_engine_name("").is_err());
+    }
+
+    #[test]
+    fn test_get_default_engines() {
+        let engines = get_default_engines();
+        assert!(engines.contains(&"openai".to_string()));
+        assert!(engines.contains(&"anthropic".to_string()));
+        assert!(engines.contains(&"google".to_string()));
+        assert!(engines.len() > 10); // Should have a reasonable number of engines
+    }
+
+    #[test]
+    fn test_environment_variable_engine_validation() {
+        // Set environment variable for testing
+        std::env::set_var("FLUENT_ALLOWED_ENGINES", "custom_engine,another_engine");
+
+        // The validation should now accept custom engines
+        let allowed = get_allowed_engines();
+        assert!(allowed.contains(&"custom_engine".to_string()));
+        assert!(allowed.contains(&"another_engine".to_string()));
+
+        // Clean up
+        std::env::remove_var("FLUENT_ALLOWED_ENGINES");
     }
 
     #[test]
