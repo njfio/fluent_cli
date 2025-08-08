@@ -1,0 +1,51 @@
+{
+  "agent": {
+    "reasoning_engine": "anthropic",
+    "action_engine": "anthropic",
+    "reflection_engine": "anthropic",
+    "memory_database": "sqlite://./game_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": true,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./",
+        "./src",
+        "./examples",
+        "./tests",
+        "./crates",
+        "./minesweeper_solitaire_game",
+        "./minesweeper_solitaire_game/src"
+      ],
+      "allowed_commands": [
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo run"
+      ]
+    },
+    "max_iterations": 30,
+    "timeout_seconds": 1800
+  },
+  "engines": [
+    {
+      "name": "anthropic",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "claude-3-5-sonnet-20241022",
+        "temperature": 0.1,
+        "system": "You are an expert Rust programmer and game developer. You create complete, working code with proper error handling. Your task is to fix compilation errors in Rust code systematically."
+      }
+    }
+  ]
+}

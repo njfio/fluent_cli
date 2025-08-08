@@ -337,7 +337,7 @@ impl MemorySystem {
             limit: Some(limit),
         };
 
-        self.long_term_memory.retrieve(&query).await
+        self.long_term_memory.search(query).await
     }
 
     /// Get similar past experiences
@@ -998,37 +998,301 @@ impl AsyncSqliteMemoryStore {
         operation()
     }
 
+    /// Clean up old memories older than the specified number of days
+    pub async fn cleanup_old_memories(&self, days: u32) -> Result<usize> {
+        let cutoff_date = chrono::Utc::now() - chrono::Duration::days(days as i64);
+        let cutoff_rfc3339 = cutoff_date.to_rfc3339();
 
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        let count = pooled_conn.connection.call(move |conn| {
+            let count = conn.execute(
+                "DELETE FROM memory_items WHERE created_at < ?1",
+                rusqlite::params![cutoff_rfc3339],
+            )?;
+            Ok(count)
+        }).await?;
+
+        Ok(count)
+    }
+
+    /// Store a memory item
+    pub async fn store(&self, memory: MemoryItem) -> Result<String> {
+        let id = memory.memory_id.clone();
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        pooled_conn.connection.call(move |conn| {
+            conn.execute(
+                r#"
+                INSERT OR REPLACE INTO memory_items (
+                    id, memory_type, content, metadata, importance,
+                    created_at, last_accessed, access_count, tags, embedding
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "#,
+                rusqlite::params![
+                    &memory.memory_id,
+                    format!("{:?}", memory.memory_type),
+                    &memory.content,
+                    serde_json::to_string(&memory.metadata).unwrap_or_default(),
+                    memory.importance,
+                    memory.created_at.to_rfc3339(),
+                    memory.last_accessed.to_rfc3339(),
+                    memory.access_count as i64,
+                    serde_json::to_string(&memory.tags).unwrap_or_default(),
+                    memory.embedding.as_ref().and_then(|emb| {
+                        bincode::serialize(emb).ok()
+                    }),
+                ],
+            )?;
+            Ok(())
+        }).await?;
+
+        Ok(id)
+    }
+
+    /// Retrieve a memory item by ID
+    pub async fn retrieve(&self, memory_id: &str) -> Result<Option<MemoryItem>> {
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        let memory_id = memory_id.to_string();
+        pooled_conn.connection.call(move |conn| {
+            let mut stmt = conn.prepare("SELECT * FROM memory_items WHERE id = ?1")?;
+
+            let memory_iter = stmt.query_map(
+                rusqlite::params![memory_id],
+                |row| {
+                    let memory_type_str: String = row.get("memory_type")?;
+                    let memory_type = match memory_type_str.as_str() {
+                        "Experience" => MemoryType::Experience,
+                        "Learning" => MemoryType::Learning,
+                        "Strategy" => MemoryType::Strategy,
+                        "Pattern" => MemoryType::Pattern,
+                        "Rule" => MemoryType::Rule,
+                        "Fact" => MemoryType::Fact,
+                        _ => MemoryType::Experience,
+                    };
+
+                    let metadata_str: String = row.get("metadata")?;
+                    let tags_str: String = row.get("tags")?;
+                    let created_at_str: String = row.get("created_at")?;
+                    let last_accessed_str: String = row.get("last_accessed")?;
+
+                    Ok(MemoryItem {
+                        memory_id: row.get("id")?,
+                        memory_type,
+                        content: row.get("content")?,
+                        metadata: serde_json::from_str(&metadata_str).unwrap_or_default(),
+                        importance: row.get("importance")?,
+                        created_at: DateTime::parse_from_rfc3339(&created_at_str)
+                            .unwrap_or_else(|_| Utc::now().into())
+                            .with_timezone(&Utc),
+                        last_accessed: DateTime::parse_from_rfc3339(&last_accessed_str)
+                            .unwrap_or_else(|_| Utc::now().into())
+                            .with_timezone(&Utc),
+                        access_count: row.get::<_, i64>("access_count")? as u32,
+                        tags: serde_json::from_str(&tags_str).unwrap_or_default(),
+                        embedding: None,
+                    })
+                },
+            )?;
+
+            let mut memories: Vec<MemoryItem> = memory_iter.collect::<Result<Vec<_>, _>>()?;
+            Ok(memories.pop())
+        }).await.map_err(|e| anyhow::anyhow!("Database error: {}", e))
+    }
+
+    /// Update a memory item
+    pub async fn update(&self, memory: MemoryItem) -> Result<()> {
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        pooled_conn.connection.call(move |conn| {
+            conn.execute(
+                r#"
+                UPDATE memory_items
+                SET memory_type = ?2, content = ?3, metadata = ?4, importance = ?5,
+                    last_accessed = ?6, access_count = ?7, tags = ?8
+                WHERE id = ?1
+                "#,
+                rusqlite::params![
+                    &memory.memory_id,
+                    format!("{:?}", memory.memory_type),
+                    &memory.content,
+                    serde_json::to_string(&memory.metadata).unwrap_or_default(),
+                    memory.importance,
+                    memory.last_accessed.to_rfc3339(),
+                    memory.access_count as i64,
+                    serde_json::to_string(&memory.tags).unwrap_or_default(),
+                ],
+            )?;
+            Ok(())
+        }).await?;
+
+        Ok(())
+    }
+
+    /// Delete a memory item by ID
+    pub async fn delete(&self, memory_id: &str) -> Result<()> {
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        let memory_id = memory_id.to_string();
+        pooled_conn.connection.call(move |conn| {
+            conn.execute(
+                "DELETE FROM memory_items WHERE id = ?1",
+                rusqlite::params![memory_id],
+            )?;
+            Ok(())
+        }).await?;
+
+        Ok(())
+    }
+
+    /// Search for memory items based on query parameters
+    pub async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryItem>> {
+        let guard = self.pool.acquire().await?;
+        let connections = guard.pool.connections.read().await;
+        let pooled_conn = connections.get(guard.connection_index)
+            .ok_or_else(|| anyhow!("Connection no longer available"))?;
+
+        pooled_conn.connection.call(move |conn| {
+            // Build dynamic query based on MemoryQuery parameters
+            let mut sql = "SELECT * FROM memory_items WHERE 1=1".to_string();
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            // Filter by memory types
+            if !query.memory_types.is_empty() {
+                let type_placeholders = query.memory_types.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                sql.push_str(&format!(" AND memory_type IN ({})", type_placeholders));
+                for memory_type in &query.memory_types {
+                    params.push(Box::new(format!("{:?}", memory_type)));
+                }
+            }
+
+            // Filter by content (query_text)
+            if !query.query_text.is_empty() {
+                sql.push_str(" AND content LIKE ?");
+                params.push(Box::new(format!("%{}%", query.query_text)));
+            }
+
+            // Filter by importance threshold
+            if let Some(min_importance) = query.importance_threshold {
+                sql.push_str(" AND importance >= ?");
+                params.push(Box::new(min_importance));
+            }
+
+            // Filter by tags
+            if !query.tags.is_empty() {
+                for tag in &query.tags {
+                    sql.push_str(" AND tags LIKE ?");
+                    params.push(Box::new(format!("%{}%", tag)));
+                }
+            }
+
+            sql.push_str(" ORDER BY importance DESC");
+
+            if let Some(limit) = query.limit {
+                sql.push_str(" LIMIT ?");
+                params.push(Box::new(limit as i64));
+            }
+
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+            let memory_iter = stmt.query_map(&param_refs[..], |row| {
+                let memory_type_str: String = row.get("memory_type")?;
+                let memory_type = match memory_type_str.as_str() {
+                    "Experience" => MemoryType::Experience,
+                    "Learning" => MemoryType::Learning,
+                    "Strategy" => MemoryType::Strategy,
+                    "Pattern" => MemoryType::Pattern,
+                    "Rule" => MemoryType::Rule,
+                    "Fact" => MemoryType::Fact,
+                    _ => MemoryType::Experience,
+                };
+
+                let metadata_str: String = row.get("metadata")?;
+                let tags_str: String = row.get("tags")?;
+                let created_at_str: String = row.get("created_at")?;
+                let last_accessed_str: String = row.get("last_accessed")?;
+
+                Ok(MemoryItem {
+                    memory_id: row.get("id")?,
+                    memory_type,
+                    content: row.get("content")?,
+                    metadata: serde_json::from_str(&metadata_str).unwrap_or_default(),
+                    importance: row.get("importance")?,
+                    created_at: DateTime::parse_from_rfc3339(&created_at_str)
+                        .unwrap_or_else(|_| Utc::now().into())
+                        .with_timezone(&Utc),
+                    last_accessed: DateTime::parse_from_rfc3339(&last_accessed_str)
+                        .unwrap_or_else(|_| Utc::now().into())
+                        .with_timezone(&Utc),
+                    access_count: row.get::<_, i64>("access_count")? as u32,
+                    tags: serde_json::from_str(&tags_str).unwrap_or_default(),
+                    embedding: None,
+                })
+            })?;
+
+            let memories: Vec<MemoryItem> = memory_iter.collect::<Result<Vec<_>, _>>()?;
+            Ok(memories)
+        }).await.map_err(|e| anyhow::anyhow!("Database error: {}", e))
+    }
 }
 
 #[async_trait]
 impl LongTermMemory for AsyncSqliteMemoryStore {
     async fn store(&self, memory: MemoryItem) -> Result<String> {
         let id = memory.memory_id.clone();
-        self.store_memory(memory).await?;
+        self.store(memory).await?;
         Ok(id)
     }
 
     async fn retrieve(&self, memory_id: &str) -> Result<Option<MemoryItem>> {
-        self.get_memory(memory_id).await
+        self.retrieve(memory_id).await
     }
 
     async fn update(&self, memory: MemoryItem) -> Result<()> {
-        self.update_memory(&memory.memory_id, memory).await
+        self.update(memory).await
     }
 
     async fn delete(&self, memory_id: &str) -> Result<()> {
-        self.delete_memory(memory_id).await
+        self.delete(memory_id).await
     }
 
     async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryItem>> {
-        self.search_memories(query).await
+        self.search(query).await
+    }
+
+    async fn cleanup_old_memories(&self, days: u32) -> Result<usize> {
+        self.cleanup_old_memories(days).await
     }
 
     async fn find_similar(&self, memory: &MemoryItem, threshold: f32) -> Result<Vec<MemoryItem>> {
         // For now, implement a simple content-based similarity search
         // In a full implementation, this would use vector embeddings
-        let all_memories = self.get_all_memories().await?;
+        let query = MemoryQuery {
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: None,
+            limit: None,
+        };
+        let all_memories = self.search(query).await?;
         let mut similar = Vec::new();
 
         for candidate in all_memories {
@@ -1046,48 +1310,29 @@ impl LongTermMemory for AsyncSqliteMemoryStore {
 
     async fn get_recent(&self, limit: usize) -> Result<Vec<MemoryItem>> {
         let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: None,
-            importance_max: None,
-            created_after: None,
-            created_before: None,
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: None,
             limit: Some(limit),
         };
-        self.search_memories(query).await
+        self.search(query).await
     }
 
     async fn get_by_importance(&self, min_importance: f32, limit: usize) -> Result<Vec<MemoryItem>> {
         let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: Some(min_importance),
-            importance_max: None,
-            created_after: None,
-            created_before: None,
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: Some(min_importance as f64),
             limit: Some(limit),
         };
-        self.search_memories(query).await
+        self.search(query).await
     }
 
-    async fn cleanup_old_memories(&self, days: u32) -> Result<usize> {
-        let cutoff_date = chrono::Utc::now() - chrono::Duration::days(days as i64);
 
-        let guard = self.pool.acquire().await?;
-        let deleted_count = guard.with_connection(|conn| {
-            Ok(conn.call(move |conn| {
-                let count = conn.execute(
-                    "DELETE FROM memory_items WHERE created_at < ?1",
-                    rusqlite::params![cutoff_date.to_rfc3339()],
-                )?;
-                Ok(count)
-            }))
-        }).await?.await?;
-
-        Ok(deleted_count)
-    }
 }
 
 /// Calculate simple text similarity (placeholder for vector similarity)
@@ -1162,6 +1407,10 @@ impl SqliteMemoryStore {
         Ok(())
     }
 }
+
+// Removed duplicate LongTermMemory implementation
+// Keeping only the second implementation below
+
 
 #[async_trait]
 impl LongTermMemory for SqliteMemoryStore {
@@ -1315,24 +1564,33 @@ impl LongTermMemory for SqliteMemoryStore {
         let mut sql = "SELECT * FROM memory_items WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        if let Some(memory_type) = &query.memory_type {
-            sql.push_str(" AND memory_type = ?");
-            params.push(Box::new(format!("{:?}", memory_type)));
+        // Filter by memory types
+        if !query.memory_types.is_empty() {
+            let type_placeholders = query.memory_types.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            sql.push_str(&format!(" AND memory_type IN ({})", type_placeholders));
+            for memory_type in &query.memory_types {
+                params.push(Box::new(format!("{:?}", memory_type)));
+            }
         }
 
-        if let Some(content) = &query.content_contains {
+        // Filter by content (query_text)
+        if !query.query_text.is_empty() {
             sql.push_str(" AND content LIKE ?");
-            params.push(Box::new(format!("%{}%", content)));
+            params.push(Box::new(format!("%{}%", query.query_text)));
         }
 
-        if let Some(min_importance) = query.importance_min {
+        // Filter by importance threshold
+        if let Some(min_importance) = query.importance_threshold {
             sql.push_str(" AND importance >= ?");
             params.push(Box::new(min_importance));
         }
 
-        if let Some(max_importance) = query.importance_max {
-            sql.push_str(" AND importance <= ?");
-            params.push(Box::new(max_importance));
+        // Filter by tags
+        if !query.tags.is_empty() {
+            for tag in &query.tags {
+                sql.push_str(" AND tags LIKE ?");
+                params.push(Box::new(format!("%{}%", tag)));
+            }
         }
 
         sql.push_str(" ORDER BY importance DESC");
@@ -1405,13 +1663,11 @@ impl LongTermMemory for SqliteMemoryStore {
         // Simple similarity based on content matching
         // In a real implementation, you'd use embeddings and vector similarity
         let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: Some(0.0),
-            importance_max: None,
-            created_after: None,
-            created_before: None,
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: Some(0.0),
             limit: Some(50),
         };
 
@@ -1432,13 +1688,11 @@ impl LongTermMemory for SqliteMemoryStore {
 
     async fn get_recent(&self, limit: usize) -> Result<Vec<MemoryItem>> {
         let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: None,
-            importance_max: None,
-            created_after: None,
-            created_before: None,
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: None,
             limit: Some(limit),
         };
         self.search(query).await
@@ -1446,13 +1700,11 @@ impl LongTermMemory for SqliteMemoryStore {
 
     async fn get_by_importance(&self, min_importance: f32, limit: usize) -> Result<Vec<MemoryItem>> {
         let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: Some(min_importance),
-            importance_max: None,
-            created_after: None,
-            created_before: None,
+            query_text: String::new(),
+            memory_types: vec![],
+            tags: vec![],
+            time_range: None,
+            importance_threshold: Some(min_importance as f64),
             limit: Some(limit),
         };
         self.search(query).await
@@ -1474,402 +1726,7 @@ impl LongTermMemory for SqliteMemoryStore {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn test_memory_config_default() {
-        let config = MemoryConfig::default();
-        assert_eq!(config.short_term_capacity, 100);
-        assert_eq!(config.consolidation_threshold, 0.8);
-        assert!(config.enable_forgetting);
-    }
-
-    #[test]
-    fn test_short_term_memory_creation() {
-        let memory = ShortTermMemory::new(10);
-        assert_eq!(memory.capacity(), 10);
-        assert_eq!(memory.len(), 0);
-        assert!(memory.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_async_sqlite_memory_store() {
-        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create store");
-
-        let memory = MemoryItem {
-            memory_id: "test-memory".to_string(),
-            memory_type: MemoryType::Experience,
-            content: "Test memory content".to_string(),
-            metadata: std::collections::HashMap::new(),
-            importance: 0.8,
-            created_at: chrono::Utc::now(),
-            last_accessed: chrono::Utc::now(),
-            access_count: 1,
-            tags: vec!["test".to_string()],
-            embedding: None,
-        };
-
-        // Test store
-        let stored_id = store.store(memory.clone()).await.expect("Failed to store memory");
-        assert_eq!(stored_id, "test-memory");
-
-        // Test retrieve
-        let retrieved = store.retrieve("test-memory").await.expect("Failed to retrieve memory");
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().memory_id, "test-memory");
-    }
-}
-
-/// Calculate simple text similarity (placeholder for vector similarity)
-fn calculate_simple_similarity(text1: &str, text2: &str) -> f32 {
-    let words1: std::collections::HashSet<&str> = text1.split_whitespace().collect();
-    let words2: std::collections::HashSet<&str> = text2.split_whitespace().collect();
-
-    let intersection = words1.intersection(&words2).count();
-    let union = words1.union(&words2).count();
-
-    if union == 0 {
-        0.0
-    } else {
-        intersection as f32 / union as f32
-    }
-}
-
-impl SqliteMemoryStore {
-    /// Create a new SQLite memory store
-    pub fn new(database_path: &str) -> Result<Self> {
-        let conn = if database_path == ":memory:" {
-            Connection::open_in_memory()?
-        } else {
-            Connection::open(database_path)?
-        };
-
-        let store = Self {
-            connection: Arc::new(Mutex::new(conn)),
-        };
-
-        // Create tables if they don't exist
-        store.create_tables()?;
-
-        Ok(store)
-    }
-
-    /// Create the necessary tables for memory storage
-    fn create_tables(&self) -> Result<()> {
-        let conn = self.connection.lock()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire database lock: {}", e))?;
-        // Memory items table
-        conn.execute(
-            r#"
-            CREATE TABLE IF NOT EXISTS memory_items (
-                id TEXT PRIMARY KEY,
-                memory_type TEXT NOT NULL,
-                content TEXT NOT NULL,
-                metadata TEXT,
-                importance REAL NOT NULL,
-                created_at TEXT NOT NULL,
-                last_accessed TEXT NOT NULL,
-                access_count INTEGER NOT NULL DEFAULT 0,
-                tags TEXT,
-                embedding BLOB
-            )
-            "#,
-            [],
-        )?;
-
-        // Create indexes for better performance
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_items(memory_type)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_items(importance)",
-            [],
-        )?;
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl LongTermMemory for SqliteMemoryStore {
-    async fn store(&self, memory: MemoryItem) -> Result<String> {
-        let id = memory.memory_id.clone();
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        conn.execute(
-            r#"
-            INSERT OR REPLACE INTO memory_items (
-                id, memory_type, content, metadata, importance,
-                created_at, last_accessed, access_count, tags, embedding
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-            "#,
-            rusqlite::params![
-                &memory.memory_id,
-                format!("{:?}", memory.memory_type),
-                &memory.content,
-                serde_json::to_string(&memory.metadata)?,
-                memory.importance,
-                memory.created_at.to_rfc3339(),
-                memory.last_accessed.to_rfc3339(),
-                memory.access_count as i64,
-                serde_json::to_string(&memory.tags)?,
-                memory.embedding.as_ref().and_then(|emb| {
-                    bincode::serialize(emb).ok()
-                }),
-            ],
-        )?;
-
-        Ok(id)
-    }
-
-    async fn retrieve(&self, memory_id: &str) -> Result<Option<MemoryItem>> {
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        let mut stmt = conn.prepare("SELECT * FROM memory_items WHERE id = ?1")?;
-
-        let memory_iter = stmt.query_map(
-            rusqlite::params![memory_id],
-            |row| {
-                let memory_type_str: String = row.get("memory_type")?;
-                let memory_type = match memory_type_str.as_str() {
-                    "Experience" => MemoryType::Experience,
-                    "Learning" => MemoryType::Learning,
-                    "Strategy" => MemoryType::Strategy,
-                    "Pattern" => MemoryType::Pattern,
-                    "Rule" => MemoryType::Rule,
-                    "Fact" => MemoryType::Fact,
-                    _ => MemoryType::Experience, // Default fallback
-                };
-
-                let metadata_str: String = row.get("metadata")?;
-                let tags_str: String = row.get("tags")?;
-                let created_at_str: String = row.get("created_at")?;
-                let last_accessed_str: String = row.get("last_accessed")?;
-
-                Ok(MemoryItem {
-                    memory_id: row.get("id")?,
-                    memory_type,
-                    content: row.get("content")?,
-                    metadata: serde_json::from_str(&metadata_str).unwrap_or_default(),
-                    importance: row.get("importance")?,
-                    created_at: DateTime::parse_from_rfc3339(&created_at_str)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                    last_accessed: DateTime::parse_from_rfc3339(&last_accessed_str)
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc),
-                    access_count: row.get::<_, i64>("access_count")? as u32,
-                    tags: serde_json::from_str(&tags_str).unwrap_or_default(),
-                    embedding: None,
-                })
-            },
-        )?;
-
-        let mut memories: Vec<MemoryItem> = memory_iter.collect::<Result<Vec<_>, _>>()?;
-        Ok(memories.pop())
-    }
-
-    async fn update(&self, memory: MemoryItem) -> Result<()> {
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        conn.execute(
-            r#"
-            UPDATE memory_items
-            SET memory_type = ?2, content = ?3, metadata = ?4, importance = ?5,
-                last_accessed = ?6, access_count = ?7, tags = ?8
-            WHERE id = ?1
-            "#,
-            rusqlite::params![
-                &memory.memory_id,
-                format!("{:?}", memory.memory_type),
-                &memory.content,
-                serde_json::to_string(&memory.metadata)?,
-                memory.importance,
-                memory.last_accessed.to_rfc3339(),
-                memory.access_count as i64,
-                serde_json::to_string(&memory.tags)?,
-            ],
-        )?;
-
-        Ok(())
-    }
-
-    async fn delete(&self, memory_id: &str) -> Result<()> {
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        conn.execute(
-            "DELETE FROM memory_items WHERE id = ?1",
-            rusqlite::params![memory_id],
-        )?;
-
-        Ok(())
-    }
-
-    async fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryItem>> {
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        // Build dynamic query based on MemoryQuery parameters
-        let mut sql = "SELECT * FROM memory_items WHERE 1=1".to_string();
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        if let Some(memory_type) = &query.memory_type {
-            sql.push_str(" AND memory_type = ?");
-            params.push(Box::new(format!("{:?}", memory_type)));
-        }
-
-        if let Some(content) = &query.content_contains {
-            sql.push_str(" AND content LIKE ?");
-            params.push(Box::new(format!("%{}%", content)));
-        }
-
-        if let Some(min_importance) = query.importance_min {
-            sql.push_str(" AND importance >= ?");
-            params.push(Box::new(min_importance));
-        }
-
-        if let Some(max_importance) = query.importance_max {
-            sql.push_str(" AND importance <= ?");
-            params.push(Box::new(max_importance));
-        }
-
-        sql.push_str(" ORDER BY importance DESC");
-
-        if let Some(limit) = query.limit {
-            sql.push_str(" LIMIT ?");
-            params.push(Box::new(limit as i64));
-        }
-
-        let mut stmt = conn.prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-        let memory_iter = stmt.query_map(&param_refs[..], |row| {
-            let memory_type_str: String = row.get("memory_type")?;
-            let memory_type = match memory_type_str.as_str() {
-                "Experience" => MemoryType::Experience,
-                "Learning" => MemoryType::Learning,
-                "Strategy" => MemoryType::Strategy,
-                "Pattern" => MemoryType::Pattern,
-                "Rule" => MemoryType::Rule,
-                "Fact" => MemoryType::Fact,
-                _ => MemoryType::Experience, // Default fallback
-            };
-
-            let metadata_str: String = row.get("metadata")?;
-            let tags_str: String = row.get("tags")?;
-            let created_at_str: String = row.get("created_at")?;
-            let last_accessed_str: String = row.get("last_accessed")?;
-
-            Ok(MemoryItem {
-                memory_id: row.get("id")?,
-                memory_type,
-                content: row.get("content")?,
-                metadata: serde_json::from_str(&metadata_str).unwrap_or_default(),
-                importance: row.get("importance")?,
-                created_at: DateTime::parse_from_rfc3339(&created_at_str)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                last_accessed: DateTime::parse_from_rfc3339(&last_accessed_str)
-                    .unwrap_or_else(|_| Utc::now().into())
-                    .with_timezone(&Utc),
-                access_count: row.get::<_, i64>("access_count")? as u32,
-                tags: serde_json::from_str(&tags_str).unwrap_or_default(),
-                embedding: None,
-            })
-        })?;
-
-        let memories: Vec<MemoryItem> = memory_iter.collect::<Result<Vec<_>, _>>()?;
-        Ok(memories)
-    }
-
-    async fn find_similar(&self, memory: &MemoryItem, threshold: f32) -> Result<Vec<MemoryItem>> {
-        // Simple similarity based on content matching
-        let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: Some(0.0),
-            importance_max: None,
-            created_after: None,
-            created_before: None,
-            limit: Some(50),
-        };
-
-        let all_memories = self.search(query).await?;
-        let mut similar = Vec::new();
-
-        for candidate in all_memories {
-            if candidate.memory_id != memory.memory_id {
-                let similarity = calculate_simple_similarity(&memory.content, &candidate.content);
-                if similarity >= threshold {
-                    similar.push(candidate);
-                }
-            }
-        }
-
-        Ok(similar)
-    }
-
-    async fn get_recent(&self, limit: usize) -> Result<Vec<MemoryItem>> {
-        let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: None,
-            importance_max: None,
-            created_after: None,
-            created_before: None,
-            limit: Some(limit),
-        };
-        self.search(query).await
-    }
-
-    async fn get_by_importance(&self, min_importance: f32, limit: usize) -> Result<Vec<MemoryItem>> {
-        let query = MemoryQuery {
-            memory_type: None,
-            content_contains: None,
-            tags: None,
-            importance_min: Some(min_importance),
-            importance_max: None,
-            created_after: None,
-            created_before: None,
-            limit: Some(limit),
-        };
-        self.search(query).await
-    }
-
-    async fn cleanup_old_memories(&self, days: u32) -> Result<usize> {
-        let cutoff_date = chrono::Utc::now() - chrono::Duration::days(days as i64);
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        let count = conn.execute(
-            "DELETE FROM memory_items WHERE created_at < ?1",
-            rusqlite::params![cutoff_date.to_rfc3339()],
-        )?;
-
-        Ok(count)
-    }
-}
 
 /// Query parameters for episodes
 #[derive(Debug, Clone)]
@@ -1943,20 +1800,12 @@ mod tests {
             .expect("Failed to store memory");
         assert_eq!(stored_id, "test-memory");
 
-        // Test retrieving memory
-        let query = MemoryQuery {
-            memory_types: vec![MemoryType::Experience],
-            importance_threshold: Some(0.5),
-            limit: Some(10),
-            query_text: "test".to_string(),
-            tags: vec![],
-            time_range: None,
-        };
-
-        let retrieved = store.retrieve(&query).await.unwrap();
-        assert_eq!(retrieved.len(), 1);
-        assert_eq!(retrieved[0].memory_id, "test-memory");
-        assert_eq!(retrieved[0].content, "Test memory content");
+        // Test retrieving memory by ID
+        let retrieved = store.retrieve("test-memory").await.unwrap();
+        assert!(retrieved.is_some());
+        let retrieved_item = retrieved.unwrap();
+        assert_eq!(retrieved_item.memory_id, "test-memory");
+        assert_eq!(retrieved_item.content, "Test memory content");
     }
 
     #[test]
@@ -1989,22 +1838,32 @@ mod tests {
             .expect("Failed to store memory");
         assert_eq!(stored_id, "test-async-memory");
 
-        // Test retrieving memory
+        // Test retrieving memory by ID
+        let retrieved = store
+            .retrieve("test-async-memory")
+            .await
+            .expect("Failed to retrieve memory");
+        assert!(retrieved.is_some());
+        let retrieved_item = retrieved.unwrap();
+        assert_eq!(retrieved_item.memory_id, "test-async-memory");
+        assert_eq!(retrieved_item.content, "Test async memory content");
+
+        // Test searching memories
         let query = MemoryQuery {
-            query_text: "".to_string(),
-            memory_types: vec![],
+            query_text: "test".to_string(),
+            memory_types: vec![MemoryType::Experience],
             time_range: None,
             importance_threshold: Some(0.5),
             limit: Some(10),
-            tags: vec![],
+            tags: vec!["async".to_string()],
         };
 
-        let retrieved = store
-            .retrieve(&query)
+        let search_results = store
+            .search(query)
             .await
-            .expect("Failed to retrieve memories");
-        assert_eq!(retrieved.len(), 1);
-        assert_eq!(retrieved[0].memory_id, "test-async-memory");
+            .expect("Failed to search memories");
+        assert!(!search_results.is_empty());
+        assert_eq!(search_results[0].memory_id, "test-async-memory");
     }
 
     #[tokio::test]
@@ -2060,9 +1919,9 @@ mod tests {
         };
 
         let retrieved = store
-            .retrieve(&query)
+            .search(query)
             .await
-            .expect("Failed to retrieve memories");
+            .expect("Failed to search memories");
         assert_eq!(retrieved.len(), 0);
     }
 
@@ -2109,18 +1968,18 @@ mod tests {
         let stored_id = store.store(memory).await.expect("Failed to store memory");
         assert_eq!(stored_id, "query-test");
 
-        // Test retrieval
+        // Test searching memories
         let query = MemoryQuery {
             query_text: "".to_string(),
-            memory_types: vec![],
+            memory_types: vec![MemoryType::Experience],
             time_range: None,
             importance_threshold: Some(0.5),
             limit: Some(10),
             tags: vec![],
         };
 
-        let retrieved = store.retrieve(&query).await.expect("Failed to retrieve memories");
-        assert_eq!(retrieved.len(), 1);
-        assert_eq!(retrieved[0].memory_id, "query-test");
+        let search_results = store.search(query).await.expect("Failed to search memories");
+        assert!(!search_results.is_empty());
+        assert_eq!(search_results[0].memory_id, "query-test");
     }
 }

@@ -5,7 +5,7 @@ use std::path::Path;
 
 // Thread-local storage for cleanup counter
 std::thread_local! {
-    static CLEANUP_COUNTER: std::cell::RefCell<u64> = std::cell::RefCell::new(0);
+    static CLEANUP_COUNTER: std::cell::RefCell<u64> = const { std::cell::RefCell::new(0) };
 }
 
 /// Memory management utilities for the CLI
@@ -385,6 +385,12 @@ pub struct ResourceGuard {
     cleanup_callbacks: Vec<Box<dyn FnOnce() + Send>>,
 }
 
+impl Default for ResourceGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResourceGuard {
     pub fn new() -> Self {
         Self {
@@ -429,7 +435,7 @@ impl ResourceGuard {
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
             .unwrap_or_default().as_nanos();
-        let temp_path = format!("/tmp/{}_{}", prefix, timestamp);
+        let temp_path = format!("/tmp/{prefix}_{timestamp}");
         let file = tokio::fs::File::create(&temp_path).await?;
         self.add_temp_file(&temp_path);
         Ok(file)
@@ -651,7 +657,7 @@ fn get_memory_info_macos() -> Result<MemoryInfo> {
 
     // Get process memory info using ps command
     let output = Command::new("ps")
-        .args(&["-o", "rss,vsz", "-p"])
+        .args(["-o", "rss,vsz", "-p"])
         .arg(std::process::id().to_string())
         .output()
         .map_err(|e| anyhow!("Failed to execute ps command on macOS: {}", e))?;

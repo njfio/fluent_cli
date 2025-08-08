@@ -233,7 +233,7 @@ impl AgenticExecutor {
                 Ok(())
             }
             Err(e) => {
-                println!("❌ Engine test failed: {}", e);
+                println!("❌ Engine test failed: {e}");
                 println!("🔧 Please check your API keys and configuration");
                 Err(anyhow!("Engine test failed: {}", e))
             }
@@ -292,7 +292,7 @@ impl<'a> AutonomousExecutor<'a> {
         let mut context = ExecutionContext::new(self.goal.clone());
 
         for iteration in 1..=max_iterations {
-            println!("\n🔄 Iteration {}/{}", iteration, max_iterations);
+            println!("\n🔄 Iteration {iteration}/{max_iterations}");
 
             let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
             
@@ -342,7 +342,7 @@ impl<'a> AutonomousExecutor<'a> {
                 Ok(response.content)
             }
             Err(e) => {
-                println!("❌ Reasoning failed: {}", e);
+                println!("❌ Reasoning failed: {e}");
                 Err(anyhow!("Reasoning failed: {}", e))
             }
         }
@@ -411,7 +411,7 @@ impl<'a> AutonomousExecutor<'a> {
                 Ok(response.content)
             }
             Err(e) => {
-                println!("❌ Action planning failed: {}", e);
+                println!("❌ Action planning failed: {e}");
                 Err(anyhow!("Action planning failed: {}", e))
             }
         }
@@ -429,7 +429,7 @@ impl<'a> AutonomousExecutor<'a> {
 
         // Create analysis directory
         if let Err(e) = fs::create_dir_all("analysis") {
-            println!("⚠️ Could not create analysis directory: {}", e);
+            println!("⚠️ Could not create analysis directory: {e}");
         }
 
         let analysis_response = self.perform_reflection_analysis(iteration, max_iterations).await?;
@@ -449,23 +449,21 @@ impl<'a> AutonomousExecutor<'a> {
             flowname: "reflection_analysis".to_string(),
             payload: format!(
                 "Conduct a comprehensive analysis of the fluent_cli self-reflection system. \
-                Focus on iteration {}/{}.\n\n\
+                Focus on iteration {iteration}/{max_iterations}.\n\n\
                 Analyze the following aspects:\n\
                 1. Architecture and design patterns\n\
                 2. Performance characteristics\n\
                 3. Memory usage patterns\n\
                 4. Potential bottlenecks\n\
                 5. Optimization opportunities\n\n\
-                Provide a detailed technical analysis with specific recommendations.",
-                iteration,
-                max_iterations
+                Provide a detailed technical analysis with specific recommendations."
             ),
         };
 
         match Pin::from(self.runtime_config.reasoning_engine.execute(&analysis_request)).await {
             Ok(response) => Ok(response.content),
             Err(e) => {
-                println!("❌ Analysis failed: {}", e);
+                println!("❌ Analysis failed: {e}");
                 Err(anyhow!("Analysis failed: {}", e))
             }
         }
@@ -496,10 +494,10 @@ impl<'a> AutonomousExecutor<'a> {
         );
 
         if let Err(e) = fs::write(analysis_file, &analysis_content) {
-            println!("❌ Failed to write analysis: {}", e);
+            println!("❌ Failed to write analysis: {e}");
             Err(anyhow!("Failed to write analysis: {}", e))
         } else {
-            println!("✅ Analysis written to: {}", analysis_file);
+            println!("✅ Analysis written to: {analysis_file}");
             println!("📝 Analysis length: {} characters", analysis_content.len());
             Ok(())
         }
@@ -507,12 +505,11 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Check if goal should be completed
     fn should_complete_goal(&self, iteration: u32, max_iterations: u32) -> bool {
-        if self.goal.description.to_lowercase().contains("reflection") {
-            if iteration >= max_iterations / 2 {
-                println!("🎯 Comprehensive analysis completed across {} iterations!", iteration);
+        if self.goal.description.to_lowercase().contains("reflection")
+            && iteration >= max_iterations / 2 {
+                println!("🎯 Comprehensive analysis completed across {iteration} iterations!");
                 return true;
             }
-        }
         false
     }
 }
@@ -532,8 +529,8 @@ impl<'a> GameCreator<'a> {
     pub async fn create_game(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
         let (file_extension, code_prompt, file_path) = self.determine_game_type();
         let game_code = self.generate_game_code(&code_prompt, file_extension).await?;
-        self.write_game_file(&file_path, &game_code)?;
-        self.update_context(context, &file_path, file_extension);
+        self.write_game_file(file_path, &game_code)?;
+        self.update_context(context, file_path, file_extension);
         
         println!("🎉 Goal achieved! {} game created successfully!", file_extension.to_uppercase());
         Ok(())
@@ -546,8 +543,7 @@ impl<'a> GameCreator<'a> {
         if description.contains("javascript") || description.contains("html") || description.contains("web") {
             (
                 "html",
-                format!(
-                    "Create a complete, working Frogger-like game using HTML5, CSS, and JavaScript. Requirements:\n\
+                "Create a complete, working Frogger-like game using HTML5, CSS, and JavaScript. Requirements:\n\
                     - Complete HTML file with embedded CSS and JavaScript\n\
                     - HTML5 Canvas for game rendering\n\
                     - Frog character that moves with arrow keys or WASD\n\
@@ -557,15 +553,13 @@ impl<'a> GameCreator<'a> {
                     - Scoring system and lives system\n\
                     - Smooth animations and game loop\n\
                     - Professional styling and responsive design\n\n\
-                    Provide ONLY the complete HTML file with embedded CSS and JavaScript:"
-                ),
+                    Provide ONLY the complete HTML file with embedded CSS and JavaScript:".to_string(),
                 "examples/web_frogger.html"
             )
         } else {
             (
                 "rs",
-                format!(
-                    "Create a complete, working Frogger-like game in Rust. Requirements:\n\
+                "Create a complete, working Frogger-like game in Rust. Requirements:\n\
                     - Terminal-based interface using crossterm crate\n\
                     - Frog character that moves up/down/left/right with WASD keys\n\
                     - Cars moving horizontally that the frog must avoid\n\
@@ -575,8 +569,7 @@ impl<'a> GameCreator<'a> {
                     - Game over mechanics when hitting cars\n\
                     - Lives system (3 lives)\n\
                     - Game loop with proper input handling\n\n\
-                    Provide ONLY the complete, compilable Rust code with all necessary imports:"
-                ),
+                    Provide ONLY the complete, compilable Rust code with all necessary imports:".to_string(),
                 "examples/agent_frogger.rs"
             )
         }
@@ -600,7 +593,7 @@ impl<'a> GameCreator<'a> {
     /// Write game code to file
     fn write_game_file(&self, file_path: &str, game_code: &str) -> Result<()> {
         fs::write(file_path, game_code)?;
-        println!("✅ Created game at: {}", file_path);
+        println!("✅ Created game at: {file_path}");
         println!("📝 Game code length: {} characters", game_code.len());
         Ok(())
     }

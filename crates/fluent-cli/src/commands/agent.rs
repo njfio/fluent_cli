@@ -59,17 +59,17 @@ impl AgentCommand {
         config: &Config,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Real Agentic Mode");
-        println!("Goal: {}", goal_description);
-        println!("Max iterations: {}", max_iterations);
-        println!("Tools enabled: {}", enable_tools);
+        println!("Goal: {goal_description}");
+        println!("Max iterations: {max_iterations}");
+        println!("Tools enabled: {enable_tools}");
 
         // Initialize the agentic framework
         println!("🔧 Initializing agentic framework...");
         self.initialize_agentic_framework(config, enable_tools).await?;
 
-        println!("🎯 Processing goal: {}", goal_description);
-        println!("📋 Max iterations: {}", max_iterations);
-        println!("🔧 Tools enabled: {}", enable_tools);
+        println!("🎯 Processing goal: {goal_description}");
+        println!("📋 Max iterations: {max_iterations}");
+        println!("🔧 Tools enabled: {enable_tools}");
 
         // Use the existing agentic infrastructure from lib.rs
         // This delegates to the real agentic implementation
@@ -89,9 +89,9 @@ impl AgentCommand {
                 ))
             }
             Err(e) => {
-                eprintln!("❌ Agentic execution failed: {}", e);
+                eprintln!("❌ Agentic execution failed: {e}");
                 Ok(CommandResult::error(
-                    format!("Agentic execution failed: {}", e)
+                    format!("Agentic execution failed: {e}")
                 ))
             }
         }
@@ -107,16 +107,16 @@ impl AgentCommand {
         config: &Config,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Agent with MCP Integration");
-        println!("Engine: {}", engine_name);
-        println!("Task: {}", task);
-        println!("MCP Servers: {:?}", mcp_servers);
+        println!("Engine: {engine_name}");
+        println!("Task: {task}");
+        println!("MCP Servers: {mcp_servers:?}");
 
         // Initialize agentic framework with MCP support
         self.initialize_agentic_framework(config, true).await?;
 
         println!("🔗 Connecting to MCP servers...");
         for server in &mcp_servers {
-            println!("  📡 Connecting to: {}", server);
+            println!("  📡 Connecting to: {server}");
             // In a full implementation, this would establish MCP connections
         }
 
@@ -124,7 +124,7 @@ impl AgentCommand {
         println!("🎯 Executing task via agentic framework...");
 
         // For now, use the existing agentic mode with MCP context
-        let mcp_task = format!("MCP Task with servers {:?}: {}", mcp_servers, task);
+        let mcp_task = format!("MCP Task with servers {mcp_servers:?}: {task}");
 
         match crate::run_agentic_mode(
             &mcp_task,
@@ -140,9 +140,9 @@ impl AgentCommand {
                 ))
             }
             Err(e) => {
-                eprintln!("❌ Agent-MCP execution failed: {}", e);
+                eprintln!("❌ Agent-MCP execution failed: {e}");
                 Ok(CommandResult::error(
-                    format!("Agent-MCP execution failed: {}", e)
+                    format!("Agent-MCP execution failed: {e}")
                 ))
             }
         }
@@ -178,7 +178,7 @@ impl CommandHandler for AgentCommand {
 
             if !result.success {
                 if let Some(message) = result.message {
-                    eprintln!("Agent execution failed: {}", message);
+                    eprintln!("Agent execution failed: {message}");
                 }
                 return Err(anyhow!("Agent execution failed"));
             }
@@ -251,7 +251,7 @@ impl CommandHandler for AgentCommand {
                     }
                     input if input.starts_with("goal ") => {
                         let goal_desc = &input[5..];
-                        println!("🎯 Executing goal: {}", goal_desc);
+                        println!("🎯 Executing goal: {goal_desc}");
 
                         match crate::run_agentic_mode(
                             goal_desc,
@@ -264,16 +264,16 @@ impl CommandHandler for AgentCommand {
                                 println!("✅ Goal completed successfully");
                             }
                             Err(e) => {
-                                println!("❌ Goal execution error: {}", e);
+                                println!("❌ Goal execution error: {e}");
                             }
                         }
                     }
                     _ => {
-                        println!("🤖 Agent received: {}", input);
+                        println!("🤖 Agent received: {input}");
                         println!("💭 Processing with agentic framework...");
 
                         // Create a simple goal from the input
-                        let goal_desc = format!("Process and respond to: {}", input);
+                        let goal_desc = format!("Process and respond to: {input}");
                         match crate::run_agentic_mode(
                             &goal_desc,
                             "agent_config.json",
@@ -285,7 +285,7 @@ impl CommandHandler for AgentCommand {
                                 println!("🤖 Processing completed");
                             }
                             Err(e) => {
-                                println!("❌ Processing error: {}", e);
+                                println!("❌ Processing error: {e}");
                             }
                         }
                     }

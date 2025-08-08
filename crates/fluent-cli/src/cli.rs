@@ -26,7 +26,7 @@ pub async fn run_modular() -> Result<()> {
         Ok(matches) => matches,
         Err(err) => {
             // Print help or error and exit
-            eprintln!("{}", err);
+            eprintln!("{err}");
             return Ok(());
         }
     };

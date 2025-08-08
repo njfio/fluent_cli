@@ -248,7 +248,7 @@ impl FluentMcpAdapter {
 
                 let memories = self
                     .memory_system
-                    .retrieve(&memory_query)
+                    .search(memory_query)
                     .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))?;
 

@@ -115,8 +115,8 @@ async fn demo_memory_system() -> Result<()> {
         time_range: None,
     };
 
-    let retrieved = memory_store.retrieve(&query).await?;
-    println!("✅ Retrieved {} memories from database", retrieved.len());
+    let retrieved = memory_store.search(query).await?;
+    println!("✅ Found {} memories matching search criteria", retrieved.len());
 
     for memory in retrieved {
         println!("   📝 {:?}: {}", memory.memory_type, memory.content);

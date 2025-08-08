@@ -34,13 +34,14 @@ impl ToolsCommand {
         let registry_guard = GLOBAL_TOOL_REGISTRY.clone();
 
         // Check if registry is already initialized
-        {
+        let is_initialized = {
             let registry_lock = registry_guard.lock()
                 .map_err(|e| anyhow!("Failed to acquire registry lock: {}", e))?;
+            registry_lock.is_some()
+        };
 
-            if registry_lock.is_some() {
-                return Ok(registry_guard);
-            }
+        if is_initialized {
+            return Ok(registry_guard);
         }
 
         // Initialize registry if not already done
@@ -183,11 +184,11 @@ impl ToolsCommand {
 
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                Self::print_tool_description(&tool_info, show_schema, show_examples);
+                Self::print_tool_description(tool_info, show_schema, show_examples);
             }
 
             Ok(CommandResult::success_with_message(format!(
-                "Described tool '{}'", tool_name
+                "Described tool '{tool_name}'"
             )))
         })
     }
@@ -234,14 +235,14 @@ impl ToolsCommand {
 
         if dry_run {
             println!("🔍 Dry run mode - would execute:");
-            println!("Tool: {}", tool_name);
+            println!("Tool: {tool_name}");
             println!("Parameters: {}", serde_json::to_string_pretty(&parameters)?);
             return Ok(CommandResult::success_with_message("Dry run completed".to_string()));
         }
 
         // Execute tool (async operation)
         let start_time = Instant::now();
-        println!("🔧 Executing tool: {}", tool_name);
+        println!("🔧 Executing tool: {tool_name}");
 
         let result = {
             let registry_lock = registry_guard.lock()
@@ -268,11 +269,11 @@ impl ToolsCommand {
                 } else {
                     println!("✅ Tool executed successfully");
                     println!("⏱️  Execution time: {}ms", execution_time.as_millis());
-                    println!("📋 Result:\n{}", output);
+                    println!("📋 Result:\n{output}");
                 }
 
                 Ok(CommandResult::success_with_message(format!(
-                    "Tool '{}' executed successfully", tool_name
+                    "Tool '{tool_name}' executed successfully"
                 )))
             }
             Err(e) => {
@@ -289,7 +290,7 @@ impl ToolsCommand {
                 } else {
                     println!("❌ Tool execution failed");
                     println!("⏱️  Execution time: {}ms", execution_time.as_millis());
-                    println!("💥 Error: {}", e);
+                    println!("💥 Error: {e}");
                 }
 
                 Err(anyhow!("Tool execution failed: {}", e))
@@ -309,7 +310,7 @@ impl ToolsCommand {
 
         println!("📂 Available tool categories:\n");
         for (name, description) in &categories {
-            println!("  {} - {}", name, description);
+            println!("  {name} - {description}");
         }
 
         Ok(CommandResult::success_with_message(format!(
@@ -350,7 +351,7 @@ impl ToolsCommand {
                 println!();
             }
         } else {
-            println!("{:<20} {:<12} {}", "TOOL", "CATEGORY", "DESCRIPTION");
+            println!("{:<20} {:<12} DESCRIPTION", "TOOL", "CATEGORY");
             println!("{}", "-".repeat(80));
             
             for tool in tools {

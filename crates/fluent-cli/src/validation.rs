@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Convert anyhow errors to FluentError with context
 pub fn to_fluent_error(err: anyhow::Error, context: &str) -> FluentError {
-    FluentError::Internal(format!("{}: {}", context, err))
+    FluentError::Internal(format!("{context}: {err}"))
 }
 
 /// Validate required CLI arguments
@@ -19,11 +19,9 @@ pub fn validate_required_string(
         .get_one::<String>(arg_name)
         .ok_or_else(|| {
             FluentError::Validation(ValidationError::MissingField(format!(
-                "{} is required for {}",
-                arg_name, context
+                "{arg_name} is required for {context}"
             )))
-        })
-        .map(|s| s.clone())
+        }).cloned()
 }
 
 /// Validate file path with security checks
@@ -31,7 +29,7 @@ pub fn validate_file_path_secure(path: &str, context: &str) -> FluentResult<Stri
     if path.is_empty() {
         return Err(FluentError::Validation(ValidationError::InvalidFormat {
             input: path.to_string(),
-            expected: format!("Non-empty file path for {}", context),
+            expected: format!("Non-empty file path for {context}"),
         }));
     }
 
@@ -59,7 +57,7 @@ pub fn validate_request_payload(payload: &str, context: &str) -> FluentResult<St
         Ok(validated) => Ok(validated),
         Err(e) => Err(FluentError::Validation(ValidationError::InvalidFormat {
             input: payload.to_string(),
-            expected: format!("Valid payload for {}: {}", context, e),
+            expected: format!("Valid payload for {context}: {e}"),
         })),
     }
 }
@@ -74,7 +72,7 @@ pub fn validate_numeric_parameter(
     if value < min || value > max {
         return Err(FluentError::Validation(ValidationError::InvalidFormat {
             input: value.to_string(),
-            expected: format!("{} must be between {} and {}", param_name, min, max),
+            expected: format!("{param_name} must be between {min} and {max}"),
         }));
     }
     Ok(value)
@@ -137,10 +135,10 @@ fn load_engines_from_config() -> Result<Vec<String>, Box<dyn std::error::Error>>
     use std::path::Path;
 
     // Look for engine configuration in common locations
-    let config_paths = [
-        "fluent_engines.json",
-        "config/fluent_engines.json",
-        ".fluent/engines.json",
+    let config_paths = vec![
+        "fluent_engines.json".to_string(),
+        "config/fluent_engines.json".to_string(),
+        ".fluent/engines.json".to_string(),
         std::env::var("HOME").unwrap_or_default() + "/.fluent/engines.json",
     ];
 

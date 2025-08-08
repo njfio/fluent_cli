@@ -131,16 +131,21 @@ async fn demo_memory_system() -> Result<()> {
         },
     ];
 
-    // Store memories in real database using the trait
+    // Store and retrieve individual memories by ID
     for memory in &experiences {
         let stored_id = memory_store.store(memory.clone()).await?;
         println!(
             "✅ Stored memory: {:?} -> {}",
             memory.memory_type, stored_id
         );
+        
+        // Retrieve the memory by ID to verify it was stored
+        if let Some(retrieved_memory) = memory_store.retrieve(&stored_id).await? {
+            println!("   📝 Retrieved: {:?}: {}", retrieved_memory.memory_type, retrieved_memory.content);
+        }
     }
 
-    // Query real memories
+    // Search for memories using the search method
     let query = MemoryQuery {
         memory_types: vec![MemoryType::Experience, MemoryType::Learning],
         importance_threshold: Some(0.7),
@@ -150,8 +155,8 @@ async fn demo_memory_system() -> Result<()> {
         time_range: None,
     };
 
-    let retrieved = memory_store.retrieve(&query).await?;
-    println!("✅ Retrieved {} memories from database", retrieved.len());
+    let retrieved = memory_store.search(query).await?;
+    println!("✅ Found {} memories matching search criteria", retrieved.len());
 
     for memory in retrieved {
         println!("   📝 {:?}: {}", memory.memory_type, memory.content);

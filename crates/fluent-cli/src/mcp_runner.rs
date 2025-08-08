@@ -87,7 +87,7 @@ pub async fn run_agent_with_mcp(
     let reasoning_engine = LLMReasoningEngine::new(std::sync::Arc::new(engine));
 
     // Create memory system
-    let memory_path = format!("agent_memory_{}.db", engine_name);
+    let memory_path = format!("agent_memory_{engine_name}.db");
     let memory = std::sync::Arc::new(AsyncSqliteMemoryStore::new(&memory_path).await?);
 
     // Create agent
@@ -105,13 +105,13 @@ pub async fn run_agent_with_mcp(
             (server_spec.as_str(), server_spec.as_str())
         };
 
-        println!("🔌 Connecting to MCP server: {}", name);
+        println!("🔌 Connecting to MCP server: {name}");
         match agent
             .connect_to_mcp_server(name.to_string(), command, &["--stdio"])
             .await
         {
-            Ok(_) => println!("✅ Connected to {}", name),
-            Err(e) => println!("⚠️ Failed to connect to {}: {}", name, e),
+            Ok(_) => println!("✅ Connected to {name}"),
+            Err(e) => println!("⚠️ Failed to connect to {name}: {e}"),
         }
     }
 
@@ -131,20 +131,20 @@ pub async fn run_agent_with_mcp(
     }
 
     // Execute the task
-    println!("\n🤖 Executing task: {}", task);
+    println!("\n🤖 Executing task: {task}");
     match agent.execute_task_with_mcp(task).await {
         Ok(result) => {
             println!("\n✅ Task completed successfully!");
-            println!("📋 Result:\n{}", result);
+            println!("📋 Result:\n{result}");
         }
         Err(e) => {
-            println!("\n❌ Task failed: {}", e);
+            println!("\n❌ Task failed: {e}");
 
             // Show learning insights
             println!("\n🧠 Learning from this experience...");
             if let Ok(insights) = agent.learn_from_mcp_usage("task execution").await {
                 for insight in insights.iter().take(3) {
-                    println!("💡 {}", insight);
+                    println!("💡 {insight}");
                 }
             }
         }

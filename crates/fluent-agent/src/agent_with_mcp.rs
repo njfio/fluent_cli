@@ -281,7 +281,7 @@ impl AgentWithMcp {
             limit: Some(10),
         };
 
-        let memories = self.memory_system.retrieve(&query).await?;
+        let memories = self.memory_system.search(query).await?;
 
         let insights = memories
             .iter()

@@ -191,9 +191,8 @@ async fn demonstrate_mcp_resource_management() -> Result<()> {
 async fn demonstrate_complete_mcp_workflow() -> Result<()> {
     println!("\n🔄 Example 4: Complete MCP Workflow");
 
-    // Setup complete MCP system (using SqliteMemoryStore which implements LongTermMemory)
-    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+    // Setup complete MCP system (using AsyncSqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?);
     let base_registry = Arc::new(ToolRegistry::new());
 
     let tool_registry = McpToolRegistry::new(base_registry);
@@ -312,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resource_manager_initialization() {
-        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap());
+        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap());
         let resource_manager = McpResourceManager::new(memory_system);
         
         resource_manager.initialize_standard_resources().await.unwrap();

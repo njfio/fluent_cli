@@ -1,9 +1,9 @@
 {
   "agent": {
-    "reasoning_engine": "anthropic",
-    "action_engine": "anthropic",
-    "reflection_engine": "anthropic",
-    "memory_database": "sqlite://./agent_memory.db",
+    "reasoning_engine": "anthropic-claude",
+    "action_engine": "anthropic-claude",
+    "reflection_engine": "anthropic-claude",
+    "memory_database": "sqlite://./rust_fix_memory.db",
     "tools": {
       "file_operations": true,
       "shell_commands": true,
@@ -15,7 +15,8 @@
         "./examples",
         "./tests",
         "./crates",
-        "./games"
+        "./minesweeper_solitaire_game",
+        "./minesweeper_solitaire_game/src"
       ],
       "allowed_commands": [
         "cargo build",
@@ -25,8 +26,7 @@
         "cargo run"
       ]
     },
-    "config_path": "./anthropic_config.json",
-    "max_iterations": 15,
+    "max_iterations": 30,
     "timeout_seconds": 1800
   }
 }

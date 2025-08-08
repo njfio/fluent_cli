@@ -1,0 +1,20 @@
+{
+  "agent": {
+    "reasoning_engine": "anthropic",
+    "action_engine": "anthropic",
+    "reflection_engine": "anthropic",
+    "memory_database": "sqlite://./game_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": false,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./minesweeper_solitaire_game",
+        "./minesweeper_solitaire_game/src"
+      ]
+    },
+    "max_iterations": 30,
+    "timeout_seconds": 1800
+  }
+}

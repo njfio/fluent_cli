@@ -44,7 +44,7 @@ impl EngineCommand {
         let file_id = Pin::from(engine.upload_file(Path::new(file_path))).await?;
         let request = Request {
             flowname: "default".to_string(),
-            payload: format!("{}\n\nFile ID: {}", request_content, file_id),
+            payload: format!("{request_content}\n\nFile ID: {file_id}"),
         };
 
         Pin::from(engine.execute(&request)).await
@@ -73,7 +73,7 @@ impl EngineCommand {
 
         if markdown {
             // Format as markdown (simplified)
-            output = format!("# Response\n\n{}", output);
+            output = format!("# Response\n\n{output}");
         }
 
         output
@@ -94,7 +94,7 @@ impl EngineCommand {
                     in_code_block = true;
                     let language = line.trim_start_matches("```").trim();
                     if !language.is_empty() {
-                        result.push_str(&format!("\n--- {} Code Block ---\n", language));
+                        result.push_str(&format!("\n--- {language} Code Block ---\n"));
                     } else {
                         result.push_str("\n--- Code Block ---\n");
                     }
@@ -148,7 +148,7 @@ impl EngineCommand {
         // Format output
         let formatted_output = Self::format_response(&response, parse_code, markdown);
 
-        println!("{}", formatted_output);
+        println!("{formatted_output}");
 
         Ok(CommandResult::success_with_data(serde_json::json!({
             "engine": engine_name,
@@ -205,7 +205,7 @@ impl EngineCommand {
                 );
                 println!("📦 {}", engine.name);
                 println!("   Type: {}", engine.engine);
-                println!("   URL: {}", url);
+                println!("   URL: {url}");
                 println!("   Host: {}", engine.connection.hostname);
                 println!("   Port: {}", engine.connection.port);
                 println!();
@@ -226,15 +226,15 @@ impl EngineCommand {
             .find(|e| e.name == *engine_name)
             .ok_or_else(|| anyhow!("Engine '{}' not found in configuration", engine_name))?;
 
-        println!("🔍 Testing engine: {}", engine_name);
+        println!("🔍 Testing engine: {engine_name}");
 
         // Create engine instance
         match create_engine(engine_config).await {
             Ok(engine) => {
-                println!("✅ Engine '{}' is available and configured correctly", engine_name);
+                println!("✅ Engine '{engine_name}' is available and configured correctly");
 
                 // Perform actual connectivity test
-                println!("🔗 Testing connectivity to {} API...", engine_name);
+                println!("🔗 Testing connectivity to {engine_name} API...");
                 let test_request = Request {
                     flowname: "connectivity_test".to_string(),
                     payload: "Test connectivity - please respond with 'OK'".to_string(),
@@ -249,14 +249,14 @@ impl EngineCommand {
                         }
                     }
                     Err(e) => {
-                        println!("⚠️  Engine created but connectivity test failed: {}", e);
+                        println!("⚠️  Engine created but connectivity test failed: {e}");
                         println!("🔧 This might indicate API key issues or network problems");
                         return Err(anyhow!("Connectivity test failed: {}", e));
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Engine '{}' test failed: {}", engine_name, e);
+                println!("❌ Engine '{engine_name}' test failed: {e}");
                 return Err(e);
             }
         }

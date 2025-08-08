@@ -58,8 +58,7 @@ async fn handle_single_file_upsert(
 ) -> Result<()> {
     let document_id = neo4j_client.upsert_document(file_path, metadata).await?;
     eprintln!(
-        "Uploaded document with ID: {}. Embeddings and chunks created.",
-        document_id
+        "Uploaded document with ID: {document_id}. Embeddings and chunks created."
     );
     Ok(())
 }
@@ -74,8 +73,7 @@ async fn handle_directory_upsert(
     let uploaded_count = process_files_concurrently(neo4j_client.clone(), file_paths, metadata).await?;
 
     eprintln!(
-        "Uploaded {} documents with embeddings and chunks",
-        uploaded_count
+        "Uploaded {uploaded_count} documents with embeddings and chunks"
     );
     Ok(())
 }
@@ -142,7 +140,7 @@ async fn process_upload_results(
                 uploaded_count += 1;
             }
             Err(e) => {
-                eprintln!("Failed to upload document: {}", e);
+                eprintln!("Failed to upload document: {e}");
             }
         }
     }
@@ -183,8 +181,7 @@ pub async fn generate_and_execute_cypher(
     let cypher_request = Request {
         flowname: "generate_cypher".to_string(),
         payload: format!(
-            "Given the following database schema:\n\n{}\n\nGenerate a Cypher query for Neo4j based on this request: {}",
-            schema, query_string
+            "Given the following database schema:\n\n{schema}\n\nGenerate a Cypher query for Neo4j based on this request: {query_string}"
         ),
     };
 

@@ -74,7 +74,7 @@ pub fn format_as_csv(result: &Value) -> String {
                         let values: Vec<String> = headers.iter()
                             .map(|header| {
                                 obj.get(header)
-                                    .map(|v| format_csv_value(v))
+                                    .map(format_csv_value)
                                     .unwrap_or_default()
                             })
                             .collect();
@@ -91,7 +91,7 @@ pub fn format_as_csv(result: &Value) -> String {
             let values: Vec<String> = headers.iter()
                 .map(|header| {
                     obj.get(header)
-                        .map(|v| format_csv_value(v))
+                        .map(format_csv_value)
                         .unwrap_or_default()
                 })
                 .collect();

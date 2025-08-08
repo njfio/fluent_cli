@@ -192,7 +192,7 @@ impl Game {
                     Cell::Log => "🪵",
                     Cell::Goal => "🏁",
                 };
-                print!("{}", symbol);
+                print!("{symbol}");
             }
             println!();
         }

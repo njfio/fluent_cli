@@ -590,15 +590,23 @@ impl Engine for UniversalEngine {
         self.base.config.session_id.clone()
     }
 
-    fn extract_content(&self, _value: &Value) -> Option<ExtractedContent> {
-        None // TODO: Implement content extraction
+    fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
+        // Extract content based on engine type and response structure
+        match self.base.engine_type.as_str() {
+            "openai" => self.extract_openai_content(value),
+            "anthropic" => self.extract_anthropic_content(value),
+            "google" => self.extract_google_content(value),
+            _ => self.extract_generic_content(value),
+        }
     }
 
     fn upload_file<'a>(
         &'a self,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move { Err(anyhow!("File upload not implemented for universal engine")) })
+        Box::new(async move {
+            Err(anyhow!("File upload not implemented for universal engine"))
+        })
     }
 
     fn process_request_with_file<'a>(
@@ -607,9 +615,108 @@ impl Engine for UniversalEngine {
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!(
-                "File processing not implemented for universal engine"
-            ))
+            Err(anyhow!("File processing not implemented for universal engine"))
         })
     }
+}
+
+impl UniversalEngine {
+    /// Extract content from OpenAI response format
+    fn extract_openai_content(&self, value: &Value) -> Option<ExtractedContent> {
+        if let Some(choices) = value.get("choices").and_then(|c| c.as_array()) {
+            if let Some(first_choice) = choices.first() {
+                if let Some(message) = first_choice.get("message") {
+                    let content = message.get("content")?.as_str()?.to_string();
+
+                    return Some(ExtractedContent {
+                        main_content: content,
+                        sentiment: None,
+                        clusters: None,
+                        themes: None,
+                        keywords: None,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract content from Anthropic response format
+    fn extract_anthropic_content(&self, value: &Value) -> Option<ExtractedContent> {
+        if let Some(content_array) = value.get("content").and_then(|c| c.as_array()) {
+            if let Some(first_content) = content_array.first() {
+                if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
+                    return Some(ExtractedContent {
+                        main_content: text.to_string(),
+                        sentiment: None,
+                        clusters: None,
+                        themes: None,
+                        keywords: None,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract content from Google response format
+    fn extract_google_content(&self, value: &Value) -> Option<ExtractedContent> {
+        if let Some(candidates) = value.get("candidates").and_then(|c| c.as_array()) {
+            if let Some(first_candidate) = candidates.first() {
+                if let Some(content) = first_candidate.get("content") {
+                    if let Some(parts) = content.get("parts").and_then(|p| p.as_array()) {
+                        if let Some(first_part) = parts.first() {
+                            if let Some(text) = first_part.get("text").and_then(|t| t.as_str()) {
+                                return Some(ExtractedContent {
+                                    main_content: text.to_string(),
+                                    sentiment: None,
+                                    clusters: None,
+                                    themes: None,
+                                    keywords: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract content from generic response format
+    fn extract_generic_content(&self, value: &Value) -> Option<ExtractedContent> {
+        // Try common content fields
+        if let Some(text) = value.get("text").and_then(|t| t.as_str()) {
+            return Some(ExtractedContent {
+                main_content: text.to_string(),
+                sentiment: None,
+                clusters: None,
+                themes: None,
+                keywords: None,
+            });
+        }
+
+        if let Some(content) = value.get("content").and_then(|c| c.as_str()) {
+            return Some(ExtractedContent {
+                main_content: content.to_string(),
+                sentiment: None,
+                clusters: None,
+                themes: None,
+                keywords: None,
+            });
+        }
+
+        if let Some(response) = value.get("response").and_then(|r| r.as_str()) {
+            return Some(ExtractedContent {
+                main_content: response.to_string(),
+                sentiment: None,
+                clusters: None,
+                themes: None,
+                keywords: None,
+            });
+        }
+
+        None
+    }
+
 }

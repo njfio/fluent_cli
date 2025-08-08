@@ -33,7 +33,7 @@ impl PipelineCommand {
             Err(e) => Err(fluent_core::error::FluentError::Validation(
                 fluent_core::error::ValidationError::InvalidFormat {
                     input: "YAML content".to_string(),
-                    expected: format!("Valid YAML syntax: {}", e),
+                    expected: format!("Valid YAML syntax: {e}"),
                 },
             )),
         }
@@ -105,14 +105,14 @@ impl PipelineCommand {
             if let Some(state) = load_state_store.load_state(&state_key).await? {
                 let json_output = serde_json::to_string_pretty(&state)
                     .map_err(|e| anyhow!("Failed to serialize state: {}", e))?;
-                println!("{}", json_output);
+                println!("{json_output}");
                 Ok(CommandResult::success_with_data(
                     serde_json::to_value(state)
                         .map_err(|e| anyhow!("Failed to serialize state to JSON: {}", e))?,
                 ))
             } else {
                 let error_msg = "No state file found for the given run ID.";
-                eprintln!("{}", error_msg);
+                eprintln!("{error_msg}");
                 Ok(CommandResult::error(error_msg.to_string()))
             }
         } else {
