@@ -34,7 +34,7 @@ pub async fn run_modular() -> Result<()> {
     // Load configuration - handle missing config files gracefully
     let config_path = matches.get_one::<String>("config").map(|s| s.as_str()).unwrap_or("fluent_config.toml");
     let config = if Path::new(config_path).exists() {
-        fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new())?
+        fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new()).map_err(|e| CliError::Config(e.to_string()))?
     } else {
         // Create a minimal default config if no config file exists
         fluent_core::config::Config::new(vec![])
