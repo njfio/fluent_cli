@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use std::path::Path;
+use crate::error::CliError;
 
 use crate::cli_builder::build_cli;
 use crate::commands::{
@@ -26,7 +27,7 @@ pub async fn run_modular() -> Result<()> {
         Ok(matches) => matches,
         Err(err) => {
             // Return error so caller can map to proper exit code
-            return Err(anyhow::anyhow!(err.to_string()));
+            return Err(CliError::ArgParse(err.to_string()).into());
         }
     };
 

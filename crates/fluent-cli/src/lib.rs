@@ -51,6 +51,7 @@
 
 pub mod agentic;
 pub mod cli;
+pub mod error;
 pub mod commands;
 pub mod neo4j_operations;
 pub mod pipeline_builder;
