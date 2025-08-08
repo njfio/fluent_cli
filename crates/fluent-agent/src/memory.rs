@@ -1778,7 +1778,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sqlite_memory_store() {
-        let store = SqliteMemoryStore::new(":memory:").expect("Failed to create memory store");
+        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create memory store");
 
         let memory = MemoryItem {
             memory_id: "test-memory".to_string(),
@@ -1808,15 +1808,15 @@ mod tests {
         assert_eq!(retrieved_item.content, "Test memory content");
     }
 
-    #[test]
-    fn test_sqlite_memory_store_creation() {
-        let store = SqliteMemoryStore::new(":memory:");
+    #[tokio::test]
+    async fn test_sqlite_memory_store_creation() {
+        let store = AsyncSqliteMemoryStore::new(":memory:").await;
         assert!(store.is_ok());
     }
 
     #[tokio::test]
     async fn test_async_sqlite_memory_store() {
-        let store = SqliteMemoryStore::new(":memory:").expect("Failed to create memory store");
+        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create memory store");
 
         let memory = MemoryItem {
             memory_id: "test-async-memory".to_string(),
@@ -1868,7 +1868,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_operations() {
-        let store = SqliteMemoryStore::new(":memory:").expect("Failed to create memory store");
+        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create memory store");
 
         // Create test memories
         let memories = vec![
@@ -1927,7 +1927,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_store_functionality() {
-        let store = SqliteMemoryStore::new(":memory:").expect("Failed to create memory store");
+        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create memory store");
 
         // Test basic functionality
         let memory = MemoryItem {
@@ -1949,7 +1949,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_store_queries() {
-        let store = SqliteMemoryStore::new(":memory:").expect("Failed to create memory store");
+        let store = AsyncSqliteMemoryStore::new(":memory:").await.expect("Failed to create memory store");
 
         // Test that we can store and retrieve memories
         let memory = MemoryItem {
