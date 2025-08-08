@@ -146,7 +146,7 @@ impl BaseEngine {
             return Err(anyhow!(
                 "{} API error: {}",
                 self.base_config.engine_type,
-                error_text
+                redacted
             ));
         }
 
@@ -215,7 +215,7 @@ impl BaseEngine {
             return Err(anyhow!(
                 "{} API error: {}",
                 self.base_config.engine_type,
-                error_text
+                redacted
             ));
         }
 
