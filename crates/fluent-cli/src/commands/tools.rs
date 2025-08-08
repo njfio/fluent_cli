@@ -4,6 +4,7 @@
 //! including discovery, execution, configuration, and monitoring.
 
 use anyhow::{anyhow, Result};
+use crate::error::CliError;
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use fluent_agent::tools::ToolRegistry;
@@ -36,7 +37,7 @@ impl ToolsCommand {
         // Check if registry is already initialized
         let is_initialized = {
             let registry_lock = registry_guard.lock()
-                .map_err(|e| anyhow!("Failed to acquire registry lock: {}", e))?;
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock: {}", e)))?;
             registry_lock.is_some()
         };
 
@@ -68,7 +69,7 @@ impl ToolsCommand {
 
         {
             let mut registry_lock = registry_guard.lock()
-                .map_err(|e| anyhow!("Failed to acquire registry lock for initialization: {}", e))?;
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for initialization: {}", e)))?;
             *registry_lock = Some(new_registry);
         }
 
@@ -82,7 +83,7 @@ impl ToolsCommand {
     {
         let registry_guard = Self::get_tool_registry(config)?;
         let registry_lock = registry_guard.lock()
-            .map_err(|e| anyhow!("Failed to acquire registry lock for execution: {}", e))?;
+            .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for execution: {}", e)))?;
 
         let registry = registry_lock.as_ref()
             .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
@@ -148,7 +149,7 @@ impl ToolsCommand {
     /// Describe a specific tool
     async fn describe_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         let tool_name = matches.get_one::<String>("tool")
-            .ok_or_else(|| anyhow!("Tool name is required"))?;
+            .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
         let show_schema = matches.get_flag("schema");
         let show_examples = matches.get_flag("examples");
         let json_output = matches.get_flag("json");
@@ -156,7 +157,7 @@ impl ToolsCommand {
         Self::with_tool_registry(config, |registry| {
             // Check if tool exists
             if !registry.is_tool_available(tool_name) {
-                return Err(anyhow!("Tool '{}' not found", tool_name));
+                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
             }
 
             // Get tool information from available tools
@@ -196,7 +197,7 @@ impl ToolsCommand {
     /// Execute a tool directly
     async fn execute_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         let tool_name = matches.get_one::<String>("tool")
-            .ok_or_else(|| anyhow!("Tool name is required"))?;
+            .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
         let json_params = matches.get_one::<String>("json");
         let params_file = matches.get_one::<String>("params-file");
         let dry_run = matches.get_flag("dry-run");
@@ -209,25 +210,25 @@ impl ToolsCommand {
         // Check if tool exists (sync operation)
         {
             let registry_lock = registry_guard.lock()
-                .map_err(|e| anyhow!("Failed to acquire registry lock: {}", e))?;
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock: {}", e)))?;
             let registry = registry_lock.as_ref()
                 .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
 
             if !registry.is_tool_available(tool_name) {
-                return Err(anyhow!("Tool '{}' not found", tool_name));
+                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
             }
         }
 
         // Parse parameters
         let parameters = if let Some(json_str) = json_params {
             serde_json::from_str::<HashMap<String, Value>>(json_str)
-                .map_err(|e| anyhow!("Invalid JSON parameters: {}", e))?
+                .map_err(|e| CliError::Validation(format!("Invalid JSON parameters: {}", e)))?
         } else if let Some(file_path) = params_file {
             let file_content = tokio::fs::read_to_string(file_path)
                 .await
-                .map_err(|e| anyhow!("Failed to read params file: {}", e))?;
+                .map_err(|e| CliError::Validation(format!("Failed to read params file: {}", e)))?;
             serde_json::from_str::<HashMap<String, Value>>(&file_content)
-                .map_err(|e| anyhow!("Invalid JSON in params file: {}", e))?
+                .map_err(|e| CliError::Validation(format!("Invalid JSON in params file: {}", e)))?
         } else {
             // Parse individual parameters from command line
             Self::parse_cli_parameters(matches)?
@@ -246,7 +247,7 @@ impl ToolsCommand {
 
         let result = {
             let registry_lock = registry_guard.lock()
-                .map_err(|e| anyhow!("Failed to acquire registry lock for execution: {}", e))?;
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for execution: {}", e)))?;
             let registry = registry_lock.as_ref()
                 .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
 
@@ -293,7 +294,7 @@ impl ToolsCommand {
                     println!("💥 Error: {e}");
                 }
 
-                Err(anyhow!("Tool execution failed: {}", e))
+                Err(CliError::Engine(format!("Tool execution failed: {}", e)).into())
             }
         }
     }

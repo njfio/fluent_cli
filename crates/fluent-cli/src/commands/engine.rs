@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use crate::error::CliError;
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use fluent_core::traits::Engine;
@@ -125,7 +126,7 @@ impl EngineCommand {
             .engines
             .iter()
             .find(|e| e.name == engine_name)
-            .ok_or_else(|| anyhow!("Engine '{}' not found in configuration", engine_name))?;
+            .ok_or_else(|| CliError::Config(format!("Engine '{}' not found in configuration", engine_name)))?;
 
         // Create engine
         let engine = create_engine(engine_config).await?;
@@ -219,12 +220,12 @@ impl EngineCommand {
     async fn test_engine(matches: &ArgMatches, config: &Config) -> Result<()> {
         let engine_name = matches
             .get_one::<String>("engine")
-            .ok_or_else(|| anyhow!("Engine name is required"))?;
+            .ok_or_else(|| CliError::Validation("Engine name is required".to_string()))?;
 
         // Find the engine in config
         let engine_config = config.engines.iter()
             .find(|e| e.name == *engine_name)
-            .ok_or_else(|| anyhow!("Engine '{}' not found in configuration", engine_name))?;
+            .ok_or_else(|| CliError::Config(format!("Engine '{}' not found in configuration", engine_name)))?;
 
         println!("🔍 Testing engine: {engine_name}");
 
@@ -251,13 +252,13 @@ impl EngineCommand {
                     Err(e) => {
                         println!("⚠️  Engine created but connectivity test failed: {e}");
                         println!("🔧 This might indicate API key issues or network problems");
-                        return Err(anyhow!("Connectivity test failed: {}", e));
+                        return Err(CliError::Network(format!("Connectivity test failed: {}", e)).into());
                     }
                 }
             }
             Err(e) => {
                 println!("❌ Engine '{engine_name}' test failed: {e}");
-                return Err(e);
+                return Err(CliError::Engine(e.to_string()).into());
             }
         }
 

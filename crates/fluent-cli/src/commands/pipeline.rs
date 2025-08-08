@@ -5,6 +5,7 @@ use fluent_core::error::FluentResult;
 use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor, StateStore};
 use std::env;
 use std::path::PathBuf;
+use crate::error::CliError;
 
 use super::{CommandHandler, CommandResult};
 
@@ -64,19 +65,19 @@ impl PipelineCommand {
         // Read and validate pipeline file
         let yaml_str = tokio::fs::read_to_string(pipeline_file)
             .await
-            .map_err(|e| anyhow!("Failed to read pipeline file '{}': {}", pipeline_file, e))?;
+            .map_err(|e| CliError::Config(format!("Failed to read pipeline file '{}': {}", pipeline_file, e)))?;
 
         Self::validate_pipeline_yaml(&yaml_str)
-            .map_err(|e| anyhow!("Pipeline validation failed: {}", e))?;
+            .map_err(|e| CliError::Validation(format!("Pipeline validation failed: {}", e)))?;
 
         let pipeline: Pipeline = serde_yaml::from_str(&yaml_str)
-            .map_err(|e| anyhow!("Failed to parse pipeline YAML: {}", e))?;
+            .map_err(|e| CliError::Validation(format!("Failed to parse pipeline YAML: {}", e)))?;
 
         // Setup state store
         let state_store_dir = Self::get_state_store_dir()?;
         tokio::fs::create_dir_all(&state_store_dir)
             .await
-            .map_err(|e| anyhow!("Failed to create state store directory: {}", e))?;
+            .map_err(|e| CliError::Config(format!("Failed to create state store directory: {}", e)))?;
 
         let state_store = FileStateStore {
             directory: state_store_dir.clone(),
@@ -87,7 +88,7 @@ impl PipelineCommand {
         executor
             .execute(&pipeline, input, force_fresh, run_id.clone())
             .await
-            .map_err(|e| anyhow!("Pipeline execution failed: {}", e))?;
+            .map_err(|e| CliError::Engine(format!("Pipeline execution failed: {}", e)))?;
 
         // Handle output
         if json_output {
@@ -104,7 +105,7 @@ impl PipelineCommand {
 
             if let Some(state) = load_state_store.load_state(&state_key).await? {
                 let json_output = serde_json::to_string_pretty(&state)
-                    .map_err(|e| anyhow!("Failed to serialize state: {}", e))?;
+                    .map_err(|e| CliError::Unknown(format!("Failed to serialize state: {}", e)))?;
                 println!("{json_output}");
                 Ok(CommandResult::success_with_data(
                     serde_json::to_value(state)
@@ -129,11 +130,11 @@ impl CommandHandler for PipelineCommand {
         // Extract pipeline arguments
         let pipeline_file = matches
             .get_one::<String>("file")
-            .ok_or_else(|| anyhow!("Pipeline file is required"))?;
+            .ok_or_else(|| CliError::Validation("Pipeline file is required".to_string()))?;
 
         let input = matches
             .get_one::<String>("input")
-            .ok_or_else(|| anyhow!("Pipeline input is required"))?;
+            .ok_or_else(|| CliError::Validation("Pipeline input is required".to_string()))?;
 
         let force_fresh = matches.get_flag("force_fresh");
         let run_id = matches.get_one::<String>("run_id").cloned();
@@ -145,9 +146,9 @@ impl CommandHandler for PipelineCommand {
 
         if !result.success {
             if let Some(message) = result.message {
-                return Err(anyhow!("Pipeline execution failed: {}", message));
+                return Err(CliError::Engine(format!("Pipeline execution failed: {}", message)).into());
             } else {
-                return Err(anyhow!("Pipeline execution failed"));
+                return Err(CliError::Engine("Pipeline execution failed".to_string()).into());
             }
         }
 
