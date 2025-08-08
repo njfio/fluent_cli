@@ -25,9 +25,7 @@ pub fn redact_secrets_in_text(input: &str) -> String {
         let key = caps.get(1).map(|m| m.as_str()).unwrap_or("secret");
         format!("{}: ***REDACTED***", key)
     });
-    let step2 = RE_AUTH_BEARER.replace_all(&step1, |_| {
-        "Authorization: Bearer ***REDACTED***".to_string()
-    });
+    let step2 = RE_AUTH_BEARER.replace_all(&step1, "Authorization: Bearer ***REDACTED***");
     let step3 = RE_URL_QUERY.replace_all(&step2, |caps: &regex::Captures| {
         format!("{}REDACTED", &caps[1])
     });
