@@ -122,24 +122,95 @@ impl Agent {
         fs::write(path, content).await.map_err(Into::into)
     }
 
-    /// Run a shell command and capture stdout and stderr with security validation.
+    /// Run a shell command with security validation, timeout and output limits.
     pub async fn run_command(&self, cmd: &str, args: &[&str]) -> Result<String> {
         // Validate command against security policies
         Self::validate_command_security(cmd, args)?;
 
-        let output = Command::new(cmd)
+        // Determine limits from environment or defaults
+        let timeout_secs: u64 = std::env::var("FLUENT_CMD_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+        let max_output_bytes: usize = std::env::var("FLUENT_CMD_MAX_OUTPUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(512 * 1024); // 512 KiB
+
+        let mut child = Command::new(cmd)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env_clear() // Clear environment for security
-            .env("PATH", "/usr/bin:/bin:/usr/local/bin") // Minimal PATH
-            .output()
-            .await?;
-        let mut result = String::from_utf8_lossy(&output.stdout).to_string();
-        if !output.status.success() {
-            result.push_str(&String::from_utf8_lossy(&output.stderr));
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/local/bin")
+            .spawn()?;
+
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture stdout"))?;
+        let mut stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture stderr"))?;
+
+        use tokio::io::AsyncReadExt;
+        let mut out_buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+        let mut err_buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+
+        let read_fut = async {
+            loop {
+                let mut tmp = [0u8; 8192];
+                tokio::select! {
+                    read = stdout.read(&mut tmp) => {
+                        let n = read?;
+                        if n == 0 { break; }
+                        let to_take = n.min(max_output_bytes.saturating_sub(out_buf.len()));
+                        out_buf.extend_from_slice(&tmp[:to_take]);
+                        if out_buf.len() >= max_output_bytes { break; }
+                    }
+                    read = stderr.read(&mut tmp) => {
+                        let n = read?;
+                        if n == 0 { break; }
+                        let to_take = n.min(max_output_bytes.saturating_sub(err_buf.len()));
+                        err_buf.extend_from_slice(&tmp[:to_take]);
+                        if err_buf.len() >= max_output_bytes { break; }
+                    }
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        };
+
+        // Apply timeout to child and reading
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), read_fut).await {
+            Ok(r) => r?,
+            Err(_) => {
+                let _ = child.kill().await; // best-effort
+                return Err(anyhow!("command timed out after {}s", timeout_secs));
+            }
         }
-        Ok(result)
+
+        let status = match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+            Ok(r) => r?,
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err(anyhow!("command did not terminate promptly after output read"));
+            }
+        };
+
+        let mut combined = String::new();
+        combined.push_str(&String::from_utf8_lossy(&out_buf));
+        if !status.success() {
+            combined.push_str(&String::from_utf8_lossy(&err_buf));
+        }
+
+        if out_buf.len() >= max_output_bytes || err_buf.len() >= max_output_bytes {
+            combined.push_str("\n[output truncated]\n");
+        }
+
+        Ok(combined)
     }
 
     /// Validate command and arguments against security policies
