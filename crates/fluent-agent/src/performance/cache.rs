@@ -45,7 +45,7 @@ where
         // Create L2 cache (Redis) if enabled
         let l2_cache = if config.l2_enabled {
             if let Some(ref url) = config.l2_url {
-                Some(Arc::new(RedisCache::new(url.clone(), config.l2_ttl).await?)
+                Some(Arc::new(RedisCache::new(url.clone(), config.l2_ttl)?)
                     as Arc<dyn L2Cache<K, V>>)
             } else {
                 None
@@ -58,7 +58,7 @@ where
         let l3_cache = if config.l3_enabled {
             if let Some(ref url) = config.l3_database_url {
                 Some(
-                    Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl).await?)
+                    Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl)?)
                         as Arc<dyn L3Cache<K, V>>,
                 )
             } else {
