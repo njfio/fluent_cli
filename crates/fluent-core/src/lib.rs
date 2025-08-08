@@ -54,4 +54,5 @@ pub mod spinner_configuration;
 pub mod traits;
 pub mod types;
 pub mod utils;
+pub mod redaction;
 mod voyageai_client;

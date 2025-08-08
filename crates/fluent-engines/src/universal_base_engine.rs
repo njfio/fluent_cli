@@ -201,7 +201,8 @@ impl UniversalBaseEngine {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow!("{} API error: {}", self.engine_type, error_text));
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
+            return Err(anyhow!("{} API error: {}", self.engine_type, redacted));
         }
 
         let response_body = response.json::<Value>().await?;

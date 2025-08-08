@@ -142,6 +142,7 @@ impl BaseEngine {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
             return Err(anyhow!(
                 "{} API error: {}",
                 self.base_config.engine_type,
@@ -210,6 +211,7 @@ impl BaseEngine {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
             return Err(anyhow!(
                 "{} API error: {}",
                 self.base_config.engine_type,
