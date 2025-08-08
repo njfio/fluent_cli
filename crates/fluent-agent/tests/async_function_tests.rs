@@ -134,7 +134,7 @@ async fn test_concurrent_async_operations() -> Result<()> {
     // Launch concurrent async operations using separate stores
     for i in 0..num_operations {
         let handle = tokio::spawn(async move {
-            let store = AsyncAsyncSqliteMemoryStore::new(":memory:").await.unwrap();
+            let store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             let memory = MemoryItem {
                 memory_id: format!("concurrent_async_{}", i),
                 memory_type: MemoryType::Experience,

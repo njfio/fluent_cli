@@ -106,7 +106,7 @@ async fn test_concurrent_memory_operations() -> Result<()> {
 
     for i in 0..num_concurrent {
         let handle = tokio::spawn(async move {
-            let store = AsyncAsyncSqliteMemoryStore::new(":memory:").await.unwrap();
+            let store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             let memory = MemoryItem {
                 memory_id: format!("concurrent_{}", i),
                 memory_type: MemoryType::Experience,
