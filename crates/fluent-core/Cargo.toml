@@ -33,3 +33,4 @@ sha2 = { workspace = true }
 which = "6.0"
 serde_yaml.workspace = true
 toml = "0.8"
+once_cell = { workspace = true }
