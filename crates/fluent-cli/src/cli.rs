@@ -25,9 +25,8 @@ pub async fn run_modular() -> Result<()> {
     let matches = match matches {
         Ok(matches) => matches,
         Err(err) => {
-            // Print help or error and exit
-            eprintln!("{err}");
-            return Ok(());
+            // Return error so caller can map to proper exit code
+            return Err(anyhow::anyhow!(err.to_string()));
         }
     };
 
