@@ -212,7 +212,7 @@ pub struct RedisCache<K, V> {
 }
 
 impl<K, V> RedisCache<K, V> {
-    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+    pub fn new(url: String, ttl: Duration) -> Result<Self> {
         // Check if Redis URL is provided and warn about fallback mode
         let available = !url.is_empty() && url != "redis://localhost:6379";
 
@@ -296,7 +296,7 @@ pub struct DatabaseCache<K, V> {
 }
 
 impl<K, V> DatabaseCache<K, V> {
-    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+    pub fn new(url: String, ttl: Duration) -> Result<Self> {
         // Check if database URL is provided and warn about fallback mode
         let available = !url.is_empty() && !url.starts_with("sqlite://memory");
 
