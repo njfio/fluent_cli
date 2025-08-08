@@ -1,5 +1,5 @@
 use fluent_agent::{
-    memory::{SqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
     performance::utils::{PerformanceCounter, MemoryTracker},
 };
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ use tokio;
 
 #[tokio::test]
 async fn test_memory_store_throughput() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let counter = PerformanceCounter::new();
     
     // Test write throughput
@@ -70,7 +70,7 @@ async fn test_memory_store_throughput() -> Result<()> {
 
 #[tokio::test]
 async fn test_memory_query_performance() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Populate with test data
     let num_memories = 5000;
@@ -147,7 +147,7 @@ async fn test_memory_query_performance() -> Result<()> {
 
 #[tokio::test]
 async fn test_memory_stress_test() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let mut tracker = MemoryTracker::new();
     
     // Stress test with large memories
@@ -220,7 +220,7 @@ async fn test_memory_stress_test() -> Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_read_write_performance() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Pre-populate with some data
     for i in 0..100 {
@@ -247,7 +247,7 @@ async fn test_concurrent_read_write_performance() -> Result<()> {
     // Spawn concurrent writers using separate stores
     for i in 0..20 {
         let handle = tokio::spawn(async move {
-            let writer_store = SqliteMemoryStore::new(":memory:").unwrap();
+            let writer_store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             for j in 0..50 {
                 let memory = MemoryItem {
                     memory_id: format!("concurrent_write_{}_{}", i, j),
@@ -273,7 +273,7 @@ async fn test_concurrent_read_write_performance() -> Result<()> {
     // Spawn concurrent readers using separate stores
     for i in 0..10 {
         let handle = tokio::spawn(async move {
-            let reader_store = SqliteMemoryStore::new(":memory:").unwrap();
+            let reader_store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             // Pre-populate with some data for reading
             for k in 0..10 {
                 let memory = MemoryItem {

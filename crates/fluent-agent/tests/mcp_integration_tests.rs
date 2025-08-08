@@ -3,7 +3,7 @@ use fluent_agent::{
     mcp_client::{McpClient, ClientInfo},
     mcp_tool_registry::{McpToolRegistry, McpToolDefinition},
     mcp_resource_manager::McpResourceManager,
-    memory::{SqliteMemoryStore, LongTermMemory},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory},
     tools::ToolRegistry,
 };
 use fluent_mcp::model::{Tool, ServerInfo, Content, CallToolRequest};
@@ -18,7 +18,7 @@ use tokio;
 #[tokio::test]
 async fn test_mcp_adapter_integration() -> Result<()> {
     let tool_registry = Arc::new(ToolRegistry::new());
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     
     let adapter = FluentMcpAdapter::new(tool_registry.clone(), memory_system);
     
@@ -98,7 +98,7 @@ async fn test_mcp_tool_registry_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_mcp_resource_manager() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let resource_manager = McpResourceManager::new(memory_system);
     
     // Test resource listing
@@ -118,7 +118,7 @@ async fn test_mcp_resource_manager() -> Result<()> {
 #[tokio::test]
 async fn test_mcp_tool_execution_flow() -> Result<()> {
     let tool_registry = Arc::new(ToolRegistry::new());
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     
     let adapter = FluentMcpAdapter::new(tool_registry.clone(), memory_system);
     
@@ -142,7 +142,7 @@ async fn test_mcp_tool_execution_flow() -> Result<()> {
 #[tokio::test]
 async fn test_mcp_error_handling() -> Result<()> {
     let tool_registry = Arc::new(ToolRegistry::new());
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     
     let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
     
@@ -222,7 +222,7 @@ async fn test_mcp_concurrent_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_mcp_resource_uri_parsing() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let resource_manager = McpResourceManager::new(memory_system);
     
     // Test various URI formats

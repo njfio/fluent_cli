@@ -1,5 +1,5 @@
 use fluent_agent::{
-    memory::{SqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
     orchestrator::AgentOrchestrator,
     goal::{GoalBuilder, GoalComplexity},
     task::TaskBuilder,
@@ -20,7 +20,7 @@ use tokio;
 
 #[tokio::test]
 async fn test_memory_error_conditions() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test storing memory with invalid data
     let invalid_memory = MemoryItem {
@@ -79,7 +79,7 @@ async fn test_memory_error_conditions() -> Result<()> {
 
 #[tokio::test]
 async fn test_orchestrator_error_handling() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -126,7 +126,7 @@ async fn test_orchestrator_error_handling() -> Result<()> {
 #[tokio::test]
 async fn test_mcp_error_scenarios() -> Result<()> {
     let tool_registry = Arc::new(ToolRegistry::new());
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     
     let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
     
@@ -166,7 +166,7 @@ async fn test_mcp_error_scenarios() -> Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_error_conditions() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test concurrent operations that might conflict
     let mut handles = vec![];
@@ -212,7 +212,7 @@ async fn test_concurrent_error_conditions() -> Result<()> {
 
 #[tokio::test]
 async fn test_resource_exhaustion_scenarios() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test with very large memory items
     let large_memory = MemoryItem {
@@ -273,7 +273,7 @@ async fn test_resource_exhaustion_scenarios() -> Result<()> {
 
 #[tokio::test]
 async fn test_malformed_data_handling() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test with various malformed data scenarios
     let malformed_memories = vec![
@@ -318,7 +318,7 @@ async fn test_malformed_data_handling() -> Result<()> {
 #[tokio::test]
 async fn test_timeout_scenarios() -> Result<()> {
     // Test operations that might timeout
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Create a goal with very short timeout
     let timeout_goal = GoalBuilder::new()
@@ -342,7 +342,7 @@ async fn test_timeout_scenarios() -> Result<()> {
 
 #[tokio::test]
 async fn test_boundary_value_testing() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test boundary values for importance
     let boundary_values = vec![0.0, 0.1, 0.5, 0.9, 1.0];

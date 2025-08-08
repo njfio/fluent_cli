@@ -6,7 +6,7 @@ use fluent_agent::{
     context::{ExecutionContext, ContextVariable},
     reflection::{ReflectionEngine, ReflectionType, ReflectionConfig},
     reasoning::{ReasoningEngine, ReasoningPrompts},
-    memory::{SqliteMemoryStore, LongTermMemory, ShortTermMemory, MemoryConfig},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, ShortTermMemory, MemoryConfig},
     tools::ToolRegistry,
 };
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use tokio;
 #[tokio::test]
 async fn test_complete_agent_workflow() -> Result<()> {
     // Setup components
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -93,7 +93,7 @@ async fn test_goal_lifecycle() -> Result<()> {
 
 #[tokio::test]
 async fn test_task_decomposition() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -173,7 +173,7 @@ async fn test_action_planning() -> Result<()> {
 
 #[tokio::test]
 async fn test_reflection_integration() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let reflection_engine = ReflectionEngine::new(
         ReflectionConfig::default(),
         memory_system.clone(),
@@ -233,7 +233,7 @@ async fn test_context_management() -> Result<()> {
 
 #[tokio::test]
 async fn test_orchestrator_metrics() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -260,7 +260,7 @@ async fn test_orchestrator_metrics() -> Result<()> {
 
 #[tokio::test]
 async fn test_error_handling_in_workflow() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -297,7 +297,7 @@ async fn test_error_handling_in_workflow() -> Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_workflow_operations() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
