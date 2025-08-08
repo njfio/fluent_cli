@@ -145,7 +145,7 @@ where
         let monitor_handle = self.start_resource_monitoring().await;
 
         // Sort tasks by priority and dependencies
-        let sorted_tasks = self.sort_tasks_by_priority_and_dependencies(tasks).await?;
+        let sorted_tasks = self.sort_tasks_by_priority_and_dependencies(tasks)?;
 
         // Execute tasks in batches based on dependencies
         let mut all_results = Vec::new();
@@ -276,7 +276,7 @@ where
     }
 
     /// Sort tasks by priority and resolve dependencies
-    async fn sort_tasks_by_priority_and_dependencies(
+    fn sort_tasks_by_priority_and_dependencies(
         &self,
         tasks: Vec<ExecutionTask<T>>,
     ) -> Result<Vec<ExecutionTask<T>>> {
@@ -629,7 +629,6 @@ mod tests {
 
         let sorted = executor
             .sort_tasks_by_priority_and_dependencies(tasks)
-            .await
             .unwrap();
 
         // Should be sorted by priority: Critical, High, Low
