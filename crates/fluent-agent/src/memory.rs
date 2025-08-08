@@ -586,13 +586,6 @@ impl Default for MemoryConfig {
 /// ⚠️ **DEPRECATED**: This implementation uses blocking SQLite operations in async functions,
 /// which can block the async runtime. Use `AsyncSqliteMemoryStore` instead for production code.
 /// This struct is kept only for backward compatibility in tests.
-#[deprecated(
-    since = "0.1.0",
-    note = "Use AsyncSqliteMemoryStore instead. This version blocks the async runtime."
-)]
-pub struct SqliteMemoryStore {
-    connection: Arc<Mutex<Connection>>,
-}
 
 /// SQLite connection pool configuration
 #[derive(Debug, Clone)]
@@ -1350,24 +1343,6 @@ fn calculate_simple_similarity(text1: &str, text2: &str) -> f32 {
     }
 }
 
-impl SqliteMemoryStore {
-    /// Create a new SQLite memory store
-    pub fn new(database_path: &str) -> Result<Self> {
-        let conn = if database_path == ":memory:" {
-            Connection::open_in_memory()?
-        } else {
-            Connection::open(database_path)?
-        };
-
-        let store = Self {
-            connection: Arc::new(Mutex::new(conn)),
-        };
-
-        // Create tables if they don't exist
-        store.create_tables()?;
-
-        Ok(store)
-    }
 
     /// Create the necessary tables
     fn create_tables(&self) -> Result<()> {
@@ -1412,40 +1387,6 @@ impl SqliteMemoryStore {
 // Keeping only the second implementation below
 
 
-#[async_trait]
-impl LongTermMemory for SqliteMemoryStore {
-    async fn store(&self, memory: MemoryItem) -> Result<String> {
-        let id = memory.memory_id.clone();
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|e| anyhow!("Failed to acquire database lock: {}", e))?;
-
-        conn.execute(
-            r#"
-            INSERT OR REPLACE INTO memory_items (
-                id, memory_type, content, metadata, importance,
-                created_at, last_accessed, access_count, tags, embedding
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-            "#,
-            rusqlite::params![
-                &memory.memory_id,
-                format!("{:?}", memory.memory_type),
-                &memory.content,
-                serde_json::to_string(&memory.metadata)?,
-                memory.importance,
-                memory.created_at.to_rfc3339(),
-                memory.last_accessed.to_rfc3339(),
-                memory.access_count as i64,
-                serde_json::to_string(&memory.tags)?,
-                memory.embedding.as_ref().and_then(|emb| {
-                    bincode::serialize(emb).ok()
-                }),
-            ],
-        )?;
-
-        Ok(id)
-    }
 
     async fn retrieve(&self, memory_id: &str) -> Result<Option<MemoryItem>> {
         let conn = self
