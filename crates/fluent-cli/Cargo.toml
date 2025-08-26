@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 default-run = "fluent-cli"
 
+[lib]
+doctest = false
+
 
 [dependencies]
 clap = { workspace = true, features = ["derive"] }
@@ -19,6 +22,7 @@ owo-colors = { workspace = true }
 regex = { workspace = true }
 serde_yaml = { workspace = true }
 glob = "0.3"
+toml = "0.8"
 
 termimad = { workspace = true }
 dialoguer = { workspace = true }

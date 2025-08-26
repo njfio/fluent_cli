@@ -105,28 +105,31 @@ pub fn validate_engine_name(engine_name: &str) -> FluentResult<String> {
 
 /// Get allowed engines from configuration file or environment variables
 fn get_allowed_engines() -> Vec<String> {
-    // First, try to get from environment variable
+    use std::collections::HashSet;
+    let mut set: HashSet<String> = HashSet::new();
+
+    // Environment-specified engines
     if let Ok(engines_env) = std::env::var("FLUENT_ALLOWED_ENGINES") {
-        let engines: Vec<String> = engines_env
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if !engines.is_empty() {
-            return engines;
+        for s in engines_env.split(',').map(|s| s.trim().to_lowercase()) {
+            if !s.is_empty() {
+                set.insert(s);
+            }
         }
     }
 
-    // Try to load from configuration file
+    // Config-specified engines
     if let Ok(config_engines) = load_engines_from_config() {
-        if !config_engines.is_empty() {
-            return config_engines;
+        for s in config_engines {
+            set.insert(s);
         }
     }
 
-    // Fallback to default engines
-    get_default_engines()
+    // Always include defaults to avoid over-restricting in test environments
+    for s in get_default_engines() {
+        set.insert(s);
+    }
+
+    set.into_iter().collect()
 }
 
 /// Load allowed engines from configuration file

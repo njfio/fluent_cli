@@ -276,7 +276,40 @@ impl ActionPlanner for IntelligentActionPlanner {
         context: &ExecutionContext,
     ) -> Result<ActionPlan> {
         // Determine the appropriate action type
-        let action_type = self.determine_action_type(&reasoning);
+        let mut action_type = self.determine_action_type(&reasoning);
+
+        // 1) Adapt to repeated failures in recent observations (fallback to Analysis/recovery)
+        let recent_failures = context
+            .observations
+            .iter()
+            .rev()
+            .take(5)
+            .filter(|o| o.content.to_uppercase().contains("FAILED"))
+            .count();
+        if recent_failures >= 3 {
+            action_type = crate::orchestrator::ActionType::Analysis;
+        }
+
+        // 2) Use reflection-based strategy adjustments to influence planning
+        // Heuristic parsing of adjustments recorded in context (strings)
+        let mut enforce_validation = false;
+        let mut prefer_low_risk = false;
+        let mut avoid_file_write = false;
+        for adj in &context.strategy_adjustments {
+            let text = adj
+                .adjustments
+                .join("; ")
+                .to_lowercase();
+            if text.contains("quality") || text.contains("validation") {
+                enforce_validation = true;
+            }
+            if text.contains("risk") || text.contains("mitigation") {
+                prefer_low_risk = true;
+            }
+            if text.contains("avoid write") || text.contains("defer write") {
+                avoid_file_write = true;
+            }
+        }
 
         // Get the planning strategy for this action type
         let strategy = self.planning_strategies.get(&action_type).ok_or_else(|| {
@@ -292,9 +325,63 @@ impl ActionPlanner for IntelligentActionPlanner {
         // Assess risk
         plan.risk_level = self.risk_assessor.assess_risk(&plan, context).await?;
 
+        // Apply reflection-derived preferences
+        if prefer_low_risk {
+            // If current plan is high risk, switch to analysis before executing
+            if matches!(plan.risk_level, RiskLevel::High | RiskLevel::Critical) {
+                plan.action_type = crate::orchestrator::ActionType::Analysis;
+                plan.description = "Perform diagnostic analysis due to high risk".to_string();
+                plan.parameters.insert(
+                    "analysis_type".to_string(),
+                    serde_json::json!("risk_assessment"),
+                );
+                plan.expected_outcome = "Diagnostics collected".to_string();
+                plan.risk_level = RiskLevel::Low;
+            }
+        }
+
+        if enforce_validation {
+            // Insert a validation analysis step if we just generated code or plan is file write
+            if matches!(action_type, crate::orchestrator::ActionType::FileOperation)
+                || matches!(action_type, crate::orchestrator::ActionType::CodeGeneration)
+            {
+                plan.action_type = crate::orchestrator::ActionType::Analysis;
+                plan.description = "Validate generated artifact before persisting".to_string();
+                plan.parameters.insert(
+                    "analysis_type".to_string(),
+                    serde_json::json!("validation"),
+                );
+                plan.expected_outcome = "Validation report produced".to_string();
+                plan.risk_level = RiskLevel::Low;
+            }
+        }
+
+        if avoid_file_write && matches!(plan.action_type, crate::orchestrator::ActionType::FileOperation) {
+            // Defer file writes; do planning/analysis instead
+            plan.action_type = crate::orchestrator::ActionType::Planning;
+            plan.description = "Plan safe persistence strategy (write deferred)".to_string();
+            plan.parameters.insert("scope".to_string(), serde_json::json!("persistence_strategy"));
+            plan.expected_outcome = "Persistence plan drafted".to_string();
+            plan.risk_level = RiskLevel::Low;
+        }
+
         // Generate alternatives if risk is high
         if matches!(plan.risk_level, RiskLevel::High | RiskLevel::Critical) {
             plan.alternatives = self.generate_alternatives(&plan, context)?;
+        }
+
+        // On failure streak, add recovery alternatives explicitly
+        if recent_failures >= 3 {
+            plan.alternatives.push(AlternativeAction {
+                action_type: crate::orchestrator::ActionType::Analysis,
+                description: "Run error diagnostics and refine plan".to_string(),
+                parameters: {
+                    let mut m = HashMap::new();
+                    m.insert("analysis_type".to_string(), serde_json::json!("error_recovery"));
+                    m
+                },
+                trigger_conditions: vec!["consecutive_failures>=3".to_string()],
+            });
         }
 
         Ok(plan)

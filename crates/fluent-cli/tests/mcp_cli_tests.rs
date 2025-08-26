@@ -4,11 +4,11 @@ use fluent_core::config::{Config, EngineConfig};
 use clap::{Arg, ArgMatches, Command};
 
 /// Test helper to create ArgMatches for MCP commands
-fn create_mcp_matches(subcommand: String, args: Vec<(String, String)>) -> ArgMatches {
-    let mut cmd_args = vec!["mcp".to_string(), subcommand];
+fn create_mcp_matches(subcommand: &str, args: Vec<(&str, &str)>) -> ArgMatches {
+    let mut cmd_args = vec!["mcp".to_string(), subcommand.to_string()];
     for (key, value) in args {
         cmd_args.push(format!("--{}", key));
-        cmd_args.push(value);
+        if value != "true" && !value.is_empty() { cmd_args.push(value.to_string()); }
     }
 
     let cmd = Command::new("mcp")
@@ -91,7 +91,7 @@ async fn test_mcp_tools_command() -> Result<()> {
     let config = create_test_config();
     
     // Test tools command with JSON output
-    let matches = create_mcp_matches("tools".to_string(), vec![("json".to_string(), "true".to_string())]);
+    let matches = create_mcp_matches("tools", vec![("json", "true")]);
     
     // This should not fail even without connected servers
     let result = command.execute(&matches, &config).await;
@@ -199,6 +199,7 @@ async fn test_mcp_server_command() -> Result<()> {
     let config = create_test_config();
     
     // Test server command with STDIO transport
+    std::env::set_var("FLUENT_TEST_MODE", "1");
     let matches = create_mcp_matches("server", vec![("stdio", "true")]);
     
     // Note: This test would normally start a server, but we'll just verify

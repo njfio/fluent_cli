@@ -5,10 +5,12 @@
 //! and MCP integration.
 
 use anyhow::{anyhow, Result};
+use log::{debug, info, warn, error};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
 use std::pin::Pin;
 use std::fs;
+use std::sync::Arc;
 
 /// Configuration for agentic mode execution
 ///
@@ -40,6 +42,13 @@ pub struct AgenticConfig {
     pub enable_tools: bool,
     /// Path to the main configuration file
     pub config_path: String,
+    /// Optional model override for default engines (e.g., gpt-4o, claude-3-5-sonnet-20241022)
+    pub model_override: Option<String>,
+    /// Optional max retries for LLM code generation
+    pub gen_retries: Option<u32>,
+    /// Optional minimum HTML size for validation
+    pub min_html_size: Option<u32>,
+    pub dry_run: bool,
 }
 
 impl AgenticConfig {
@@ -62,6 +71,9 @@ impl AgenticConfig {
         max_iterations: u32,
         enable_tools: bool,
         config_path: String,
+        model_override: Option<String>,
+        gen_retries: Option<u32>,
+        min_html_size: Option<u32>,
     ) -> Self {
         Self {
             goal_description,
@@ -69,6 +81,10 @@ impl AgenticConfig {
             max_iterations,
             enable_tools,
             config_path,
+            model_override,
+            gen_retries,
+            min_html_size,
+            dry_run: std::env::var("FLUENT_AGENT_DRY_RUN").ok().map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false),
         }
     }
 }
@@ -121,21 +137,208 @@ impl AgenticExecutor {
     /// Main entry point for agentic mode execution
     pub async fn run(&self, _fluent_config: &Config) -> Result<()> {
         self.print_startup_info();
-        
+
         let agent_config = self.load_agent_configuration().await?;
         let credentials = self.load_and_validate_credentials(&agent_config).await?;
         let runtime_config = self.create_runtime_configuration(&agent_config, credentials).await?;
         let goal = self.create_goal()?;
-        
-        self.test_engines(&runtime_config).await?;
-        
-        if self.config.enable_tools {
-            self.run_autonomous_execution(&goal, &runtime_config).await?;
+
+        // Optional quick engine test
+        let _ = self.test_engines(&runtime_config).await;
+
+        // Build autonomous orchestrator with tools/memory
+        use fluent_agent::adapters::{
+            RegistryToolAdapter,
+            LlmCodeGenerator,
+            FsFileManager,
+            SimpleRiskAssessor,
+        };
+        use fluent_agent::{AgentOrchestrator, MemorySystem, ReflectionEngine, StateManager, StateManagerConfig};
+        use fluent_agent::action::{ComprehensiveActionExecutor, ActionPlanner, ActionExecutor, IntelligentActionPlanner};
+        use fluent_agent::observation::{ComprehensiveObservationProcessor, BasicResultAnalyzer, BasicPatternDetector, BasicImpactAssessor, BasicLearningExtractor};
+        use fluent_agent::adapters::CompositePlanner;
+        use fluent_agent::tools::ToolRegistry;
+
+        let mut tool_registry = if self.config.enable_tools {
+            ToolRegistry::with_standard_tools(&runtime_config.config.tools)
         } else {
-            println!("📝 Tools disabled - would need --enable-tools for full autonomous operation");
+            ToolRegistry::new()
+        };
+
+        // Workflow macro-tools (LLM-powered tools)
+        if self.config.enable_tools {
+            let workflow_exec = std::sync::Arc::new(fluent_agent::tools::WorkflowExecutor::new(
+                runtime_config.reasoning_engine.clone(),
+            ));
+            tool_registry.register("workflow".to_string(), workflow_exec);
+            println!("🧰 Registered workflow macro-tools (outline/toc/assemble/research)");
         }
-        
-        Ok(())
+
+        // Optional MCP integration: initialize and register MCP tool executor
+        if self.config.enable_tools {
+            use fluent_agent::production_mcp::initialize_production_mcp;
+            if let Ok(manager) = initialize_production_mcp().await {
+                // Attempt auto-connect from config file (config_path)
+                if let Err(e) = Self::auto_connect_mcp_servers(&self.config.config_path, &manager).await {
+                    println!("⚠️ MCP auto-connect skipped: {}", e);
+                }
+
+                let mcp_exec = std::sync::Arc::new(fluent_agent::adapters::McpRegistryExecutor::new(manager.clone()));
+                tool_registry.register("mcp".to_string(), mcp_exec);
+                println!("🔌 MCP integrated: remote tools available via registry");
+            } else {
+                println!("⚠️ MCP integration skipped (initialization failed)");
+            }
+        }
+
+        // Finalize registry, then create shared Arc for adapters/planners
+        let arc_registry = Arc::new(tool_registry);
+        let tool_adapter = Box::new(RegistryToolAdapter::new(arc_registry.clone()));
+        let codegen = Box::new(LlmCodeGenerator::new(runtime_config.reasoning_engine.clone()));
+        let filemgr = Box::new(FsFileManager);
+        let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(tool_adapter, codegen, filemgr));
+        let action_executor: Box<dyn ActionExecutor> = if self.config.dry_run {
+            println!("🧪 Dry-run mode: no side effects will be executed");
+            Box::new(fluent_agent::adapters::DryRunActionExecutor)
+        } else {
+            base_executor
+        };
+
+        // Planner and observation (adaptive + reflective)
+        let base_planner: Box<dyn ActionPlanner> = Box::new(IntelligentActionPlanner::new(Box::new(SimpleRiskAssessor)));
+        let planner: Box<dyn ActionPlanner> = Box::new(CompositePlanner::new_with_registry(base_planner, arc_registry.clone()));
+        let obs = Box::new(ComprehensiveObservationProcessor::new(
+            Box::new(BasicResultAnalyzer),
+            Box::new(BasicPatternDetector),
+            Box::new(BasicImpactAssessor),
+            Box::new(BasicLearningExtractor),
+        ));
+
+        // Memory and state
+        use fluent_agent::memory::MemoryConfig;
+        // TODO: Implement proper memory system once dependencies are resolved
+        let memory = fluent_agent::memory::MemorySystem::new(MemoryConfig::default()).await?;
+        let state_mgr = StateManager::new(StateManagerConfig::default()).await?;
+        let reflection = ReflectionEngine::new();
+
+        // Orchestrate
+        // Build orchestrator without moving runtime_config so we can run explicit loop
+        let orchestrator = AgentOrchestrator::from_config(
+            fluent_agent::config::AgentRuntimeConfig {
+                reasoning_engine: runtime_config.reasoning_engine.clone(),
+                action_engine: runtime_config.action_engine.clone(),
+                reflection_engine: runtime_config.reflection_engine.clone(),
+                config: runtime_config.config.clone(),
+                credentials: runtime_config.credentials.clone(),
+            },
+            planner,
+            action_executor,
+            obs,
+            Arc::new(memory),
+            Arc::new(state_mgr),
+            reflection,
+        )
+        .await?;
+
+        println!("🔁 Orchestrator constructed. Entering autonomous loop…");
+        let timeout_secs: u64 = std::env::var("FLUENT_AGENT_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(180);
+        println!(
+            "🕒 Watchdog active ({}s). Running ReAct pipeline…",
+            timeout_secs
+        );
+
+        info!("agent.react.start goal='{}' timeout_secs={}", self.config.goal_description, timeout_secs);
+        // Explicit autonomous loop for visibility
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), self.run_autonomous_execution(&goal, &runtime_config)).await {
+            Ok(Ok(())) => {
+                info!("agent.react.done success=true explicit_autonomous_loop=true");
+                println!("✅ Goal execution finished. Success: true");
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                error!("agent.react.error err={}", e);
+                eprintln!("❌ Orchestrator error: {}", e);
+                Err(e)
+            }
+            Err(_) => {
+                error!("agent.react.timeout secs={} goal='{}'", timeout_secs, self.config.goal_description);
+                eprintln!("⏳ Agent timed out after {}s. Aborting.", timeout_secs);
+                Err(anyhow::anyhow!(format!(
+                    "Agent timed out after {}s while executing the goal",
+                    timeout_secs
+                )))
+            }
+        }
+    }
+
+    /// Attempt to auto-connect MCP servers based on entries in the main config file.
+    /// Supported schema (YAML or JSON):
+    /// mcp:
+    ///   servers:
+    ///     - name: search
+    ///       command: my-mcp-server
+    ///       args: ["--stdio"]
+    ///     - "search:my-mcp-server --stdio"
+    async fn auto_connect_mcp_servers(
+        config_path: &str,
+        manager: &std::sync::Arc<fluent_agent::production_mcp::ProductionMcpManager>,
+    ) -> anyhow::Result<()> {
+        use serde_json::Value;
+
+        info!("agent.mcp.autoconnect.config path='{}'", config_path);
+        let content = tokio::fs::read_to_string(config_path).await?;
+        let root: Value = if content.trim_start().starts_with('{') {
+            serde_json::from_str(&content)?
+        } else {
+            serde_yaml::from_str(&content)?
+        };
+
+        let servers = root
+            .get("mcp")
+            .and_then(|m| m.get("servers"))
+            .ok_or_else(|| anyhow::anyhow!("No mcp.servers section found"))?;
+
+        match servers {
+            Value::Array(arr) => {
+                for item in arr {
+                    match item {
+                        Value::String(s) => {
+                            // Format: "name:command [args...]"
+                            let mut parts = s.splitn(2, ':');
+                            let name = parts.next().unwrap_or("");
+                            let cmd_and_args = parts.next().unwrap_or("").trim();
+                            if name.is_empty() || cmd_and_args.is_empty() { continue; }
+                            let mut split = cmd_and_args.split_whitespace();
+                            if let Some(command) = split.next() {
+                                let args: Vec<String> = split.map(|x| x.to_string()).collect();
+                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
+                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
+                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                            }
+                        }
+                        Value::Object(map) => {
+                            let name = map.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                            let command = map.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                            let args: Vec<String> = map.get("args")
+                                .and_then(|v| v.as_array())
+                                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                                .unwrap_or_default();
+                            if !name.is_empty() && !command.is_empty() {
+                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
+                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
+                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(anyhow::anyhow!("mcp.servers must be an array")),
+        }
     }
 
     /// Print startup information
@@ -193,7 +396,7 @@ impl AgenticExecutor {
         println!("🔧 Creating LLM engines...");
         
         let runtime_config = agent_config
-            .create_runtime_config(&self.config.config_path, credentials)
+            .create_runtime_config(&self.config.config_path, credentials, self.config.model_override.as_deref())
             .await?;
 
         println!("✅ LLM engines created successfully!");
@@ -204,12 +407,23 @@ impl AgenticExecutor {
     fn create_goal(&self) -> Result<fluent_agent::goal::Goal> {
         use fluent_agent::goal::{Goal, GoalType};
         
-        let goal = Goal::builder(self.config.goal_description.clone(), GoalType::CodeGeneration)
-            .max_iterations(self.config.max_iterations)
-            .success_criterion("Code compiles without errors".to_string())
-            .success_criterion("Code runs successfully".to_string())
-            .success_criterion("Code meets the specified requirements".to_string())
-            .build()?;
+        let mut builder = Goal::builder(self.config.goal_description.clone(), GoalType::CodeGeneration)
+            .max_iterations(self.config.max_iterations);
+
+        // Load success criteria from env if provided by --goal-file path
+        if let Ok(sc) = std::env::var("FLUENT_AGENT_SUCCESS_CRITERIA") {
+            for criterion in sc.split("||").filter(|s| !s.is_empty()) {
+                builder = builder.success_criterion(criterion.to_string());
+            }
+        } else {
+            // Reasonable defaults for code-oriented tasks if nothing else provided
+            builder = builder
+                .success_criterion("Code compiles without errors".to_string())
+                .success_criterion("Code runs successfully".to_string())
+                .success_criterion("Code meets the specified requirements".to_string());
+        }
+
+        let goal = builder.build()?;
 
         println!("🎯 Goal: {}", goal.description);
         println!("🔄 Max iterations: {:?}", goal.max_iterations);
@@ -267,7 +481,12 @@ impl AgenticExecutor {
     ) -> Result<()> {
         println!("\n🚀 Starting autonomous execution...");
         
-        let executor = AutonomousExecutor::new(goal.clone(), runtime_config);
+        let executor = AutonomousExecutor::new(
+            goal.clone(),
+            runtime_config,
+            self.config.gen_retries.unwrap_or(3),
+            self.config.min_html_size.unwrap_or(2000) as usize,
+        );
         executor.execute(self.config.max_iterations).await
     }
 }
@@ -276,11 +495,18 @@ impl AgenticExecutor {
 pub struct AutonomousExecutor<'a> {
     goal: fluent_agent::goal::Goal,
     runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
+    gen_retries: u32,
+    min_html_size: usize,
 }
 
 impl<'a> AutonomousExecutor<'a> {
-    pub fn new(goal: fluent_agent::goal::Goal, runtime_config: &'a fluent_agent::config::AgentRuntimeConfig) -> Self {
-        Self { goal, runtime_config }
+    pub fn new(
+        goal: fluent_agent::goal::Goal,
+        runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
+        gen_retries: u32,
+        min_html_size: usize,
+    ) -> Self {
+        Self { goal, runtime_config, gen_retries, min_html_size }
     }
 
     /// Execute autonomous loop
@@ -288,21 +514,27 @@ impl<'a> AutonomousExecutor<'a> {
         use fluent_agent::context::ExecutionContext;
         
         println!("🎯 Starting autonomous execution for goal: {}", self.goal.description);
+        info!("agent.loop.begin goal='{}' max_iterations={}", self.goal.description, max_iterations);
 
         let mut context = ExecutionContext::new(self.goal.clone());
 
         for iteration in 1..=max_iterations {
             println!("\n🔄 Iteration {iteration}/{max_iterations}");
+            debug!("agent.loop.iteration start iter={}", iteration);
 
             let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
+            debug!("agent.loop.reasoning.done len={} preview='{}'", reasoning_response.len(), &reasoning_response.chars().take(160).collect::<String>());
             
             if self.is_game_goal() {
+                info!("agent.loop.path game=true");
                 self.handle_game_creation(&mut context).await?;
                 return Ok(());
             } else {
+                info!("agent.loop.path game=false");
                 self.handle_general_goal(&mut context, &reasoning_response, iteration, max_iterations).await?;
                 
                 if self.should_complete_goal(iteration, max_iterations) {
+                    info!("agent.loop.complete iter={}", iteration);
                     return Ok(());
                 }
             }
@@ -336,13 +568,16 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
+        debug!("agent.reasoning.request flow='{}' len={}", reasoning_request.flowname, reasoning_request.payload.len());
         match Pin::from(self.runtime_config.reasoning_engine.execute(&reasoning_request)).await {
             Ok(response) => {
                 println!("🤖 Agent reasoning: {}", response.content);
+                debug!("agent.reasoning.response len={} preview='{}'", response.content.len(), &response.content.chars().take(200).collect::<String>());
                 Ok(response.content)
             }
             Err(e) => {
                 println!("❌ Reasoning failed: {e}");
+                error!("agent.reasoning.error {}", e);
                 Err(anyhow!("Reasoning failed: {}", e))
             }
         }
@@ -352,7 +587,8 @@ impl<'a> AutonomousExecutor<'a> {
     fn is_game_goal(&self) -> bool {
         let description = self.goal.description.to_lowercase();
         description.contains("game")
-            || description.contains("frogger")
+
+            || description.contains("tetris")
             || description.contains("javascript")
             || description.contains("html")
     }
@@ -361,7 +597,7 @@ impl<'a> AutonomousExecutor<'a> {
     async fn handle_game_creation(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
         println!("🎮 Agent decision: Create the game now!");
 
-        let game_creator = GameCreator::new(&self.goal, self.runtime_config);
+        let game_creator = GameCreator::new(&self.goal, self.runtime_config, self.gen_retries, self.min_html_size);
         game_creator.create_game(context).await
     }
 
@@ -405,13 +641,16 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
+        debug!("agent.action.request flow='{}' len={}", action_request.flowname, action_request.payload.len());
         match Pin::from(self.runtime_config.reasoning_engine.execute(&action_request)).await {
             Ok(response) => {
                 println!("📋 Planned action: {}", response.content);
+                info!("agent.action.planned first_line='{}'", response.content.lines().next().unwrap_or(""));
                 Ok(response.content)
             }
             Err(e) => {
                 println!("❌ Action planning failed: {e}");
+                error!("agent.action.error {}", e);
                 Err(anyhow!("Action planning failed: {}", e))
             }
         }
@@ -518,17 +757,26 @@ impl<'a> AutonomousExecutor<'a> {
 pub struct GameCreator<'a> {
     goal: &'a fluent_agent::goal::Goal,
     runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
+    gen_retries: u32,
+    min_html_size: usize,
 }
 
 impl<'a> GameCreator<'a> {
-    pub fn new(goal: &'a fluent_agent::goal::Goal, runtime_config: &'a fluent_agent::config::AgentRuntimeConfig) -> Self {
-        Self { goal, runtime_config }
+    pub fn new(
+        goal: &'a fluent_agent::goal::Goal,
+        runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
+        gen_retries: u32,
+        min_html_size: usize,
+    ) -> Self {
+        Self { goal, runtime_config, gen_retries, min_html_size }
     }
 
     /// Create game based on goal description
     pub async fn create_game(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
         let (file_extension, code_prompt, file_path) = self.determine_game_type();
+        info!("agent.codegen.select type='{}' path='{}'", file_extension, file_path);
         let game_code = self.generate_game_code(&code_prompt, file_extension).await?;
+        debug!("agent.codegen.generated len={} ext='{}'", game_code.len(), file_extension);
         self.write_game_file(file_path, &game_code)?;
         self.update_context(context, file_path, file_extension);
         
@@ -539,60 +787,208 @@ impl<'a> GameCreator<'a> {
     /// Determine what type of game to create
     fn determine_game_type(&self) -> (&str, String, &str) {
         let description = self.goal.description.to_lowercase();
-        
-        if description.contains("javascript") || description.contains("html") || description.contains("web") {
-            (
-                "html",
-                "Create a complete, working Frogger-like game using HTML5, CSS, and JavaScript. Requirements:\n\
-                    - Complete HTML file with embedded CSS and JavaScript\n\
-                    - HTML5 Canvas for game rendering\n\
-                    - Frog character that moves with arrow keys or WASD\n\
-                    - Cars moving horizontally that the frog must avoid\n\
-                    - Goal area at the top that the frog needs to reach\n\
-                    - Collision detection between frog and cars\n\
-                    - Scoring system and lives system\n\
-                    - Smooth animations and game loop\n\
-                    - Professional styling and responsive design\n\n\
-                    Provide ONLY the complete HTML file with embedded CSS and JavaScript:".to_string(),
-                "examples/web_frogger.html"
-            )
+        let wants_web = description.contains("javascript") || description.contains("html") || description.contains("web");
+
+        // Check for specific game types in order of preference
+        if description.contains("tetris") {
+            if wants_web {
+                (
+                    "html",
+                    "Create a complete, working Tetris game using HTML5, CSS, and JavaScript. Requirements:\n\
+                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
+                        - Use HTML5 Canvas for rendering\n\
+                        - Implement standard Tetris rules: 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
+                        - Rotation system (clockwise), wall kicks, and gravity\n\
+                        - Piece hold, next piece queue, soft drop, and hard drop\n\
+                        - Line clear detection (single/double/triple/tetris) and scoring system\n\
+                        - Level progression (increase fall speed) and game over state\n\
+                        - Keyboard controls (arrow keys + space for hard drop, shift for hold)\n\
+                        - Cleanly structured code (Board, Piece, GameLoop) with comments\n\
+                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a single fenced block like:\n\
+                        ```html\n\
+                        ... your full HTML here ...\n\
+                        ```".to_string(),
+                    "examples/web_tetris.html"
+                )
+            } else {
+                (
+                    "rs",
+                    "Create a complete, working Tetris game in Rust. Requirements:\n\
+                        - Terminal-based interface using crossterm crate\n\
+                        - 10x20 grid, 7 tetrominoes, piece rotation and movement\n\
+                        - Gravity, line clear detection, scoring, and levels\n\
+                        - Controls: arrow keys to move/rotate, space hard drop, 'c' to hold\n\
+                        - Clean game loop with non-blocking input and rendering\n\
+                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
+                        ```rust\n\
+                        ... full program ...\n\
+                        ```".to_string(),
+                    "examples/agent_tetris.rs"
+                )
+            }
+        } else if description.contains("snake") {
+            if wants_web {
+                (
+                    "html",
+                    "Create a complete, working Snake game using HTML5, CSS, and JavaScript. Requirements:\n\
+                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
+                        - Use HTML5 Canvas for rendering on a grid (e.g., 20x20 cells)\n\
+                        - Classic Snake mechanics: growing tail when eating food, collision with walls or self causes game over\n\
+                        - Food spawn at random empty cell; avoid spawning on snake\n\
+                        - Scoring system and increasing speed per level or every few foods\n\
+                        - Keyboard controls: arrow keys and WASD; include pause/resume and restart\n\
+                        - Clean structure with a main game loop, update, and render phases\n\
+                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a fenced block:\n\
+                        ```html\n\
+                        ... full HTML here ...\n\
+                        ```".to_string(),
+                    "examples/web_snake.html"
+                )
+            } else {
+                (
+                    "rs",
+                    "Create a complete, working Snake game in Rust. Requirements:\n\
+                        - Terminal-based interface using crossterm\n\
+                        - Grid-based snake movement, food spawn, self/wall collision detection\n\
+                        - Score tracking and increasing speed over time\n\
+                        - Controls: arrow keys / WASD, 'p' pause, 'r' restart\n\
+                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
+                        ```rust\n\
+                        ... full program ...\n\
+                        ```".to_string(),
+                    "examples/agent_snake.rs"
+                )
+            }
         } else {
-            (
-                "rs",
-                "Create a complete, working Frogger-like game in Rust. Requirements:\n\
-                    - Terminal-based interface using crossterm crate\n\
-                    - Frog character that moves up/down/left/right with WASD keys\n\
-                    - Cars moving horizontally that the frog must avoid\n\
-                    - Goal area at the top that the frog needs to reach\n\
-                    - Collision detection between frog and cars\n\
-                    - Scoring system that increases when reaching goal\n\
-                    - Game over mechanics when hitting cars\n\
-                    - Lives system (3 lives)\n\
-                    - Game loop with proper input handling\n\n\
-                    Provide ONLY the complete, compilable Rust code with all necessary imports:".to_string(),
-                "examples/agent_frogger.rs"
-            )
+            // For unrecognized game requests, default to Tetris as it's the most complex and requested
+            println!("⚠️ Unrecognized game type requested. Defaulting to Tetris as it's the most complex option.");
+            if wants_web {
+                (
+                    "html",
+                    "Create a complete, working Tetris game using HTML5, CSS, and JavaScript. Requirements:\n\
+                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
+                        - Use HTML5 Canvas for rendering\n\
+                        - Implement standard Tetris rules: 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
+                        - Rotation system (clockwise), wall kicks, and gravity\n\
+                        - Piece hold, next piece queue, soft drop, and hard drop\n\
+                        - Line clear detection (single/double/triple/tetris) and scoring system\n\
+                        - Level progression (increase fall speed) and game over state\n\
+                        - Keyboard controls (arrow keys + space for hard drop, shift for hold)\n\
+                        - Cleanly structured code (Board, Piece, GameLoop) with comments\n\
+                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a single fenced block like:\n\
+                        ```html\n\
+                        ... your full HTML here ...\n\
+                        ```".to_string(),
+                    "examples/web_tetris.html"
+                )
+            } else {
+                (
+                    "rs",
+                    "Create a complete, working Tetris game in Rust. Requirements:\n\
+                        - Terminal-based interface using crossterm crate\n\
+                        - 10x20 grid, 7 tetrominoes, piece rotation and movement\n\
+                        - Gravity, line clear detection, scoring, and levels\n\
+                        - Controls: arrow keys to move/rotate, space hard drop, 'c' to hold\n\
+                        - Clean game loop with non-blocking input and rendering\n\
+                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
+                        ```rust\n\
+                        ... full program ...\n\
+                        ```".to_string(),
+                    "examples/agent_tetris.rs"
+                )
+            }
         }
     }
 
     /// Generate game code using LLM
     async fn generate_game_code(&self, code_prompt: &str, file_extension: &str) -> Result<String> {
+        info!("agent.codegen.start ext='{}' retries={}", file_extension, self.gen_retries);
         let code_request = Request {
             flowname: "code_generation".to_string(),
             payload: code_prompt.to_string(),
         };
 
-        println!("🧠 Generating {} game code with Claude...", file_extension.to_uppercase());
-        
-        let code_response = Pin::from(self.runtime_config.reasoning_engine.execute(&code_request)).await?;
-        let game_code = crate::utils::extract_code(&code_response.content, file_extension);
-        
+        println!("🧠 Generating {} game code with selected LLM...", file_extension.to_uppercase());
+
+        // Helper: try execute with retry/backoff
+        async fn try_execute_with_retry(engine: &Box<dyn fluent_core::traits::Engine>, req: &Request, attempts: u32) -> Result<fluent_core::types::Response> {
+            let mut delay = 500u64;
+            let max_attempts = attempts.max(1);
+            let mut last_err: Option<anyhow::Error> = None;
+            for attempt in 1..=max_attempts {
+                debug!("agent.codegen.attempt {} of {}", attempt, max_attempts);
+                match Pin::from(engine.execute(req)).await {
+                    Ok(resp) => return Ok(resp),
+                    Err(e) => {
+                        last_err = Some(e);
+                        if attempt < max_attempts {
+                            println!("⚠️ LLM request failed (attempt {attempt}/{max_attempts}). Retrying in {}ms...", delay);
+                            warn!("agent.codegen.retry attempt={}/{} delay_ms={}", attempt, max_attempts, delay);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            delay *= 2;
+                        }
+                    }
+                }
+            }
+            Err(anyhow::anyhow!(format!("LLM request failed after retries: {}", last_err.unwrap_or_else(|| anyhow::anyhow!("unknown error")))))
+        }
+
+        // First attempt with retry
+        let mut code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &code_request, self.gen_retries).await?;
+        let mut game_code = crate::utils::extract_code(&code_response.content, file_extension);
+        debug!("agent.codegen.extracted len={} ext='{}'", game_code.len(), file_extension);
+
+        // Lightweight validation for Tetris deliverables
+        let desc = self.goal.description.to_lowercase();
+        let needs_tetris = desc.contains("tetris");
+        let mut valid = true;
+        if needs_tetris && file_extension == "html" {
+            let lc = game_code.to_lowercase();
+            let has_canvas = lc.contains("<canvas") || lc.contains("getelementbyid('tetriscanvas'") || lc.contains("getelementbyid(\"tetriscanvas\"");
+            let has_controls = lc.contains("keydown") || lc.contains("addEventListener('keydown'") || lc.contains("addEventListener(\"keydown\"");
+            let has_logic = lc.contains("tetromino") || lc.contains("rotation") || lc.contains("rotate(") || lc.contains("lines") || lc.contains("score");
+            let long_enough = game_code.len() > self.min_html_size; // require non-trivial output
+            debug!("agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}", has_canvas, has_controls, has_logic, long_enough);
+            valid = has_canvas && has_controls && has_logic && long_enough;
+        }
+
+        if !valid {
+            println!("⚠️ Output seems incomplete. Requesting refined Tetris implementation...");
+            info!("agent.codegen.refine ext='{}'", file_extension);
+            let refine_prompt = format!(
+                "Your previous output was incomplete or generic. Regenerate the deliverable as a single, complete {} Tetris implementation with the following minimum features: \n\
+                 - 10x20 grid, 7 tetrominoes (I,O,T,S,Z,J,L) \n\
+                 - Rotation with wall kicks, gravity and lock delay \n\
+                 - Line clear detection and scoring with level progression \n\
+                 - Controls: arrows for move/rotate, space hard drop, shift hold \n\
+                 Provide ONLY the full source in one block, no prose. Wrap it in a fenced block with the correct language: \n\
+                 ```html``` for HTML or ```rust``` for Rust.\n\
+                 ",
+                if file_extension == "html" { "HTML (embedded JS/CSS)" } else { "Rust" }
+            );
+
+            let refine_request = Request { flowname: "code_generation_refine".to_string(), payload: refine_prompt };
+            code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &refine_request, self.gen_retries).await?;
+            game_code = crate::utils::extract_code(&code_response.content, file_extension);
+
+            // Re-validate refined output; if still clearly a placeholder, keep the raw content to aid debugging
+            if needs_tetris && file_extension == "html" {
+                let lc2 = game_code.to_lowercase();
+                let still_placeholder = game_code.len() < self.min_html_size;
+                if still_placeholder {
+                    println!("⚠️ Refined output still looks insufficient. Writing raw response for inspection.");
+                    game_code = code_response.content;
+                }
+            }
+        }
+
         Ok(game_code)
     }
 
     /// Write game code to file
     fn write_game_file(&self, file_path: &str, game_code: &str) -> Result<()> {
         fs::write(file_path, game_code)?;
+        info!("agent.codegen.file_written path='{}' bytes={}", file_path, game_code.len());
         println!("✅ Created game at: {file_path}");
         println!("📝 Game code length: {} characters", game_code.len());
         Ok(())

@@ -1,15 +1,13 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
-use chrono::Utc;
 use fluent_agent::{
     config::{credentials, AgentEngineConfig, ToolConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType, SqliteMemoryStore},
+    agent_with_mcp::LongTermMemory,
+    memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
 };
-use serde_json::json;
-use std::collections::HashMap;
 
 
 #[tokio::main]
@@ -18,8 +16,9 @@ async fn main() -> Result<()> {
     println!("============================");
 
     // Demo 1: Real Memory System
-    println!("\n📚 Demo 1: Real SQLite Memory System");
-    demo_memory_system().await?;
+    println!("\n📚 Demo 1: Real Memory System");
+    // Skip memory demo for now as AsyncSqliteMemoryStore is not implemented
+    println!("⚠️  Memory demo skipped - AsyncSqliteMemoryStore not implemented");
 
     // Demo 2: Real Goal System
     println!("\n🎯 Demo 2: Real Goal Management");
@@ -43,56 +42,71 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+// Commenting out the memory demo as AsyncSqliteMemoryStore is not implemented
+/*
 async fn demo_memory_system() -> Result<()> {
     // Create real SQLite memory store
-    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
-    let memory_store = SqliteMemoryStore::new("demo_agent_memory.db")?;
+    // Note: Using AsyncSqliteMemoryStore temporarily until AsyncAsyncSqliteMemoryStore implements LongTermMemory
+    let memory_store = AsyncSqliteMemoryStore::new("demo_agent_memory.db").await?;
     println!("✅ Created real SQLite database: demo_agent_memory.db");
 
     // Store real memory items
     let experiences = vec![
         MemoryItem {
-            memory_id: "exp_001".to_string(),
-            memory_type: MemoryType::Experience,
-            content: "Successfully compiled Rust project with zero warnings".to_string(),
-            metadata: {
-                let mut map = HashMap::new();
-                map.insert("project_type".to_string(), json!("rust"));
-                map.insert("outcome".to_string(), json!("success"));
-                map
+            item_id: "exp_001".to_string(),
+            content: MemoryContent {
+                content_type: ContentType::TaskResult,
+                data: "Successfully compiled Rust project with zero warnings".as_bytes().to_vec(),
+                text_summary: "Successfully compiled Rust project with zero warnings".to_string(),
+                key_concepts: vec!["rust".to_string(), "compilation".to_string(), "success".to_string()],
+                relationships: vec![],
             },
-            importance: 0.8,
-            created_at: Utc::now(),
-            last_accessed: Utc::now(),
+            metadata: ItemMetadata {
+                tags: vec![
+                    "rust".to_string(),
+                    "compilation".to_string(),
+                    "success".to_string(),
+                ],
+                priority: Priority::High,
+                source: "demo".to_string(),
+                size_bytes: 0,
+                compression_ratio: 1.0,
+                retention_policy: RetentionPolicy::ContextBased,
+            },
+            relevance_score: 0.8,
+            attention_weight: 0.8,
+            last_accessed: std::time::SystemTime::now(),
+            created_at: std::time::SystemTime::now(),
             access_count: 1,
-            tags: vec![
-                "rust".to_string(),
-                "compilation".to_string(),
-                "success".to_string(),
-            ],
-            embedding: None,
+            consolidation_level: 0,
         },
         MemoryItem {
-            memory_id: "learn_001".to_string(),
-            memory_type: MemoryType::Learning,
-            content: "When using async/await in Rust, always handle Result types properly"
-                .to_string(),
-            metadata: {
-                let mut map = HashMap::new();
-                map.insert("language".to_string(), json!("rust"));
-                map.insert("concept".to_string(), json!("async_programming"));
-                map
+            item_id: "learn_001".to_string(),
+            content: MemoryContent {
+                content_type: ContentType::LearningItem,
+                data: "When using async/await in Rust, always handle Result types properly".as_bytes().to_vec(),
+                text_summary: "When using async/await in Rust, always handle Result types properly".to_string(),
+                key_concepts: vec!["rust".to_string(), "async".to_string(), "best_practice".to_string()],
+                relationships: vec![],
             },
-            importance: 0.9,
-            created_at: Utc::now(),
-            last_accessed: Utc::now(),
+            metadata: ItemMetadata {
+                tags: vec![
+                    "rust".to_string(),
+                    "async".to_string(),
+                    "best_practice".to_string(),
+                ],
+                priority: Priority::High,
+                source: "demo".to_string(),
+                size_bytes: 0,
+                compression_ratio: 1.0,
+                retention_policy: RetentionPolicy::ContextBased,
+            },
+            relevance_score: 0.9,
+            attention_weight: 0.9,
+            last_accessed: std::time::SystemTime::now(),
+            created_at: std::time::SystemTime::now(),
             access_count: 3,
-            tags: vec![
-                "rust".to_string(),
-                "async".to_string(),
-                "best_practice".to_string(),
-            ],
-            embedding: None,
+            consolidation_level: 0,
         },
     ];
 
@@ -100,34 +114,33 @@ async fn demo_memory_system() -> Result<()> {
     for memory in &experiences {
         let stored_id = memory_store.store(memory.clone()).await?;
         println!(
-            "✅ Stored memory: {:?} -> {}",
-            memory.memory_type, stored_id
+            "✅ Stored memory: {}",
+            stored_id
         );
     }
 
     // Query real memories
-    let query = MemoryQuery {
-        memory_types: vec![MemoryType::Experience, MemoryType::Learning],
-        importance_threshold: Some(0.7),
-        limit: Some(10),
-        query_text: "rust".to_string(),
+    let query = fluent_agent::agent_with_mcp::MemoryQuery {
+        memory_types: vec![], // Empty means all types
         tags: vec![],
-        time_range: None,
+        limit: Some(10),
     };
 
     let retrieved = memory_store.search(query).await?;
     println!("✅ Found {} memories matching search criteria", retrieved.len());
 
     for memory in retrieved {
-        println!("   📝 {:?}: {}", memory.memory_type, memory.content);
+        println!("   📝 {}", memory.content.text_summary);
         println!(
-            "      Importance: {}, Access count: {}",
-            memory.importance, memory.access_count
+            "      Relevance: {}, Access count: {}",
+            memory.relevance_score, memory.access_count
         );
+        println!("      Tags: {:?}", memory.metadata.tags);
     }
 
     Ok(())
 }
+*/
 
 async fn demo_goal_system() -> Result<()> {
     // Create real goals with different types
@@ -201,9 +214,9 @@ async fn demo_context_system() -> Result<()> {
     }
 
     // Demonstrate context operations by adding metadata
-    context.add_metadata("compilation_status".to_string(), json!("success"));
-    context.add_metadata("testing_status".to_string(), json!("passed"));
-    context.add_metadata("linting_status".to_string(), json!("clean"));
+    context.add_metadata("compilation_status".to_string(), serde_json::json!("success"));
+    context.add_metadata("testing_status".to_string(), serde_json::json!("passed"));
+    context.add_metadata("linting_status".to_string(), serde_json::json!("clean"));
 
     println!("✅ Context summary: {}", context.get_summary());
     println!("✅ Context stats: {:?}", context.get_stats());

@@ -134,11 +134,12 @@ impl CommandHandler for PipelineCommand {
 
         let input = matches
             .get_one::<String>("input")
-            .ok_or_else(|| CliError::Validation("Pipeline input is required".to_string()))?;
+            .map(|s| s.as_str())
+            .unwrap_or("");
 
         let force_fresh = matches.get_flag("force_fresh");
         let run_id = matches.get_one::<String>("run_id").cloned();
-        let json_output = matches.get_flag("json_output");
+        let json_output = matches.get_flag("json");
 
         // Execute pipeline
         let result =

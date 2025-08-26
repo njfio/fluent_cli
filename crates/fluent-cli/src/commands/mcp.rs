@@ -74,6 +74,14 @@ impl McpCommand {
             mcp_config.transport.default_transport = fluent_agent::production_mcp::config::TransportType::Http;
         }
 
+        // In test mode, do not block on server loop
+        if std::env::var("FLUENT_TEST_MODE").is_ok() {
+            println!("🧪 Test mode: skipping server run loop");
+            return Ok(CommandResult::success_with_message(
+                "MCP server initialization skipped in test mode".to_string(),
+            ));
+        }
+
         // Initialize and start MCP manager
         let manager = initialize_production_mcp_with_config(mcp_config).await
             .map_err(|e| anyhow!("Failed to start MCP server: {}", e))?;

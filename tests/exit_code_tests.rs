@@ -12,13 +12,13 @@ fn exit_code_for_argparse_error() {
 #[test]
 fn exit_code_for_missing_pipeline_file() {
     let mut cmd = Command::cargo_bin("fluent").expect("binary");
-    cmd.args(["pipeline", "--file", "/definitely/missing.yaml", "--input", "hi"]);
+    cmd.args(["pipeline", "--file", "/definitely/missing.yaml"]);
     cmd.assert().failure().code(predicate::eq(10)); // Config error
 }
 
 #[test]
 fn exit_code_for_engine_not_found() {
     let mut cmd = Command::cargo_bin("fluent").expect("binary");
-    cmd.args(["engine", "test", "--engine", "nonexistent-engine"]);
+    cmd.args(["engine", "test", "nonexistent-engine"]);
     cmd.assert().failure().code(predicate::eq(10)); // Config error
 }

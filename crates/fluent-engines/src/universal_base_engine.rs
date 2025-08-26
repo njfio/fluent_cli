@@ -545,7 +545,7 @@ impl UniversalEngine {
             "anthropic".to_string(),
             true,  // supports_vision
             false, // supports_streaming
-            "claude-3-5-sonnet-20240620".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
             Some((0.003, 0.015)), // Anthropic Claude pricing per 1M tokens
         )
         .await?;

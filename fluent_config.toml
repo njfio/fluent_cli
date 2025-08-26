@@ -1,0 +1,16 @@
+[[engines]]
+name = "anthropic"
+engine = "anthropic"
+
+[engines.connection]
+protocol = "https"
+hostname = "api.anthropic.com"
+port = 443
+request_path = "/v1/messages"
+
+[engines.parameters]
+bearer_token = "${ANTHROPIC_API_KEY}"
+modelName = "claude-3-7-sonnet-20250219"
+temperature = 0.1
+max_tokens = 4000
+system = "You are an expert Rust programmer and game developer. You create complete, working code with proper error handling."

@@ -30,7 +30,7 @@ impl ProfiledReasoningEngine {
 
 #[async_trait]
 impl ReasoningEngine for ProfiledReasoningEngine {
-    async fn reason(&self, context: &ExecutionContext) -> Result<fluent_agent::orchestrator::ReasoningResult> {
+    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
         // Profile the reasoning operation
         let (result, profile) = self.profiler.profile_async_operation("reasoning_operation", || async {
             // Simulate complex reasoning with memory allocation
@@ -39,18 +39,7 @@ impl ReasoningEngine for ProfiledReasoningEngine {
             // Simulate processing time
             tokio::time::sleep(Duration::from_millis(50)).await;
             
-            fluent_agent::orchestrator::ReasoningResult {
-                reasoning_type: fluent_agent::orchestrator::ReasoningType::SelfReflection,
-                input_context: context.get_summary(),
-                reasoning_output: format!("Enhanced reasoning analysis with {} bytes of data", analysis_data.len()),
-                confidence_score: 0.75 + (context.iteration_count() as f64 * 0.02).min(0.2),
-                goal_achieved_confidence: 0.6 + (context.iteration_count() as f64 * 0.03).min(0.3),
-                next_actions: vec![
-                    "Continue with enhanced approach".to_string(),
-                    "Monitor memory usage patterns".to_string(),
-                    "Optimize based on profiling data".to_string(),
-                ],
-            }
+            format!("Enhanced reasoning analysis with {} bytes of data for prompt: {}", analysis_data.len(), prompt)
         }).await?;
 
         println!("   🔍 Reasoning Memory Profile: {} bytes, {:?}", 
@@ -59,16 +48,16 @@ impl ReasoningEngine for ProfiledReasoningEngine {
         Ok(result)
     }
 
-    fn get_capabilities(&self) -> Vec<fluent_agent::ReasoningCapability> {
+    async fn get_capabilities(&self) -> Vec<fluent_agent::reasoning::ReasoningCapability> {
         vec![
-            fluent_agent::ReasoningCapability::SelfReflection,
-            fluent_agent::ReasoningCapability::StrategyFormulation,
-            fluent_agent::ReasoningCapability::ProgressEvaluation,
+            fluent_agent::reasoning::ReasoningCapability::SelfReflection,
+            fluent_agent::reasoning::ReasoningCapability::StrategyFormulation,
+            fluent_agent::reasoning::ReasoningCapability::ProgressEvaluation,
         ]
     }
 
-    fn can_handle(&self, reasoning_type: &fluent_agent::orchestrator::ReasoningType) -> bool {
-        matches!(reasoning_type, fluent_agent::orchestrator::ReasoningType::SelfReflection)
+    async fn get_confidence(&self) -> f64 {
+        0.75
     }
 }
 
@@ -199,89 +188,35 @@ async fn main() -> Result<()> {
             println!("      Learning Insights: {}", reflection_result.learning_insights.len());
             println!("      Strategy Adjustments: {}", reflection_result.strategy_adjustments.len());
             
-            // Display memory-optimized strategy adjustments
+            // Display strategy adjustments
             if !reflection_result.strategy_adjustments.is_empty() {
-                println!("   🔧 Memory-Optimized Strategy Adjustments:");
+                println!("   🔧 Strategy Adjustments:");
                 for adjustment in &reflection_result.strategy_adjustments {
-                    println!("      - {:?}: {}",
-                            adjustment.adjustment_type,
+                    println!("      - {}: {}", 
+                            adjustment.adjustment_type, 
                             adjustment.description);
-                    if adjustment.description.contains("memory") || adjustment.description.contains("performance") {
-                        println!("        🎯 Performance-focused adjustment detected");
-                    }
+                    println!("        Expected Impact: {:?}", adjustment.expected_impact);
+                    println!("        Steps: {:?}", adjustment.implementation_steps);
                 }
             }
-            
-            // Display learning insights with memory context
-            if !reflection_result.learning_insights.is_empty() {
-                println!("   💡 Memory-Aware Learning Insights:");
-                for insight in &reflection_result.learning_insights {
-                    println!("      - {:?}: {}",
-                            insight.insight_type,
-                            insight.description);
-                    println!("        Confidence: {:.2}, Retention: {:.2}", 
-                            insight.confidence, insight.retention_value);
-                }
-            }
-        } else {
-            println!("   ⏭️  No reflection needed");
         }
     }
 
-    // Generate comprehensive profiling report
-    println!("\n📈 Memory Profiling Report:");
-    println!("==========================");
+    // Demonstrate comprehensive profiling report
+    println!("\n📈 Comprehensive Memory Profiling Report:");
+    let profiling_data = demo_profiler.get_profiles();
+    println!("   Total Operations Profiled: {}", profiling_data.len());
     
-    let demo_report = demo_profiler.generate_report();
-    println!("{}", demo_report);
-    
-    // Save profiling report to file
-    demo_profiler.save_report("enhanced_reflection_profiling_report.txt").await?;
-    println!("✅ Profiling report saved to: enhanced_reflection_profiling_report.txt");
+    let total_memory = profiling_data.iter().map(|profile| profile.peak_bytes).sum::<usize>();
+    let avg_memory = if profiling_data.is_empty() { 0 } else { total_memory / profiling_data.len() };
+    println!("   Total Memory Allocated: {} bytes", total_memory);
+    println!("   Average Memory per Operation: {} bytes", avg_memory);
 
-    // Get reasoning engine profiling data
-    println!("\n🧠 Reasoning Engine Memory Analysis:");
-    let reasoning_report = reasoning_engine.get_profiler().generate_report();
-    println!("{}", reasoning_report);
-    
-    reasoning_engine.get_profiler().save_report("reasoning_engine_profiling_report.txt").await?;
-    println!("✅ Reasoning profiling report saved to: reasoning_engine_profiling_report.txt");
-
-    // Final reflection statistics with memory context
-    println!("\n📊 Enhanced Reflection Statistics:");
-    let stats = reflection_engine.get_reflection_statistics();
-    println!("   Total Learning Experiences: {}", stats.total_learning_experiences);
-    println!("   Total Strategy Patterns: {}", stats.total_strategy_patterns);
-    println!("   Average Success Rate: {:.2}", stats.average_success_rate);
-    println!("   Learning Velocity: {:.2}", stats.learning_velocity);
-    println!("   Reflection Frequency: {}", stats.reflection_frequency);
-
-    // Performance analysis
-    let all_profiles = demo_profiler.get_profiles();
-    if !all_profiles.is_empty() {
-        let total_memory: usize = all_profiles.iter().map(|p| p.peak_bytes).sum();
-        let avg_memory = total_memory / all_profiles.len();
-        let max_memory = all_profiles.iter().map(|p| p.peak_bytes).max().unwrap_or(0);
-        
-        println!("\n🎯 Performance Optimization Insights:");
-        println!("   Total Memory Tracked: {} bytes", total_memory);
-        println!("   Average Memory per Operation: {} bytes", avg_memory);
-        println!("   Peak Memory Usage: {} bytes", max_memory);
-        
-        if max_memory > avg_memory * 3 {
-            println!("   ⚠️  High memory variance detected - optimization recommended");
-        } else {
-            println!("   ✅ Memory usage is consistent across operations");
-        }
-    }
-
-    println!("\n🎉 Enhanced Self-Reflection Demo Complete!");
-    println!("   Key achievements:");
-    println!("   - ✅ Memory profiling integrated into reflection system");
-    println!("   - ✅ Performance-aware strategy adjustments");
-    println!("   - ✅ Comprehensive profiling reports generated");
-    println!("   - ✅ Memory optimization insights provided");
-    println!("   - ✅ Real-time performance monitoring");
+    println!("\n✅ Enhanced demo completed successfully!");
+    println!("💡 Key takeaways:");
+    println!("   - Memory profiling provides valuable insights into resource usage");
+    println!("   - Enhanced reflection with profiling helps optimize performance");
+    println!("   - Strategy adjustments can be based on both performance and memory metrics");
 
     Ok(())
 }

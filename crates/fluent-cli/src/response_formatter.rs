@@ -287,12 +287,15 @@ mod tests {
     #[tokio::test]
     async fn test_write_response_to_file() {
         let response = create_test_response();
-        let temp_file = "/tmp/test_response.txt";
+        let temp_file = std::env::temp_dir()
+            .join(format!("test_response_{}.txt", uuid::Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
 
-        let result = write_response_to_file(&response, temp_file, "text").await;
+        let result = write_response_to_file(&response, &temp_file, "text").await;
         assert!(result.is_ok());
 
         // Clean up
-        let _ = tokio::fs::remove_file(temp_file).await;
+        let _ = tokio::fs::remove_file(&temp_file).await;
     }
 }

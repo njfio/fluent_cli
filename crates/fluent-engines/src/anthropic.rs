@@ -36,12 +36,27 @@ impl AnthropicEngine {
         };
 
         // Create reusable HTTP client with optimized settings
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
+        let mut client_builder = Client::builder()
+            .timeout(std::time::Duration::from_secs(60))  // Increased from 30 to 60 seconds
+            .connect_timeout(std::time::Duration::from_secs(30))  // Increased from 10 to 30 seconds
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
+            .tcp_keepalive(std::time::Duration::from_secs(60));
+            
+        // Check for proxy settings from environment variables
+        if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
+            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+                client_builder = client_builder.proxy(proxy);
+                debug!("Using HTTPS proxy");
+            }
+        } else if let Ok(proxy_url) = std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy")) {
+            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+                client_builder = client_builder.proxy(proxy);
+                debug!("Using HTTP proxy");
+            }
+        }
+            
+        let client = client_builder
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
 
@@ -151,7 +166,7 @@ impl Engine for AnthropicEngine {
             // Check cache first if enabled
             if let Some(cache) = &self.cache {
                 let cache_key = CacheKey::new(&request.payload, "anthropic")
-                    .with_model("claude-3-5-sonnet-20240620"); // Default model
+                    .with_model("claude-sonnet-4-20250514"); // Default model
 
                 if let Ok(Some(cached_response)) = cache.get(&cache_key).await {
                     debug!("Cache hit for Anthropic request");
@@ -182,7 +197,7 @@ impl Engine for AnthropicEngine {
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
             let res = timeout(
-                Duration::from_secs(300), // 5 minute timeout for API calls
+                Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for API calls
                 self.client
                     .post(&url)
                     .header("x-api-key", auth_token)
@@ -192,14 +207,20 @@ impl Engine for AnthropicEngine {
                     .send()
             )
             .await
-            .map_err(|_| anyhow!("Anthropic API request timed out after 5 minutes"))??;
-
+            .map_err(|e| {
+                debug!("Anthropic API request timeout error: {:?}", e);
+                anyhow!("Anthropic API request timed out after 10 minutes or failed with timeout error: {:?}", e)
+            })??;
+            
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
                 res.json::<serde_json::Value>()
             )
             .await
-            .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
+            .map_err(|e| {
+                debug!("Response parsing error: {:?}", e);
+                anyhow!("Response parsing timed out after 30 seconds or failed with error: {:?}", e)
+            })??;
             debug!("Response: {:?}", response_body);
 
             if let Some(error) = response_body.get("error") {
@@ -224,7 +245,7 @@ impl Engine for AnthropicEngine {
 
             let model = response_body["model"]
                 .as_str()
-                .unwrap_or("unknown")
+                .unwrap_or("claude-sonnet-4-20250514")
                 .to_string();
             let finish_reason = response_body["stop_reason"].as_str().map(String::from);
 
@@ -313,7 +334,7 @@ impl Engine for AnthropicEngine {
             );
 
             let payload = serde_json::json!({
-                "model": "claude-3-5-sonnet-20240620",
+                "model": "claude-sonnet-4-20250514",
                 "max_tokens": 1024,
                 "messages": [
                     {
@@ -344,7 +365,7 @@ impl Engine for AnthropicEngine {
                 .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
 
             let response = timeout(
-                Duration::from_secs(300), // 5 minute timeout for vision API calls
+                Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for vision API calls
                 self.client
                     .post(&url)
                     .header("x-api-key", auth_token)
@@ -354,14 +375,20 @@ impl Engine for AnthropicEngine {
                     .send()
             )
             .await
-            .map_err(|_| anyhow!("Vision API request timed out after 5 minutes"))??;
-
+            .map_err(|e| {
+                debug!("Vision API request timeout error: {:?}", e);
+                anyhow!("Vision API request timed out after 10 minutes or failed with timeout error: {:?}", e)
+            })??;
+            
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
                 response.json::<serde_json::Value>()
             )
             .await
-            .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
+            .map_err(|e| {
+                debug!("Vision API response parsing error: {:?}", e);
+                anyhow!("Vision API response parsing timed out after 30 seconds or failed with error: {:?}", e)
+            })??;
 
             // Debug print the response
             debug!("Anthropic Response: {:?}", response_body);

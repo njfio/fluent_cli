@@ -8,6 +8,7 @@ pub mod filesystem;
 pub mod rust_compiler;
 pub mod shell;
 pub mod string_replace_editor;
+pub mod workflow;
 
 #[cfg(test)]
 mod string_replace_editor_tests;
@@ -16,6 +17,7 @@ pub use filesystem::FileSystemExecutor;
 pub use rust_compiler::RustCompilerExecutor;
 pub use shell::ShellExecutor;
 pub use string_replace_editor::StringReplaceEditor;
+pub use workflow::WorkflowExecutor;
 
 /// Trait for tool executors that can perform actions in the environment
 #[async_trait]

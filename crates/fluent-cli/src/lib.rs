@@ -58,7 +58,7 @@ pub mod pipeline_builder;
 pub mod validation;
 pub mod memory;
 pub mod utils;
-pub mod frogger;
+
 
 // New modular components
 pub mod cli_builder;

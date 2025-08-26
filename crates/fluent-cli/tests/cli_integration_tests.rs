@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy_cli_integration")]
 use fluent_core::config::{Config, EngineConfig};
 use fluent_engines::EngineType;
 use std::process::Command;

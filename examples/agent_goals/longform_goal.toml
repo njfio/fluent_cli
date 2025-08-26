@@ -1,0 +1,15 @@
+goal_description = "Write a long-form (~100k words) work about sustainable urban planning: generate a detailed outline, draft at least 10 chapters iteratively, and assemble a single book.md."
+max_iterations = 80
+output_dir = "docs/book"
+chapters = 12
+
+success_criteria = [
+  "file_exists:{output_dir}/outline.md",
+  "file_exists:{output_dir}/ch_01.md",
+  "file_exists:{output_dir}/index.md",
+  "file_exists:{output_dir}/book.md",
+  "non_empty_file:{output_dir}/book.md",
+]
+
+# Optional runtime suggestions:
+#   export FLUENT_AGENT_TIMEOUT_SECS=3600

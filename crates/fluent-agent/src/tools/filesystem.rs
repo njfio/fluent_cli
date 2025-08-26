@@ -297,6 +297,48 @@ impl ToolExecutor for FileSystemExecutor {
                 Ok(serde_json::to_string_pretty(&file_info)?)
             }
 
+            "concat_files" => {
+                // Concatenate multiple files into a destination file
+                let paths_val = parameters
+                    .get("paths")
+                    .ok_or_else(|| anyhow!("Missing 'paths' parameter"))?;
+                let dest_str = parameters
+                    .get("dest")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow!("Missing 'dest' parameter"))?;
+                let separator = parameters
+                    .get("separator")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("\n\n");
+
+                let mut inputs: Vec<String> = Vec::new();
+                match paths_val {
+                    serde_json::Value::Array(arr) => {
+                        for v in arr {
+                            if let Some(s) = v.as_str() { inputs.push(s.to_string()); }
+                        }
+                    }
+                    serde_json::Value::String(s) => inputs.push(s.clone()),
+                    _ => return Err(anyhow!("'paths' must be an array of strings or a string")),
+                }
+
+                if inputs.is_empty() { return Err(anyhow!("No input paths provided")); }
+
+                // Validate and read inputs
+                let mut combined = String::new();
+                for (idx, p) in inputs.iter().enumerate() {
+                    let path = self.validate_path(p)?;
+                    let content = self.read_file_safe(&path).await?;
+                    if idx > 0 { combined.push_str(separator); }
+                    combined.push_str(&content);
+                }
+
+                // Write destination
+                let dest = self.validate_path(dest_str)?;
+                self.write_file_safe(&dest, &combined).await?;
+                Ok(format!("Successfully concatenated {} files into {}", inputs.len(), dest.display()))
+            }
+
             _ => Err(anyhow!("Unknown file system tool: {}", tool_name)),
         }
     }
@@ -307,6 +349,7 @@ impl ToolExecutor for FileSystemExecutor {
             "list_directory".to_string(),
             "file_exists".to_string(),
             "get_file_info".to_string(),
+            "concat_files".to_string(),
         ];
 
         if !self.config.read_only {
@@ -327,6 +370,7 @@ impl ToolExecutor for FileSystemExecutor {
             "create_directory" => "Create a directory and its parent directories",
             "file_exists" => "Check if a file or directory exists",
             "get_file_info" => "Get detailed information about a file or directory",
+            "concat_files" => "Concatenate multiple files and write to a destination",
             _ => return None,
         };
 
@@ -367,6 +411,27 @@ impl ToolExecutor for FileSystemExecutor {
                     return Err(anyhow!("Content parameter must be a string"));
                 }
             }
+        }
+
+        // Validate concat_files parameters
+        if tool_name == "concat_files" {
+            if let Some(paths_val) = parameters.get("paths") {
+                match paths_val {
+                    serde_json::Value::Array(arr) => {
+                        for v in arr {
+                            if let Some(p) = v.as_str() { let _ = self.validate_path(p)?; }
+                        }
+                    }
+                    serde_json::Value::String(s) => { let _ = self.validate_path(s)?; }
+                    _ => return Err(anyhow!("'paths' must be array of strings or string")),
+                }
+            } else {
+                return Err(anyhow!("'paths' parameter required"));
+            }
+            if let Some(dest_val) = parameters.get("dest") {
+                if let Some(dest_str) = dest_val.as_str() { let _ = self.validate_path(dest_str)?; }
+                else { return Err(anyhow!("'dest' must be string")); }
+            } else { return Err(anyhow!("'dest' parameter required")); }
         }
 
         Ok(())

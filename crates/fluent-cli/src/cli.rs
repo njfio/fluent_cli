@@ -34,7 +34,19 @@ pub async fn run_modular() -> Result<()> {
     // Load configuration - handle missing config files gracefully
     let config_path = matches.get_one::<String>("config").map(|s| s.as_str()).unwrap_or("fluent_config.toml");
     let config = if Path::new(config_path).exists() {
-        fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new()).map_err(|e| CliError::Config(e.to_string()))?
+        match fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new()) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                // Be lenient for agent flows: they construct engines themselves
+                let sub = matches.subcommand_name().unwrap_or("");
+                if sub == "agent" {
+                    eprintln!("⚠️  Config load warning (agent mode will continue): {}", e);
+                    fluent_core::config::Config::new(vec![])
+                } else {
+                    return Err(CliError::Config(e.to_string()).into());
+                }
+            }
+        }
     } else {
         // Create a minimal default config if no config file exists
         fluent_core::config::Config::new(vec![])

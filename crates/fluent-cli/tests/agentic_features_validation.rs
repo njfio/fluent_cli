@@ -46,7 +46,6 @@ async fn test_agentic_run_function_exists() -> Result<()> {
         "test_config.json",
         3,
         true,
-        &create_test_config(),
         "test_config.toml"
     ).await;
 
@@ -126,7 +125,6 @@ async fn test_complete_agentic_workflow() -> Result<()> {
         "test_config.json",
         2,
         true,
-        &config,
         "test_config.toml"
     ).await;
 

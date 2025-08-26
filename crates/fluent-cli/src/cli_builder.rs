@@ -32,6 +32,14 @@ pub fn build_cli() -> Command {
                         .required(true),
                 )
                 .arg(
+                    Arg::new("input")
+                        .short('i')
+                        .long("input")
+                        .value_name("INPUT")
+                        .help("Input string to feed into the pipeline")
+                        .required(false),
+                )
+                .arg(
                     Arg::new("variables")
                         .short('v')
                         .long("variables")
@@ -39,6 +47,19 @@ pub fn build_cli() -> Command {
                         .help("Pipeline variables")
                         .action(ArgAction::Append)
                         .num_args(1..),
+                )
+                .arg(
+                    Arg::new("force_fresh")
+                        .long("force-fresh")
+                        .help("Force fresh execution, ignoring any saved state")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("run_id")
+                        .long("run-id")
+                        .value_name("ID")
+                        .help("Optional run identifier to tag this execution")
+                        .required(false),
                 )
                 .arg(
                     Arg::new("dry-run")
@@ -63,11 +84,37 @@ pub fn build_cli() -> Command {
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
+                    Arg::new("preview")
+                        .long("preview")
+                        .help("Open the generated artifact in the default viewer")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("preview-path")
+                        .long("preview-path")
+                        .value_name("FILE")
+                        .help("Path to preview (defaults to examples/web_tetris.html)"),
+                )
+                .arg(
                     Arg::new("goal")
                         .short('g')
                         .long("goal")
                         .value_name("GOAL")
                         .help("Goal description for the agent")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("goal-file")
+                        .long("goal-file")
+                        .value_name("FILE")
+                        .help("Path to a TOML goal file (goal_description, max_iterations, success_criteria)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("model")
+                        .long("model")
+                        .value_name("MODEL")
+                        .help("Override model for default engines (e.g. gpt-4o, claude-3-5-sonnet-20241022)")
                         .required(false),
                 )
                 .arg(
@@ -83,6 +130,41 @@ pub fn build_cli() -> Command {
                         .long("reflection")
                         .help("Enable reflection mode")
                         .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("enable-tools")
+                        .long("enable-tools")
+                        .help("Enable tool usage (filesystem, compiler, shell)")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("agent-config")
+                        .long("agent-config")
+                        .value_name("FILE")
+                        .help("Path to agent configuration JSON")
+                        .default_value("agent_config.json"),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .long("dry-run")
+                        .help("Preview planned actions without executing side effects")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("gen-retries")
+                        .long("gen-retries")
+                        .value_name("N")
+                        .help("Max retries for LLM code generation")
+                        .value_parser(clap::value_parser!(u32))
+                        .default_value("3"),
+                )
+                .arg(
+                    Arg::new("min-html-size")
+                        .long("min-html-size")
+                        .value_name("BYTES")
+                        .help("Minimum HTML size to accept as valid output")
+                        .value_parser(clap::value_parser!(u32))
+                        .default_value("2000"),
                 )
                 .arg(
                     Arg::new("task")

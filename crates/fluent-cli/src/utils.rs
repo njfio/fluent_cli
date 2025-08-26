@@ -252,32 +252,36 @@ fn create_html_fallback() -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Frogger Game - Created by Agentic System</title>
+    <title>Tetris - Agentic System</title>
     <style>
-        body { margin: 0; padding: 20px; background: #222; color: white; font-family: Arial, sans-serif; }
-        canvas { border: 2px solid #fff; background: #000; }
-        .info { margin-top: 10px; }
+        body { margin: 0; padding: 20px; background: #111; color: #eee; font-family: Arial, sans-serif; }
+        #info { margin-bottom: 10px; }
+        canvas { border: 2px solid #eee; background: #000; }
     </style>
-</head>
+    </head>
 <body>
-    <h1>🐸 Frogger Game - Created by Agentic System</h1>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div class="info">
-        <p>Use arrow keys to move the frog. Avoid cars and reach the top!</p>
-        <p>Score: <span id="score">0</span> | Lives: <span id="lives">3</span></p>
-    </div>
+    <div id="info"><strong>Tetris (placeholder)</strong> — arrow keys move, space hard drop.</div>
+    <canvas id="tetrisCanvas" width="320" height="640"></canvas>
     <script>
-        const canvas = document.getElementById('gameCanvas');
+        const canvas = document.getElementById('tetrisCanvas');
         const ctx = canvas.getContext('2d');
-
-        // Basic game placeholder
-        ctx.fillStyle = 'green';
-        ctx.fillRect(400, 550, 20, 20); // Frog
-        ctx.fillStyle = 'white';
-        ctx.font = '20px Arial';
-        ctx.fillText('Frogger Game - Use arrow keys to move!', 200, 300);
-
-        console.log('Frogger game created by agentic system!');
+        const COLS = 10, ROWS = 20, SIZE = 32;
+        const board = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+        function draw() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c]) {
+                        ctx.fillStyle = '#0ff';
+                        ctx.fillRect(c*SIZE, r*SIZE, SIZE-1, SIZE-1);
+                    } else {
+                        ctx.strokeStyle = '#222';
+                        ctx.strokeRect(c*SIZE, r*SIZE, SIZE, SIZE);
+                    }
+                }
+            }
+        }
+        draw();
     </script>
 </body>
 </html>"#.to_string()
@@ -285,18 +289,18 @@ fn create_html_fallback() -> String {
 
 /// Create Rust fallback template for games
 fn create_rust_fallback() -> String {
-    r#"// Frogger-like Game in Rust - Created by Agentic System
+    r#"// Tetris Game in Rust - Created by Agentic System
 use std::io::{self, stdout, Write};
 use std::time::{Duration, Instant};
 use std::thread;
 
 fn main() -> io::Result<()> {
-    println!("🐸 Frogger Game - Created by Agentic System");
-    println!("Use WASD to move, Q to quit");
+    println!("🎮 Tetris Game - Created by Agentic System");
+    println!("Use arrow keys to move pieces, space for hard drop, 'q' to quit");
 
     // Basic game loop placeholder
     loop {
-        println!("Game running... (Press Ctrl+C to exit)");
+        println!("Tetris game running... (Press Ctrl+C to exit)");
         thread::sleep(Duration::from_millis(1000));
         break; // Exit for now
     }
@@ -340,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_extract_code() {
-        let response = "Here's some Rust code:\n```rust\nfn main() {\n    println!(\"Hello\");\n}\n```";
+        let response = "Here's some Rust code:\n``rust\nfn main() {\n    println!(\"Hello\");\n}\n```";
         let result = extract_code(response, "rust");
         assert!(result.contains("fn main()"));
         assert!(result.contains("println!"));

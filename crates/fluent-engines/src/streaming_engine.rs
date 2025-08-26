@@ -383,7 +383,7 @@ impl StreamingEngine for AnthropicStreaming {
 
         // Build streaming payload
         let payload = json!({
-            "model": self.config.parameters.get("model").unwrap_or(&json!("claude-3-5-sonnet-20240620")),
+            "model": self.config.parameters.get("model").unwrap_or(&json!("claude-sonnet-4-20250514")),
             "messages": [
                 {
                     "role": "user",

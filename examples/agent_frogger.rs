@@ -3,10 +3,11 @@ use crossterm::{
     event::{poll, read, Event, KeyCode},
     execute,
     style::{Color, Print, SetForegroundColor},
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    Result,
 };
 use std::{
-    io::{stdout, Result},
+    io::stdout,
     time::{Duration, Instant},
 };
 
@@ -29,7 +30,7 @@ impl Game {
         Game {
             frog_x: WIDTH / 2,
             frog_y: HEIGHT - 2,
-            cars: CAR_ROWS.iter().map(|_| Vec::new()).collect(),
+            cars: CAR_ROWS.iter().map(|_| vec![5]).collect(),
             score: 0,
             lives: 3,
             game_over: false,
@@ -44,31 +45,31 @@ impl Game {
     fn update(&mut self) {
         // Update car positions
         for (i, row) in self.cars.iter_mut().enumerate() {
-            // Spawn new cars
-            if rand::random::<f32>() < 0.1 {
-                row.push(if i % 2 == 0 { 0 } else { WIDTH - 1 });
-            }
-
-            // Move cars
+            let direction = if i % 2 == 0 { 1 } else { -1 };
             for car in row.iter_mut() {
-                if i % 2 == 0 {
-                    *car = (*car + 1).min(WIDTH);
-                } else {
-                    *car = car.saturating_sub(1);
-                }
+                *car = (*car as i32 + direction).rem_euclid(WIDTH as i32) as u16;
             }
 
-            // Remove cars that are off screen
-            row.retain(|&x| x < WIDTH && x > 0);
+            // Spawn new cars randomly
+            if rand::random::<f32>() < 0.02 {
+                row.push(if direction > 0 { 0 } else { WIDTH - 1 });
+            }
         }
 
         // Check collisions
-        if self.check_collision() {
-            self.lives -= 1;
-            if self.lives == 0 {
-                self.game_over = true;
+        for (i, row) in self.cars.iter().enumerate() {
+            if self.frog_y == CAR_ROWS[i] {
+                for &car in row {
+                    if (self.frog_x as i32 - car as i32).abs() < 2 {
+                        self.lives -= 1;
+                        if self.lives == 0 {
+                            self.game_over = true;
+                        }
+                        self.reset_frog();
+                        return;
+                    }
+                }
             }
-            self.reset_frog();
         }
 
         // Check if frog reached goal
@@ -78,46 +79,35 @@ impl Game {
         }
     }
 
-    fn check_collision(&self) -> bool {
-        for (i, row) in self.cars.iter().enumerate() {
-            if self.frog_y == CAR_ROWS[i] {
-                for &car_x in row {
-                    if (self.frog_x as i32 - car_x as i32).abs() < 2 {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
     fn draw(&self) -> Result<()> {
         execute!(stdout(), Clear(ClearType::All))?;
 
-        // Draw score and lives
-        execute!(
-            stdout(),
-            MoveTo(0, 0),
-            SetForegroundColor(Color::White),
-            Print(format!("Score: {} Lives: {}", self.score, self.lives))
-        )?;
-
-        // Draw goal area
-        for x in 0..WIDTH {
+        // Draw border
+        for y in 0..HEIGHT {
             execute!(
                 stdout(),
-                MoveTo(x, GOAL_ROW),
-                SetForegroundColor(Color::Green),
-                Print("=")
+                MoveTo(0, y),
+                SetForegroundColor(Color::White),
+                Print("|"),
+                MoveTo(WIDTH, y),
+                Print("|")
             )?;
         }
 
+        // Draw goal
+        execute!(
+            stdout(),
+            MoveTo(0, GOAL_ROW),
+            SetForegroundColor(Color::Green),
+            Print("G".repeat(WIDTH as usize + 1))
+        )?;
+
         // Draw cars
         for (i, row) in self.cars.iter().enumerate() {
-            for &car_x in row {
+            for &car in row {
                 execute!(
                     stdout(),
-                    MoveTo(car_x, CAR_ROWS[i]),
+                    MoveTo(car, CAR_ROWS[i]),
                     SetForegroundColor(Color::Red),
                     Print("🚗")
                 )?;
@@ -130,6 +120,14 @@ impl Game {
             MoveTo(self.frog_x, self.frog_y),
             SetForegroundColor(Color::Green),
             Print("🐸")
+        )?;
+
+        // Draw score and lives
+        execute!(
+            stdout(),
+            MoveTo(2, HEIGHT + 1),
+            SetForegroundColor(Color::White),
+            Print(format!("Score: {} Lives: {}", self.score, self.lives))
         )?;
 
         if self.game_over {
@@ -146,46 +144,45 @@ impl Game {
 }
 
 fn main() -> Result<()> {
-    enable_raw_mode()?;
-    execute!(stdout(), Hide)?;
+    execute!(stdout(), EnterAlternateScreen, Hide)?;
 
     let mut game = Game::new();
-    let mut last_update = Instant::now();
+    let frame_duration = Duration::from_millis(50);
 
-    while !game.game_over {
-        // Handle input
-        if poll(Duration::from_millis(100))? {
-            if let Event::Key(event) = read()? {
-                match event.code {
-                    KeyCode::Char('w') => game.frog_y = game.frog_y.saturating_sub(1),
-                    KeyCode::Char('s') => {
-                        if game.frog_y < HEIGHT - 1 {
-                            game.frog_y += 1
-                        }
+    loop {
+        let frame_start = Instant::now();
+
+        if !game.game_over {
+            game.update();
+        }
+
+        game.draw()?;
+
+        if poll(Duration::from_millis(0))? {
+            match read()? {
+                Event::Key(event) => match event.code {
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Char('w') if !game.game_over && game.frog_y > 1 => game.frog_y -= 1,
+                    KeyCode::Char('s') if !game.game_over && game.frog_y < HEIGHT - 1 => {
+                        game.frog_y += 1
                     }
-                    KeyCode::Char('a') => game.frog_x = game.frog_x.saturating_sub(1),
-                    KeyCode::Char('d') => {
-                        if game.frog_x < WIDTH - 1 {
-                            game.frog_x += 1
-                        }
+                    KeyCode::Char('a') if !game.game_over && game.frog_x > 1 => game.frog_x -= 1,
+                    KeyCode::Char('d') if !game.game_over && game.frog_x < WIDTH - 1 => {
+                        game.frog_x += 1
                     }
-                    KeyCode::Char('q') => break,
+                    KeyCode::Char('r') if game.game_over => game = Game::new(),
                     _ => {}
-                }
+                },
+                _ => {}
             }
         }
 
-        // Update game state
-        if last_update.elapsed() >= Duration::from_millis(100) {
-            game.update();
-            last_update = Instant::now();
+        let elapsed = frame_start.elapsed();
+        if elapsed < frame_duration {
+            std::thread::sleep(frame_duration - elapsed);
         }
-
-        // Draw game state
-        game.draw()?;
     }
 
-    execute!(stdout(), Show)?;
-    disable_raw_mode()?;
+    execute!(stdout(), Show, LeaveAlternateScreen)?;
     Ok(())
 }

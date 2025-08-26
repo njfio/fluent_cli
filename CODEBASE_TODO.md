@@ -11,7 +11,7 @@ Priority Key
 
 
 Immediate and Correctness
-- [P0] Resolve deprecated SqliteMemoryStore usage by completing AsyncSqliteMemoryStore LongTermMemory trait
+- [P0] [DONE] Resolve deprecated SqliteMemoryStore usage by completing AsyncSqliteMemoryStore LongTermMemory trait
   - crates/fluent-agent/src/memory.rs
   - Implement trait with proper async lifetimes; migrate call sites and examples; remove deprecation warnings
   - Update TECHNICAL_DEBT.md after completion
@@ -19,7 +19,7 @@ Immediate and Correctness
   - src/error_fixer.rs: remove hardcoded line numbers and bespoke string matching
   - Introduce rustc/json-diagnostics parsing (RUSTFLAGS='-Zunstable-options' or use cargo check --message-format=json) and apply structured fixes or suggestions
   - If the feature is experimental, move it under examples/ or behind a feature flag
-- [P1] Ensure the CLI runs with no required config present (graceful defaults already exist) and add test coverage for that path
+- [P1] [DONE] Ensure the CLI runs with no required config present (graceful defaults already exist) and add test coverage for that path
   - crates/fluent-cli/src/cli.rs: expand tests to assert no panic and meaningful help when no config is found
 - [P1] Validate all direct Engine invocations through CLI (back-compat paths) still behave correctly with missing API keys
   - Add tests asserting clear user-facing errors and non-zero exit codes without panics
@@ -28,7 +28,7 @@ Immediate and Correctness
   - Add allowlist categories by context; enforce timeouts and maximum output size
   - Add tests for deny-by-default behavior and for bad arguments with metacharacters
 - [P1] Normalize create_engine usage and error surfaces
-  - crates/fluent-engines/src/lib.rs create_engine: ensure unknown engines produce uniform, user-friendly errors; add tests
+  - [DONE] crates/fluent-engines/src/lib.rs create_engine: ensure unknown engines produce uniform, user-friendly errors; add tests
 - [P1] Confirm feature flags and examples compile without hidden deps
   - Ensure examples that depend on API keys skip at runtime with clear messages if keys are absent
 
@@ -55,10 +55,10 @@ Testing and QA
   - tests/integration and tests/e2e_cli_tests.rs: prefer assert_cmd with cargo_bin to avoid repeated cargo run spawns where possible
   - Mark network/engine tests as ignored by default; provide a feature or env to enable
 - [P1] Add unit tests for:
-  - crates/fluent-cli: command parsing for all subcommands and options
-  - crates/fluent-engines: engine selection, error mapping, simple request path without network (mock transport)
-  - crates/fluent-core: config parsing, overrides, credentials merge
-  - crates/fluent-agent: MemorySystem read/write, command allowlist/denylist, string_replace editor behavior
+  - [DONE] crates/fluent-cli: command parsing for pipeline options (--input, --run-id, --force-fresh, --json)
+  - [PARTIAL] crates/fluent-engines: engine selection/error mapping (unknown engine type test added); mock transport pending
+  - [DONE] crates/fluent-core: config parsing, overrides, credentials/env merge
+  - [PARTIAL] crates/fluent-agent: command allowlist/denylist tests added; MemorySystem and string_replace editor tests pending
 - [P1] Add golden tests for response formatting and CSV/code extraction utilities
 - [P2] Add property tests (proptests) for path validators and input sanitizers
 

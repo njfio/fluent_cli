@@ -37,6 +37,26 @@ pub enum GoalType {
     Research,
 }
 
+impl std::fmt::Display for GoalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            GoalType::CodeGeneration => "code_generation",
+            GoalType::CodeReview => "code_review",
+            GoalType::Testing => "testing",
+            GoalType::Debugging => "debugging",
+            GoalType::Refactoring => "refactoring",
+            GoalType::Documentation => "documentation",
+            GoalType::Analysis => "analysis",
+            GoalType::FileOperation => "file_operation",
+            GoalType::Communication => "communication",
+            GoalType::Planning => "planning",
+            GoalType::Learning => "learning",
+            GoalType::Research => "research",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Priority levels for goals
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GoalPriority {

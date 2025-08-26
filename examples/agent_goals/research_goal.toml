@@ -1,0 +1,13 @@
+goal_description = "Research the environmental impact of lithium-ion batteries and produce an outline, detailed notes with citations, and an executive summary."
+max_iterations = 30
+output_dir = "docs/research"
+
+# Suggested success criteria for the agent orchestrator
+success_criteria = [
+  "file_exists:{output_dir}/outline.md",
+  "file_exists:{output_dir}/notes.md",
+  "file_exists:{output_dir}/summary.md",
+]
+
+# Optional: increase agent timeout via env when running
+# FLUENT_AGENT_TIMEOUT_SECS=1200

@@ -15,31 +15,20 @@ struct MockReasoningEngine;
 
 #[async_trait]
 impl ReasoningEngine for MockReasoningEngine {
-    async fn reason(&self, context: &ExecutionContext) -> Result<fluent_agent::orchestrator::ReasoningResult> {
-        Ok(fluent_agent::orchestrator::ReasoningResult {
-            reasoning_type: fluent_agent::orchestrator::ReasoningType::SelfReflection,
-            input_context: context.get_summary(),
-            reasoning_output: "Mock reasoning analysis of current situation".to_string(),
-            confidence_score: 0.75,
-            goal_achieved_confidence: 0.6,
-            next_actions: vec![
-                "Continue with current approach".to_string(),
-                "Monitor progress closely".to_string(),
-                "Consider alternative strategies if needed".to_string(),
-            ],
-        })
+    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
+        Ok(format!("Mock reasoning analysis of current situation for prompt: {}", prompt))
     }
 
-    fn get_capabilities(&self) -> Vec<fluent_agent::ReasoningCapability> {
+    async fn get_capabilities(&self) -> Vec<fluent_agent::reasoning::ReasoningCapability> {
         vec![
-            fluent_agent::ReasoningCapability::SelfReflection,
-            fluent_agent::ReasoningCapability::StrategyFormulation,
-            fluent_agent::ReasoningCapability::ProgressEvaluation,
+            fluent_agent::reasoning::ReasoningCapability::SelfReflection,
+            fluent_agent::reasoning::ReasoningCapability::StrategyFormulation,
+            fluent_agent::reasoning::ReasoningCapability::ProgressEvaluation,
         ]
     }
 
-    fn can_handle(&self, reasoning_type: &fluent_agent::orchestrator::ReasoningType) -> bool {
-        matches!(reasoning_type, fluent_agent::orchestrator::ReasoningType::SelfReflection)
+    async fn get_confidence(&self) -> f64 {
+        0.75
     }
 }
 
@@ -198,91 +187,19 @@ async fn main() -> Result<()> {
         ReflectionTrigger::UserRequest
     ).await?;
     
-    println!("   Manual reflection completed:");
+    println!("📊 Manual Reflection Results:");
+    println!("   Type: {:?}", manual_reflection.reflection_type);
     println!("   Confidence: {:.2}", manual_reflection.confidence_assessment);
     println!("   Performance: {:.2}", manual_reflection.performance_assessment);
-    println!("   Total insights: {}", manual_reflection.learning_insights.len());
+    println!("   Learning Insights: {}", manual_reflection.learning_insights.len());
+    println!("   Strategy Adjustments: {}", manual_reflection.strategy_adjustments.len());
 
-    // Show reflection statistics
-    println!("\n📈 Reflection Statistics:");
-    let stats = reflection_engine.get_reflection_statistics();
-    println!("   Total Learning Experiences: {}", stats.total_learning_experiences);
-    println!("   Total Strategy Patterns: {}", stats.total_strategy_patterns);
-    println!("   Average Success Rate: {:.2}", stats.average_success_rate);
-    println!("   Learning Velocity: {:.2}", stats.learning_velocity);
-    println!("   Reflection Frequency: {}", stats.reflection_frequency);
-
-    // Demonstrate different reflection triggers
-    println!("\n🚨 Testing Different Reflection Triggers:");
-    
-    // Low confidence trigger
-    let low_confidence_reflection = reflection_engine.reflect(
-        &context,
-        &reasoning_engine,
-        ReflectionTrigger::LowConfidence(0.3)
-    ).await?;
-    println!("   Low Confidence Reflection - Adjustments: {}", 
-             low_confidence_reflection.strategy_adjustments.len());
-    
-    // Poor performance trigger
-    let poor_performance_reflection = reflection_engine.reflect(
-        &context,
-        &reasoning_engine,
-        ReflectionTrigger::PoorPerformance(0.4)
-    ).await?;
-    println!("   Poor Performance Reflection - Adjustments: {}", 
-             poor_performance_reflection.strategy_adjustments.len());
-    
-    // Crisis trigger
-    let crisis_reflection = reflection_engine.reflect(
-        &context,
-        &reasoning_engine,
-        ReflectionTrigger::CriticalError("System failure detected".to_string())
-    ).await?;
-    println!("   Crisis Reflection - Type: {:?}", crisis_reflection.reflection_type);
-    println!("   Crisis Reflection - Recommendations: {}", 
-             crisis_reflection.recommendations.len());
-
-    // Final context summary
-    println!("\n📋 Final Context Summary:");
-    println!("   {}", context.get_summary());
-    println!("   {}", context.get_progress_summary());
-    println!("   Strategy Adjustments Made: {}", context.strategy_adjustments.len());
-
-    // Demonstrate learning experience analysis
-    println!("\n📚 Learning Experience Analysis:");
-    let final_stats = reflection_engine.get_reflection_statistics();
-    if final_stats.total_learning_experiences > 0 {
-        println!("   Total experiences captured: {}", final_stats.total_learning_experiences);
-        println!("   Average success rate: {:.2}", final_stats.average_success_rate);
-        println!("   Learning velocity: {:.2}", final_stats.learning_velocity);
-
-        if final_stats.average_success_rate > 0.7 {
-            println!("   ✅ Agent is performing well and learning effectively");
-        } else if final_stats.average_success_rate > 0.5 {
-            println!("   ⚠️  Agent performance is moderate - more learning needed");
-        } else {
-            println!("   ❌ Agent performance is poor - significant improvements required");
-        }
-    }
-
-    // Show improvement recommendations
-    println!("\n💡 Improvement Recommendations:");
-    println!("   1. Continue regular reflection cycles for ongoing learning");
-    println!("   2. Monitor strategy adjustment effectiveness");
-    println!("   3. Analyze failure patterns to prevent recurring issues");
-    println!("   4. Leverage successful patterns for similar future tasks");
-    println!("   5. Adjust reflection frequency based on task complexity");
-
-    println!("\n🎉 Self-Reflection & Strategy Adjustment Demo Complete!");
-    println!("   The agent has demonstrated advanced self-awareness and learning capabilities");
-    println!("   Key achievements:");
-    println!("   - ✅ Automatic reflection triggering based on performance");
-    println!("   - ✅ Strategy adjustment generation and application");
-    println!("   - ✅ Learning insight extraction and retention");
-    println!("   - ✅ Performance pattern recognition");
-    println!("   - ✅ Crisis detection and emergency response");
-    println!("   - ✅ Meta-reflection for process improvement");
+    println!("\n✅ Demo completed successfully!");
+    println!("💡 Key takeaways:");
+    println!("   - Reflection engine automatically triggers based on configured frequency");
+    println!("   - Reflection provides valuable insights for strategy adjustment");
+    println!("   - Learning insights are retained for future decision making");
+    println!("   - Strategy adjustments help improve performance over time");
 
     Ok(())
 }

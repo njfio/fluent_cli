@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::memory::{LongTermMemory, MemoryQuery};
+use crate::agent_with_mcp::{LongTermMemory, MemoryQuery};
 
 /// MCP Resource definition with enhanced metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,12 +350,9 @@ impl McpResourceManager {
             Some("memories") => {
                 // Query all memories (simplified for now)
                 let _query = MemoryQuery {
-                    query_text: "".to_string(),
                     memory_types: vec![],
-                    time_range: None,
-                    importance_threshold: Some(0.0),
-                    limit: Some(100),
                     tags: vec![],
+                    limit: Some(100),
                 };
 
                 // For now, return empty memories since we need to fix the memory system integration

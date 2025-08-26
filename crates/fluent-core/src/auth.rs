@@ -245,7 +245,12 @@ impl AuthManager {
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
-            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("fluent-cli/0.1")
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(60))
+            .pool_max_idle_per_host(8)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .tcp_keepalive(std::time::Duration::from_secs(60))
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
 

@@ -33,6 +33,7 @@ tempfile = { workspace = true }
 async-trait.workspace = true
 crossterm = "0.27"
 rand = "0.8"
+reqwest = { workspace = true }
 
 [workspace.dependencies]
 # Core HTTP client - pin to specific minor version for stability

@@ -1,7 +1,7 @@
 {
   "engines": [
     {
-      "name": "anthropic",
+      "name": "game_engine",
       "engine": "anthropic",
       "connection": {
         "protocol": "https",
@@ -12,7 +12,7 @@
       "parameters": {
         "bearer_token": "${ANTHROPIC_API_KEY}",
         "max_tokens": 4000,
-        "modelName": "claude-3-5-sonnet-20241022",
+        "modelName": "claude-sonnet-4-20250514",
         "temperature": 0.1,
         "system": "You are an expert Rust programmer and game developer. You create complete, working code with proper error handling."
       }
