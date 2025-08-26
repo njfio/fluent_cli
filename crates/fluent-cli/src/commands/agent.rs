@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use log::{debug, info, warn, error};
 
 
 
@@ -57,19 +58,25 @@ impl AgentCommand {
         max_iterations: u32,
         enable_tools: bool,
         config: &Config,
+        config_path: &str,
+        model_override: Option<String>,
+        gen_retries: Option<u32>,
+        min_html_size: Option<u32>,
+        dry_run: bool,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Real Agentic Mode");
-        println!("Goal: {}", goal_description);
-        println!("Max iterations: {}", max_iterations);
-        println!("Tools enabled: {}", enable_tools);
+        info!("agent.cli.run_agentic_mode goal='{}' max_iterations={} enable_tools={} model_override={:?} gen_retries={:?} min_html_size={:?} dry_run={}", goal_description, max_iterations, enable_tools, model_override, gen_retries, min_html_size, dry_run);
+        println!("Goal: {goal_description}");
+        println!("Max iterations: {max_iterations}");
+        println!("Tools enabled: {enable_tools}");
 
         // Initialize the agentic framework
         println!("🔧 Initializing agentic framework...");
         self.initialize_agentic_framework(config, enable_tools).await?;
 
-        println!("🎯 Processing goal: {}", goal_description);
-        println!("📋 Max iterations: {}", max_iterations);
-        println!("🔧 Tools enabled: {}", enable_tools);
+        println!("🎯 Processing goal: {goal_description}");
+        println!("📋 Max iterations: {max_iterations}");
+        println!("🔧 Tools enabled: {enable_tools}");
 
         // Use the existing agentic infrastructure from lib.rs
         // This delegates to the real agentic implementation
@@ -80,7 +87,10 @@ impl AgentCommand {
             _agent_config_path,
             max_iterations,
             enable_tools,
-            "fluent_config.toml", // Default config path
+            config_path,
+            model_override.as_deref(),
+            gen_retries,
+            min_html_size,
         ).await {
             Ok(()) => {
                 println!("✅ Agentic execution completed successfully!");
@@ -89,9 +99,9 @@ impl AgentCommand {
                 ))
             }
             Err(e) => {
-                eprintln!("❌ Agentic execution failed: {}", e);
+                eprintln!("❌ Agentic execution failed: {e}");
                 Ok(CommandResult::error(
-                    format!("Agentic execution failed: {}", e)
+                    format!("Agentic execution failed: {e}")
                 ))
             }
         }
@@ -107,16 +117,16 @@ impl AgentCommand {
         config: &Config,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Agent with MCP Integration");
-        println!("Engine: {}", engine_name);
-        println!("Task: {}", task);
-        println!("MCP Servers: {:?}", mcp_servers);
+        println!("Engine: {engine_name}");
+        println!("Task: {task}");
+        println!("MCP Servers: {mcp_servers:?}");
 
         // Initialize agentic framework with MCP support
         self.initialize_agentic_framework(config, true).await?;
 
         println!("🔗 Connecting to MCP servers...");
         for server in &mcp_servers {
-            println!("  📡 Connecting to: {}", server);
+            println!("  📡 Connecting to: {server}");
             // In a full implementation, this would establish MCP connections
         }
 
@@ -124,7 +134,7 @@ impl AgentCommand {
         println!("🎯 Executing task via agentic framework...");
 
         // For now, use the existing agentic mode with MCP context
-        let mcp_task = format!("MCP Task with servers {:?}: {}", mcp_servers, task);
+        let mcp_task = format!("MCP Task with servers {mcp_servers:?}: {task}");
 
         match crate::run_agentic_mode(
             &mcp_task,
@@ -132,6 +142,9 @@ impl AgentCommand {
             20,
             true,
             "fluent_config.toml",
+            None,
+            None,
+            None,
         ).await {
             Ok(()) => {
                 println!("✅ Agent-MCP session completed successfully");
@@ -140,9 +153,9 @@ impl AgentCommand {
                 ))
             }
             Err(e) => {
-                eprintln!("❌ Agent-MCP execution failed: {}", e);
+                eprintln!("❌ Agent-MCP execution failed: {e}");
                 Ok(CommandResult::error(
-                    format!("Agent-MCP execution failed: {}", e)
+                    format!("Agent-MCP execution failed: {e}")
                 ))
             }
         }
@@ -154,31 +167,113 @@ impl CommandHandler for AgentCommand {
         // Create a mutable instance to allow framework initialization
         let mut agent_command = AgentCommand::new();
 
+        // Preview mode: open a file in default viewer and exit
+        if matches.get_flag("preview") || matches.contains_id("preview-path") {
+            let path = matches
+                .get_one::<String>("preview-path")
+                .map(|s| s.as_str())
+                .unwrap_or("examples/web_tetris.html");
+            if !std::path::Path::new(path).exists() {
+                return Err(anyhow!(format!("Preview file not found: {}", path)));
+            }
+            #[cfg(target_os = "macos")]
+            let cmd = ("open", vec![path]);
+            #[cfg(all(unix, not(target_os = "macos")))]
+            let cmd = ("xdg-open", vec![path]);
+            #[cfg(target_os = "windows")]
+            let cmd = ("cmd", vec!["/C", "start", path]);
+
+            let status = std::process::Command::new(cmd.0).args(cmd.1).status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!("📂 Opened preview: {}", path);
+                    return Ok(());
+                }
+                Ok(s) => return Err(anyhow!(format!("Failed to open preview (exit {}): {}", s.code().unwrap_or(-1), path))),
+                Err(e) => return Err(anyhow!(format!("Failed to launch preview: {}", e))),
+            }
+        }
+
         // Check for different agent subcommands
         if matches.get_flag("agentic") {
-            let goal = matches
-                .get_one::<String>("goal")
-                .ok_or_else(|| anyhow!("Goal is required for agentic mode"))?;
+            // Load goal from --goal-file if provided, otherwise --goal string
+            let mut goal_description = matches.get_one::<String>("goal").cloned();
+            let mut max_iters_override: Option<u32> = None;
+            let mut success_criteria: Option<Vec<String>> = None;
+
+            if let Some(goal_file) = matches.get_one::<String>("goal-file") {
+                let content = tokio::fs::read_to_string(goal_file).await
+                    .map_err(|e| anyhow!(format!("Failed to read goal file {}: {}", goal_file, e)))?;
+                let v: serde_json::Value = if content.trim_start().starts_with('{') {
+                    serde_json::from_str(&content)?
+                } else {
+                    toml::from_str(&content)?
+                };
+                if let Some(s) = v.get("goal_description").and_then(|x| x.as_str()) {
+                    goal_description = Some(s.to_string());
+                }
+                if let Some(mi) = v.get("max_iterations").and_then(|x| x.as_u64()) {
+                    max_iters_override = Some(mi as u32);
+                }
+                if let Some(arr) = v.get("success_criteria").and_then(|x| x.as_array()) {
+                    success_criteria = Some(arr.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect());
+                }
+                if let Some(out) = v.get("output_dir").and_then(|x| x.as_str()) {
+                    // Apply to both research and book planners; whichever applies will use it
+                    std::env::set_var("FLUENT_BOOK_OUTPUT_DIR", out);
+                    std::env::set_var("FLUENT_RESEARCH_OUTPUT_DIR", out);
+                }
+                if let Some(ch) = v.get("chapters").and_then(|x| x.as_u64()) {
+                    std::env::set_var("FLUENT_BOOK_CHAPTERS", ch.to_string());
+                }
+            }
+
+            let goal = goal_description.ok_or_else(|| anyhow!("Goal or --goal-file is required for agentic mode"))?;
 
             let agent_config = matches
-                .get_one::<String>("agent_config")
+                .get_one::<String>("agent-config")
                 .map(|s| s.as_str())
                 .unwrap_or("agent_config.json");
 
-            let max_iterations = matches
-                .get_one::<u32>("max_iterations")
-                .copied()
-                .unwrap_or(50);
+            let max_iterations = max_iters_override.or_else(|| matches
+                .get_one::<u32>("max-iterations")
+                .copied()).unwrap_or(50);
 
-            let enable_tools = matches.get_flag("enable_tools");
+            let enable_tools = matches.get_flag("enable-tools");
+
+            let config_path = matches
+                .get_one::<String>("config")
+                .map(|s| s.as_str())
+                .unwrap_or("fluent_config.toml");
+
+            let model_override = matches.get_one::<String>("model").cloned();
+            let gen_retries = matches.get_one::<u32>("gen-retries").copied();
+            let min_html_size = matches.get_one::<u32>("min-html-size").copied();
+            // Pass through success criteria via env for now (AgenticExecutor reads its own config)
+            if let Some(sc) = &success_criteria {
+                std::env::set_var("FLUENT_AGENT_SUCCESS_CRITERIA", sc.join("||"));
+            }
+
+            let dry_run = matches.get_flag("dry-run");
 
             let result = agent_command
-                .run_agentic_mode(goal, agent_config, max_iterations, enable_tools, config)
+                .run_agentic_mode(
+                    &goal,
+                    agent_config,
+                    max_iterations,
+                    enable_tools,
+                    config,
+                    config_path,
+                    model_override,
+                    gen_retries,
+                    min_html_size,
+                    dry_run,
+                )
                 .await?;
 
             if !result.success {
                 if let Some(message) = result.message {
-                    eprintln!("Agent execution failed: {}", message);
+                    eprintln!("Agent execution failed: {message}");
                 }
                 return Err(anyhow!("Agent execution failed"));
             }
@@ -251,41 +346,59 @@ impl CommandHandler for AgentCommand {
                     }
                     input if input.starts_with("goal ") => {
                         let goal_desc = &input[5..];
-                        println!("🎯 Executing goal: {}", goal_desc);
+                        println!("🎯 Executing goal: {goal_desc}");
 
+                        let config_path = matches
+                            .get_one::<String>("config")
+                            .map(|s| s.as_str())
+                            .unwrap_or("fluent_config.toml");
+
+                        let model_override = matches.get_one::<String>("model").map(|s| s.as_str());
                         match crate::run_agentic_mode(
                             goal_desc,
                             "agent_config.json",
                             10,
                             true,
-                            "fluent_config.toml",
+                            config_path,
+                            model_override,
+                            None,
+                            None,
                         ).await {
                             Ok(()) => {
                                 println!("✅ Goal completed successfully");
                             }
                             Err(e) => {
-                                println!("❌ Goal execution error: {}", e);
+                                println!("❌ Goal execution error: {e}");
                             }
                         }
                     }
                     _ => {
-                        println!("🤖 Agent received: {}", input);
+                        println!("🤖 Agent received: {input}");
                         println!("💭 Processing with agentic framework...");
 
                         // Create a simple goal from the input
-                        let goal_desc = format!("Process and respond to: {}", input);
+                        let goal_desc = format!("Process and respond to: {input}");
+                        let config_path = matches
+                            .get_one::<String>("config")
+                            .map(|s| s.as_str())
+                            .unwrap_or("fluent_config.toml");
+
+                        let model_override = matches.get_one::<String>("model").map(|s| s.as_str());
                         match crate::run_agentic_mode(
                             &goal_desc,
                             "agent_config.json",
                             5,
                             false,
-                            "fluent_config.toml",
+                            config_path,
+                            model_override,
+                            None,
+                            None,
                         ).await {
                             Ok(()) => {
                                 println!("🤖 Processing completed");
                             }
                             Err(e) => {
-                                println!("❌ Processing error: {}", e);
+                                println!("❌ Processing error: {e}");
                             }
                         }
                     }

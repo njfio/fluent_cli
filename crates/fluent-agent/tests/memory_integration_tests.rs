@@ -1,5 +1,5 @@
 use fluent_agent::memory::{
-    LongTermMemory, MemoryItem, MemoryQuery, MemoryType, SqliteMemoryStore,
+    LongTermMemory, MemoryItem, MemoryQuery, MemoryType, AsyncSqliteMemoryStore,
     ShortTermMemory, MemoryConfig
 };
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use tokio;
 
 #[tokio::test]
 async fn test_memory_lifecycle_integration() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test storing different types of memories
     let experience_memory = MemoryItem {
@@ -67,7 +67,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
         tags: vec![],
     };
 
-    let high_importance_memories = store.retrieve(&high_importance_query).await?;
+    let high_importance_memories = store.search(high_importance_query).await?;
     assert!(high_importance_memories.len() >= 1);
     // Find the learning memory in the results
     let learning_memory = high_importance_memories.iter()
@@ -85,7 +85,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
         tags: vec![],
     };
 
-    let experience_memories = store.retrieve(&experience_query).await?;
+    let experience_memories = store.search(experience_query).await?;
     assert!(experience_memories.len() >= 1);
     // Find the experience memory in the results
     let experience_memory_found = experience_memories.iter()
@@ -102,7 +102,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     updated_memory.access_count = 5;
     updated_memory.importance = 0.9;
     
-    store.update(&exp_id, updated_memory).await?;
+    store.update( updated_memory).await?;
 
     // Verify update
     let all_memories_query = MemoryQuery {
@@ -114,7 +114,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
         tags: vec![],
     };
 
-    let all_memories = store.retrieve(&all_memories_query).await?;
+    let all_memories = store.search(all_memories_query).await?;
     let updated = all_memories.iter().find(|m| m.memory_id == "exp_001").unwrap();
     assert_eq!(updated.access_count, 5);
     assert_eq!(updated.importance, 0.9);
@@ -122,7 +122,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     // Test memory deletion
     store.delete(&learn_id).await?;
     
-    let remaining_memories = store.retrieve(&all_memories_query).await?;
+    let remaining_memories = store.search(all_memories_query).await?;
     assert_eq!(remaining_memories.len(), 1);
     assert_eq!(remaining_memories[0].memory_id, "exp_001");
 
@@ -153,7 +153,7 @@ async fn test_short_term_memory_integration() -> Result<()> {
 
 #[tokio::test]
 async fn test_memory_query_edge_cases() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
 
     // Test empty database queries
     let empty_query = MemoryQuery {
@@ -165,7 +165,7 @@ async fn test_memory_query_edge_cases() -> Result<()> {
         tags: vec![],
     };
 
-    let empty_results = store.retrieve(&empty_query).await?;
+    let empty_results = store.search(empty_query).await?;
     assert_eq!(empty_results.len(), 0);
 
     // Test high threshold query (should return nothing)
@@ -178,7 +178,7 @@ async fn test_memory_query_edge_cases() -> Result<()> {
         tags: vec![],
     };
 
-    let high_threshold_results = store.retrieve(&high_threshold_query).await?;
+    let high_threshold_results = store.search(high_threshold_query).await?;
     assert_eq!(high_threshold_results.len(), 0);
 
     // Add a memory and test limit functionality
@@ -207,7 +207,7 @@ async fn test_memory_query_edge_cases() -> Result<()> {
         tags: vec![],
     };
 
-    let zero_limit_results = store.retrieve(&zero_limit_query).await?;
+    let zero_limit_results = store.search(zero_limit_query).await?;
     assert_eq!(zero_limit_results.len(), 0);
 
     Ok(())
@@ -215,7 +215,7 @@ async fn test_memory_query_edge_cases() -> Result<()> {
 
 #[tokio::test]
 async fn test_memory_error_handling() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
 
     // Test updating non-existent memory
     let fake_memory = MemoryItem {
@@ -263,7 +263,7 @@ async fn test_memory_concurrency() -> Result<()> {
 
     for i in 0..10 {
         let handle = tokio::spawn(async move {
-            let store = SqliteMemoryStore::new(":memory:").unwrap();
+            let store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             let memory = MemoryItem {
                 memory_id: format!("concurrent_{}", i),
                 memory_type: MemoryType::Experience,
@@ -288,7 +288,7 @@ async fn test_memory_concurrency() -> Result<()> {
     }
 
     // Test with shared store for verification
-    let shared_store = SqliteMemoryStore::new(":memory:")?;
+    let shared_store = AsyncSqliteMemoryStore::new(":memory:")?;
     let test_memory = MemoryItem {
         memory_id: "shared_test".to_string(),
         memory_type: MemoryType::Experience,
@@ -313,7 +313,7 @@ async fn test_memory_concurrency() -> Result<()> {
         tags: vec![],
     };
 
-    let memories = shared_store.retrieve(&query).await?;
+    let memories = shared_store.search(query).await?;
     assert_eq!(memories.len(), 1);
 
     Ok(())

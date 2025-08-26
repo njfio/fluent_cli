@@ -1,0 +1,80 @@
+{
+  "engines": [
+    {
+      "name": "openai",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "${OPENAI_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "gpt-4o",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "anthropic",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "claude-sonnet-4-20250514",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "gemini",
+      "engine": "gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/gemini-pro:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "${GEMINI_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "gemini-pro",
+        "temperature": 0.1
+      }
+    }
+  ],
+  "agent": {
+    "reasoning_engine": "anthropic",
+    "action_engine": "anthropic",
+    "reflection_engine": "anthropic",
+    "memory_database": "sqlite://./agent_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": false,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./",
+        "./src",
+        "./examples",
+        "./tests",
+        "./crates"
+      ],
+      "allowed_commands": [
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy"
+      ]
+    },
+    "config_path": "./anthropic_config.json",
+    "max_iterations": 50,
+    "timeout_seconds": 1800
+  }
+}

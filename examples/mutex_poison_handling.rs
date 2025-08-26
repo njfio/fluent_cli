@@ -1,5 +1,5 @@
 // Comprehensive mutex poison handling example
-use fluent_core::error::{FluentError, PoisonHandlingConfig, PoisonRecoveryStrategy, ThreadSafeErrorHandler};
+use fluent_core::error::{FluentError, PoisonHandlingConfig};
 use fluent_core::{safe_lock, safe_lock_with_config, safe_lock_with_default, safe_lock_with_retry, poison_resistant_operation};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -184,22 +184,24 @@ mod tests {
     #[test]
     fn test_poison_handling_config_creation() {
         let config = PoisonHandlingConfig::fail_fast();
-        assert_eq!(config.strategy, PoisonRecoveryStrategy::FailFast);
+        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::FailFast);
 
         let config = PoisonHandlingConfig::recover_data();
-        assert_eq!(config.strategy, PoisonRecoveryStrategy::RecoverData);
+        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::RecoverData);
 
         let config = PoisonHandlingConfig::retry_with_delay(5, 200);
-        assert_eq!(config.strategy, PoisonRecoveryStrategy::RetryWithDelay);
+        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::RetryWithDelay);
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.retry_delay_ms, 200);
 
         let config = PoisonHandlingConfig::use_default();
-        assert_eq!(config.strategy, PoisonRecoveryStrategy::UseDefault);
+        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::UseDefault);
     }
 
     #[test]
     fn test_data_recovery_from_poison() {
+        use fluent_core::error::ThreadSafeErrorHandler;
+        
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
         let mutex_clone = mutex.clone();
 
@@ -226,6 +228,8 @@ mod tests {
 
     #[test]
     fn test_default_value_fallback() {
+        use fluent_core::error::ThreadSafeErrorHandler;
+        
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
         let mutex_clone = mutex.clone();
 
@@ -252,6 +256,8 @@ mod tests {
 
     #[test]
     fn test_normal_mutex_operations() {
+        use fluent_core::error::ThreadSafeErrorHandler;
+        
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
         
         // Normal operation should work fine

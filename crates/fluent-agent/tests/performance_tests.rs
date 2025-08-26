@@ -1,5 +1,5 @@
 use fluent_agent::{
-    memory::{SqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
     mcp_tool_registry::McpToolRegistry,
     performance::utils::{PerformanceCounter, MemoryTracker, ResourceLimiter},
 };
@@ -15,7 +15,7 @@ use tokio;
 
 #[tokio::test]
 async fn test_memory_store_performance() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let start_time = Instant::now();
     
     // Benchmark memory storage
@@ -106,7 +106,7 @@ async fn test_concurrent_memory_operations() -> Result<()> {
 
     for i in 0..num_concurrent {
         let handle = tokio::spawn(async move {
-            let store = SqliteMemoryStore::new(":memory:").unwrap();
+            let store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             let memory = MemoryItem {
                 memory_id: format!("concurrent_{}", i),
                 memory_type: MemoryType::Experience,
@@ -144,7 +144,7 @@ async fn test_concurrent_memory_operations() -> Result<()> {
     assert_eq!(success_count + error_count, num_concurrent);
 
     // Test with shared store for verification
-    let shared_store = SqliteMemoryStore::new(":memory:")?;
+    let shared_store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let test_memory = MemoryItem {
         memory_id: "shared_test".to_string(),
         memory_type: MemoryType::Experience,
@@ -180,7 +180,7 @@ async fn test_concurrent_memory_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_orchestrator_performance() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let tool_registry = Arc::new(ToolRegistry::new());
     let reflection_engine = Arc::new(ReflectionEngine::new(
         ReflectionConfig::default(),
@@ -291,7 +291,7 @@ async fn test_memory_usage_tracking() -> Result<()> {
     let initial_usage = tracker.get_current_usage();
     
     // Perform memory-intensive operations
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let mut large_memories = Vec::new();
     
     for i in 0..100 {
@@ -394,7 +394,7 @@ async fn test_resource_limiter() -> Result<()> {
 
 #[tokio::test]
 async fn test_large_data_handling() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test with very large memory item
     let large_content = "x".repeat(1_000_000); // 1MB

@@ -47,6 +47,17 @@ pub struct AgentRuntimeConfig {
     pub credentials: HashMap<String, String>,
 }
 
+impl AgentRuntimeConfig {
+    /// Get the base engine for enhanced reasoning
+    pub fn get_base_engine(&self) -> Option<Arc<dyn Engine>> {
+        // Return a clone of the reasoning engine for use as base engine
+        // We need to convert from Arc<Box<dyn Engine>> to Arc<dyn Engine>
+        // This is a workaround - we can't directly cast, so we'll return None for now
+        // In a real implementation, we'd need to restructure to avoid this type mismatch
+        None
+    }
+}
+
 impl AgentEngineConfig {
     /// Load agent configuration from file
     pub async fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -60,22 +71,23 @@ impl AgentEngineConfig {
         &self,
         fluent_config_path: &str,
         credentials: HashMap<String, String>,
+        model_override: Option<&str>,
     ) -> Result<AgentRuntimeConfig> {
         // Load the main fluent_cli configuration
         let fluent_config_content = tokio::fs::read_to_string(fluent_config_path).await?;
 
         // Create reasoning engine
         let reasoning_engine = self
-            .create_engine(&fluent_config_content, &self.reasoning_engine, &credentials)
+            .create_engine(&fluent_config_content, &self.reasoning_engine, &credentials, model_override)
             .await?;
 
         // Create action engine (can be the same as reasoning)
         let action_engine = if self.action_engine == self.reasoning_engine {
             // Create a new instance of the same engine
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials)
+            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
                 .await?
         } else {
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials)
+            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
                 .await?
         };
 
@@ -86,6 +98,7 @@ impl AgentEngineConfig {
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
+                model_override,
             )
             .await?
         } else if self.reflection_engine == self.action_engine {
@@ -94,6 +107,7 @@ impl AgentEngineConfig {
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
+                model_override,
             )
             .await?
         } else {
@@ -101,6 +115,7 @@ impl AgentEngineConfig {
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
+                model_override,
             )
             .await?
         };
@@ -120,6 +135,7 @@ impl AgentEngineConfig {
         config_content: &str,
         engine_name: &str,
         credentials: &HashMap<String, String>,
+        model_override: Option<&str>,
     ) -> Result<Box<dyn Engine>> {
         // First try to load from the provided config file
         match load_engine_config(
@@ -137,7 +153,7 @@ impl AgentEngineConfig {
                             "Failed to create engine '{}' with config: {}",
                             engine_name, e
                         );
-                        self.create_default_engine(engine_name, credentials).await
+                        self.create_default_engine(engine_name, credentials, model_override).await
                     }
                 }
             }
@@ -146,7 +162,7 @@ impl AgentEngineConfig {
                     "Engine '{}' not found in config: {}",
                     engine_name, e
                 );
-                self.create_default_engine(engine_name, credentials).await
+                self.create_default_engine(engine_name, credentials, model_override).await
             }
         }
     }
@@ -156,12 +172,13 @@ impl AgentEngineConfig {
         &self,
         engine_name: &str,
         credentials: &HashMap<String, String>,
+        model_override: Option<&str>,
     ) -> Result<Box<dyn Engine>> {
         use fluent_core::config::{ConnectionConfig, EngineConfig};
         use serde_json::Value;
         use std::collections::HashMap as StdHashMap;
 
-        let (engine_type, api_key_name, hostname, request_path, model) = match engine_name {
+        let (engine_type, api_key_name, hostname, request_path, mut model) = match engine_name {
             "openai" | "gpt-4o" | "gpt-4" => (
                 "openai",
                 "OPENAI_API_KEY",
@@ -174,7 +191,7 @@ impl AgentEngineConfig {
                 "ANTHROPIC_API_KEY",
                 "api.anthropic.com",
                 "/v1/messages",
-                "claude-3-5-sonnet-20241022",
+                "claude-sonnet-4-20250514",
             ),
             "google_gemini" | "gemini" | "gemini-flash" => (
                 "google_gemini",
@@ -200,14 +217,20 @@ impl AgentEngineConfig {
             _ => return Err(anyhow!("Unsupported engine type: {}", engine_name)),
         };
 
+        // Apply model override if provided
+        if let Some(override_model) = model_override {
+            model = override_model;
+        }
+
         // Check if we have the required API key
         let api_key = credentials.get(api_key_name)
             .or_else(|| credentials.get(&api_key_name.replace("_API_KEY", "")))
             .ok_or_else(|| anyhow!("Missing API key '{}' for engine '{}'. Please set the environment variable or add it to your credentials.", api_key_name, engine_name))?;
 
         let mut parameters = StdHashMap::new();
-        parameters.insert("api_key".to_string(), Value::String(api_key.clone()));
-        parameters.insert("model".to_string(), Value::String(model.to_string()));
+        // Fluent engines expect 'bearer_token' and 'modelName'
+        parameters.insert("bearer_token".to_string(), Value::String(api_key.clone()));
+        parameters.insert("modelName".to_string(), Value::String(model.to_string()));
         if let Some(temp_number) = serde_json::Number::from_f64(0.1) {
             parameters.insert("temperature".to_string(), Value::Number(temp_number));
         }

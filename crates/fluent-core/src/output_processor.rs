@@ -333,7 +333,7 @@ impl OutputProcessor {
             // Then check against whitelist
             let cmd_parts: Vec<&str> = trimmed.split_whitespace().collect();
             if let Some(cmd) = cmd_parts.first() {
-                if !safe_commands.contains(cmd) {
+                if !safe_commands.iter().any(|safe_cmd| safe_cmd == cmd) {
                     return Err(anyhow!("Command '{}' not in whitelist", cmd));
                 }
             }
@@ -356,7 +356,7 @@ impl OutputProcessor {
             // Enhanced command validation
             let cmd_parts: Vec<&str> = trimmed.split_whitespace().collect();
             if let Some(cmd) = cmd_parts.first() {
-                if !safe_commands.contains(cmd) {
+                if !safe_commands.iter().any(|safe_cmd| safe_cmd == cmd) {
                     output.push_str(&format!("Blocked non-whitelisted command: {}\n", trimmed));
                     continue;
                 }
@@ -390,13 +390,28 @@ impl OutputProcessor {
     }
 
     /// Get configurable command whitelist from environment or defaults
-    fn get_command_whitelist() -> Vec<&'static str> {
+    fn get_command_whitelist() -> Vec<String> {
         // Check if custom whitelist is provided via environment variable
         if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
-            // Parse comma-separated list and return as static references
-            // For now, return default list and log the custom commands
-            log::info!("Custom command whitelist provided: {}", custom_commands);
-            // TODO: Implement dynamic whitelist parsing with proper lifetime management
+            log::info!("Using custom command whitelist from environment");
+
+            // Parse comma-separated list and validate each command
+            let mut commands = Vec::new();
+            for cmd in custom_commands.split(',') {
+                let trimmed = cmd.trim();
+                if !trimmed.is_empty() && Self::is_safe_command(trimmed) {
+                    commands.push(trimmed.to_string());
+                } else {
+                    log::warn!("Skipping potentially unsafe command: {}", trimmed);
+                }
+            }
+
+            // If we have valid custom commands, use them
+            if !commands.is_empty() {
+                return commands;
+            } else {
+                log::warn!("No valid commands in custom whitelist, falling back to defaults");
+            }
         }
 
         // Default safe command whitelist
@@ -404,7 +419,32 @@ impl OutputProcessor {
             "echo", "cat", "ls", "pwd", "date", "whoami", "id",
             "head", "tail", "wc", "grep", "sort", "uniq", "find",
             "which", "type", "file", "stat", "du", "df"
-        ]
+        ].into_iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Check if a command is considered safe for execution
+    fn is_safe_command(command: &str) -> bool {
+        // Basic safety checks for command names
+        if command.is_empty() || command.len() > 50 {
+            return false;
+        }
+
+        // Must be alphanumeric with optional hyphens/underscores
+        if !command.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return false;
+        }
+
+        // Blacklist of dangerous commands
+        let dangerous_commands = [
+            "rm", "rmdir", "del", "format", "mkfs", "dd", "fdisk", "parted",
+            "mount", "umount", "sudo", "su", "chmod", "chown", "chgrp",
+            "curl", "wget", "nc", "netcat", "telnet", "ssh", "scp", "rsync",
+            "ftp", "sftp", "python", "perl", "ruby", "node", "php", "bash",
+            "sh", "zsh", "fish", "csh", "eval", "exec", "source", "kill",
+            "killall", "pkill", "nohup", "systemctl", "service", "crontab"
+        ];
+
+        !dangerous_commands.contains(&command)
     }
 
     /// Validate command against security policies

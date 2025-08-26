@@ -46,7 +46,7 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
     let engine = create_llm_engine(config).await?;
     
     let cypher_prompt = format!(
-        "Convert this natural language query to Cypher for Neo4j: {}
+        "Convert this natural language query to Cypher for Neo4j: {query}
         
         Rules:
         1. Return only the Cypher query, no explanations
@@ -54,8 +54,7 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
         3. Be specific and efficient
         4. Handle edge cases appropriately
         
-        Cypher query:",
-        query
+        Cypher query:"
     );
 
     let request = fluent_core::types::Request {

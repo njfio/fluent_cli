@@ -574,6 +574,8 @@ Contributions are welcome! Please:
 3. Make your changes with tests
 4. Submit a pull request
 
+Before opening a PR, read the Repository Guidelines in [AGENTS.md](AGENTS.md) for structure, commands, style, testing, and PR requirements.
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

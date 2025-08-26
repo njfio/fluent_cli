@@ -306,12 +306,19 @@ impl<'a> InteractionManager<'a> {
             .await?;
 
         if let Some(row) = rows.first() {
+            // Calculate real response time from timestamps
+            let response_time = self.calculate_session_response_time(session_id).await.unwrap_or(0.0);
+
+            // Get actual finish reason from the most recent interaction
+            let finish_reason = self.get_session_finish_reason(session_id).await
+                .unwrap_or_else(|_| "completed".to_string());
+
             Ok(InteractionStats {
                 prompt_tokens: row.get::<i64>("total_prompt_tokens").unwrap_or(0) as u32,
                 completion_tokens: row.get::<i64>("total_completion_tokens").unwrap_or(0) as u32,
                 total_tokens: row.get::<i64>("total_tokens").unwrap_or(0) as u32,
-                response_time: 0.0, // TODO: Calculate from timestamps
-                finish_reason: "completed".to_string(), // TODO: Get from actual data
+                response_time,
+                finish_reason,
             })
         } else {
             Err(anyhow!("No interaction statistics found for session {}", session_id))
@@ -346,6 +353,135 @@ impl<'a> InteractionManager<'a> {
         Ok(props)
     }
 
+    /// Calculate average response time for a session from timestamps
+    async fn calculate_session_response_time(&self, session_id: &str) -> Result<f64> {
+        let query_str = r#"
+        MATCH (s:Session {id: $session_id})-[:HAS_INTERACTION]->(i:Interaction)
+        OPTIONAL MATCH (i)-[:HAS_QUESTION]->(q:Question)
+        OPTIONAL MATCH (i)-[:HAS_RESPONSE]->(r:Response)
+        WHERE q.timestamp IS NOT NULL AND r.timestamp IS NOT NULL
+        WITH q.timestamp as question_time, r.timestamp as response_time
+        RETURN avg(duration.between(datetime(question_time), datetime(response_time)).seconds) as avg_response_time
+        "#;
+
+        let rows = self
+            .query_executor
+            .execute_query_with_params(
+                query(query_str).param("session_id", session_id)
+            )
+            .await?;
+
+        if let Some(row) = rows.first() {
+            Ok(row.get::<f64>("avg_response_time").unwrap_or(0.0))
+        } else {
+            Ok(0.0)
+        }
+    }
+
+    /// Get the finish reason from the most recent interaction in a session
+    async fn get_session_finish_reason(&self, session_id: &str) -> Result<String> {
+        let query_str = r#"
+        MATCH (s:Session {id: $session_id})-[:HAS_INTERACTION]->(i:Interaction)
+        OPTIONAL MATCH (i)-[:HAS_RESPONSE]->(r:Response)
+        WHERE r.llm_specific_data IS NOT NULL
+        RETURN r.llm_specific_data as response_data
+        ORDER BY i.timestamp DESC
+        LIMIT 1
+        "#;
+
+        let rows = self
+            .query_executor
+            .execute_query_with_params(
+                query(query_str).param("session_id", session_id)
+            )
+            .await?;
+
+        if let Some(row) = rows.first() {
+            let response_data: String = row.get("response_data")?;
+
+            // Try to parse JSON and extract finish_reason
+            if let Ok(json_data) = serde_json::from_str::<serde_json::Value>(&response_data) {
+                if let Some(finish_reason) = json_data.get("finish_reason") {
+                    if let Some(reason_str) = finish_reason.as_str() {
+                        return Ok(reason_str.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok("completed".to_string())
+    }
+
+    /// Parse a Neo4j row into a Neo4jInteraction struct
+    fn parse_interaction_from_row(&self, row: &neo4rs::Row, session_id: &str) -> Result<Neo4jInteraction> {
+        // Extract interaction data
+        let interaction_id: String = row.get("i.id").unwrap_or_else(|_| "unknown".to_string());
+        let timestamp_str: String = row.get("i.timestamp").unwrap_or_else(|_| Utc::now().to_rfc3339());
+        let order: i64 = row.get("i.order").unwrap_or(0);
+
+        // Parse timestamp
+        let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        // Extract question data if present
+        let question = if let Ok(question_id) = row.get::<String>("q.id") {
+            let content: String = row.get("q.content").unwrap_or_default();
+            let question_timestamp_str: String = row.get("q.timestamp").unwrap_or_else(|_| timestamp.to_rfc3339());
+            let question_timestamp = DateTime::parse_from_rfc3339(&question_timestamp_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or(timestamp);
+
+            // Extract vector if present (simplified - in practice you'd handle BoltList properly)
+            let vector = vec![]; // Placeholder - would need proper BoltList parsing
+
+            Some(Neo4jQuestion {
+                id: question_id,
+                content,
+                vector,
+                timestamp: question_timestamp,
+            })
+        } else {
+            None
+        };
+
+        // Extract response data if present
+        let response = if let Ok(response_id) = row.get::<String>("r.id") {
+            let content: String = row.get("r.content").unwrap_or_default();
+            let response_timestamp_str: String = row.get("r.timestamp").unwrap_or_else(|_| timestamp.to_rfc3339());
+            let response_timestamp = DateTime::parse_from_rfc3339(&response_timestamp_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or(timestamp);
+
+            let confidence: f64 = row.get("r.confidence").unwrap_or(0.0);
+            let llm_specific_data_str: String = row.get("r.llm_specific_data").unwrap_or_else(|_| "{}".to_string());
+            let llm_specific_data = serde_json::from_str(&llm_specific_data_str).unwrap_or_default();
+
+            // Extract vector if present (create empty BoltList for now)
+            let vector = BoltList::new(); // Placeholder - would need proper BoltList parsing from Neo4j
+
+            Some(Neo4jResponse {
+                id: response_id,
+                content,
+                vector,
+                timestamp: response_timestamp,
+                confidence,
+                llm_specific_data,
+            })
+        } else {
+            None
+        };
+
+        Ok(Neo4jInteraction {
+            id: interaction_id,
+            timestamp,
+            order: order as i32,
+            session_id: session_id.to_string(),
+            question,
+            response,
+        })
+    }
+
     /// Get recent interactions for a session
     pub async fn get_recent_interactions(&self, session_id: &str, limit: i64) -> Result<Vec<Neo4jInteraction>> {
         let query_str = r#"
@@ -367,19 +503,10 @@ impl<'a> InteractionManager<'a> {
             .await?;
 
         let mut interactions = Vec::new();
-        
-        for _row in rows {
-            // TODO: Parse the row data into Neo4jInteraction struct
-            // This is a simplified version - in practice you'd need to properly
-            // deserialize the Neo4j node data
-            let interaction = Neo4jInteraction {
-                id: "placeholder".to_string(),
-                timestamp: Utc::now(),
-                order: 0,
-                session_id: session_id.to_string(),
-                question: None,
-                response: None,
-            };
+
+        for row in rows {
+            // Parse the row data into Neo4jInteraction struct
+            let interaction = self.parse_interaction_from_row(&row, session_id)?;
             interactions.push(interaction);
         }
 

@@ -1,0 +1,41 @@
+name: "rust-compilation-error-fixer"
+description: "Pipeline to automatically detect and fix Rust compilation errors in minesweeper_solitaire_game"
+steps:
+  - name: "check-compilation-errors"
+    tool: "cargo_check"
+    description: "Run cargo check to identify compilation errors"
+    parameters:
+      directory: "./minesweeper_solitaire_game"
+      
+  - name: "fix-missing-semicolon"
+    tool: "string_replace"
+    description: "Fix missing semicolon on line 513"
+    parameters:
+      file: "./minesweeper_solitaire_game/src/main.rs"
+      search: "self.check_win_condition();"
+      replace: "self.check_win_condition();"
+      line: 512
+      
+  - name: "fix-unused-variables-y"
+    tool: "string_replace"
+    description: "Fix unused variable y by prefixing with underscore"
+    parameters:
+      file: "./minesweeper_solitaire_game/src/main.rs"
+      search: "(y, row)"
+      replace: "(_y, row)"
+      
+  - name: "fix-unused-variables-x"
+    tool: "string_replace"
+    description: "Fix unused variable x by prefixing with underscore"
+    parameters:
+      file: "./minesweeper_solitaire_game/src/main.rs"
+      search: "(x, cell)"
+      replace: "(_x, cell)"
+      
+  - name: "fix-type-mismatch"
+    tool: "string_replace"
+    description: "Fix type mismatch in move_card_to_cell function"
+    parameters:
+      file: "./minesweeper_solitaire_game/src/main.rs"
+      search: "let (from_row, to_row) = if from_y == to_y"
+      replace: "if from_y == to_y"

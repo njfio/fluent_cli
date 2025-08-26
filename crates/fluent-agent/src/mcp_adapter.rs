@@ -7,8 +7,10 @@ use rmcp::{
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 
-use crate::memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType};
+use crate::agent_with_mcp::{LongTermMemory, MemoryQuery, MemoryType};
+use crate::memory::{MemoryItem, MemoryContent};
 use crate::tools::ToolRegistry;
 
 /// MCP adapter that exposes fluent_cli tools as MCP server capabilities
@@ -199,16 +201,28 @@ impl FluentMcpAdapter {
                 };
 
                 let memory_item = MemoryItem {
-                    memory_id: uuid::Uuid::new_v4().to_string(),
-                    memory_type,
-                    content: content.to_string(),
-                    metadata: HashMap::new(),
-                    importance,
-                    created_at: chrono::Utc::now(),
-                    last_accessed: chrono::Utc::now(),
+                    item_id: uuid::Uuid::new_v4().to_string(),
+                    content: MemoryContent {
+                        content_type: crate::memory::working_memory::ContentType::ContextInformation,
+                        data: content.as_bytes().to_vec(),
+                        text_summary: content.to_string(),
+                        key_concepts: vec![],
+                        relationships: vec![],
+                    },
+                    metadata: crate::memory::working_memory::ItemMetadata {
+                        tags: vec![],
+                        priority: crate::memory::working_memory::Priority::Medium,
+                        source: "mcp_adapter".to_string(),
+                        size_bytes: content.len(),
+                        compression_ratio: 1.0,
+                        retention_policy: crate::memory::working_memory::RetentionPolicy::ContextBased,
+                    },
+                    relevance_score: importance,
+                    attention_weight: 1.0,
+                    last_accessed: SystemTime::now(),
+                    created_at: SystemTime::now(),
                     access_count: 0,
-                    tags: vec![],
-                    embedding: None,
+                    consolidation_level: 0,
                 };
 
                 let memory_id = self
@@ -238,17 +252,14 @@ impl FluentMcpAdapter {
                     .map(|n| n as usize);
 
                 let memory_query = MemoryQuery {
-                    query_text: query.unwrap_or_default(),
                     memory_types: vec![],
                     tags: vec![],
-                    time_range: None,
-                    importance_threshold,
                     limit,
                 };
 
                 let memories = self
                     .memory_system
-                    .retrieve(&memory_query)
+                    .search(memory_query)
                     .await
                     .map_err(|e| rmcp::Error::internal_error(e.to_string(), None))?;
 
@@ -256,11 +267,11 @@ impl FluentMcpAdapter {
                     .iter()
                     .map(|m| {
                         json!({
-                            "id": m.memory_id,
-                            "content": m.content,
-                            "type": format!("{:?}", m.memory_type),
-                            "importance": m.importance,
-                            "created_at": m.created_at.to_rfc3339(),
+                            "id": m.item_id,
+                            "content": m.content.text_summary,
+                            "type": format!("{:?}", m.content.content_type),
+                            "importance": format!("{:?}", m.metadata.priority),
+                            "created_at": m.created_at.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs().to_string(),
                             "access_count": m.access_count
                         })
                     })
@@ -502,14 +513,28 @@ impl FluentMcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::SqliteMemoryStore;
+    use crate::agent_with_mcp::{LongTermMemory, MemoryQuery};
+    use crate::memory::working_memory::MemoryItem;
+    use std::time::SystemTime;
+    
+    // Mock memory store for testing
+    struct MockMemoryStore;
+    
+    #[async_trait::async_trait]
+    impl LongTermMemory for MockMemoryStore {
+        async fn store(&self, _item: MemoryItem) -> Result<String> {
+            Ok("mock_id".to_string())
+        }
+        
+        async fn query(&self, _query: &MemoryQuery) -> Result<Vec<MemoryItem>> {
+            Ok(vec![])
+        }
+    }
 
     #[tokio::test]
     async fn test_mcp_adapter_creation() {
         let tool_registry = Arc::new(ToolRegistry::new());
-        let memory_system =
-            Arc::new(SqliteMemoryStore::new(":memory:")
-                .expect("Failed to create in-memory SQLite store for test")) as Arc<dyn LongTermMemory>;
+        let memory_system = Arc::new(MockMemoryStore) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let info = adapter.get_info();
@@ -522,9 +547,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_conversion() {
         let tool_registry = Arc::new(ToolRegistry::new());
-        let memory_system =
-            Arc::new(SqliteMemoryStore::new(":memory:")
-                .expect("Failed to create in-memory SQLite store for test")) as Arc<dyn LongTermMemory>;
+        let memory_system = Arc::new(MockMemoryStore) as Arc<dyn LongTermMemory>;
 
         let adapter = FluentMcpAdapter::new(tool_registry, memory_system);
         let tool = adapter.convert_tool_to_mcp("test_tool", "Test tool description");

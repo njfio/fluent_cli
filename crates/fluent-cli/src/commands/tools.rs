@@ -4,191 +4,231 @@
 //! including discovery, execution, configuration, and monitoring.
 
 use anyhow::{anyhow, Result};
+use crate::error::CliError;
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use fluent_agent::tools::ToolRegistry;
 use fluent_agent::config::ToolConfig;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use once_cell::sync::Lazy;
 
 use super::{CommandHandler, CommandResult};
 
+/// Global tool registry instance for reuse across commands
+static GLOBAL_TOOL_REGISTRY: Lazy<Arc<Mutex<Option<ToolRegistry>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
+
 /// Tool command handler for direct tool access
-pub struct ToolsCommand {
-    tool_registry: Option<ToolRegistry>,
-}
+pub struct ToolsCommand;
 
 impl ToolsCommand {
     /// Create a new tools command handler
     pub fn new() -> Self {
-        Self {
-            tool_registry: None,
-        }
+        Self
     }
 
-    /// Initialize tool registry with configuration
-    async fn ensure_tool_registry(&mut self, _config: &Config) -> Result<&ToolRegistry> {
-        if self.tool_registry.is_none() {
-            let tool_config = ToolConfig {
-                file_operations: true,
-                shell_commands: false, // Default to false for security
-                rust_compiler: true,
-                git_operations: false,
-                allowed_paths: Some(vec![
-                    "./".to_string(),
-                    "./src".to_string(),
-                    "./examples".to_string(),
-                    "./tests".to_string(),
-                ]),
-                allowed_commands: Some(vec![
-                    "cargo build".to_string(),
-                    "cargo test".to_string(),
-                    "cargo check".to_string(),
-                    "cargo clippy".to_string(),
-                ]),
-            };
+    /// Get or initialize the global tool registry with configuration
+    fn get_tool_registry(_config: &Config) -> Result<Arc<Mutex<Option<ToolRegistry>>>> {
+        let registry_guard = GLOBAL_TOOL_REGISTRY.clone();
 
-            self.tool_registry = Some(ToolRegistry::with_standard_tools(&tool_config));
+        // Check if registry is already initialized
+        let is_initialized = {
+            let registry_lock = registry_guard.lock()
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock: {}", e)))?;
+            registry_lock.is_some()
+        };
+
+        if is_initialized {
+            return Ok(registry_guard);
         }
 
-        self.tool_registry.as_ref()
-            .ok_or_else(|| anyhow!("Tool registry initialization failed"))
+        // Initialize registry if not already done
+        let tool_config = ToolConfig {
+            file_operations: true,
+            shell_commands: false, // Default to false for security
+            rust_compiler: true,
+            git_operations: false,
+            allowed_paths: Some(vec![
+                "./".to_string(),
+                "./src".to_string(),
+                "./examples".to_string(),
+                "./tests".to_string(),
+            ]),
+            allowed_commands: Some(vec![
+                "cargo build".to_string(),
+                "cargo test".to_string(),
+                "cargo check".to_string(),
+                "cargo clippy".to_string(),
+            ]),
+        };
+
+        let new_registry = ToolRegistry::with_standard_tools(&tool_config);
+
+        {
+            let mut registry_lock = registry_guard.lock()
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for initialization: {}", e)))?;
+            *registry_lock = Some(new_registry);
+        }
+
+        Ok(registry_guard)
+    }
+
+    /// Execute with the tool registry, providing thread-safe access
+    fn with_tool_registry<F, R>(config: &Config, f: F) -> Result<R>
+    where
+        F: FnOnce(&ToolRegistry) -> Result<R>,
+    {
+        let registry_guard = Self::get_tool_registry(config)?;
+        let registry_lock = registry_guard.lock()
+            .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for execution: {}", e)))?;
+
+        let registry = registry_lock.as_ref()
+            .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
+
+        f(registry)
     }
 
     /// List all available tools
     async fn list_tools(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
-        let mut cmd = Self::new();
-        let registry = cmd.ensure_tool_registry(config).await?;
-
         let category_filter = matches.get_one::<String>("category");
         let search_term = matches.get_one::<String>("search");
         let json_output = matches.get_flag("json");
         let detailed = matches.get_flag("detailed");
         let available_only = matches.get_flag("available");
 
-        // Get all tools
-        let all_tools = registry.get_all_available_tools();
+        Self::with_tool_registry(config, |registry| {
+            // Get all tools
+            let all_tools = registry.get_all_available_tools();
 
-        // Apply filters
-        let mut filtered_tools = all_tools;
-        
-        if let Some(category) = category_filter {
-            filtered_tools.retain(|tool| {
-                Self::get_tool_category(&tool.name).eq_ignore_ascii_case(category)
-            });
-        }
+            // Apply filters
+            let mut filtered_tools = all_tools;
 
-        if let Some(search) = search_term {
-            let search_lower = search.to_lowercase();
-            filtered_tools.retain(|tool| {
-                tool.name.to_lowercase().contains(&search_lower) ||
-                tool.description.to_lowercase().contains(&search_lower)
-            });
-        }
+            if let Some(category) = category_filter {
+                filtered_tools.retain(|tool| {
+                    Self::get_tool_category(&tool.name).eq_ignore_ascii_case(category)
+                });
+            }
 
-        if available_only {
-            // Filter only enabled/available tools
-            filtered_tools.retain(|tool| registry.is_tool_available(&tool.name));
-        }
+            if let Some(search) = search_term {
+                let search_lower = search.to_lowercase();
+                filtered_tools.retain(|tool| {
+                    tool.name.to_lowercase().contains(&search_lower) ||
+                    tool.description.to_lowercase().contains(&search_lower)
+                });
+            }
 
-        if json_output {
-            let json_result = json!({
-                "tools": filtered_tools,
-                "total_count": filtered_tools.len(),
-                "filters": {
-                    "category": category_filter,
-                    "search": search_term,
-                    "available_only": available_only
-                }
-            });
-            println!("{}", serde_json::to_string_pretty(&json_result)?);
-        } else {
-            Self::print_tools_table(&filtered_tools, detailed);
-        }
+            if available_only {
+                // Filter only enabled/available tools
+                filtered_tools.retain(|tool| registry.is_tool_available(&tool.name));
+            }
 
-        Ok(CommandResult::success_with_message(format!(
-            "Listed {} tools", filtered_tools.len()
-        )))
+            if json_output {
+                let json_result = json!({
+                    "tools": filtered_tools,
+                    "total_count": filtered_tools.len(),
+                    "filters": {
+                        "category": category_filter,
+                        "search": search_term,
+                        "available_only": available_only
+                    }
+                });
+                println!("{}", serde_json::to_string_pretty(&json_result)?);
+            } else {
+                Self::print_tools_table(&filtered_tools, detailed);
+            }
+
+            Ok(CommandResult::success_with_message(format!(
+                "Listed {} tools", filtered_tools.len()
+            )))
+        })
     }
 
     /// Describe a specific tool
     async fn describe_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         let tool_name = matches.get_one::<String>("tool")
-            .ok_or_else(|| anyhow!("Tool name is required"))?;
+            .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
         let show_schema = matches.get_flag("schema");
         let show_examples = matches.get_flag("examples");
         let json_output = matches.get_flag("json");
 
-        let mut cmd = Self::new();
-        let registry = cmd.ensure_tool_registry(config).await?;
-
-        // Check if tool exists
-        if !registry.is_tool_available(tool_name) {
-            return Err(anyhow!("Tool '{}' not found", tool_name));
-        }
-
-        // Get tool information from available tools
-        let all_tools = registry.get_all_available_tools();
-        let tool_info = all_tools.iter()
-            .find(|tool| tool.name == *tool_name)
-            .ok_or_else(|| anyhow!("Failed to get tool information"))?;
-
-        if json_output {
-            let mut result = json!({
-                "name": tool_info.name,
-                "description": tool_info.description,
-                "executor": tool_info.executor,
-                "category": Self::get_tool_category(&tool_info.name),
-                "available": registry.is_tool_available(&tool_info.name)
-            });
-
-            if show_schema {
-                result["schema"] = Self::get_tool_schema(&tool_info.name);
+        Self::with_tool_registry(config, |registry| {
+            // Check if tool exists
+            if !registry.is_tool_available(tool_name) {
+                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
             }
 
-            if show_examples {
-                result["examples"] = Self::get_tool_examples(&tool_info.name);
+            // Get tool information from available tools
+            let all_tools = registry.get_all_available_tools();
+            let tool_info = all_tools.iter()
+                .find(|tool| tool.name == *tool_name)
+                .ok_or_else(|| anyhow!("Failed to get tool information"))?;
+
+            if json_output {
+                let mut result = json!({
+                    "name": tool_info.name,
+                    "description": tool_info.description,
+                    "executor": tool_info.executor,
+                    "category": Self::get_tool_category(&tool_info.name),
+                    "available": registry.is_tool_available(&tool_info.name)
+                });
+
+                if show_schema {
+                    result["schema"] = Self::get_tool_schema(&tool_info.name);
+                }
+
+                if show_examples {
+                    result["examples"] = Self::get_tool_examples(&tool_info.name);
+                }
+
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                Self::print_tool_description(tool_info, show_schema, show_examples);
             }
 
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        } else {
-            Self::print_tool_description(&tool_info, show_schema, show_examples);
-        }
-
-        Ok(CommandResult::success_with_message(format!(
-            "Described tool '{}'", tool_name
-        )))
+            Ok(CommandResult::success_with_message(format!(
+                "Described tool '{tool_name}'"
+            )))
+        })
     }
 
     /// Execute a tool directly
     async fn execute_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         let tool_name = matches.get_one::<String>("tool")
-            .ok_or_else(|| anyhow!("Tool name is required"))?;
+            .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
         let json_params = matches.get_one::<String>("json");
         let params_file = matches.get_one::<String>("params-file");
         let dry_run = matches.get_flag("dry-run");
         let _timeout = matches.get_one::<String>("timeout");
         let json_output = matches.get_flag("json-output");
 
-        let mut cmd = Self::new();
-        let registry = cmd.ensure_tool_registry(config).await?;
+        // Get registry access for tool availability check
+        let registry_guard = Self::get_tool_registry(config)?;
 
-        // Check if tool exists
-        if !registry.is_tool_available(tool_name) {
-            return Err(anyhow!("Tool '{}' not found", tool_name));
+        // Check if tool exists (sync operation)
+        {
+            let registry_lock = registry_guard.lock()
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock: {}", e)))?;
+            let registry = registry_lock.as_ref()
+                .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
+
+            if !registry.is_tool_available(tool_name) {
+                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+            }
         }
 
         // Parse parameters
         let parameters = if let Some(json_str) = json_params {
             serde_json::from_str::<HashMap<String, Value>>(json_str)
-                .map_err(|e| anyhow!("Invalid JSON parameters: {}", e))?
+                .map_err(|e| CliError::Validation(format!("Invalid JSON parameters: {}", e)))?
         } else if let Some(file_path) = params_file {
             let file_content = tokio::fs::read_to_string(file_path)
                 .await
-                .map_err(|e| anyhow!("Failed to read params file: {}", e))?;
+                .map_err(|e| CliError::Validation(format!("Failed to read params file: {}", e)))?;
             serde_json::from_str::<HashMap<String, Value>>(&file_content)
-                .map_err(|e| anyhow!("Invalid JSON in params file: {}", e))?
+                .map_err(|e| CliError::Validation(format!("Invalid JSON in params file: {}", e)))?
         } else {
             // Parse individual parameters from command line
             Self::parse_cli_parameters(matches)?
@@ -196,16 +236,23 @@ impl ToolsCommand {
 
         if dry_run {
             println!("🔍 Dry run mode - would execute:");
-            println!("Tool: {}", tool_name);
+            println!("Tool: {tool_name}");
             println!("Parameters: {}", serde_json::to_string_pretty(&parameters)?);
             return Ok(CommandResult::success_with_message("Dry run completed".to_string()));
         }
 
-        // Execute tool
+        // Execute tool (async operation)
         let start_time = Instant::now();
-        println!("🔧 Executing tool: {}", tool_name);
-        
-        let result = registry.execute_tool(tool_name, &parameters).await;
+        println!("🔧 Executing tool: {tool_name}");
+
+        let result = {
+            let registry_lock = registry_guard.lock()
+                .map_err(|e| CliError::Unknown(format!("Failed to acquire registry lock for execution: {}", e)))?;
+            let registry = registry_lock.as_ref()
+                .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
+
+            registry.execute_tool(tool_name, &parameters).await
+        };
         let execution_time = start_time.elapsed();
 
         match result {
@@ -223,11 +270,11 @@ impl ToolsCommand {
                 } else {
                     println!("✅ Tool executed successfully");
                     println!("⏱️  Execution time: {}ms", execution_time.as_millis());
-                    println!("📋 Result:\n{}", output);
+                    println!("📋 Result:\n{output}");
                 }
 
                 Ok(CommandResult::success_with_message(format!(
-                    "Tool '{}' executed successfully", tool_name
+                    "Tool '{tool_name}' executed successfully"
                 )))
             }
             Err(e) => {
@@ -244,10 +291,10 @@ impl ToolsCommand {
                 } else {
                     println!("❌ Tool execution failed");
                     println!("⏱️  Execution time: {}ms", execution_time.as_millis());
-                    println!("💥 Error: {}", e);
+                    println!("💥 Error: {e}");
                 }
 
-                Err(anyhow!("Tool execution failed: {}", e))
+                Err(CliError::Engine(format!("Tool execution failed: {}", e)).into())
             }
         }
     }
@@ -264,7 +311,7 @@ impl ToolsCommand {
 
         println!("📂 Available tool categories:\n");
         for (name, description) in &categories {
-            println!("  {} - {}", name, description);
+            println!("  {name} - {description}");
         }
 
         Ok(CommandResult::success_with_message(format!(
@@ -305,7 +352,7 @@ impl ToolsCommand {
                 println!();
             }
         } else {
-            println!("{:<20} {:<12} {}", "TOOL", "CATEGORY", "DESCRIPTION");
+            println!("{:<20} {:<12} DESCRIPTION", "TOOL", "CATEGORY");
             println!("{}", "-".repeat(80));
             
             for tool in tools {

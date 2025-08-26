@@ -142,7 +142,8 @@ impl OptimizedOpenAIEngine {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow!("OpenAI API error: {}", error_text));
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
+            return Err(anyhow!("OpenAI API error: {}", redacted));
         }
 
         let response_json: Value = response.json().await?;
@@ -274,7 +275,8 @@ impl OptimizedOpenAIEngine {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(anyhow!("OpenAI API error: {}", error_text));
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
+            return Err(anyhow!("OpenAI API error: {}", redacted));
         }
 
         let response_json: Value = response.json().await?;

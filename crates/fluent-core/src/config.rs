@@ -210,12 +210,27 @@ pub fn load_config(
             },
         })
         .collect();
-    let engine_config = load_engine_config(
-        &fs::read_to_string(config_path)?,
-        engine_name,
-        &overrides,
-        &HashMap::new(),
-    )?;
+    // Read file once
+    let file_contents = fs::read_to_string(config_path)?;
+
+    // If no specific engine is requested, load all engines
+    if engine_name.is_empty() {
+        let mut engines = Vec::new();
+        let mut root: serde_json::Value = serde_yaml::from_str(&file_contents)?;
+        if let Some(arr) = root["engines"].as_array_mut() {
+            for engine_value in arr.iter_mut() {
+                apply_variable_resolver(engine_value, &HashMap::new())?;
+                apply_variable_overrider(engine_value, &overrides)?;
+                let parsed: EngineConfig = serde_json::from_value(engine_value.clone())
+                    .context("Could not parse engine config")?;
+                engines.push(parsed);
+            }
+        }
+        return Ok(Config::new(engines));
+    }
+
+    // Otherwise, load only the requested engine
+    let engine_config = load_engine_config(&file_contents, engine_name, &overrides, &HashMap::new())?;
     Ok(Config::new(vec![engine_config]))
 }
 

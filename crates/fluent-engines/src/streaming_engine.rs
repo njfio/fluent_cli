@@ -226,7 +226,8 @@ impl StreamingEngine for OpenAIStreaming {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(anyhow!("OpenAI API error: {}", error_text));
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
+            return Err(anyhow!("OpenAI API error: {}", redacted));
         }
 
         // Create stream from response - simplified approach
@@ -382,7 +383,7 @@ impl StreamingEngine for AnthropicStreaming {
 
         // Build streaming payload
         let payload = json!({
-            "model": self.config.parameters.get("model").unwrap_or(&json!("claude-3-5-sonnet-20240620")),
+            "model": self.config.parameters.get("model").unwrap_or(&json!("claude-sonnet-4-20250514")),
             "messages": [
                 {
                     "role": "user",
@@ -408,7 +409,8 @@ impl StreamingEngine for AnthropicStreaming {
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            return Err(anyhow!("Anthropic API error: {}", error_text));
+            let redacted = fluent_core::redaction::redact_secrets_in_text(&error_text);
+            return Err(anyhow!("Anthropic API error: {}", redacted));
         }
 
         // Create stream from response - simplified approach

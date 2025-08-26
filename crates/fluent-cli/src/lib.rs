@@ -51,13 +51,14 @@
 
 pub mod agentic;
 pub mod cli;
+pub mod error;
 pub mod commands;
 pub mod neo4j_operations;
 pub mod pipeline_builder;
 pub mod validation;
 pub mod memory;
 pub mod utils;
-pub mod frogger;
+
 
 // New modular components
 pub mod cli_builder;

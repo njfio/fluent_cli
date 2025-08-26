@@ -21,7 +21,7 @@ pub async fn process_request_with_file(
     // Handle file upload if provided
     if let Some(file_path) = file_path {
         let file_url = Pin::from(engine.upload_file(Path::new(file_path))).await?;
-        final_content = format!("{}\n\nFile uploaded: {}", final_content, file_url);
+        final_content = format!("{final_content}\n\nFile uploaded: {file_url}");
     }
 
     process_request(engine, &final_content).await
@@ -102,11 +102,11 @@ pub fn prepare_request_content(
     let mut content = base_content.to_string();
 
     if let Some(ctx) = context {
-        content = format!("Context: {}\n\nRequest: {}", ctx, content);
+        content = format!("Context: {ctx}\n\nRequest: {content}");
     }
 
     if let Some(format_inst) = format_instructions {
-        content = format!("{}\n\nFormat instructions: {}", content, format_inst);
+        content = format!("{content}\n\nFormat instructions: {format_inst}");
     }
 
     content

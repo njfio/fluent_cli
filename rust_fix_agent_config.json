@@ -1,0 +1,32 @@
+{
+  "agent": {
+    "reasoning_engine": "anthropic-claude",
+    "action_engine": "anthropic-claude",
+    "reflection_engine": "anthropic-claude",
+    "memory_database": "sqlite://./rust_fix_memory.db",
+    "tools": {
+      "file_operations": true,
+      "shell_commands": true,
+      "rust_compiler": true,
+      "git_operations": false,
+      "allowed_paths": [
+        "./",
+        "./src",
+        "./examples",
+        "./tests",
+        "./crates",
+        "./minesweeper_solitaire_game",
+        "./minesweeper_solitaire_game/src"
+      ],
+      "allowed_commands": [
+        "cargo build",
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo run"
+      ]
+    },
+    "max_iterations": 30,
+    "timeout_seconds": 1800
+  }
+}

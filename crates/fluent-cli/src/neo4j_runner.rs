@@ -23,9 +23,8 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
     let llm_request = Request {
         flowname: "cypher_generation".to_string(),
         payload: format!(
-            "Convert this natural language query to Cypher: {}. \
-            Only return the Cypher query, no explanations.",
-            query
+            "Convert this natural language query to Cypher: {query}. \
+            Only return the Cypher query, no explanations."
         ),
     };
 

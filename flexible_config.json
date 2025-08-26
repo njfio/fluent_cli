@@ -1,63 +1,83 @@
 {
   "engines": [
     {
-      "name": "anthropic-env",
-      "engine": "anthropic",
-      "parameters": {
-        "model": "claude-3-5-sonnet-20241022",
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "bearer_token": "ENV_ANTHROPIC_API_KEY"
-      }
-    },
-    {
-      "name": "anthropic-dollar",
-      "engine": "anthropic", 
-      "parameters": {
-        "model": "claude-3-5-sonnet-20241022",
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "bearer_token": "${ANTHROPIC_API_KEY}"
-      }
-    },
-    {
-      "name": "anthropic-credential",
-      "engine": "anthropic",
-      "parameters": {
-        "model": "claude-3-5-sonnet-20241022", 
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "bearer_token": "CREDENTIAL_ANTHROPIC_API_KEY"
-      }
-    },
-    {
-      "name": "anthropic-amber",
-      "engine": "anthropic",
-      "parameters": {
-        "model": "claude-3-5-sonnet-20241022",
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "bearer_token": "AMBER_ANTHROPIC_API_KEY"
-      }
-    },
-    {
-      "name": "openai-env",
+      "name": "openai_reasoning",
       "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
       "parameters": {
-        "model": "gpt-4",
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "api_key": "ENV_OPENAI_API_KEY"
+        "bearer_token": "${OPENAI_API_KEY}",
+        "max_tokens": 4000,
+        "model": "gpt-4o",
+        "temperature": 0.1
       }
     },
     {
-      "name": "openai-dollar",
-      "engine": "openai",
+      "name": "anthropic_reasoning",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
       "parameters": {
-        "model": "gpt-4",
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 4000,
+        "model": "claude-sonnet-4-20250514",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "gemini_reasoning",
+      "engine": "gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/gemini-pro:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "${GEMINI_API_KEY}",
+        "max_tokens": 4000,
+        "model": "gemini-pro",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "openai_action",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "${OPENAI_API_KEY}",
         "max_tokens": 2000,
-        "temperature": 0.7,
-        "api_key": "${OPENAI_API_KEY}"
+        "model": "gpt-4o",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "anthropic_action",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 2000,
+        "model": "claude-sonnet-4-20250514",
+        "temperature": 0.1
       }
     }
   ]

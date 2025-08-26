@@ -2,7 +2,7 @@ use fluent_agent::{
     orchestrator::{AgentOrchestrator, AgentState},
     goal::{GoalBuilder, GoalComplexity},
     context::ExecutionContext,
-    memory::{SqliteMemoryStore, LongTermMemory},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory},
     reasoning::ReasoningEngine,
     action::ActionPlanner,
     observation::ObservationProcessor,
@@ -21,7 +21,7 @@ use tokio::time::timeout;
 #[tokio::test]
 async fn test_async_orchestrator_initialization() -> Result<()> {
     // Test async orchestrator creation and initialization
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     
     // Create mock components for orchestrator
     let reasoning_engine = Box::new(ReasoningEngine::new());
@@ -53,7 +53,7 @@ async fn test_async_orchestrator_initialization() -> Result<()> {
 #[tokio::test]
 async fn test_async_goal_execution() -> Result<()> {
     // Create a simple orchestrator for testing
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let reasoning_engine = Box::new(ReasoningEngine::new());
     let action_planner = Box::new(ActionPlanner::new());
     let action_executor = Box::new(ActionExecutor::new());
@@ -99,7 +99,7 @@ async fn test_async_goal_execution() -> Result<()> {
 
 #[tokio::test]
 async fn test_concurrent_goal_processing() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let reasoning_engine = Box::new(ReasoningEngine::new());
     let action_planner = Box::new(ActionPlanner::new());
     let action_executor = Box::new(ActionExecutor::new());
@@ -162,7 +162,7 @@ async fn test_concurrent_goal_processing() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_state_management() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let reasoning_engine = Box::new(ReasoningEngine::new());
     let action_planner = Box::new(ActionPlanner::new());
     let action_executor = Box::new(ActionExecutor::new());
@@ -202,7 +202,7 @@ async fn test_async_state_management() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_error_handling_in_orchestration() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let reasoning_engine = Box::new(ReasoningEngine::new());
     let action_planner = Box::new(ActionPlanner::new());
     let action_executor = Box::new(ActionExecutor::new());
@@ -250,7 +250,7 @@ async fn test_async_error_handling_in_orchestration() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_timeout_in_orchestration() -> Result<()> {
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?) as Arc<dyn LongTermMemory>;
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let reasoning_engine = Box::new(ReasoningEngine::new());
     let action_planner = Box::new(ActionPlanner::new());
     let action_executor = Box::new(ActionExecutor::new());

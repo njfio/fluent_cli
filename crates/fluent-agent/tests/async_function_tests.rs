@@ -1,5 +1,5 @@
 use fluent_agent::{
-    memory::{SqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
     transport::{RetryConfig, BackoffStrategy},
 };
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use futures::StreamExt;
 
 #[tokio::test]
 async fn test_async_memory_operations() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test basic async store operation
     let memory = MemoryItem {
@@ -56,7 +56,7 @@ async fn test_async_memory_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_error_propagation() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test error propagation in async chain
     let invalid_memory = MemoryItem {
@@ -94,7 +94,7 @@ async fn test_async_error_propagation() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_timeout_handling() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test operation with very short timeout
     let memory = MemoryItem {
@@ -134,7 +134,7 @@ async fn test_concurrent_async_operations() -> Result<()> {
     // Launch concurrent async operations using separate stores
     for i in 0..num_operations {
         let handle = tokio::spawn(async move {
-            let store = SqliteMemoryStore::new(":memory:").unwrap();
+            let store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
             let memory = MemoryItem {
                 memory_id: format!("concurrent_async_{}", i),
                 memory_type: MemoryType::Experience,
@@ -178,7 +178,7 @@ async fn test_concurrent_async_operations() -> Result<()> {
     assert_eq!(success_count + error_count, num_operations);
 
     // Test with a shared store for verification
-    let shared_store = SqliteMemoryStore::new(":memory:")?;
+    let shared_store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let test_memory = MemoryItem {
         memory_id: "shared_test".to_string(),
         memory_type: MemoryType::Experience,
@@ -241,7 +241,7 @@ async fn test_async_retry_mechanisms() -> Result<()> {
 #[tokio::test]
 async fn test_async_resource_cleanup() -> Result<()> {
     // Test that async operations properly clean up resources
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Create a scope where resources should be cleaned up
     {
@@ -395,7 +395,7 @@ async fn test_async_workflow_execution() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_memory_batch_operations() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
 
     // Test batch async operations
     let mut memories = Vec::new();
@@ -446,7 +446,7 @@ async fn test_async_memory_batch_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_async_error_recovery() -> Result<()> {
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
 
     // Test error recovery in async operations
     let mut successful_operations = 0;

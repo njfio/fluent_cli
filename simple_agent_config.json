@@ -1,8 +1,8 @@
 {
   "agent": {
-    "reasoning_engine": "sonnet3.5",
-    "action_engine": "sonnet3.5",
-    "reflection_engine": "sonnet3.5",
+    "reasoning_engine": "anthropic",
+    "action_engine": "anthropic",
+    "reflection_engine": "anthropic",
     "memory_database": "sqlite://./agent_memory.db",
     "tools": {
       "file_operations": true,

@@ -45,7 +45,7 @@ where
         // Create L2 cache (Redis) if enabled
         let l2_cache = if config.l2_enabled {
             if let Some(ref url) = config.l2_url {
-                Some(Arc::new(RedisCache::new(url.clone(), config.l2_ttl).await?)
+                Some(Arc::new(RedisCache::new(url.clone(), config.l2_ttl)?)
                     as Arc<dyn L2Cache<K, V>>)
             } else {
                 None
@@ -58,7 +58,7 @@ where
         let l3_cache = if config.l3_enabled {
             if let Some(ref url) = config.l3_database_url {
                 Some(
-                    Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl).await?)
+                    Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl)?)
                         as Arc<dyn L3Cache<K, V>>,
                 )
             } else {
@@ -212,7 +212,7 @@ pub struct RedisCache<K, V> {
 }
 
 impl<K, V> RedisCache<K, V> {
-    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+    pub fn new(url: String, ttl: Duration) -> Result<Self> {
         // Check if Redis URL is provided and warn about fallback mode
         let available = !url.is_empty() && url != "redis://localhost:6379";
 
@@ -240,8 +240,7 @@ where
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
         if !self.available {
-            debug!("Redis cache get operation skipped - Redis not available (fallback mode) for URL: {}", self.url);
-            return Ok(None);
+            return Err(anyhow::anyhow!("Redis cache not available: {}", self.url));
         }
 
         // Redis implementation would go here when redis crate is added
@@ -252,8 +251,7 @@ where
 
     async fn set(&self, _key: &K, _value: &V, ttl: Duration) -> Result<()> {
         if !self.available {
-            debug!("Redis cache set operation skipped - Redis not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Redis cache not available: {}", self.url));
         }
 
         // Redis implementation would go here when redis crate is added
@@ -263,8 +261,7 @@ where
 
     async fn remove(&self, _key: &K) -> Result<()> {
         if !self.available {
-            debug!("Redis cache remove operation skipped - Redis not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Redis cache not available: {}", self.url));
         }
 
         // Redis implementation would go here when redis crate is added
@@ -274,8 +271,7 @@ where
 
     async fn clear(&self) -> Result<()> {
         if !self.available {
-            debug!("Redis cache clear operation skipped - Redis not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Redis cache not available: {}", self.url));
         }
 
         // Redis implementation would go here when redis crate is added
@@ -296,7 +292,7 @@ pub struct DatabaseCache<K, V> {
 }
 
 impl<K, V> DatabaseCache<K, V> {
-    pub async fn new(url: String, ttl: Duration) -> Result<Self> {
+    pub fn new(url: String, ttl: Duration) -> Result<Self> {
         // Check if database URL is provided and warn about fallback mode
         let available = !url.is_empty() && !url.starts_with("sqlite://memory");
 
@@ -324,8 +320,7 @@ where
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
         if !self.available {
-            debug!("Database cache get operation skipped - Database caching not available (fallback mode) for URL: {}", self.url);
-            return Ok(None);
+            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -336,8 +331,7 @@ where
 
     async fn set(&self, _key: &K, _value: &V, ttl: Duration) -> Result<()> {
         if !self.available {
-            debug!("Database cache set operation skipped - Database caching not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -347,8 +341,7 @@ where
 
     async fn remove(&self, _key: &K) -> Result<()> {
         if !self.available {
-            debug!("Database cache remove operation skipped - Database caching not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -358,8 +351,7 @@ where
 
     async fn clear(&self) -> Result<()> {
         if !self.available {
-            debug!("Database cache clear operation skipped - Database caching not available (fallback mode)");
-            return Ok(());
+            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
         }
 
         // Database implementation would go here when sqlx integration is added

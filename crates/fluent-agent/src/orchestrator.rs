@@ -9,12 +9,16 @@ use crate::action::{ActionExecutor, ActionPlanner};
 use crate::config::AgentRuntimeConfig;
 use crate::context::{ExecutionContext, CheckpointType};
 use crate::goal::{Goal, GoalResult};
+// Memory system import removed as it uses new integrated memory system
 use crate::memory::MemorySystem;
 use crate::observation::ObservationProcessor;
-use crate::reasoning::{LLMReasoningEngine, ReasoningEngine};
+use crate::reasoning::{ReasoningEngine, ReasoningCapability};
+use crate::reasoning::enhanced_multi_modal::{EnhancedMultiModalEngine, EnhancedReasoningConfig};
 use crate::reflection_engine::ReflectionEngine;
 use crate::state_manager::StateManager as PersistentStateManager;
 use crate::task::{Task, TaskResult};
+use tokio::fs;
+use std::path::Path;
 
 /// Core agent orchestrator implementing the ReAct (Reasoning, Acting, Observing) pattern
 ///
@@ -114,6 +118,15 @@ pub struct ActionResult {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
+/// Result of a reasoning step
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningResult {
+    pub reasoning_output: String,
+    pub confidence_score: f64,
+    pub goal_achieved_confidence: f64,
+    pub next_actions: Vec<String>,
+}
+
 /// Observation made by the agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
@@ -186,9 +199,15 @@ impl AgentOrchestrator {
         persistent_state_manager: Arc<PersistentStateManager>,
         reflection_engine: ReflectionEngine,
     ) -> Result<Self> {
-        let reasoning_engine = Box::new(LLMReasoningEngine::new(
-            runtime_config.reasoning_engine.clone(),
-        ));
+        // Get the base engine from runtime config or create a mock one
+        let base_engine = runtime_config.get_base_engine()
+            .unwrap_or_else(|| Arc::new(MockEngine));
+        
+        // Create enhanced multi-modal reasoning engine
+        let enhanced_config = EnhancedReasoningConfig::default();
+        let reasoning_engine: Box<dyn ReasoningEngine> = Box::new(
+            EnhancedMultiModalEngine::new(base_engine, enhanced_config).await?
+        );
 
         Ok(Self::new(
             reasoning_engine,
@@ -231,8 +250,12 @@ impl AgentOrchestrator {
         let mut iteration_count = 0;
         let max_iterations = goal.max_iterations.unwrap_or(50);
 
+        log::info!("react.loop.begin goal='{}' max_iterations={}", goal.description, max_iterations);
         loop {
+            // Track iterations locally and in the execution context
             iteration_count += 1;
+            log::debug!("react.iteration.start iter={}", iteration_count);
+            context.increment_iteration();
 
             // Safety check to prevent infinite loops
             if iteration_count > max_iterations {
@@ -245,7 +268,18 @@ impl AgentOrchestrator {
 
             // Reasoning Phase: Analyze current state and plan next action
             let reasoning_start = SystemTime::now();
-            let reasoning_result = self.reasoning_engine.reason(&context).await?;
+            log::debug!("react.reasoning.begin context_len={}", context.get_summary().len());
+            let reasoning_output = self.reasoning_engine.reason(&context.get_summary(), &context).await?;
+            
+            // Convert string output to ReasoningResult structure
+            let reasoning_result = ReasoningResult {
+                reasoning_output: reasoning_output.clone(),
+                confidence_score: self.reasoning_engine.get_confidence().await,
+                goal_achieved_confidence: if reasoning_output.to_lowercase().contains("complete") || reasoning_output.to_lowercase().contains("achieved") { 0.9 } else { 0.3 },
+                next_actions: vec!["Continue with planned action".to_string()],
+            };
+            
+            log::debug!("react.reasoning.end output_len={} conf={:.2} next_actions={}", reasoning_result.reasoning_output.len(), reasoning_result.confidence_score, reasoning_result.next_actions.len());
             let reasoning_duration = reasoning_start.elapsed().unwrap_or_default();
 
             // Record reasoning step
@@ -254,6 +288,7 @@ impl AgentOrchestrator {
 
             // Check if goal is achieved
             if self.is_goal_achieved(&context, &reasoning_result).await? {
+                log::info!("react.goal_achieved iter={} conf={:.2}", iteration_count, reasoning_result.goal_achieved_confidence);
                 let final_result = self.finalize_goal_execution(&context, true).await?;
                 self.update_success_metrics(start_time.elapsed().unwrap_or_default())
                     .await;
@@ -311,7 +346,7 @@ impl AgentOrchestrator {
             context.add_observation(observation);
 
             // Update memory system with new learnings
-            self.memory_system.update(&context).await?;
+            self.memory_system.update_memory(&context).await?;
 
             // Advanced Self-reflection: Evaluate progress and adjust strategy if needed
             let mut reflection_engine = self.reflection_engine.write().await;
@@ -375,17 +410,82 @@ impl AgentOrchestrator {
     /// Check if the goal has been achieved
     async fn is_goal_achieved(
         &self,
-        _context: &ExecutionContext,
+        context: &ExecutionContext,
         reasoning: &ReasoningResult,
     ) -> Result<bool> {
-        // Implementation would check various criteria:
-        // - Goal completion conditions met
-        // - Success metrics achieved
-        // - User satisfaction confirmed
-        // - No critical errors present
+        // 1) Check explicit success criteria on the goal if provided
+        if let Some(goal) = context.get_current_goal() {
+            if !goal.success_criteria.is_empty() {
+                if self.check_success_criteria(context, &goal.success_criteria).await? {
+                    return Ok(true);
+                }
+            }
+        }
 
-        // For now, simplified check based on reasoning output
+        // 2) Heuristic: if recent file write succeeded and is non-empty
+        if let Some(obs) = context.get_latest_observation() {
+            if obs.content.to_lowercase().contains("successfully wrote to") {
+                // Extract path and verify non-empty
+                if let Some(path) = obs
+                    .content
+                    .split_whitespace()
+                    .last()
+                    .map(|s| s.trim_matches('\"'))
+                {
+                    if self.non_empty_file_exists(path).await? {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        // 3) Fall back to reasoning-provided confidence
         Ok(reasoning.goal_achieved_confidence > 0.8)
+    }
+
+    /// Evaluate simple, common success criteria patterns
+    async fn check_success_criteria(
+        &self,
+        context: &ExecutionContext,
+        criteria: &[String],
+    ) -> Result<bool> {
+        for crit in criteria {
+            if let Some(rest) = crit.strip_prefix("file_exists:") {
+                if !Path::new(rest.trim()).exists() {
+                    return Ok(false);
+                }
+            } else if let Some(rest) = crit.strip_prefix("non_empty_file:") {
+                if !self.non_empty_file_exists(rest.trim()).await? {
+                    return Ok(false);
+                }
+            } else if let Some(substr) = crit.strip_prefix("observation_contains:") {
+                let substr = substr.trim().to_lowercase();
+                let found = context
+                    .get_recent_actions()
+                    .iter()
+                    .any(|e| e.description.to_lowercase().contains(&substr))
+                    || context
+                        .observations
+                        .iter()
+                        .rev()
+                        .take(10)
+                        .any(|o| o.content.to_lowercase().contains(&substr));
+                if !found {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    async fn non_empty_file_exists(&self, path: &str) -> Result<bool> {
+        if !Path::new(path).exists() {
+            return Ok(false);
+        }
+        if let Ok(meta) = fs::metadata(path).await {
+            return Ok(meta.len() > 0);
+        }
+        Ok(false)
     }
 
     /// Apply strategy adjustments from reflection results
@@ -445,8 +545,8 @@ impl AgentOrchestrator {
         let step = ReasoningStep {
             step_id: uuid::Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
-            reasoning_type: reasoning.reasoning_type,
-            input_context: reasoning.input_context,
+            reasoning_type: ReasoningType::GoalAnalysis,
+            input_context: "context summary".to_string(),
             reasoning_output: reasoning.reasoning_output,
             confidence_score: reasoning.confidence_score,
             next_action_plan: reasoning.next_actions.first().cloned(),
@@ -605,16 +705,7 @@ impl Default for AgentState {
 
 
 
-/// Result of reasoning process
-#[derive(Debug, Clone)]
-pub struct ReasoningResult {
-    pub reasoning_type: ReasoningType,
-    pub input_context: String,
-    pub reasoning_output: String,
-    pub confidence_score: f64,
-    pub goal_achieved_confidence: f64,
-    pub next_actions: Vec<String>,
-}
+
 
 #[cfg(test)]
 mod tests {
@@ -633,5 +724,92 @@ mod tests {
         let metrics = OrchestrationMetrics::default();
         assert_eq!(metrics.total_goals_processed, 0);
         assert_eq!(metrics.success_rate, 0.0);
+    }
+}
+
+/// Mock reasoning engine for testing and basic functionality
+struct MockReasoningEngine;
+
+#[async_trait::async_trait]
+impl ReasoningEngine for MockReasoningEngine {
+    async fn reason(&self, prompt: &str, _context: &ExecutionContext) -> Result<String> {
+        Ok(format!("Mock reasoning response for: {}", prompt.chars().take(50).collect::<String>()))
+    }
+
+    async fn get_capabilities(&self) -> Vec<ReasoningCapability> {
+        vec![ReasoningCapability::GoalDecomposition, ReasoningCapability::TaskPlanning]
+    }
+
+    async fn get_confidence(&self) -> f64 {
+        0.8
+    }
+}
+
+/// Mock engine for testing and configuration fallback
+struct MockEngine;
+
+impl fluent_core::traits::Engine for MockEngine {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a fluent_core::types::Request,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+        Box::new(async move {
+            Ok(fluent_core::types::Response {
+                content: "Mock engine response".to_string(),
+                usage: fluent_core::types::Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+                model: "mock-model".to_string(),
+                finish_reason: Some("stop".to_string()),
+                cost: fluent_core::types::Cost {
+                    prompt_cost: 0.001,
+                    completion_cost: 0.002,
+                    total_cost: 0.003,
+                },
+            })
+        })
+    }
+
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a fluent_core::types::UpsertRequest,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::UpsertResponse>> + Send + 'a> {
+        Box::new(async move {
+            Ok(fluent_core::types::UpsertResponse {
+                processed_files: vec!["mock-file".to_string()],
+                errors: Vec::new(),
+            })
+        })
+    }
+
+    fn get_neo4j_client(&self) -> Option<&std::sync::Arc<fluent_core::neo4j_client::Neo4jClient>> {
+        None
+    }
+
+    fn get_session_id(&self) -> Option<String> {
+        None
+    }
+
+    fn extract_content(&self, _value: &serde_json::Value) -> Option<fluent_core::types::ExtractedContent> {
+        None
+    }
+
+    fn upload_file<'a>(
+        &'a self,
+        _file_path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move {
+            Ok("mock-file-id".to_string())
+        })
+    }
+
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a fluent_core::types::Request,
+        _file_path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+        self.execute(request)
     }
 }

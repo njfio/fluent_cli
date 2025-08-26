@@ -62,6 +62,7 @@ pub struct ExecutionContext {
     pub observations: Vec<Observation>,
     pub variables: HashMap<String, String>,
     pub metadata: HashMap<String, serde_json::Value>,
+    pub context_data: HashMap<String, String>,
     pub execution_history: Vec<ExecutionEvent>,
     pub start_time: SystemTime,
     pub last_update: SystemTime,
@@ -125,6 +126,7 @@ impl ExecutionContext {
             observations: Vec::new(),
             variables: HashMap::new(),
             metadata: HashMap::new(),
+            context_data: HashMap::new(),
             execution_history: vec![ExecutionEvent {
                 event_id: uuid::Uuid::new_v4().to_string(),
                 timestamp: now,
@@ -141,6 +143,33 @@ impl ExecutionContext {
             state_version: 1,
             persistence_enabled: true,
             auto_checkpoint_interval: Some(5), // Checkpoint every 5 iterations by default
+        }
+    }
+
+    /// Create a new context without a goal (for backward compatibility)
+    pub fn new_default() -> Self {
+        let context_id = uuid::Uuid::new_v4().to_string();
+        let now = SystemTime::now();
+
+        Self {
+            context_id: context_id.clone(),
+            current_goal: None,
+            active_tasks: Vec::new(),
+            completed_tasks: Vec::new(),
+            observations: Vec::new(),
+            variables: HashMap::new(),
+            metadata: HashMap::new(),
+            context_data: HashMap::new(),
+            execution_history: Vec::new(),
+            start_time: now,
+            last_update: now,
+            iteration_count: 0,
+            available_tools: Vec::new(),
+            strategy_adjustments: Vec::new(),
+            checkpoints: Vec::new(),
+            state_version: 1,
+            persistence_enabled: true,
+            auto_checkpoint_interval: Some(5),
         }
     }
 
@@ -183,6 +212,12 @@ impl ExecutionContext {
             description: format!("Variable set: {} = {}", key, value),
             metadata: HashMap::new(),
         });
+    }
+
+    /// Add a context item
+    pub fn add_context_item(&mut self, key: String, value: String) {
+        self.context_data.insert(key, value);
+        self.last_update = SystemTime::now();
     }
 
     /// Add a strategy adjustment
@@ -678,6 +713,7 @@ impl Default for ExecutionContext {
             observations: Vec::new(),
             variables: HashMap::new(),
             metadata: HashMap::new(),
+            context_data: HashMap::new(),
             execution_history: Vec::new(),
             start_time: now,
             last_update: now,

@@ -11,10 +11,10 @@ use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use crate::utils::{extract_cypher_query, format_as_csv};
 use log::debug;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::fs;
 
 /// Handle document upsert operations for Neo4j
 pub async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {
@@ -58,8 +58,7 @@ async fn handle_single_file_upsert(
 ) -> Result<()> {
     let document_id = neo4j_client.upsert_document(file_path, metadata).await?;
     eprintln!(
-        "Uploaded document with ID: {}. Embeddings and chunks created.",
-        document_id
+        "Uploaded document with ID: {document_id}. Embeddings and chunks created."
     );
     Ok(())
 }
@@ -70,28 +69,28 @@ async fn handle_directory_upsert(
     directory_path: &Path,
     metadata: &[String],
 ) -> Result<()> {
-    let file_paths = collect_files_from_directory(directory_path)?;
+    let file_paths = collect_files_from_directory(directory_path).await?;
     let uploaded_count = process_files_concurrently(neo4j_client.clone(), file_paths, metadata).await?;
 
     eprintln!(
-        "Uploaded {} documents with embeddings and chunks",
-        uploaded_count
+        "Uploaded {uploaded_count} documents with embeddings and chunks"
     );
     Ok(())
 }
 
-/// Collect all files from a directory
-fn collect_files_from_directory(directory_path: &Path) -> Result<Vec<PathBuf>> {
+/// Collect all files from a directory using async filesystem operations
+async fn collect_files_from_directory(directory_path: &Path) -> Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
-    
-    for entry in fs::read_dir(directory_path)? {
-        let entry = entry?;
+    let mut entries = fs::read_dir(directory_path).await?;
+
+    while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
-        if path.is_file() {
+        let metadata = entry.metadata().await?;
+        if metadata.is_file() {
             file_paths.push(path);
         }
     }
-    
+
     Ok(file_paths)
 }
 
@@ -141,7 +140,7 @@ async fn process_upload_results(
                 uploaded_count += 1;
             }
             Err(e) => {
-                eprintln!("Failed to upload document: {}", e);
+                eprintln!("Failed to upload document: {e}");
             }
         }
     }
@@ -182,8 +181,7 @@ pub async fn generate_and_execute_cypher(
     let cypher_request = Request {
         flowname: "generate_cypher".to_string(),
         payload: format!(
-            "Given the following database schema:\n\n{}\n\nGenerate a Cypher query for Neo4j based on this request: {}",
-            schema, query_string
+            "Given the following database schema:\n\n{schema}\n\nGenerate a Cypher query for Neo4j based on this request: {query_string}"
         ),
     };
 

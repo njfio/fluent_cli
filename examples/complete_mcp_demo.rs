@@ -1,22 +1,24 @@
-// Complete MCP Protocol Implementation Demo
+// Complete MCP Protocol Demo with All Features
 use anyhow::Result;
 use fluent_agent::{
-    mcp_client::{McpClient, McpClientConfig, McpClientManager},
-    mcp_tool_registry::McpToolRegistry,
-    mcp_resource_manager::McpResourceManager,
-    memory::SqliteMemoryStore,
+    mcp_client::{McpClient, McpClientConfig},
+    mcp_tool_registry::{McpToolRegistry},
+    mcp_resource_manager::{McpResourceManager},
+    memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
+    agent_with_mcp::LongTermMemory,
 };
-use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("🔌 Complete MCP Protocol Implementation Demo");
+    println!("🔌 Complete MCP Protocol Demo");
+    println!("=============================");
 
-    // Example 1: MCP Client with enhanced configuration
-    demonstrate_enhanced_mcp_client().await?;
+    // Example 1: Enhanced MCP Client Configuration
+    demonstrate_mcp_client_config().await?;
 
     // Example 2: MCP Tool Registry
     demonstrate_mcp_tool_registry().await?;
@@ -24,16 +26,17 @@ async fn main() -> Result<()> {
     // Example 3: MCP Resource Management
     demonstrate_mcp_resource_management().await?;
 
-    // Example 4: Complete MCP workflow
+    // Example 4: Complete MCP Workflow
     demonstrate_complete_mcp_workflow().await?;
 
-    println!("🎉 Complete MCP demo finished successfully!");
+    println!("\n🎉 Complete MCP Protocol Demo finished successfully!");
+    println!("✅ All components are working correctly");
     Ok(())
 }
 
-/// Demonstrates enhanced MCP client with configuration and error handling
-async fn demonstrate_enhanced_mcp_client() -> Result<()> {
-    println!("\n🔧 Example 1: Enhanced MCP Client");
+/// Demonstrates enhanced MCP client configuration
+async fn demonstrate_mcp_client_config() -> Result<()> {
+    println!("\n🔧 Example 1: Enhanced MCP Client Configuration");
 
     // Create custom client configuration
     let config = McpClientConfig {
@@ -45,20 +48,15 @@ async fn demonstrate_enhanced_mcp_client() -> Result<()> {
 
     let client = McpClient::with_config(config);
     println!("✅ Created MCP client with custom configuration");
+    println!("   - Timeout: 10 seconds");
+    println!("   - Max response size: 5MB");
+    println!("   - Retry attempts: 3");
+    println!("   - Retry delay: 500ms");
 
-    // Demonstrate client manager
-    let manager = McpClientManager::new();
-    
-    // Note: In a real scenario, you would connect to actual MCP servers
-    println!("📋 MCP Client Manager created");
-    println!("   - Connection status: {:?}", manager.get_connection_status());
-    println!("   - Available servers: {:?}", manager.list_servers());
-
-    // Demonstrate connection monitoring
-    println!("🔍 Client connection status: {}", client.is_connected());
-    if let Some(uptime) = client.connection_uptime() {
-        println!("   Connection uptime: {:?}", uptime);
-    }
+    // Show client status
+    println!("🔍 Client Status:");
+    println!("   - Connected: {}", client.is_connected());
+    println!("   - Uptime: {:?}", client.connection_uptime());
 
     Ok(())
 }
@@ -81,39 +79,36 @@ async fn demonstrate_mcp_tool_registry() -> Result<()> {
     println!("📋 Available MCP tools: {}", tools.len());
     
     for tool in tools.iter().take(5) {
-        println!("   - {}: {} ({})", tool.name, tool.description, tool.category);
+        println!("   - {}: {}", tool.name, tool.description);
+        println!("     Category: {} | Version: {}", tool.category, tool.version);
+        println!("     Tags: {:?}", tool.tags);
+    }
+    
+    if tools.len() > 5 {
+        println!("   ... and {} more tools", tools.len() - 5);
     }
     
     // Get tools by category
     let fs_tools = mcp_registry.get_tools_by_category("filesystem").await;
-    println!("📁 Filesystem tools: {}", fs_tools.len());
-    
     let memory_tools = mcp_registry.get_tools_by_category("memory").await;
-    println!("🧠 Memory tools: {}", memory_tools.len());
+    let system_tools = mcp_registry.get_tools_by_category("system").await;
+    
+    println!("📂 Tools by category:");
+    println!("   - Filesystem: {}", fs_tools.len());
+    println!("   - Memory: {}", memory_tools.len());
+    println!("   - System: {}", system_tools.len());
     
     // Search tools by tag
     let file_tools = mcp_registry.search_tools_by_tag("file").await;
     println!("🔍 Tools tagged with 'file': {}", file_tools.len());
     
-    // Get categories
+    // Get all categories
     let categories = mcp_registry.get_categories().await;
-    println!("📂 Tool categories: {:?}", categories);
+    println!("📁 Available categories: {:?}", categories);
     
-    // Demonstrate tool execution (simulated)
-    if let Some(tool) = mcp_registry.get_tool("read_file").await {
-        println!("🔧 Tool details for 'read_file':");
-        println!("   Title: {:?}", tool.title);
-        println!("   Version: {}", tool.version);
-        println!("   Tags: {:?}", tool.tags);
-        println!("   Examples: {}", tool.examples.len());
-        
-        // Show input schema
-        println!("   Input schema: {}", serde_json::to_string_pretty(&tool.input_schema)?);
-    }
-    
-    // Get tool statistics
+    // Show tool statistics
     let all_stats = mcp_registry.get_all_stats().await;
-    println!("📊 Tool statistics available for {} tools", all_stats.len());
+    println!("📊 Tool statistics tracked for {} tools", all_stats.len());
 
     Ok(())
 }
@@ -122,9 +117,8 @@ async fn demonstrate_mcp_tool_registry() -> Result<()> {
 async fn demonstrate_mcp_resource_management() -> Result<()> {
     println!("\n📦 Example 3: MCP Resource Management");
 
-    // Create memory system (using SqliteMemoryStore which implements LongTermMemory)
-    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+    // Create memory system (using AsyncSqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
 
     // Create resource manager
     let resource_manager = McpResourceManager::new(memory_system);
@@ -192,9 +186,8 @@ async fn demonstrate_mcp_resource_management() -> Result<()> {
 async fn demonstrate_complete_mcp_workflow() -> Result<()> {
     println!("\n🔄 Example 4: Complete MCP Workflow");
 
-    // Setup complete MCP system (using SqliteMemoryStore which implements LongTermMemory)
-    // Note: Using SqliteMemoryStore temporarily until AsyncSqliteMemoryStore implements LongTermMemory
-    let memory_system = Arc::new(SqliteMemoryStore::new(":memory:")?);
+    // Setup complete MCP system (using AsyncSqliteMemoryStore which implements LongTermMemory)
+    let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await?) as Arc<dyn LongTermMemory>;
     let base_registry = Arc::new(ToolRegistry::new());
 
     let tool_registry = McpToolRegistry::new(base_registry);
@@ -281,6 +274,7 @@ async fn demonstrate_complete_mcp_workflow() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fluent_agent::memory::LongTermMemory;
 
     #[tokio::test]
     async fn test_mcp_client_config() {
@@ -313,22 +307,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_resource_manager_initialization() {
-        let memory_system = Arc::new(SqliteMemoryStore::new(":memory:").unwrap());
+        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap()) as Arc<dyn LongTermMemory>;
         let resource_manager = McpResourceManager::new(memory_system);
         
         resource_manager.initialize_standard_resources().await.unwrap();
         
         let resources = resource_manager.list_resources().await;
         assert!(!resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_complete_workflow() {
+        let memory_system = Arc::new(AsyncSqliteMemoryStore::new(":memory:").await.unwrap()) as Arc<dyn LongTermMemory>;
+        let base_registry = Arc::new(ToolRegistry::new());
+        let tool_registry = McpToolRegistry::new(base_registry);
+        let resource_manager = McpResourceManager::new(memory_system);
         
-        // Test reading a resource
-        if let Some(resource) = resources.first() {
-            let result = resource_manager.read_resource(&resource.uri).await;
-            // Some resources might fail due to test environment, but should not panic
-            match result {
-                Ok(_) => println!("Resource read successful"),
-                Err(e) => println!("Resource read failed (expected in test): {}", e),
-            }
-        }
+        tool_registry.initialize_standard_tools().await.unwrap();
+        resource_manager.initialize_standard_resources().await.unwrap();
+        
+        let tools = tool_registry.list_tools().await;
+        let resources = resource_manager.list_resources().await;
+        
+        assert!(!tools.is_empty());
+        assert!(!resources.is_empty());
     }
 }

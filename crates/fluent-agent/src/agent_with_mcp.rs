@@ -1,15 +1,47 @@
 use anyhow::{anyhow, Result};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 use crate::context::ExecutionContext;
 use crate::goal::{Goal, GoalType};
 use crate::mcp_client::{McpClientManager, McpTool, McpToolResult};
-use crate::memory::{LongTermMemory, MemoryItem, MemoryQuery, MemoryType};
+use crate::memory::{MemoryItem, MemoryContent};
 use crate::orchestrator::{Observation, ObservationType};
 use crate::reasoning::ReasoningEngine;
+
+/// Simple memory trait for backward compatibility
+#[async_trait::async_trait]
+pub trait LongTermMemory: Send + Sync {
+    async fn store(&self, item: MemoryItem) -> anyhow::Result<String>;
+    async fn query(&self, query: &MemoryQuery) -> anyhow::Result<Vec<MemoryItem>>;
+    
+    /// Search method as alias for query for backward compatibility
+    async fn search(&self, query: MemoryQuery) -> anyhow::Result<Vec<MemoryItem>> {
+        self.query(&query).await
+    }
+}
+
+/// Memory query structure
+#[derive(Debug, Clone)]
+pub struct MemoryQuery {
+    pub memory_types: Vec<String>,
+    pub tags: Vec<String>,
+    pub limit: Option<usize>,
+}
+
+/// Memory type enum for backward compatibility
+#[derive(Debug, Clone)]
+pub enum MemoryType {
+    Experience,
+    Learning,
+    Strategy,
+    Pattern,
+    Rule,
+    Fact,
+}
 
 /// Enhanced agent that can use MCP tools and resources
 pub struct AgentWithMcp {
@@ -50,21 +82,31 @@ impl AgentWithMcp {
 
         // Store connection info in memory
         let memory_item = MemoryItem {
-            memory_id: uuid::Uuid::new_v4().to_string(),
-            memory_type: MemoryType::Experience,
-            content: format!(
-                "Connected to MCP server '{}' with command: {} {}",
-                name,
-                command,
-                args.join(" ")
-            ),
-            metadata: HashMap::new(),
-            importance: 0.8,
-            created_at: chrono::Utc::now(),
-            last_accessed: chrono::Utc::now(),
+            item_id: uuid::Uuid::new_v4().to_string(),
+            content: MemoryContent {
+                content_type: crate::memory::working_memory::ContentType::ContextInformation,
+                data: format!(
+                    "Connected to MCP server '{}' with command: {} {}",
+                    name, command, args.join(" ")
+                ).into_bytes(),
+                text_summary: format!("MCP connection to {}", name),
+                key_concepts: vec!["mcp".to_string(), "connection".to_string()],
+                relationships: Vec::new(),
+            },
+            metadata: crate::memory::working_memory::ItemMetadata {
+                tags: vec!["mcp".to_string(), "connection".to_string()],
+                priority: crate::memory::working_memory::Priority::Medium,
+                source: "agent_with_mcp".to_string(),
+                size_bytes: 256,
+                compression_ratio: 1.0,
+                retention_policy: crate::memory::working_memory::RetentionPolicy::ContextBased,
+            },
+            relevance_score: 0.8,
+            attention_weight: 0.8,
+            last_accessed: SystemTime::now(),
+            created_at: SystemTime::now(),
             access_count: 0,
-            tags: vec!["mcp".to_string(), "connection".to_string()],
-            embedding: None,
+            consolidation_level: 0,
         };
 
         self.memory_system.store(memory_item).await?;
@@ -134,10 +176,10 @@ impl AgentWithMcp {
         };
         context.add_observation(prompt_obs);
 
-        let reasoning_result = self.reasoning_engine.reason(&context).await?;
+        let reasoning_result = self.reasoning_engine.reason(&reasoning_prompt, &context).await?;
 
         // Parse the reasoning result
-        if let Ok(parsed) = serde_json::from_str::<Value>(&reasoning_result.reasoning_output) {
+        if let Ok(parsed) = serde_json::from_str::<Value>(&reasoning_result) {
             if parsed.get("no_tool").is_some() {
                 return Ok(None);
             }
@@ -173,30 +215,31 @@ impl AgentWithMcp {
 
             // Store the execution in memory
             let memory_item = MemoryItem {
-                memory_id: uuid::Uuid::new_v4().to_string(),
-                memory_type: MemoryType::Experience,
-                content: format!(
-                    "Executed task '{}' using tool '{}' from server '{}'. Result: {}",
-                    task, tool_name, server, result_text
-                ),
-                metadata: {
-                    let mut meta = HashMap::new();
-                    meta.insert("task".to_string(), json!(task));
-                    meta.insert("server".to_string(), json!(server));
-                    meta.insert("tool".to_string(), json!(tool_name));
-                    meta.insert("arguments".to_string(), arguments);
-                    meta
+                item_id: uuid::Uuid::new_v4().to_string(),
+                content: MemoryContent {
+                    content_type: crate::memory::working_memory::ContentType::TaskResult,
+                    data: format!(
+                        "Executed task '{}' using tool '{}' from server '{}'. Result: {}",
+                        task, tool_name, server, result_text
+                    ).into_bytes(),
+                    text_summary: format!("MCP task execution: {}", task),
+                    key_concepts: vec!["mcp".to_string(), "execution".to_string(), tool_name.clone()],
+                    relationships: Vec::new(),
                 },
-                importance: 0.7,
-                created_at: chrono::Utc::now(),
-                last_accessed: chrono::Utc::now(),
+                metadata: crate::memory::working_memory::ItemMetadata {
+                    tags: vec!["mcp".to_string(), "execution".to_string(), tool_name.clone()],
+                    priority: crate::memory::working_memory::Priority::Medium,
+                    source: "agent_with_mcp".to_string(),
+                    size_bytes: 512,
+                    compression_ratio: 1.0,
+                    retention_policy: crate::memory::working_memory::RetentionPolicy::ContextBased,
+                },
+                relevance_score: 0.7,
+                attention_weight: 0.7,
+                last_accessed: SystemTime::now(),
+                created_at: SystemTime::now(),
                 access_count: 0,
-                tags: vec![
-                    "mcp".to_string(),
-                    "execution".to_string(),
-                    tool_name.clone(),
-                ],
-                embedding: None,
+                consolidation_level: 0,
             };
 
             self.memory_system.store(memory_item).await?;
@@ -208,24 +251,28 @@ impl AgentWithMcp {
 
             // Store this as a learning experience
             let memory_item = MemoryItem {
-                memory_id: uuid::Uuid::new_v4().to_string(),
-                memory_type: MemoryType::Learning,
-                content: format!("Could not find suitable MCP tool for task: {}", task),
-                metadata: {
-                    let mut meta = HashMap::new();
-                    meta.insert("task".to_string(), json!(task));
-                    meta.insert(
-                        "available_tools".to_string(),
-                        json!(self.get_available_tools().await),
-                    );
-                    meta
+                item_id: uuid::Uuid::new_v4().to_string(),
+                content: MemoryContent {
+                    content_type: crate::memory::working_memory::ContentType::LearningItem,
+                    data: format!("Could not find suitable MCP tool for task: {}", task).into_bytes(),
+                    text_summary: "No suitable MCP tool found".to_string(),
+                    key_concepts: vec!["mcp".to_string(), "no_tool".to_string()],
+                    relationships: Vec::new(),
                 },
-                importance: 0.6,
-                created_at: chrono::Utc::now(),
-                last_accessed: chrono::Utc::now(),
+                metadata: crate::memory::working_memory::ItemMetadata {
+                    tags: vec!["mcp".to_string(), "no_tool".to_string()],
+                    priority: crate::memory::working_memory::Priority::Low,
+                    source: "agent_with_mcp".to_string(),
+                    size_bytes: 256,
+                    compression_ratio: 1.0,
+                    retention_policy: crate::memory::working_memory::RetentionPolicy::ContextBased,
+                },
+                relevance_score: 0.6,
+                attention_weight: 0.6,
+                last_accessed: SystemTime::now(),
+                created_at: SystemTime::now(),
                 access_count: 0,
-                tags: vec!["mcp".to_string(), "no_tool".to_string()],
-                embedding: None,
+                consolidation_level: 0,
             };
 
             self.memory_system.store(memory_item).await?;
@@ -273,23 +320,24 @@ impl AgentWithMcp {
     /// Learn from past MCP tool usage
     pub async fn learn_from_mcp_usage(&self, task_pattern: &str) -> Result<Vec<String>> {
         let query = MemoryQuery {
-            query_text: format!("mcp execution {}", task_pattern),
-            memory_types: vec![MemoryType::Experience],
+            memory_types: vec!["experience".to_string()],
             tags: vec!["mcp".to_string(), "execution".to_string()],
-            time_range: None,
-            importance_threshold: Some(0.5),
             limit: Some(10),
         };
 
-        let memories = self.memory_system.retrieve(&query).await?;
+        let memories = self.memory_system.query(&query).await?;
 
         let insights = memories
             .iter()
-            .map(|memory| {
-                format!(
-                    "Previous execution: {} (importance: {:.2})",
-                    memory.content, memory.importance
-                )
+            .filter_map(|memory| {
+                if memory.content.text_summary.contains(task_pattern) {
+                    Some(format!(
+                        "Previous execution: {} (relevance: {:.2})",
+                        memory.content.text_summary, memory.relevance_score
+                    ))
+                } else {
+                    None
+                }
             })
             .collect();
 

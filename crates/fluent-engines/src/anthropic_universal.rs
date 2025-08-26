@@ -88,7 +88,7 @@ mod tests {
             parameters: {
                 let mut params = std::collections::HashMap::new();
                 params.insert("bearer_token".to_string(), json!("test-token"));
-                params.insert("model".to_string(), json!("claude-3-5-sonnet-20240620"));
+                params.insert("model".to_string(), json!("claude-sonnet-4-20250514"));
                 params.insert("max_tokens".to_string(), json!(1000));
                 params
             },

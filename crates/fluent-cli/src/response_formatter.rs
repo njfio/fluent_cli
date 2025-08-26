@@ -83,7 +83,7 @@ fn print_markdown_response(response: &Response, response_time: f64, options: &Ou
     println!("**Model:** {}\n", response.model);
     
     if let Some(reason) = &response.finish_reason {
-        println!("**Finish Reason:** {}\n", reason);
+        println!("**Finish Reason:** {reason}\n");
     }
     
     println!("## Content\n");
@@ -105,7 +105,7 @@ fn print_markdown_response(response: &Response, response_time: f64, options: &Ou
         println!();
     }
     
-    println!("**Response Time:** {:.2}s", response_time);
+    println!("**Response Time:** {response_time:.2}s");
 }
 
 /// Print response in standard format
@@ -129,9 +129,9 @@ fn print_standard_response(response: &Response, response_time: f64, options: &Ou
 
         if let Some(reason) = &response.finish_reason {
             if options.no_color {
-                println!("Finish Reason: {}", reason);
+                println!("Finish Reason: {reason}");
             } else {
-                println!("\x1b[36mFinish Reason:\x1b[0m {}", reason);
+                println!("\x1b[36mFinish Reason:\x1b[0m {reason}");
             }
         }
 
@@ -164,9 +164,9 @@ fn print_standard_response(response: &Response, response_time: f64, options: &Ou
         }
 
         if options.no_color {
-            println!("Response Time: {:.2}s", response_time);
+            println!("Response Time: {response_time:.2}s");
         } else {
-            println!("\x1b[36mResponse Time:\x1b[0m {:.2}s", response_time);
+            println!("\x1b[36mResponse Time:\x1b[0m {response_time:.2}s");
         }
     }
 }
@@ -183,36 +183,36 @@ fn print_separator(no_color: bool) {
 /// Print an error message with formatting
 pub fn print_error(message: &str, no_color: bool) {
     if no_color {
-        eprintln!("Error: {}", message);
+        eprintln!("Error: {message}");
     } else {
-        eprintln!("\x1b[31mError:\x1b[0m {}", message);
+        eprintln!("\x1b[31mError:\x1b[0m {message}");
     }
 }
 
 /// Print a warning message with formatting
 pub fn print_warning(message: &str, no_color: bool) {
     if no_color {
-        eprintln!("Warning: {}", message);
+        eprintln!("Warning: {message}");
     } else {
-        eprintln!("\x1b[33mWarning:\x1b[0m {}", message);
+        eprintln!("\x1b[33mWarning:\x1b[0m {message}");
     }
 }
 
 /// Print an info message with formatting
 pub fn print_info(message: &str, no_color: bool) {
     if no_color {
-        println!("Info: {}", message);
+        println!("Info: {message}");
     } else {
-        println!("\x1b[34mInfo:\x1b[0m {}", message);
+        println!("\x1b[34mInfo:\x1b[0m {message}");
     }
 }
 
 /// Print a success message with formatting
 pub fn print_success(message: &str, no_color: bool) {
     if no_color {
-        println!("Success: {}", message);
+        println!("Success: {message}");
     } else {
-        println!("\x1b[32mSuccess:\x1b[0m {}", message);
+        println!("\x1b[32mSuccess:\x1b[0m {message}");
     }
 }
 
@@ -287,12 +287,15 @@ mod tests {
     #[tokio::test]
     async fn test_write_response_to_file() {
         let response = create_test_response();
-        let temp_file = "/tmp/test_response.txt";
+        let temp_file = std::env::temp_dir()
+            .join(format!("test_response_{}.txt", uuid::Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
 
-        let result = write_response_to_file(&response, temp_file, "text").await;
+        let result = write_response_to_file(&response, &temp_file, "text").await;
         assert!(result.is_ok());
 
         // Clean up
-        let _ = tokio::fs::remove_file(temp_file).await;
+        let _ = tokio::fs::remove_file(&temp_file).await;
     }
 }

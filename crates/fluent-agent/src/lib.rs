@@ -42,7 +42,9 @@ use tokio::process::Command;
 
 // Advanced agentic modules
 pub mod action;
+pub mod adapters;
 pub mod agent_with_mcp;
+pub mod benchmarks;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
@@ -52,9 +54,11 @@ pub mod mcp_client;
 pub mod mcp_tool_registry;
 pub mod mcp_resource_manager;
 pub mod memory;
+pub mod monitoring;
 pub mod observation;
 pub mod orchestrator;
 pub mod performance;
+pub mod planning;
 pub mod profiling;
 pub mod production_mcp;
 pub mod reasoning;
@@ -71,16 +75,31 @@ pub mod workflow;
 pub use action::{
     ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
 };
+pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
-pub use memory::{MemoryConfig, MemoryStats, MemorySystem};
+pub use memory::{MemoryConfig, MemoryStats, MemorySystem, IntegratedMemorySystem, MemoryItem, MemoryContent, WorkingMemory, ContextCompressor, CrossSessionPersistence};
+pub use monitoring::{
+    PerformanceMonitor, PerformanceMetrics, QualityMetrics,
+    AdaptiveStrategySystem,
+    ErrorRecoverySystem, RecoveryConfig, ErrorInstance, ErrorType, ErrorSeverity, RecoveryResult,
+};
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use planning::{
+    HTNPlanner, HTNConfig, HTNResult, DependencyAnalyzer, DynamicReplanner,
+    CompositePlanner, CompletePlanningResult
+};
 pub use production_mcp::{
     ProductionMcpManager, ProductionMcpConfig, McpError, HealthStatus, McpMetrics,
     initialize_production_mcp, initialize_production_mcp_with_config,
 };
-pub use reasoning::{LLMReasoningEngine, ReasoningCapability, ReasoningEngine};
+pub use reasoning::{
+    ReasoningEngine, ReasoningCapability, CompositeReasoningEngine,
+    TreeOfThoughtEngine, ToTConfig, ToTReasoningResult,
+    ChainOfThoughtEngine, CoTConfig, CoTReasoningResult,
+    MetaReasoningEngine, MetaConfig, MetaReasoningResult,
+};
 pub use reflection_engine::{ReflectionEngine, ReflectionConfig, ReflectionResult, ReflectionType};
 pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
 pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
@@ -122,24 +141,96 @@ impl Agent {
         fs::write(path, content).await.map_err(Into::into)
     }
 
-    /// Run a shell command and capture stdout and stderr with security validation.
+    /// Run a shell command with security validation, timeout and output limits.
     pub async fn run_command(&self, cmd: &str, args: &[&str]) -> Result<String> {
         // Validate command against security policies
         Self::validate_command_security(cmd, args)?;
 
-        let output = Command::new(cmd)
+        // Determine limits from environment or defaults
+        let timeout_secs: u64 = std::env::var("FLUENT_CMD_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+        let max_output_bytes: usize = std::env::var("FLUENT_CMD_MAX_OUTPUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(512 * 1024); // 512 KiB
+
+        let mut child = Command::new(cmd)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env_clear() // Clear environment for security
-            .env("PATH", "/usr/bin:/bin:/usr/local/bin") // Minimal PATH
-            .output()
-            .await?;
-        let mut result = String::from_utf8_lossy(&output.stdout).to_string();
-        if !output.status.success() {
-            result.push_str(&String::from_utf8_lossy(&output.stderr));
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/local/bin")
+            .spawn()?;
+
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture stdout"))?;
+        let mut stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture stderr"))?;
+
+        use tokio::io::AsyncReadExt;
+        let mut out_buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+        let mut err_buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+
+        let read_fut = async {
+            let mut tmp_out = [0u8; 8192];
+            let mut tmp_err = [0u8; 8192];
+            loop {
+                tokio::select! {
+                    read = stdout.read(&mut tmp_out) => {
+                        let n = read?;
+                        if n == 0 { break; }
+                        let to_take = n.min(max_output_bytes.saturating_sub(out_buf.len()));
+                        out_buf.extend_from_slice(&tmp_out[..to_take]);
+                        if out_buf.len() >= max_output_bytes { break; }
+                    }
+                    read = stderr.read(&mut tmp_err) => {
+                        let n = read?;
+                        if n == 0 { break; }
+                        let to_take = n.min(max_output_bytes.saturating_sub(err_buf.len()));
+                        err_buf.extend_from_slice(&tmp_err[..to_take]);
+                        if err_buf.len() >= max_output_bytes { break; }
+                    }
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        };
+
+        // Apply timeout to child and reading
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), read_fut).await {
+            Ok(r) => r?,
+            Err(_) => {
+                let _ = child.kill().await; // best-effort
+                return Err(anyhow!("command timed out after {}s", timeout_secs));
+            }
         }
-        Ok(result)
+
+        let status = match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+            Ok(r) => r?,
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err(anyhow!("command did not terminate promptly after output read"));
+            }
+        };
+
+        let mut combined = String::new();
+        combined.push_str(&String::from_utf8_lossy(&out_buf));
+        if !status.success() {
+            combined.push_str(&String::from_utf8_lossy(&err_buf));
+        }
+
+        if out_buf.len() >= max_output_bytes || err_buf.len() >= max_output_bytes {
+            combined.push_str("\n[output truncated]\n");
+        }
+
+        Ok(combined)
     }
 
     /// Validate command and arguments against security policies

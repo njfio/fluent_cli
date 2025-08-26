@@ -1,7 +1,7 @@
 {
   "engines": [
     {
-      "name": "openai",
+      "name": "test_engine",
       "engine": "openai",
       "connection": {
         "protocol": "https",
@@ -10,19 +10,14 @@
         "request_path": "/v1/chat/completions"
       },
       "parameters": {
-          "bearer_token": "AMBER_FLUENT_OPENAI_API_KEY_01",
-          "modelName": "gpt-4o",
-          "max_tokens": 150,
-          "temperature": 1.0,
-          "top_p": 1,
-          "n": 1,
-          "stream": false,
-          "presence_penalty": 0,
-          "frequency_penalty": 0
+        "bearer_token": "test-key",
+        "max_tokens": 1000,
+        "modelName": "gpt-4o",
+        "temperature": 0.7
       }
     },
     {
-      "name": "sonnet",
+      "name": "anthropic_test",
       "engine": "anthropic",
       "connection": {
         "protocol": "https",
@@ -31,19 +26,10 @@
         "request_path": "/v1/messages"
       },
       "parameters": {
-        "sessionID": "NJF890CUSTOM",
-        "bearer_token": "AMBER_FLUENT_ANTHROPIC_KEY_01",
-        "max_tokens": 200,
-        "modelName": "claude-3-5-sonnet-20240620",
-        "temperature": 0.7,
-        "system": "You are a helpful AI assistant."
-      },
-      "sessionID": "NJF890CUSTOM",
-      "neo4j": {
-        "uri": "bolt://localhost:7687",
-        "user": "neo4j",
-        "password": "AMBER_FLUENT_NEO4J_PASSWORD",
-        "database": "neo4j"
+        "bearer_token": "test-anthropic-key",
+        "max_tokens": 1000,
+        "modelName": "claude-sonnet-4-20250514",
+        "temperature": 0.7
       }
     }
   ]

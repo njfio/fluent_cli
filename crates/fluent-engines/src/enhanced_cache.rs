@@ -517,11 +517,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO: Fix expiration test
     async fn test_cache_expiration() {
         let config = CacheConfig {
-            ttl: Duration::from_millis(1), // Very short TTL
-            enable_disk_cache: false,      // Disable disk cache for simpler test
+            ttl: Duration::from_millis(50), // Short but reasonable TTL
+            enable_disk_cache: false,       // Disable disk cache for simpler test
             ..Default::default()
         };
 
@@ -529,16 +528,23 @@ mod tests {
         let key = CacheKey::new("test", "openai");
         let response = create_test_response();
 
+        // Insert entry
         cache.insert(&key, &response).await.unwrap();
 
-        // Wait for expiration
-        tokio::time::sleep(Duration::from_millis(10)).await;
-
-        // Manually clean up expired entries
-        cache.cleanup_expired().await.unwrap();
-
+        // Verify entry exists and is not expired
         let retrieved = cache.get(&key).await.unwrap();
-        assert!(retrieved.is_none());
+        assert!(retrieved.is_some());
+
+        // Wait for expiration (longer than TTL)
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // The get() method should automatically remove expired entries
+        let retrieved_after_expiry = cache.get(&key).await.unwrap();
+        assert!(retrieved_after_expiry.is_none());
+
+        // Verify cache stats show eviction
+        let stats = cache.get_stats();
+        assert!(stats.evictions > 0);
     }
 
     #[tokio::test]

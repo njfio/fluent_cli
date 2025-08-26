@@ -1,0 +1,18 @@
+name: "rust-error-fixer"
+description: "Automatically detect and fix Rust compilation errors"
+steps:
+  - name: "check-compilation"
+    tool: "cargo_check"
+    description: "Check for compilation errors"
+    directory: "./minesweeper_solitaire_game"
+    
+  - name: "parse-errors" 
+    tool: "string_replace"
+    description: "Parse compilation errors and generate fixes"
+    file: "./minesweeper_solitaire_game/src/main.rs"
+    # This would be enhanced to actually parse errors and apply fixes
+    
+  - name: "apply-fixes"
+    tool: "string_replace"
+    description: "Apply specific fixes for the known errors"
+    file: "./minesweeper_solitaire_game/src/main.rs"

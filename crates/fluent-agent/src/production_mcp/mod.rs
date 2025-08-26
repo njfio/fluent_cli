@@ -19,6 +19,7 @@ pub mod config;
 pub mod metrics;
 pub mod health;
 pub mod registry;
+pub mod enhanced_mcp_system;
 
 pub use error::*;
 pub use client::*;
@@ -28,6 +29,7 @@ pub use config::*;
 pub use metrics::*;
 pub use health::*;
 pub use registry::*;
+pub use enhanced_mcp_system::*;
 
 use anyhow::Result;
 use std::sync::Arc;

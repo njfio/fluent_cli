@@ -3,6 +3,10 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use std::env;
 
+pub mod security_framework;
+
+pub use security_framework::*;
+
 pub mod capability;
 
 /// Security policy definition

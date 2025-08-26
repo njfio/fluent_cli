@@ -1,5 +1,5 @@
 use fluent_agent::{
-    memory::{SqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
+    memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
     mcp_tool_registry::McpToolRegistry,
     performance::utils::{PerformanceCounter, MemoryTracker},
 };
@@ -16,7 +16,7 @@ use tokio;
 async fn benchmark_memory_operations() -> Result<()> {
     println!("=== Memory Operations Benchmark ===");
     
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     let counter = PerformanceCounter::new();
     
     // Benchmark different memory sizes
@@ -100,7 +100,7 @@ async fn benchmark_memory_operations() -> Result<()> {
 async fn benchmark_concurrent_load() -> Result<()> {
     println!("=== Concurrent Load Benchmark ===");
     
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Test different concurrency levels
     let concurrency_levels = vec![1, 5, 10, 20, 50];
@@ -115,7 +115,7 @@ async fn benchmark_concurrent_load() -> Result<()> {
         for task_id in 0..concurrency {
             let handle = tokio::spawn(async move {
                 // Create separate store for each task to avoid lifetime issues
-                let task_store = SqliteMemoryStore::new(":memory:").unwrap();
+                let task_store = AsyncSqliteMemoryStore::new(":memory:").await.unwrap();
                 let mut task_success = 0;
                 let mut task_errors = 0;
                 let task_start = Instant::now();
@@ -181,7 +181,7 @@ async fn benchmark_concurrent_load() -> Result<()> {
 async fn benchmark_query_patterns() -> Result<()> {
     println!("=== Query Patterns Benchmark ===");
     
-    let store = SqliteMemoryStore::new(":memory:")?;
+    let store = AsyncSqliteMemoryStore::new(":memory:").await?;
     
     // Populate with diverse test data
     let num_memories = 10000;
@@ -312,7 +312,7 @@ async fn benchmark_memory_usage_patterns() -> Result<()> {
     for (pattern_name, num_items, content_size) in patterns {
         println!("\nTesting pattern: {}", pattern_name);
         
-        let store = SqliteMemoryStore::new(":memory:")?;
+        let store = AsyncSqliteMemoryStore::new(":memory:").await?;
         let pattern_start = Instant::now();
         let start_usage = tracker.get_current_usage();
         

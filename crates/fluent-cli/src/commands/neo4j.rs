@@ -32,8 +32,7 @@ impl Neo4jCommand {
         let llm_request = Request {
             flowname: "cypher_generation".to_string(),
             payload: format!(
-                "Generate a Cypher query for Neo4j based on this request: {}",
-                query
+                "Generate a Cypher query for Neo4j based on this request: {query}"
             ),
         };
 
@@ -53,7 +52,7 @@ impl Neo4jCommand {
 
     /// Execute Cypher query generation
     async fn execute_cypher_generation(query: &str, config: &Config) -> Result<CommandResult> {
-        println!("🔍 Generating Cypher query for: {}", query);
+        println!("🔍 Generating Cypher query for: {query}");
 
         // Get Neo4j configuration and query LLM
         let (_llm_engine, llm_config) = Self::get_neo4j_query_llm(config)
@@ -64,7 +63,7 @@ impl Neo4jCommand {
         let cypher_query = Self::generate_cypher_query(query, llm_config).await?;
 
         println!("📝 Generated Cypher query:");
-        println!("{}", cypher_query);
+        println!("{cypher_query}");
 
         // Find Neo4j engine configuration
         let neo4j_config = config
@@ -83,7 +82,7 @@ impl Neo4jCommand {
             let results = neo4j_client.execute_cypher(&cypher_query).await?;
 
             println!("📊 Query results:");
-            println!("  {}", results);
+            println!("  {results}");
 
             Ok(CommandResult::success_with_data(serde_json::json!({
                 "query": query,
@@ -107,10 +106,10 @@ impl Neo4jCommand {
         config: &Config,
     ) -> Result<CommandResult> {
         println!("📤 Starting Neo4j upsert operation");
-        println!("Input: {}", input_path);
+        println!("Input: {input_path}");
 
         if let Some(terms) = metadata_terms {
-            println!("Metadata terms: {}", terms);
+            println!("Metadata terms: {terms}");
         }
 
         // Find Neo4j engine configuration
@@ -136,8 +135,7 @@ impl Neo4jCommand {
 
         // Create upsert query (simplified)
         let upsert_query = format!(
-            "MERGE (d:Document {{path: '{}'}}) SET d.content = $content, d.updated = timestamp()",
-            input_path
+            "MERGE (d:Document {{path: '{input_path}'}}) SET d.content = $content, d.updated = timestamp()"
         );
 
         // Execute upsert
@@ -145,7 +143,7 @@ impl Neo4jCommand {
         let results = neo4j_client.execute_cypher(&upsert_query).await?;
 
         println!("✅ Upsert completed successfully");
-        println!("📊 Results: {}", results);
+        println!("📊 Results: {results}");
 
         Ok(CommandResult::success_with_data(serde_json::json!({
             "input_path": input_path,
@@ -185,7 +183,7 @@ impl CommandHandler for Neo4jCommand {
 
             if !result.success {
                 if let Some(message) = result.message {
-                    eprintln!("Upsert operation failed: {}", message);
+                    eprintln!("Upsert operation failed: {message}");
                 }
                 std::process::exit(1);
             }

@@ -58,7 +58,7 @@ impl McpCommand {
         let mut mcp_config = Self::load_mcp_config(config).await?;
 
         if let Some(config_path) = config_file {
-            println!("📄 Loading configuration from: {}", config_path);
+            println!("📄 Loading configuration from: {config_path}");
             // In a full implementation, load from file
         }
 
@@ -69,9 +69,17 @@ impl McpCommand {
         } else if let Some(port_str) = port {
             let port_num: u16 = port_str.parse()
                 .map_err(|_| anyhow!("Invalid port number: {}", port_str))?;
-            println!("🌐 Using HTTP transport on port: {}", port_num);
-            mcp_config.server.bind_address = format!("127.0.0.1:{}", port_num);
+            println!("🌐 Using HTTP transport on port: {port_num}");
+            mcp_config.server.bind_address = format!("127.0.0.1:{port_num}");
             mcp_config.transport.default_transport = fluent_agent::production_mcp::config::TransportType::Http;
+        }
+
+        // In test mode, do not block on server loop
+        if std::env::var("FLUENT_TEST_MODE").is_ok() {
+            println!("🧪 Test mode: skipping server run loop");
+            return Ok(CommandResult::success_with_message(
+                "MCP server initialization skipped in test mode".to_string(),
+            ));
         }
 
         // Initialize and start MCP manager
@@ -106,8 +114,8 @@ impl McpCommand {
             .map(|values| values.cloned().collect())
             .unwrap_or_default();
 
-        println!("🔗 Connecting to MCP server: {}", server_name);
-        println!("📋 Command: {} {:?}", command, args);
+        println!("🔗 Connecting to MCP server: {server_name}");
+        println!("📋 Command: {command} {args:?}");
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
@@ -120,11 +128,10 @@ impl McpCommand {
             .await
             .map_err(|e| anyhow!("Failed to connect to server '{}': {}", server_name, e))?;
 
-        println!("✅ Successfully connected to MCP server: {}", server_name);
+        println!("✅ Successfully connected to MCP server: {server_name}");
 
         Ok(CommandResult::success_with_message(format!(
-            "Connected to MCP server '{}'",
-            server_name
+            "Connected to MCP server '{server_name}'"
         )))
     }
 
@@ -133,7 +140,7 @@ impl McpCommand {
         let server_name = matches.get_one::<String>("name")
             .ok_or_else(|| anyhow!("Server name is required"))?;
 
-        println!("🔌 Disconnecting from MCP server: {}", server_name);
+        println!("🔌 Disconnecting from MCP server: {server_name}");
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
@@ -146,11 +153,10 @@ impl McpCommand {
             .await
             .map_err(|e| anyhow!("Failed to disconnect from server '{}': {}", server_name, e))?;
 
-        println!("✅ Successfully disconnected from MCP server: {}", server_name);
+        println!("✅ Successfully disconnected from MCP server: {server_name}");
 
         Ok(CommandResult::success_with_message(format!(
-            "Disconnected from MCP server '{}'",
-            server_name
+            "Disconnected from MCP server '{server_name}'"
         )))
     }
 
@@ -201,13 +207,13 @@ impl McpCommand {
                     }
                 }
 
-                println!("\n📡 Server: {}", server_name);
+                println!("\n📡 Server: {server_name}");
                 println!("   Tools: {}", tools.len());
 
                 for tool in tools {
                     println!("   🔧 {}", tool.name);
                     if let Some(description) = &tool.description {
-                        println!("      📝 {}", description);
+                        println!("      📝 {description}");
                     }
                 }
             }
@@ -231,8 +237,8 @@ impl McpCommand {
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(30);
 
-        println!("🔧 Executing tool: {}", tool_name);
-        println!("📋 Parameters: {}", parameters_str);
+        println!("🔧 Executing tool: {tool_name}");
+        println!("📋 Parameters: {parameters_str}");
 
         // Parse parameters
         let parameters: Value = serde_json::from_str(parameters_str)
@@ -260,8 +266,7 @@ impl McpCommand {
         println!("📄 Result: {}", serde_json::to_string_pretty(&result)?);
 
         Ok(CommandResult::success_with_message(format!(
-            "Tool '{}' executed successfully",
-            tool_name
+            "Tool '{tool_name}' executed successfully"
         )))
     }
 
@@ -348,13 +353,13 @@ impl McpCommand {
             println!("📄 Current MCP Configuration:");
             let mcp_config = Self::load_mcp_config(config).await?;
             let config_json = serde_json::to_string_pretty(&mcp_config)?;
-            println!("{}", config_json);
+            println!("{config_json}");
         } else if let (Some(key), Some(value)) = (set_key, set_value) {
-            println!("🔧 Setting configuration: {} = {}", key, value);
+            println!("🔧 Setting configuration: {key} = {value}");
             // In a full implementation, this would update the configuration
             println!("⚠️  Configuration updates not yet implemented");
         } else if let Some(file_path) = config_file {
-            println!("💾 Saving configuration to: {}", file_path);
+            println!("💾 Saving configuration to: {file_path}");
             let _mcp_config = Self::load_mcp_config(config).await?;
             // In a full implementation, save to file
             println!("⚠️  Configuration file saving not yet implemented");
@@ -373,9 +378,9 @@ impl McpCommand {
         config: &Config,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Agent with MCP Integration (Legacy Mode)");
-        println!("Engine: {}", engine_name);
-        println!("Task: {}", task);
-        println!("MCP Servers: {:?}", mcp_servers);
+        println!("Engine: {engine_name}");
+        println!("Task: {task}");
+        println!("MCP Servers: {mcp_servers:?}");
 
         // Validate engine name
         let supported_engines = ["openai", "anthropic", "google", "cohere", "mistral"];
@@ -394,7 +399,7 @@ impl McpCommand {
 
         println!("🔧 Setting up MCP connections...");
         for server in &mcp_servers {
-            println!("  📡 Connecting to MCP server: {}", server);
+            println!("  📡 Connecting to MCP server: {server}");
             // Parse server specification (name:command format)
             let parts: Vec<&str> = server.split(':').collect();
             let (server_name, command) = if parts.len() >= 2 {
@@ -408,13 +413,13 @@ impl McpCommand {
                 .connect_server(server_name.to_string(), command.to_string(), vec![])
                 .await
             {
-                Ok(_) => println!("    ✅ Connected to {}", server_name),
-                Err(e) => println!("    ❌ Failed to connect to {}: {}", server_name, e),
+                Ok(_) => println!("    ✅ Connected to {server_name}"),
+                Err(e) => println!("    ❌ Failed to connect to {server_name}: {e}"),
             }
         }
 
-        println!("🎯 Executing task: {}", task);
-        println!("⚙️  Processing with {} engine...", engine_name);
+        println!("🎯 Executing task: {task}");
+        println!("⚙️  Processing with {engine_name} engine...");
 
         // Simulate task execution with actual MCP integration
         sleep(Duration::from_millis(500)).await;

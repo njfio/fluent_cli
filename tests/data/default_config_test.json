@@ -793,6 +793,86 @@
       }
     },
     {
+      "name": "openai_reasoning",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "${OPENAI_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "gpt-4o",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "anthropic_reasoning",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "claude-sonnet-4-20250514",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "gemini_reasoning",
+      "engine": "gemini",
+      "connection": {
+        "protocol": "https",
+        "hostname": "generativelanguage.googleapis.com",
+        "port": 443,
+        "request_path": "/v1beta/models/gemini-pro:generateContent"
+      },
+      "parameters": {
+        "bearer_token": "${GEMINI_API_KEY}",
+        "max_tokens": 4000,
+        "modelName": "gemini-pro",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "openai_action",
+      "engine": "openai",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.openai.com",
+        "port": 443,
+        "request_path": "/v1/chat/completions"
+      },
+      "parameters": {
+        "bearer_token": "${OPENAI_API_KEY}",
+        "max_tokens": 2000,
+        "modelName": "gpt-4o",
+        "temperature": 0.1
+      }
+    },
+    {
+      "name": "anthropic_action",
+      "engine": "anthropic",
+      "connection": {
+        "protocol": "https",
+        "hostname": "api.anthropic.com",
+        "port": 443,
+        "request_path": "/v1/messages"
+      },
+      "parameters": {
+        "bearer_token": "${ANTHROPIC_API_KEY}",
+        "max_tokens": 2000,
+        "modelName": "claude-sonnet-4-20250514",
+        "temperature": 0.1
+      }
+    },
+    {
       "name": "neo4j",
       "engine": "neo4j",
       "connection": {

@@ -1,44 +1,42 @@
 engines:
-  - name: "openai-gpt4"
-    engine: "openai"
-    connection:
-      protocol: "https"
-      hostname: "api.openai.com"
-      port: 443
-      request_path: "/v1/chat/completions"
-    parameters:
-      bearer_token: "${OPENAI_API_KEY}"
-      modelName: "gpt-4"
-      max_tokens: 2000
-      temperature: 0.7
-      top_p: 1
-      n: 1
-      stream: false
-      presence_penalty: 0
-      frequency_penalty: 0
-
-  - name: "anthropic-claude"
-    engine: "anthropic"
-    connection:
-      protocol: "https"
-      hostname: "api.anthropic.com"
-      port: 443
-      request_path: "/v1/messages"
-    parameters:
-      bearer_token: "${ANTHROPIC_API_KEY}"
-      modelName: "claude-3-sonnet-20240229"
-      max_tokens: 2000
-      temperature: 0.7
-
-  - name: "google-gemini"
-    engine: "google"
-    connection:
-      protocol: "https"
-      hostname: "generativelanguage.googleapis.com"
-      port: 443
-      request_path: "/v1beta/models/{model}:generateContent"
-    parameters:
-      bearer_token: "${GOOGLE_API_KEY}"
-      modelName: "gemini-pro"
-      max_tokens: 2000
-      temperature: 0.7
+- name: openai-latest
+  engine: openai
+  connection:
+    protocol: https
+    hostname: api.openai.com
+    port: 443
+    request_path: /v1/chat/completions
+  parameters:
+    bearer_token: ${OPENAI_API_KEY}
+    modelName: gpt-5-2025-08-07
+    max_tokens: 2000
+    temperature: 0.7
+    top_p: 1
+    n: 1
+    stream: false
+    presence_penalty: 0
+    frequency_penalty: 0
+- name: anthropic-opus-4-1
+  engine: anthropic
+  connection:
+    protocol: https
+    hostname: api.anthropic.com
+    port: 443
+    request_path: /v1/messages
+  parameters:
+    bearer_token: ${ANTHROPIC_API_KEY}
+    modelName: claude-opus-4-1-20250805
+    max_tokens: 2000
+    temperature: 0.7
+- name: perplexity-sonar
+  engine: perplexity
+  connection:
+    protocol: https
+    hostname: api.perplexity.ai
+    port: 443
+    request_path: /chat/completions
+  parameters:
+    bearer_token: ${PERPLEXITY_API_KEY}
+    model: sonar-pro
+    max_tokens: 2000
+    temperature: 0.7
