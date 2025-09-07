@@ -154,14 +154,10 @@ fluent anthropic-claude "Write a Python function to calculate fibonacci"
 #### Agent Commands
 
 ```bash
-# Interactive agent session (requires engine name and API keys)
-fluent openai-gpt4 agent
+# Interactive agent session (requires API keys)
+fluent agent
 
-# Agent with MCP capabilities (experimental - requires API keys)
-fluent openai-gpt4 agent-mcp -e openai -t "Analyze codebase" -s "filesystem:mcp-server-filesystem"
-
-# Note: Advanced agentic features like --agentic, --goal, --max-iterations are not yet implemented in the CLI
-# The agent command provides basic interactive functionality
+# For MCP integration, see the MCP commands below
 # Set appropriate API keys before running:
 # export OPENAI_API_KEY="your-api-key-here"
 # export ANTHROPIC_API_KEY="your-api-key-here"
@@ -170,8 +166,8 @@ fluent openai-gpt4 agent-mcp -e openai -t "Analyze codebase" -s "filesystem:mcp-
 #### Pipeline Commands
 
 ```bash
-# Execute a pipeline (requires engine name)
-fluent openai-gpt4 pipeline -f pipeline.yaml -i "process this data"
+# Execute a pipeline
+fluent pipeline -f pipeline.yaml -i "process this data"
 
 # Build a pipeline interactively
 fluent build-pipeline
@@ -183,14 +179,11 @@ fluent build-pipeline
 #### MCP (Model Context Protocol) Commands
 
 ```bash
-# Start MCP server (STDIO transport by default - requires engine name)
-fluent openai-gpt4 mcp
+# Start MCP server (STDIO transport)
+fluent mcp server --stdio
 
 # Start MCP server with specific port (HTTP transport)
-fluent openai-gpt4 mcp -p 8080
-
-# Run agent with MCP integration (experimental)
-fluent openai-gpt4 agent-mcp -e openai -t "analyze codebase" -s "server1,server2"
+fluent mcp server --port 8080
 ```
 
 #### Neo4j Integration Commands
@@ -203,40 +196,38 @@ fluent neo4j
 # See the configuration section for Neo4j setup details
 ```
 
-#### Direct Engine Commands
+#### Engine Commands
 
 ```bash
-# Direct engine queries (primary interface - use exact engine names from config)
-fluent openai-gpt4 "Explain quantum computing"
-fluent anthropic-claude "Write a Python function"
-fluent google-gemini "Analyze this code"
+# List configured engines
+fluent engine list
 
-# Note: Engine names must match those defined in config.yaml
-# Other commands (pipeline, agent, mcp, tools) are separate subcommands
+# Test connectivity for an engine
+fluent engine test <engine-name>
 ```
 
 #### Tool Access Commands ✅ **NEW**
 
 ```bash
 # List all available tools
-fluent openai-gpt4 tools list
+fluent tools list
 
 # List tools by category
-fluent openai-gpt4 tools list --category file
-fluent openai-gpt4 tools list --category compiler
+fluent tools list --category file
+fluent tools list --category compiler
 
 # Get tool description and usage
-fluent openai-gpt4 tools describe read_file
-fluent openai-gpt4 tools describe cargo_build
+fluent tools describe read_file
+fluent tools describe cargo_build
 
 # Execute tools directly
-fluent openai-gpt4 tools exec read_file --path "README.md"
-fluent openai-gpt4 tools exec cargo_check
-fluent openai-gpt4 tools exec string_replace --path "file.txt" --old "old text" --new "new text"
+fluent tools exec read_file --path "README.md"
+fluent tools exec cargo_check
+fluent tools exec string_replace --path "file.txt" --old "old text" --new "new text"
 
 # JSON output for automation
-fluent openai-gpt4 tools list --json
-fluent openai-gpt4 tools exec file_exists --path "Cargo.toml" --json-output
+fluent tools list --json
+fluent tools exec file_exists --path "Cargo.toml" --json-output
 
 # Available tool categories: file, compiler, shell, editor, system
 ```

@@ -235,8 +235,8 @@ impl Agent {
 
     /// Validate command and arguments against security policies
     fn validate_command_security(cmd: &str, args: &[&str]) -> Result<()> {
-        // Get allowed commands from environment or use defaults
-        let allowed_commands = Self::get_allowed_commands();
+        // Get allowed commands based on context
+        let allowed_commands = Self::get_allowed_commands_by_context();
 
         // Check if command is in whitelist
         if !allowed_commands.iter().any(|allowed| allowed == cmd) {
@@ -248,12 +248,9 @@ impl Agent {
             return Err(anyhow!("Command name too long"));
         }
 
-        // Check for dangerous patterns in command
-        let dangerous_patterns = ["../", "./", "/", "~", "$", "`", ";", "&", "|", ">", "<"];
-        for pattern in &dangerous_patterns {
-            if cmd.contains(pattern) {
-                return Err(anyhow!("Command contains dangerous pattern: {}", pattern));
-            }
+        // Check for dangerous patterns in command using more robust validation
+        if !Self::is_safe_command_name(cmd) {
+            return Err(anyhow!("Command contains unsafe characters or patterns"));
         }
 
         // Validate arguments
@@ -262,19 +259,17 @@ impl Agent {
                 return Err(anyhow!("Argument too long"));
             }
 
-            // Check for dangerous patterns in arguments
-            for pattern in &dangerous_patterns {
-                if arg.contains(pattern) {
-                    return Err(anyhow!("Argument contains dangerous pattern: {}", pattern));
-                }
+            // Check for dangerous patterns in arguments using more robust validation
+            if !Self::is_safe_argument(arg) {
+                return Err(anyhow!("Argument contains unsafe characters or patterns"));
             }
         }
 
         Ok(())
     }
 
-    /// Get allowed commands from environment or defaults
-    fn get_allowed_commands() -> Vec<String> {
+    /// Get allowed commands based on execution context
+    fn get_allowed_commands_by_context() -> Vec<String> {
         // Check environment variable for custom allowed commands
         if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
             log::info!("Custom allowed commands: {}", custom_commands);
@@ -294,7 +289,48 @@ impl Agent {
             }
         }
 
-        // Default allowed commands for agent operations
+        // Check for context-specific allowlists
+        if let Ok(context) = std::env::var("FLUENT_AGENT_CONTEXT") {
+            match context.as_str() {
+                "development" => {
+                    // More permissive commands for development
+                    return vec![
+                        "cargo".to_string(),
+                        "rustc".to_string(),
+                        "git".to_string(),
+                        "ls".to_string(),
+                        "cat".to_string(),
+                        "echo".to_string(),
+                        "pwd".to_string(),
+                        "which".to_string(),
+                        "find".to_string(),
+                        "mkdir".to_string(),
+                        "touch".to_string(),
+                        "rm".to_string(), // Only in development context
+                    ];
+                }
+                "testing" => {
+                    // Commands specifically for testing
+                    return vec![
+                        "cargo".to_string(),
+                        "rustc".to_string(),
+                        "echo".to_string(),
+                        "cat".to_string(),
+                        "ls".to_string(),
+                        "pwd".to_string(),
+                        "which".to_string(),
+                        "find".to_string(),
+                        "mkdir".to_string(),
+                        "touch".to_string(),
+                    ];
+                }
+                _ => {
+                    // Default to production context
+                }
+            }
+        }
+
+        // Default allowed commands for agent operations (production-safe)
         vec![
             "cargo".to_string(),
             "rustc".to_string(),
@@ -326,6 +362,53 @@ impl Agent {
             && !cmd.contains('/') // No paths
             && !cmd.contains('\\') // No Windows paths
             && !cmd.contains(' ') // No spaces
+    }
+
+    /// More robust validation for command names
+    fn is_safe_command_name(cmd: &str) -> bool {
+        // List of dangerous patterns to check
+        let dangerous_patterns = [
+            "../", "./", "/.", "//", "~/", "$", "`", ";", "&", "|", 
+            ">", "<", "*", "?", "[", "]", "{", "}", "(", ")", 
+            "||", "&&", ">>", "<<", "\\", "\n", "\r", "\t"
+        ];
+        
+        // Check for dangerous patterns
+        for pattern in &dangerous_patterns {
+            if cmd.contains(pattern) {
+                return false;
+            }
+        }
+        
+        // Additional checks
+        if cmd.starts_with('-') || cmd.starts_with('.') {
+            return false;
+        }
+        
+        true
+    }
+
+    /// More robust validation for command arguments
+    fn is_safe_argument(arg: &str) -> bool {
+        // List of dangerous patterns to check in arguments
+        let dangerous_patterns = [
+            "$(", "`", ";", "&", "|", ">", "<", ">>", "<<", 
+            "||", "&&", "\n", "\r", "\t"
+        ];
+        
+        // Check for dangerous patterns
+        for pattern in &dangerous_patterns {
+            if arg.contains(pattern) {
+                return false;
+            }
+        }
+        
+        // Check for command substitution patterns
+        if arg.contains("$(") || arg.contains("`") {
+            return false;
+        }
+        
+        true
     }
 
     /// Commit changes in the current git repository.

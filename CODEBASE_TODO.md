@@ -84,7 +84,7 @@ CLI UX and Ergonomics
 
 Configuration and Docs
 - [P1] Consolidate configuration documentation
-  - Reconcile README engine names and actual config schema (names must match); add a “troubleshooting: engine not found” section
+  - Reconcile README engine names and actual config schema (names must match); add a "troubleshooting: engine not found" section
 - [P1] Make examples resilient
   - Examples that require API keys: detect absence and print a single-line instruction with exit code 2 instead of failing deeper in stack
 - [P2] Prune or clearly mark experimental Python frontends (frontend.py, frontend_secure.py)

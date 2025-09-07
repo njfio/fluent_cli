@@ -20,6 +20,22 @@ pub fn build_cli() -> Command {
                 .default_value("fluent_config.toml")
                 .global(true),
         )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .help("Increase output verbosity (overrides --quiet)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            Arg::new("quiet")
+                .short('q')
+                .long("quiet")
+                .help("Suppress non-error output")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand(
             Command::new("pipeline")
                 .about("Execute a pipeline from a YAML file")
@@ -227,6 +243,25 @@ pub fn build_cli() -> Command {
                         .value_name("FILE")
                         .help("Input file for upsert operation")
                         .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("completions")
+                .about("Generate shell completion scripts")
+                .arg(
+                    Arg::new("shell")
+                        .short('s')
+                        .long("shell")
+                        .value_name("SHELL")
+                        .help("Shell type: bash, zsh, fish, powershell, elvish")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name("FILE")
+                        .help("Write completions to file (default: stdout)"),
                 ),
         )
         .subcommand(

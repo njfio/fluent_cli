@@ -1,6 +1,6 @@
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let _ = env_logger::try_init();
 
     let result = fluent_cli::cli::run_modular().await;
     if let Err(err) = result {

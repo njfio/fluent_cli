@@ -11,7 +11,10 @@ members = [
     "crates/fluent-engines",
     "crates/fluent-storage",
     "crates/fluent-sdk",
-    "crates/fluent-lambda", "minesweeper_solitaire_game",
+    "crates/fluent-lambda",
+    "crates/fluent-config",
+    "minesweeper_solitaire_game",
+    "tests",
 ]
 
 [dependencies]

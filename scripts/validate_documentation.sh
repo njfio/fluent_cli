@@ -47,25 +47,25 @@ test_command() {
 echo -e "\n${YELLOW}Testing Help Commands${NC}"
 echo "------------------------"
 test_command "Main help" "cargo run -- --help"
-test_command "Agent help" "cargo run -- openai-gpt4 agent --help"
-test_command "Tools help" "cargo run -- openai-gpt4 tools --help"
-test_command "Pipeline help" "cargo run -- openai-gpt4 pipeline --help"
-test_command "MCP help" "cargo run -- openai-gpt4 mcp --help"
+test_command "Agent help" "cargo run -- agent --help"
+test_command "Tools help" "cargo run -- tools --help"
+test_command "Pipeline help" "cargo run -- pipeline --help"
+test_command "MCP help" "cargo run -- mcp --help"
 
 # Test tool commands (should work without API keys)
 echo -e "\n${YELLOW}Testing Tool Commands${NC}"
 echo "------------------------"
-test_command "Tools list" "cargo run -- openai-gpt4 tools list"
-test_command "Tools categories" "cargo run -- openai-gpt4 tools categories"
-test_command "Tool describe" "cargo run -- openai-gpt4 tools describe read_file"
-test_command "Tool execution (file_exists)" "cargo run -- openai-gpt4 tools exec file_exists --path README.md"
-test_command "Tool execution (cargo_check)" "cargo run -- openai-gpt4 tools exec cargo_check"
+test_command "Tools list" "cargo run -- tools list"
+test_command "Tools categories" "cargo run -- tools categories"
+test_command "Tool describe" "cargo run -- tools describe read_file"
+test_command "Tool execution (file_exists)" "cargo run -- tools exec file_exists --path README.md"
+test_command "Tool execution (cargo_check)" "cargo run -- tools exec cargo_check"
 
 # Test JSON output
 echo -e "\n${YELLOW}Testing JSON Output${NC}"
 echo "------------------------"
-test_command "Tools list JSON" "cargo run -- openai-gpt4 tools list --json"
-test_command "Tool describe JSON" "cargo run -- openai-gpt4 tools describe read_file --json"
+test_command "Tools list JSON" "cargo run -- tools list --json"
+test_command "Tool describe JSON" "cargo run -- tools describe read_file --json"
 
 # Test examples
 echo -e "\n${YELLOW}Testing Examples${NC}"

@@ -26,10 +26,25 @@ pub async fn run_modular() -> Result<()> {
     let matches = match matches {
         Ok(matches) => matches,
         Err(err) => {
-            // Return error so caller can map to proper exit code
-            return Err(CliError::ArgParse(err.to_string()).into());
+            // Check if this is a help or version request, which should not be treated as an error
+            if err.use_stderr() {
+                // This is a real error
+                return Err(CliError::ArgParse(err.to_string()).into());
+            } else {
+                // This is help or version, just print and exit successfully
+                err.print().map_err(|e| CliError::Unknown(format!("Failed to print help/version: {}", e)))?;
+                return Ok(());
+            }
         }
     };
+
+    // Set verbosity env flags for downstream components (used in future logging standardization)
+    if matches.get_flag("quiet") {
+        std::env::set_var("FLUENT_QUIET", "1");
+    }
+    if matches.get_flag("verbose") {
+        std::env::set_var("FLUENT_VERBOSE", "1");
+    }
 
     // Load configuration - handle missing config files gracefully
     let config_path = matches.get_one::<String>("config").map(|s| s.as_str()).unwrap_or("fluent_config.toml");
@@ -77,6 +92,35 @@ pub async fn run_modular() -> Result<()> {
         Some(("tools", sub_matches)) => {
             let handler = ToolsCommand::new();
             handler.execute(sub_matches, &config).await?;
+        }
+        Some(("completions", sub_matches)) => {
+            use clap_complete::{generate, shells, Generator};
+            use std::fs::File;
+            use std::io::{self, Write};
+
+            fn gen<G: Generator>(mut app: clap::Command, mut out: Box<dyn Write>) {
+                generate::<G, _>(&mut app, "fluent", &mut out);
+            }
+
+            let shell = sub_matches.get_one::<String>("shell").map(|s| s.as_str()).unwrap_or("");
+            let output = sub_matches.get_one::<String>("output").cloned();
+            let app = crate::cli_builder::build_cli();
+
+            let mut writer: Box<dyn Write> = match output {
+                Some(path) => Box::new(File::create(path).map_err(|e| CliError::Unknown(format!("Failed to open output file: {}", e)))?),
+                None => Box::new(io::stdout()),
+            };
+
+            match shell.to_lowercase().as_str() {
+                "bash" => gen::<shells::Bash>(app, writer),
+                "zsh" => gen::<shells::Zsh>(app, writer),
+                "fish" => gen::<shells::Fish>(app, writer),
+                "powershell" => gen::<shells::PowerShell>(app, writer),
+                "elvish" => gen::<shells::Elvish>(app, writer),
+                other => {
+                    return Err(CliError::ArgParse(format!("Unsupported shell: {}", other)).into());
+                }
+            }
         }
         _ => {
             // Default behavior - show help
