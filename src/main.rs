@@ -1,6 +1,15 @@
 #[tokio::main]
 async fn main() {
-    let _ = env_logger::try_init();
+    // Initialize logging: prefer tracing JSON if requested, otherwise env_logger
+    let log_fmt = std::env::var("FLUENT_LOG_FORMAT").unwrap_or_default();
+    if log_fmt.eq_ignore_ascii_case("json") {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+            .json()
+            .try_init();
+    } else {
+        let _ = env_logger::try_init();
+    }
 
     let result = fluent_cli::cli::run_modular().await;
     if let Err(err) = result {

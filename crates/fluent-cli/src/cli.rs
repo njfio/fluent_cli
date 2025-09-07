@@ -94,29 +94,39 @@ pub async fn run_modular() -> Result<()> {
             handler.execute(sub_matches, &config).await?;
         }
         Some(("completions", sub_matches)) => {
-            use clap_complete::{generate, shells, Generator};
+            use clap_complete::{generate, shells};
             use std::fs::File;
             use std::io::{self, Write};
 
-            fn gen<G: Generator>(mut app: clap::Command, mut out: Box<dyn Write>) {
-                generate::<G, _>(&mut app, "fluent", &mut out);
-            }
-
             let shell = sub_matches.get_one::<String>("shell").map(|s| s.as_str()).unwrap_or("");
             let output = sub_matches.get_one::<String>("output").cloned();
-            let app = crate::cli_builder::build_cli();
-
             let mut writer: Box<dyn Write> = match output {
                 Some(path) => Box::new(File::create(path).map_err(|e| CliError::Unknown(format!("Failed to open output file: {}", e)))?),
                 None => Box::new(io::stdout()),
             };
+            let out: &mut dyn Write = &mut *writer;
 
             match shell.to_lowercase().as_str() {
-                "bash" => gen::<shells::Bash>(app, writer),
-                "zsh" => gen::<shells::Zsh>(app, writer),
-                "fish" => gen::<shells::Fish>(app, writer),
-                "powershell" => gen::<shells::PowerShell>(app, writer),
-                "elvish" => gen::<shells::Elvish>(app, writer),
+                "bash" => {
+                    let mut cmd = crate::cli_builder::build_cli();
+                    generate(shells::Bash, &mut cmd, "fluent", out);
+                }
+                "zsh" => {
+                    let mut cmd = crate::cli_builder::build_cli();
+                    generate(shells::Zsh, &mut cmd, "fluent", out);
+                }
+                "fish" => {
+                    let mut cmd = crate::cli_builder::build_cli();
+                    generate(shells::Fish, &mut cmd, "fluent", out);
+                }
+                "powershell" => {
+                    let mut cmd = crate::cli_builder::build_cli();
+                    generate(shells::PowerShell, &mut cmd, "fluent", out);
+                }
+                "elvish" => {
+                    let mut cmd = crate::cli_builder::build_cli();
+                    generate(shells::Elvish, &mut cmd, "fluent", out);
+                }
                 other => {
                     return Err(CliError::ArgParse(format!("Unsupported shell: {}", other)).into());
                 }

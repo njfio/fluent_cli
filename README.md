@@ -440,6 +440,19 @@ export GOOGLE_API_KEY="your-key"
 # ... etc
 ```
 
+## Shell Completions
+
+Generate completion scripts for your shell:
+
+```bash
+# Zsh
+fluent completions --shell zsh > _fluent
+# Bash
+fluent completions --shell bash > fluent.bash
+# Fish
+fluent completions --shell fish > fluent.fish
+```
+
 ## 🔧 Development Status
 
 ### ✅ Production-Ready Features

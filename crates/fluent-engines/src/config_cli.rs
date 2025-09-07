@@ -95,6 +95,8 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Print JSON Schema for EnhancedEngineConfig
+    Schema,
 }
 
 impl ConfigCli {
@@ -131,6 +133,7 @@ impl ConfigCli {
             }
             Commands::Copy { from, to } => Self::copy_config(&manager, &from, &to).await,
             Commands::Delete { name, force } => Self::delete_config(&manager, &name, force).await,
+            Commands::Schema => Self::print_schema().await,
         }
     }
 
@@ -424,6 +427,15 @@ impl ConfigCli {
 
         // Default to string
         Ok(Value::String(value_str.to_string()))
+    }
+}
+
+    async fn print_schema() -> Result<()> {
+        use schemars::schema_for;
+        let schema = schema_for!(EnhancedEngineConfig);
+        let json = serde_json::to_string_pretty(&schema)?;
+        println!("{}", json);
+        Ok(())
     }
 }
 

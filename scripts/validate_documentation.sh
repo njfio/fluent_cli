@@ -68,6 +68,9 @@ test_command "Tools list JSON" "cargo run -- tools list --json"
 test_command "Tool describe JSON" "cargo run -- tools describe read_file --json"
 
 # Test examples
+
+# Test completions (stdout)
+ test_command "Generate zsh completions" "cargo run -- completions --shell zsh"
 echo -e "\n${YELLOW}Testing Examples${NC}"
 echo "------------------------"
 test_command "Reflection demo" "cargo run --example reflection_demo"
