@@ -428,13 +428,55 @@ impl ConfigCli {
         // Default to string
         Ok(Value::String(value_str.to_string()))
     }
-}
-
     async fn print_schema() -> Result<()> {
-        use schemars::schema_for;
-        let schema = schema_for!(EnhancedEngineConfig);
-        let json = serde_json::to_string_pretty(&schema)?;
-        println!("{}", json);
+        let schema = serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "EnhancedEngineConfig",
+            "type": "object",
+            "properties": {
+                "base": {
+                    "type": "object",
+                    "description": "EngineConfig (see fluent_core::config::EngineConfig)"
+                },
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "version": {"type":"string"},
+                        "created_at": {"type":"string"},
+                        "updated_at": {"type":"string"},
+                        "description": {"type":["string","null"]},
+                        "tags": {"type":"array","items":{"type":"string"}},
+                        "owner": {"type":["string","null"]}
+                    },
+                    "required": ["version","created_at","updated_at","tags"]
+                },
+                "validation": {
+                    "type": "object",
+                    "properties": {
+                        "required_parameters": {"type":"array","items":{"type":"string"}},
+                        "parameter_types": {"type":"object","additionalProperties": {"type":"string"}},
+                        "parameter_constraints": {"type":"object","additionalProperties": {"type":"object"}},
+                        "connection_timeout": {"type":["integer","null"]},
+                        "request_timeout": {"type":["integer","null"]}
+                    },
+                    "required": ["required_parameters","parameter_types","parameter_constraints"]
+                },
+                "environments": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "parameters": {"type":"object"},
+                            "connection": {"type":["object","null"]},
+                            "neo4j": {"type":["object","null"]}
+                        },
+                        "required": ["parameters"]
+                    }
+                }
+            },
+            "required": ["base","metadata","validation","environments"]
+        });
+        println!("{}", serde_json::to_string_pretty(&schema)?);
         Ok(())
     }
 }

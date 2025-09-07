@@ -12,6 +12,11 @@ async fn main() {
     }
 
     let result = fluent_cli::cli::run_modular().await;
+    // Attach a request id for this invocation
+    let req_id = uuid::Uuid::new_v4().to_string();
+    std::env::set_var("FLUENT_REQUEST_ID", &req_id);
+    tracing::info!(request_id = %req_id, "fluent startup");
+
     if let Err(err) = result {
         let code = classify_exit_code(&err);
         eprintln!("{}", sanitize_error_message(&err));
