@@ -3,9 +3,8 @@ use regex::Regex;
 
 // Match key-value like: bearer_token: value, api_key=value, Authorization: secret
 static RE_KV_SECRET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)\b(bearer[_-]?token|api[_-]?key|authorization|x-api-key)\b\s*[:=]\s*[^\s]+"
-    ).expect("valid regex")
+    Regex::new(r"(?i)\b(bearer[_-]?token|api[_-]?key|authorization|x-api-key)\b\s*[:=]\s*[^\s]+")
+        .expect("valid regex")
 });
 
 // Match Authorization: Bearer TOKEN
@@ -14,9 +13,8 @@ static RE_AUTH_BEARER: Lazy<Regex> = Lazy::new(|| {
 });
 
 // Match URL query tokens: ?api_key=... or &token=...
-static RE_URL_QUERY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"([?&](?:api_key|token|key)=)[^&\s]+").expect("valid regex")
-});
+static RE_URL_QUERY: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([?&](?:api_key|token|key)=)[^&\s]+").expect("valid regex"));
 
 /// Redact common secret patterns from arbitrary text.
 pub fn redact_secrets_in_text(input: &str) -> String {

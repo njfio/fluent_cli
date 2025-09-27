@@ -74,37 +74,46 @@ fn print_json_response(response: &Response, response_time: f64) {
         "finish_reason": response.finish_reason
     });
 
-    println!("{}", serde_json::to_string_pretty(&json_output).unwrap_or_else(|_| "{}".to_string()));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json_output).unwrap_or_else(|_| "{}".to_string())
+    );
 }
 
 /// Print response in markdown format
 fn print_markdown_response(response: &Response, response_time: f64, options: &OutputOptions) {
     println!("# AI Response\n");
     println!("**Model:** {}\n", response.model);
-    
+
     if let Some(reason) = &response.finish_reason {
         println!("**Finish Reason:** {reason}\n");
     }
-    
+
     println!("## Content\n");
     println!("{}\n", response.content);
-    
+
     if options.show_usage {
         println!("## Usage Statistics\n");
         println!("- **Prompt Tokens:** {}", response.usage.prompt_tokens);
-        println!("- **Completion Tokens:** {}", response.usage.completion_tokens);
+        println!(
+            "- **Completion Tokens:** {}",
+            response.usage.completion_tokens
+        );
         println!("- **Total Tokens:** {}", response.usage.total_tokens);
         println!();
     }
-    
+
     if options.show_cost {
         println!("## Cost Information\n");
         println!("- **Prompt Cost:** ${:.6}", response.cost.prompt_cost);
-        println!("- **Completion Cost:** ${:.6}", response.cost.completion_cost);
+        println!(
+            "- **Completion Cost:** ${:.6}",
+            response.cost.completion_cost
+        );
         println!("- **Total Cost:** ${:.6}", response.cost.total_cost);
         println!();
     }
-    
+
     println!("**Response Time:** {response_time:.2}s");
 }
 
@@ -120,7 +129,7 @@ fn print_standard_response(response: &Response, response_time: f64, options: &Ou
     if options.verbose {
         println!();
         print_separator(options.no_color);
-        
+
         if options.no_color {
             println!("Model: {}", response.model);
         } else {
@@ -137,29 +146,37 @@ fn print_standard_response(response: &Response, response_time: f64, options: &Ou
 
         if options.show_usage {
             if options.no_color {
-                println!("Usage: {} prompt + {} completion = {} total tokens",
+                println!(
+                    "Usage: {} prompt + {} completion = {} total tokens",
                     response.usage.prompt_tokens,
                     response.usage.completion_tokens,
-                    response.usage.total_tokens);
+                    response.usage.total_tokens
+                );
             } else {
-                println!("\x1b[36mUsage:\x1b[0m {} prompt + {} completion = {} total tokens",
+                println!(
+                    "\x1b[36mUsage:\x1b[0m {} prompt + {} completion = {} total tokens",
                     response.usage.prompt_tokens,
                     response.usage.completion_tokens,
-                    response.usage.total_tokens);
+                    response.usage.total_tokens
+                );
             }
         }
 
         if options.show_cost {
             if options.no_color {
-                println!("Cost: ${:.6} (${:.6} prompt + ${:.6} completion)",
+                println!(
+                    "Cost: ${:.6} (${:.6} prompt + ${:.6} completion)",
                     response.cost.total_cost,
                     response.cost.prompt_cost,
-                    response.cost.completion_cost);
+                    response.cost.completion_cost
+                );
             } else {
-                println!("\x1b[36mCost:\x1b[0m ${:.6} (${:.6} prompt + ${:.6} completion)",
+                println!(
+                    "\x1b[36mCost:\x1b[0m ${:.6} (${:.6} prompt + ${:.6} completion)",
                     response.cost.total_cost,
                     response.cost.prompt_cost,
-                    response.cost.completion_cost);
+                    response.cost.completion_cost
+                );
             }
         }
 
@@ -253,7 +270,7 @@ pub async fn write_response_to_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fluent_core::types::{Usage, Cost};
+    use fluent_core::types::{Cost, Usage};
 
     fn create_test_response() -> Response {
         Response {

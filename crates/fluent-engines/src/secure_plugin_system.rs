@@ -157,14 +157,19 @@ pub struct DefaultSignatureVerifier;
 impl SignatureVerifier for DefaultSignatureVerifier {
     async fn verify_signature(&self, plugin_bytes: &[u8], signature: &str) -> Result<bool> {
         // Parse the signature from base64
-        let signature_bytes = Base64.decode(signature)
+        let signature_bytes = Base64
+            .decode(signature)
             .map_err(|e| anyhow!("Invalid signature format: {}", e))?;
 
         if signature_bytes.len() != 64 {
-            return Err(anyhow!("Invalid signature length: expected 64 bytes, got {}", signature_bytes.len()));
+            return Err(anyhow!(
+                "Invalid signature length: expected 64 bytes, got {}",
+                signature_bytes.len()
+            ));
         }
 
-        let signature_array: [u8; 64] = signature_bytes.try_into()
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
             .map_err(|_| anyhow!("Failed to convert signature to array"))?;
         let signature = Signature::from_bytes(&signature_array);
 

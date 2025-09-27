@@ -1,8 +1,8 @@
 // Lock timeout utilities and monitoring
 use crate::error::{FluentError, LockTimeoutConfig};
 use log::warn;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
@@ -39,18 +39,21 @@ impl LockContentionMonitor {
     /// Record the start of a lock acquisition attempt
     pub fn record_acquisition_start(&self) -> u32 {
         let current = self.current_waiters.fetch_add(1, Ordering::Relaxed) + 1;
-        
+
         // Update max concurrent waiters
         let mut max = self.max_concurrent_waiters.load(Ordering::Relaxed);
         while current > max {
             match self.max_concurrent_waiters.compare_exchange_weak(
-                max, current, Ordering::Relaxed, Ordering::Relaxed
+                max,
+                current,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => break,
                 Err(new_max) => max = new_max,
             }
         }
-        
+
         current
     }
 
@@ -58,13 +61,11 @@ impl LockContentionMonitor {
     pub fn record_acquisition_complete(&self, start_time: Instant, success: bool) {
         self.current_waiters.fetch_sub(1, Ordering::Relaxed);
         self.total_acquisitions.fetch_add(1, Ordering::Relaxed);
-        
+
         let wait_time = start_time.elapsed();
-        self.total_wait_time_ms.fetch_add(
-            wait_time.as_millis() as u64, 
-            Ordering::Relaxed
-        );
-        
+        self.total_wait_time_ms
+            .fetch_add(wait_time.as_millis() as u64, Ordering::Relaxed);
+
         if !success {
             self.total_timeouts.fetch_add(1, Ordering::Relaxed);
         }
@@ -80,7 +81,7 @@ impl LockContentionMonitor {
         let total_acquisitions = self.total_acquisitions.load(Ordering::Relaxed);
         let total_timeouts = self.total_timeouts.load(Ordering::Relaxed);
         let total_wait_time_ms = self.total_wait_time_ms.load(Ordering::Relaxed);
-        
+
         LockContentionStats {
             total_acquisitions,
             total_timeouts,
@@ -152,11 +153,7 @@ impl LockTimeoutUtils {
         F: FnOnce(&mut T) -> Result<R, FluentError>,
     {
         let start_time = Instant::now();
-        let current_waiters = if let Some(mon) = monitor {
-            Some(mon.record_acquisition_start())
-        } else {
-            None
-        };
+        let current_waiters = monitor.map(|mon| mon.record_acquisition_start());
 
         // Check for contention warning
         if let (Some(mon), Some(waiters)) = (monitor, current_waiters) {
@@ -184,7 +181,7 @@ impl LockTimeoutUtils {
                 if let Some(mon) = monitor {
                     mon.record_acquisition_complete(start_time, false);
                 }
-                
+
                 let elapsed = start_time.elapsed();
                 if config.log_timeout_events {
                     warn!(
@@ -192,7 +189,7 @@ impl LockTimeoutUtils {
                         context, elapsed, config.timeout
                     );
                 }
-                
+
                 Err(FluentError::LockTimeout(format!(
                     "Mutex lock timeout in {} after {:?} (timeout: {:?})",
                     context, elapsed, config.timeout
@@ -215,11 +212,7 @@ impl LockTimeoutUtils {
         F: FnOnce(&T) -> Result<R, FluentError>,
     {
         let start_time = Instant::now();
-        let current_waiters = if let Some(mon) = monitor {
-            Some(mon.record_acquisition_start())
-        } else {
-            None
-        };
+        let current_waiters = monitor.map(|mon| mon.record_acquisition_start());
 
         // Check for contention warning
         if let (Some(mon), Some(waiters)) = (monitor, current_waiters) {
@@ -247,7 +240,7 @@ impl LockTimeoutUtils {
                 if let Some(mon) = monitor {
                     mon.record_acquisition_complete(start_time, false);
                 }
-                
+
                 let elapsed = start_time.elapsed();
                 if config.log_timeout_events {
                     eprintln!(
@@ -255,7 +248,7 @@ impl LockTimeoutUtils {
                         context, elapsed, config.timeout
                     );
                 }
-                
+
                 Err(FluentError::LockTimeout(format!(
                     "RwLock read lock timeout in {} after {:?} (timeout: {:?})",
                     context, elapsed, config.timeout
@@ -278,11 +271,7 @@ impl LockTimeoutUtils {
         F: FnOnce(&mut T) -> Result<R, FluentError>,
     {
         let start_time = Instant::now();
-        let current_waiters = if let Some(mon) = monitor {
-            Some(mon.record_acquisition_start())
-        } else {
-            None
-        };
+        let current_waiters = monitor.map(|mon| mon.record_acquisition_start());
 
         // Check for contention warning
         if let (Some(mon), Some(waiters)) = (monitor, current_waiters) {
@@ -310,7 +299,7 @@ impl LockTimeoutUtils {
                 if let Some(mon) = monitor {
                     mon.record_acquisition_complete(start_time, false);
                 }
-                
+
                 let elapsed = start_time.elapsed();
                 if config.log_timeout_events {
                     eprintln!(
@@ -318,7 +307,7 @@ impl LockTimeoutUtils {
                         context, elapsed, config.timeout
                     );
                 }
-                
+
                 Err(FluentError::LockTimeout(format!(
                     "RwLock write lock timeout in {} after {:?} (timeout: {:?})",
                     context, elapsed, config.timeout
@@ -338,7 +327,7 @@ mod tests {
     #[test]
     fn test_lock_contention_monitor() {
         let monitor = LockContentionMonitor::new();
-        
+
         // Test initial state
         let stats = monitor.get_stats();
         assert_eq!(stats.total_acquisitions, 0);
@@ -349,10 +338,10 @@ mod tests {
         let start_time = Instant::now();
         let waiters = monitor.record_acquisition_start();
         assert_eq!(waiters, 1);
-        
+
         std::thread::sleep(Duration::from_millis(10));
         monitor.record_acquisition_complete(start_time, true);
-        
+
         let stats = monitor.get_stats();
         assert_eq!(stats.total_acquisitions, 1);
         assert_eq!(stats.total_timeouts, 0);
@@ -375,7 +364,8 @@ mod tests {
                 *data += 1;
                 Ok(*data)
             },
-        ).await;
+        )
+        .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 43);

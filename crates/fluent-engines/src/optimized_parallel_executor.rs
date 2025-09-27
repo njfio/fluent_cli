@@ -320,7 +320,11 @@ where
                     deps.push(task_id.clone());
                 } else {
                     // Dependency not found in task list - this is an error
-                    return Err(anyhow::anyhow!("Task {} depends on {} which is not in the task list", task_id, dep_id));
+                    return Err(anyhow::anyhow!(
+                        "Task {} depends on {} which is not in the task list",
+                        task_id,
+                        dep_id
+                    ));
                 }
             }
         }
@@ -356,14 +360,19 @@ where
 
         // Check for circular dependencies
         if result.len() != task_map.len() + result.len() {
-            return Err(anyhow::anyhow!("Circular dependency detected in task graph"));
+            return Err(anyhow::anyhow!(
+                "Circular dependency detected in task graph"
+            ));
         }
 
         Ok(result)
     }
 
     /// Group tasks by dependency level for priority sorting within levels
-    fn group_by_dependency_level(&self, tasks: &[ExecutionTask<T>]) -> Result<Vec<Vec<ExecutionTask<T>>>> {
+    fn group_by_dependency_level(
+        &self,
+        tasks: &[ExecutionTask<T>],
+    ) -> Result<Vec<Vec<ExecutionTask<T>>>> {
         use std::collections::{HashMap, HashSet};
 
         let mut levels = Vec::new();
@@ -380,7 +389,11 @@ where
                     max_dep_level = max_dep_level.max(dep_level + 1);
                 } else if !completed_tasks.contains(dep_id) {
                     // Dependency not processed yet - this shouldn't happen with proper topological sort
-                    return Err(anyhow::anyhow!("Dependency {} not processed before task {}", dep_id, task.id));
+                    return Err(anyhow::anyhow!(
+                        "Dependency {} not processed before task {}",
+                        dep_id,
+                        task.id
+                    ));
                 }
             }
 
@@ -476,7 +489,8 @@ where
 
                 // Implement adaptive concurrency based on resource usage
                 let current_concurrency = semaphore.available_permits();
-                let target_concurrency = Self::calculate_optimal_concurrency(cpu_usage, memory_usage as u64, &config);
+                let target_concurrency =
+                    Self::calculate_optimal_concurrency(cpu_usage, memory_usage as u64, &config);
 
                 if target_concurrency != current_concurrency {
                     info!(
@@ -512,19 +526,27 @@ where
     }
 
     /// Calculate optimal concurrency based on resource usage
-    fn calculate_optimal_concurrency(cpu_usage: f64, memory_usage: u64, config: &ParallelExecutionConfig) -> usize {
+    fn calculate_optimal_concurrency(
+        cpu_usage: f64,
+        memory_usage: u64,
+        config: &ParallelExecutionConfig,
+    ) -> usize {
         let mut target_concurrency = config.max_concurrency;
 
         // Reduce concurrency if CPU usage is high
         if cpu_usage > config.cpu_threshold {
-            let reduction_factor = (cpu_usage - config.cpu_threshold) / (100.0 - config.cpu_threshold);
-            target_concurrency = ((target_concurrency as f64) * (1.0 - reduction_factor * 0.5)) as usize;
+            let reduction_factor =
+                (cpu_usage - config.cpu_threshold) / (100.0 - config.cpu_threshold);
+            target_concurrency =
+                ((target_concurrency as f64) * (1.0 - reduction_factor * 0.5)) as usize;
         }
 
         // Reduce concurrency if memory usage is high
         if memory_usage > config.max_memory_mb as u64 {
-            let reduction_factor = (memory_usage as f64 - config.max_memory_mb as f64) / (config.max_memory_mb as f64);
-            target_concurrency = ((target_concurrency as f64) * (1.0 - reduction_factor * 0.3)) as usize;
+            let reduction_factor =
+                (memory_usage as f64 - config.max_memory_mb as f64) / (config.max_memory_mb as f64);
+            target_concurrency =
+                ((target_concurrency as f64) * (1.0 - reduction_factor * 0.3)) as usize;
         }
 
         // Ensure minimum concurrency of 1

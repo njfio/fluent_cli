@@ -4,7 +4,7 @@
 # Tests all commands and options to ensure they work correctly
 
 set -e  # Exit on any error
-
+set -o pipefail  # Ensure pipeline failures propagate
 echo "🧪 Fluent CLI Comprehensive Functional Tests"
 echo "==========================================="
 

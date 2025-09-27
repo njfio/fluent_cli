@@ -1,11 +1,11 @@
 // Comprehensive metrics collection for production MCP implementation
 
+use super::error::McpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use super::error::McpError;
 
 /// Comprehensive metrics collection system
 pub struct MetricsCollector {
@@ -101,7 +101,7 @@ impl MetricsCollector {
     /// Start system metrics collection background task
     async fn start_system_metrics_collection(&self) {
         let system_metrics = self.system_metrics.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             loop {
@@ -169,8 +169,9 @@ impl ClientMetrics {
     pub fn record_connection(&mut self, server_name: &str) {
         self.connections_active += 1;
         self.connections_total += 1;
-        
-        let server_metrics = self.server_connections
+
+        let server_metrics = self
+            .server_connections
             .entry(server_name.to_string())
             .or_insert_with(ServerConnectionMetrics::new);
         server_metrics.connections_active += 1;
@@ -181,7 +182,7 @@ impl ClientMetrics {
         if self.connections_active > 0 {
             self.connections_active -= 1;
         }
-        
+
         if let Some(server_metrics) = self.server_connections.get_mut(server_name) {
             if server_metrics.connections_active > 0 {
                 server_metrics.connections_active -= 1;
@@ -286,39 +287,41 @@ impl TransportMetrics {
     }
 
     pub fn record_latency(&mut self, operation: &str, latency: Duration) {
-        let latencies = self.operation_latencies
+        let latencies = self
+            .operation_latencies
             .entry(operation.to_string())
             .or_insert_with(Vec::new);
-        
+
         latencies.push(latency);
-        
+
         // Keep only recent latencies (last 1000)
         if latencies.len() > 1000 {
             latencies.drain(0..latencies.len() - 1000);
         }
-        
+
         // Update percentiles
         self.update_latency_percentiles();
     }
 
     fn update_latency_percentiles(&mut self) {
-        let mut all_latencies: Vec<Duration> = self.operation_latencies
+        let mut all_latencies: Vec<Duration> = self
+            .operation_latencies
             .values()
             .flatten()
             .cloned()
             .collect();
-        
+
         if all_latencies.is_empty() {
             return;
         }
-        
+
         all_latencies.sort();
-        
+
         let len = all_latencies.len();
         let total_nanos = all_latencies.iter().map(|d| d.as_nanos()).sum::<u128>();
         let avg_nanos = (total_nanos / len as u128).min(u64::MAX as u128) as u64;
         self.latency_avg = Duration::from_nanos(avg_nanos);
-        
+
         if len > 0 {
             self.latency_p95 = all_latencies[(len * 95 / 100).min(len - 1)];
             self.latency_p99 = all_latencies[(len * 99 / 100).min(len - 1)];
@@ -356,14 +359,16 @@ impl ToolMetrics {
     pub fn record_execution_success(&mut self, tool_name: &str, server_name: &str) {
         self.tools_executed += 1;
         self.tools_successful += 1;
-        
-        let tool_metrics = self.tool_usage
+
+        let tool_metrics = self
+            .tool_usage
             .entry(tool_name.to_string())
             .or_insert_with(ToolUsageMetrics::new);
         tool_metrics.executions += 1;
         tool_metrics.successes += 1;
-        
-        let server_tools = self.server_tool_usage
+
+        let server_tools = self
+            .server_tool_usage
             .entry(server_name.to_string())
             .or_insert_with(HashMap::new);
         let server_tool_metrics = server_tools
@@ -373,17 +378,24 @@ impl ToolMetrics {
         server_tool_metrics.successes += 1;
     }
 
-    pub fn record_execution_failure(&mut self, tool_name: &str, server_name: &str, _error: &McpError) {
+    pub fn record_execution_failure(
+        &mut self,
+        tool_name: &str,
+        server_name: &str,
+        _error: &McpError,
+    ) {
         self.tools_executed += 1;
         self.tools_failed += 1;
-        
-        let tool_metrics = self.tool_usage
+
+        let tool_metrics = self
+            .tool_usage
             .entry(tool_name.to_string())
             .or_insert_with(ToolUsageMetrics::new);
         tool_metrics.executions += 1;
         tool_metrics.failures += 1;
-        
-        let server_tools = self.server_tool_usage
+
+        let server_tools = self
+            .server_tool_usage
             .entry(server_name.to_string())
             .or_insert_with(HashMap::new);
         let server_tool_metrics = server_tools
@@ -490,15 +502,17 @@ mod tests {
     async fn test_metrics_collector() {
         let collector = MetricsCollector::new();
         collector.start().await.unwrap();
-        
+
         // Record some metrics
-        collector.record_tool_execution_success("test_tool", "test_server").await;
+        collector
+            .record_tool_execution_success("test_tool", "test_server")
+            .await;
         collector.record_client_connection("test_server").await;
-        
+
         let metrics = collector.get_current_metrics().await;
         assert_eq!(metrics.tool_metrics.tools_executed, 1);
         assert_eq!(metrics.client_metrics.connections_active, 1);
-        
+
         collector.stop().await.unwrap();
     }
 
@@ -508,7 +522,7 @@ mod tests {
         metrics.record_connection("server1");
         assert_eq!(metrics.connections_active, 1);
         assert_eq!(metrics.connections_total, 1);
-        
+
         metrics.record_disconnection("server1");
         assert_eq!(metrics.connections_active, 0);
         assert_eq!(metrics.connections_total, 1);
@@ -519,7 +533,7 @@ mod tests {
         let mut metrics = TransportMetrics::new();
         metrics.record_latency("test_op", Duration::from_millis(100));
         metrics.record_latency("test_op", Duration::from_millis(200));
-        
+
         assert!(!metrics.operation_latencies.is_empty());
         assert!(metrics.latency_avg > Duration::from_millis(0));
     }

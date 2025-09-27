@@ -17,7 +17,7 @@ pub struct ReflectionEngine {
 /// Configuration for reflection behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReflectionConfig {
-    pub reflection_frequency: u32, // Reflect every N iterations
+    pub reflection_frequency: u32,      // Reflect every N iterations
     pub deep_reflection_frequency: u32, // Deep reflection every N reflections
     pub learning_retention_days: u32,
     pub confidence_threshold: f64, // Trigger reflection if confidence drops below this
@@ -44,11 +44,11 @@ pub struct ReflectionResult {
 /// Types of reflection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ReflectionType {
-    Routine,        // Regular scheduled reflection
-    Triggered,      // Triggered by low confidence or performance
-    Deep,           // Comprehensive analysis of patterns and strategies
-    Meta,           // Reflection on the reflection process itself
-    Crisis,         // Emergency reflection due to critical failures
+    Routine,   // Regular scheduled reflection
+    Triggered, // Triggered by low confidence or performance
+    Deep,      // Comprehensive analysis of patterns and strategies
+    Meta,      // Reflection on the reflection process itself
+    Crisis,    // Emergency reflection due to critical failures
 }
 
 /// What triggered the reflection
@@ -306,22 +306,53 @@ pub struct PerformanceMetrics {
 
 // Supporting enums and types
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum VelocityTrend { Increasing, Stable, Decreasing, Volatile }
+pub enum VelocityTrend {
+    Increasing,
+    Stable,
+    Decreasing,
+    Volatile,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ImpactLevel { Low, Medium, High, Critical }
+pub enum ImpactLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DifficultyLevel { Easy, Medium, Hard, Expert, Low, High }
+pub enum DifficultyLevel {
+    Easy,
+    Medium,
+    Hard,
+    Expert,
+    Low,
+    High,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Priority { Low, Medium, High, Critical }
+pub enum Priority {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Urgency { Low, Medium, High, Immediate }
+pub enum Urgency {
+    Low,
+    Medium,
+    High,
+    Immediate,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EffectivenessTrend { Improving, Stable, Declining }
+pub enum EffectivenessTrend {
+    Improving,
+    Stable,
+    Declining,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MilestoneAchievement {
@@ -432,14 +463,18 @@ impl ReflectionEngine {
     /// Determine if reflection should be triggered
     pub fn should_reflect(&self, context: &ExecutionContext) -> Option<ReflectionTrigger> {
         // Check for scheduled reflection (but not at iteration 0)
-        if context.iteration_count() > 0 && context.iteration_count() % self.reflection_config.reflection_frequency == 0 {
+        if context.iteration_count() > 0
+            && context.iteration_count() % self.reflection_config.reflection_frequency == 0
+        {
             return Some(ReflectionTrigger::ScheduledInterval);
         }
 
         // Check for low confidence
         if let Some(latest_observation) = context.get_latest_observation() {
             if latest_observation.relevance_score < self.reflection_config.confidence_threshold {
-                return Some(ReflectionTrigger::LowConfidence(latest_observation.relevance_score));
+                return Some(ReflectionTrigger::LowConfidence(
+                    latest_observation.relevance_score,
+                ));
             }
         }
 
@@ -464,37 +499,55 @@ impl ReflectionEngine {
         reasoning_engine: &dyn ReasoningEngine,
         trigger: ReflectionTrigger,
     ) -> Result<ReflectionResult> {
-        use crate::reflection::strategy::StrategyAdjustmentGenerator;
         use crate::reflection::learning::LearningInsightExtractor;
         use crate::reflection::recommendations::RecommendationGenerator;
+        use crate::reflection::strategy::StrategyAdjustmentGenerator;
 
         let reflection_type = self.determine_reflection_type(&trigger, context);
 
         // Perform the appropriate type of reflection
         let analysis = match reflection_type {
-            ReflectionType::Routine => self.perform_routine_reflection(context, reasoning_engine).await?,
-            ReflectionType::Triggered => self.perform_triggered_reflection(context, reasoning_engine, &trigger).await?,
-            ReflectionType::Deep => self.perform_deep_reflection(context, reasoning_engine).await?,
-            ReflectionType::Meta => self.perform_meta_reflection(context, reasoning_engine).await?,
-            ReflectionType::Crisis => self.perform_crisis_reflection(context, reasoning_engine, &trigger).await?,
+            ReflectionType::Routine => {
+                self.perform_routine_reflection(context, reasoning_engine)
+                    .await?
+            }
+            ReflectionType::Triggered => {
+                self.perform_triggered_reflection(context, reasoning_engine, &trigger)
+                    .await?
+            }
+            ReflectionType::Deep => {
+                self.perform_deep_reflection(context, reasoning_engine)
+                    .await?
+            }
+            ReflectionType::Meta => {
+                self.perform_meta_reflection(context, reasoning_engine)
+                    .await?
+            }
+            ReflectionType::Crisis => {
+                self.perform_crisis_reflection(context, reasoning_engine, &trigger)
+                    .await?
+            }
         };
 
         // Generate strategy adjustments using modular function
         let strategy_adjustments = StrategyAdjustmentGenerator::generate_adjustments(
             &analysis,
             context,
-            self.reflection_config.performance_threshold
-        ).await?;
+            self.reflection_config.performance_threshold,
+        )
+        .await?;
 
         // Extract learning insights using modular function
-        let learning_insights = LearningInsightExtractor::extract_insights(&analysis, context).await?;
+        let learning_insights =
+            LearningInsightExtractor::extract_insights(&analysis, context).await?;
 
         // Generate recommendations using modular function
         let recommendations = RecommendationGenerator::generate_recommendations(
             &analysis,
             &strategy_adjustments,
-            &learning_insights
-        ).await?;
+            &learning_insights,
+        )
+        .await?;
 
         // Calculate confidence and performance assessments
         let confidence_assessment = self.calculate_confidence_assessment(&analysis);
@@ -514,7 +567,8 @@ impl ReflectionEngine {
         };
 
         // Store learning experience
-        self.store_learning_experience(context, &reflection_result).await?;
+        self.store_learning_experience(context, &reflection_result)
+            .await?;
 
         // Update performance metrics
         self.update_performance_metrics(&reflection_result);
@@ -524,9 +578,15 @@ impl ReflectionEngine {
 
     /// Count recent failures in the execution context
     fn count_recent_failures(&self, context: &ExecutionContext) -> u32 {
-        context.get_recent_actions()
+        context
+            .get_recent_actions()
             .iter()
-            .filter(|event| matches!(event.event_type, ExecutionEventType::TaskFailed | ExecutionEventType::ErrorOccurred))
+            .filter(|event| {
+                matches!(
+                    event.event_type,
+                    ExecutionEventType::TaskFailed | ExecutionEventType::ErrorOccurred
+                )
+            })
             .count() as u32
     }
 
@@ -543,10 +603,15 @@ impl ReflectionEngine {
     }
 
     /// Determine the type of reflection needed
-    fn determine_reflection_type(&self, trigger: &ReflectionTrigger, context: &ExecutionContext) -> ReflectionType {
+    fn determine_reflection_type(
+        &self,
+        trigger: &ReflectionTrigger,
+        context: &ExecutionContext,
+    ) -> ReflectionType {
         match trigger {
             ReflectionTrigger::ScheduledInterval => {
-                if context.iteration_count() % self.reflection_config.deep_reflection_frequency == 0 {
+                if context.iteration_count() % self.reflection_config.deep_reflection_frequency == 0
+                {
                     ReflectionType::Deep
                 } else {
                     ReflectionType::Routine
@@ -567,15 +632,16 @@ impl ReflectionEngine {
 
         let progress_score = analysis.progress_assessment.goal_completion_percentage;
         let strategy_score = analysis.strategy_effectiveness.current_strategy_score;
-        let quality_score = (analysis.progress_assessment.quality_metrics.accuracy +
-                           analysis.progress_assessment.quality_metrics.completeness +
-                           analysis.progress_assessment.quality_metrics.efficiency) / 3.0;
+        let quality_score = (analysis.progress_assessment.quality_metrics.accuracy
+            + analysis.progress_assessment.quality_metrics.completeness
+            + analysis.progress_assessment.quality_metrics.efficiency)
+            / 3.0;
         let bottleneck_penalty = analysis.bottlenecks_identified.len() as f64 * 0.1;
 
-        let weighted_score = (progress_score * progress_weight) +
-                           (strategy_score * strategy_weight) +
-                           (quality_score * quality_weight) -
-                           (bottleneck_penalty * bottleneck_weight);
+        let weighted_score = (progress_score * progress_weight)
+            + (strategy_score * strategy_weight)
+            + (quality_score * quality_weight)
+            - (bottleneck_penalty * bottleneck_weight);
 
         weighted_score.max(0.0).min(1.0)
     }
@@ -587,8 +653,9 @@ impl ReflectionEngine {
         let velocity_weight = 0.3;
 
         let efficiency_score = analysis.progress_assessment.time_efficiency;
-        let quality_score = (analysis.progress_assessment.quality_metrics.accuracy +
-                           analysis.progress_assessment.quality_metrics.completeness) / 2.0;
+        let quality_score = (analysis.progress_assessment.quality_metrics.accuracy
+            + analysis.progress_assessment.quality_metrics.completeness)
+            / 2.0;
         let velocity_score = match analysis.progress_assessment.velocity_trend {
             VelocityTrend::Increasing => 1.0,
             VelocityTrend::Stable => 0.7,
@@ -596,20 +663,20 @@ impl ReflectionEngine {
             VelocityTrend::Volatile => 0.5,
         };
 
-        (efficiency_score * efficiency_weight) +
-        (quality_score * quality_weight) +
-        (velocity_score * velocity_weight)
+        (efficiency_score * efficiency_weight)
+            + (quality_score * quality_weight)
+            + (velocity_score * velocity_weight)
     }
 
     /// Update performance metrics based on reflection results
     fn update_performance_metrics(&mut self, reflection_result: &ReflectionResult) {
-        self.performance_metrics.efficiency_score =
-            (self.performance_metrics.efficiency_score * 0.8) +
-            (reflection_result.performance_assessment * 0.2);
+        self.performance_metrics.efficiency_score = (self.performance_metrics.efficiency_score
+            * 0.8)
+            + (reflection_result.performance_assessment * 0.2);
 
-        self.performance_metrics.learning_velocity =
-            (self.performance_metrics.learning_velocity * 0.9) +
-            (reflection_result.learning_insights.len() as f64 * 0.1);
+        self.performance_metrics.learning_velocity = (self.performance_metrics.learning_velocity
+            * 0.9)
+            + (reflection_result.learning_insights.len() as f64 * 0.1);
     }
 
     /// Perform routine reflection (standard scheduled reflection)
@@ -656,7 +723,9 @@ impl ReflectionEngine {
         trigger: &ReflectionTrigger,
     ) -> Result<ReflectionAnalysis> {
         // Start with routine analysis
-        let mut analysis = self.perform_routine_reflection(context, reasoning_engine).await?;
+        let mut analysis = self
+            .perform_routine_reflection(context, reasoning_engine)
+            .await?;
 
         // Add trigger-specific analysis
         match trigger {
@@ -699,7 +768,9 @@ impl ReflectionEngine {
         reasoning_engine: &dyn ReasoningEngine,
     ) -> Result<ReflectionAnalysis> {
         // Perform comprehensive analysis including historical patterns
-        let mut analysis = self.perform_routine_reflection(context, reasoning_engine).await?;
+        let mut analysis = self
+            .perform_routine_reflection(context, reasoning_engine)
+            .await?;
 
         // Add deep analysis of historical patterns
         analysis.success_patterns = self.analyze_historical_success_patterns().await?;
@@ -707,7 +778,8 @@ impl ReflectionEngine {
 
         // Enhanced learning opportunity identification
         analysis.learning_opportunities.extend(
-            self.identify_advanced_learning_opportunities(context).await?
+            self.identify_advanced_learning_opportunities(context)
+                .await?,
         );
 
         Ok(analysis)
@@ -720,7 +792,9 @@ impl ReflectionEngine {
         reasoning_engine: &dyn ReasoningEngine,
     ) -> Result<ReflectionAnalysis> {
         // Analyze the effectiveness of previous reflections
-        let mut analysis = self.perform_routine_reflection(context, reasoning_engine).await?;
+        let mut analysis = self
+            .perform_routine_reflection(context, reasoning_engine)
+            .await?;
 
         // Add meta-analysis
         analysis.learning_opportunities.push(LearningOpportunity {
@@ -742,7 +816,9 @@ impl ReflectionEngine {
         reasoning_engine: &dyn ReasoningEngine,
         trigger: &ReflectionTrigger,
     ) -> Result<ReflectionAnalysis> {
-        let mut analysis = self.perform_triggered_reflection(context, reasoning_engine, trigger).await?;
+        let mut analysis = self
+            .perform_triggered_reflection(context, reasoning_engine, trigger)
+            .await?;
 
         // Add crisis-specific analysis
         analysis.bottlenecks_identified.push(Bottleneck {
@@ -786,10 +862,14 @@ impl ReflectionEngine {
     }
 
     /// Evaluate the effectiveness of current strategy
-    fn evaluate_strategy_effectiveness(&self, context: &ExecutionContext) -> Result<StrategyEffectiveness> {
+    fn evaluate_strategy_effectiveness(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<StrategyEffectiveness> {
         let current_strategy_score = self.calculate_strategy_score(context);
         let strategy_consistency = self.calculate_strategy_consistency(context);
-        let adaptation_frequency = context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
+        let adaptation_frequency =
+            context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
         let strategy_alignment = self.calculate_strategy_alignment(context);
         let execution_quality = self.calculate_execution_quality(context);
 
@@ -803,7 +883,10 @@ impl ReflectionEngine {
     }
 
     /// Identify learning opportunities
-    fn identify_learning_opportunities(&self, context: &ExecutionContext) -> Result<Vec<LearningOpportunity>> {
+    fn identify_learning_opportunities(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<Vec<LearningOpportunity>> {
         let mut opportunities = Vec::new();
 
         // Analyze failed tasks for learning opportunities
@@ -840,7 +923,8 @@ impl ReflectionEngine {
         let mut bottlenecks = Vec::new();
 
         // Check for repeated failures
-        let failure_count = context.completed_tasks
+        let failure_count = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(false))
             .count();
@@ -878,10 +962,14 @@ impl ReflectionEngine {
     }
 
     /// Analyze success patterns
-    async fn analyze_success_patterns(&self, context: &ExecutionContext) -> Result<Vec<SuccessPattern>> {
+    async fn analyze_success_patterns(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<Vec<SuccessPattern>> {
         let mut patterns = Vec::new();
 
-        let successful_tasks: Vec<_> = context.completed_tasks
+        let successful_tasks: Vec<_> = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(true))
             .collect();
@@ -890,8 +978,14 @@ impl ReflectionEngine {
             patterns.push(SuccessPattern {
                 pattern_id: uuid::Uuid::new_v4().to_string(),
                 description: "Successful task completion pattern".to_string(),
-                conditions: vec!["Clear task definition".to_string(), "Adequate resources".to_string()],
-                actions: vec!["Systematic execution".to_string(), "Regular validation".to_string()],
+                conditions: vec![
+                    "Clear task definition".to_string(),
+                    "Adequate resources".to_string(),
+                ],
+                actions: vec![
+                    "Systematic execution".to_string(),
+                    "Regular validation".to_string(),
+                ],
                 success_rate: successful_tasks.len() as f64 / context.completed_tasks.len() as f64,
                 frequency: successful_tasks.len(),
                 context_factors: vec!["favorable_conditions".to_string()],
@@ -902,10 +996,14 @@ impl ReflectionEngine {
     }
 
     /// Analyze failure patterns
-    async fn analyze_failure_patterns(&self, context: &ExecutionContext) -> Result<Vec<FailurePattern>> {
+    async fn analyze_failure_patterns(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<Vec<FailurePattern>> {
         let mut patterns = Vec::new();
 
-        let failed_tasks: Vec<_> = context.completed_tasks
+        let failed_tasks: Vec<_> = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(false))
             .collect();
@@ -914,8 +1012,14 @@ impl ReflectionEngine {
             patterns.push(FailurePattern {
                 pattern_id: uuid::Uuid::new_v4().to_string(),
                 description: "Task failure pattern".to_string(),
-                conditions: vec!["Unclear requirements".to_string(), "Resource constraints".to_string()],
-                actions: vec!["Rushed execution".to_string(), "Insufficient validation".to_string()],
+                conditions: vec![
+                    "Unclear requirements".to_string(),
+                    "Resource constraints".to_string(),
+                ],
+                actions: vec![
+                    "Rushed execution".to_string(),
+                    "Insufficient validation".to_string(),
+                ],
                 failure_rate: failed_tasks.len() as f64 / context.completed_tasks.len() as f64,
                 mitigation_strategies: vec![
                     "Improve task planning".to_string(),
@@ -931,7 +1035,10 @@ impl ReflectionEngine {
     }
 
     /// Assess resource utilization
-    async fn assess_resource_utilization(&self, context: &ExecutionContext) -> Result<ResourceUtilization> {
+    async fn assess_resource_utilization(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<ResourceUtilization> {
         let time_efficiency = self.calculate_time_efficiency(context);
         let mut tool_effectiveness = HashMap::new();
 
@@ -956,7 +1063,8 @@ impl ReflectionEngine {
     // Helper methods for calculations
     fn calculate_velocity_trend(&self, context: &ExecutionContext) -> VelocityTrend {
         // Simplified calculation based on recent task completion
-        let recent_completions = context.completed_tasks
+        let recent_completions = context
+            .completed_tasks
             .iter()
             .filter(|task| task.completed_at.is_some())
             .count();
@@ -970,7 +1078,10 @@ impl ReflectionEngine {
         }
     }
 
-    fn assess_milestone_achievements(&self, context: &ExecutionContext) -> Vec<MilestoneAchievement> {
+    fn assess_milestone_achievements(
+        &self,
+        context: &ExecutionContext,
+    ) -> Vec<MilestoneAchievement> {
         // Simplified milestone assessment
         vec![MilestoneAchievement {
             milestone_name: "Initial progress".to_string(),
@@ -993,13 +1104,18 @@ impl ReflectionEngine {
     }
 
     fn assess_quality_metrics(&self, context: &ExecutionContext) -> QualityMetrics {
-        let successful_tasks = context.completed_tasks
+        let successful_tasks = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(true))
             .count() as f64;
         let total_tasks = context.completed_tasks.len() as f64;
 
-        let accuracy = if total_tasks > 0.0 { successful_tasks / total_tasks } else { 1.0 };
+        let accuracy = if total_tasks > 0.0 {
+            successful_tasks / total_tasks
+        } else {
+            1.0
+        };
 
         QualityMetrics {
             accuracy,
@@ -1013,7 +1129,8 @@ impl ReflectionEngine {
 
     fn calculate_strategy_score(&self, context: &ExecutionContext) -> f64 {
         // Simplified strategy scoring based on success rate
-        let successful_tasks = context.completed_tasks
+        let successful_tasks = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(true))
             .count() as f64;
@@ -1028,7 +1145,8 @@ impl ReflectionEngine {
 
     fn calculate_strategy_consistency(&self, context: &ExecutionContext) -> f64 {
         // Simplified consistency calculation
-        let adjustment_frequency = context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
+        let adjustment_frequency =
+            context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
         (1.0 - adjustment_frequency).max(0.0)
     }
 
@@ -1045,12 +1163,6 @@ impl ReflectionEngine {
         self.assess_quality_metrics(context).accuracy
     }
 
-
-
-
-
-
-
     /// Store learning experience for future reference
     async fn store_learning_experience(
         &mut self,
@@ -1062,9 +1174,14 @@ impl ReflectionEngine {
             timestamp: SystemTime::now(),
             context_summary: context.get_summary(),
             actions_taken: context.get_action_history(),
-            outcomes: vec![reflection_result.analysis.progress_assessment.goal_completion_percentage.to_string()],
+            outcomes: vec![reflection_result
+                .analysis
+                .progress_assessment
+                .goal_completion_percentage
+                .to_string()],
             success_level: reflection_result.performance_assessment,
-            lessons_learned: reflection_result.learning_insights
+            lessons_learned: reflection_result
+                .learning_insights
                 .iter()
                 .map(|insight| insight.description.clone())
                 .collect(),
@@ -1074,10 +1191,12 @@ impl ReflectionEngine {
         self.learning_history.push(experience);
 
         // Keep only recent experiences (based on retention days)
-        let cutoff_time = SystemTime::now() - Duration::from_secs(
-            self.reflection_config.learning_retention_days as u64 * 24 * 60 * 60
-        );
-        self.learning_history.retain(|exp| exp.timestamp > cutoff_time);
+        let cutoff_time = SystemTime::now()
+            - Duration::from_secs(
+                self.reflection_config.learning_retention_days as u64 * 24 * 60 * 60,
+            );
+        self.learning_history
+            .retain(|exp| exp.timestamp > cutoff_time);
 
         Ok(())
     }
@@ -1086,7 +1205,8 @@ impl ReflectionEngine {
     async fn analyze_historical_success_patterns(&self) -> Result<Vec<SuccessPattern>> {
         let mut patterns = Vec::new();
 
-        let successful_experiences: Vec<_> = self.learning_history
+        let successful_experiences: Vec<_> = self
+            .learning_history
             .iter()
             .filter(|exp| exp.success_level > 0.7)
             .collect();
@@ -1095,9 +1215,16 @@ impl ReflectionEngine {
             patterns.push(SuccessPattern {
                 pattern_id: uuid::Uuid::new_v4().to_string(),
                 description: "Historical success pattern".to_string(),
-                conditions: vec!["High confidence".to_string(), "Clear objectives".to_string()],
-                actions: vec!["Systematic approach".to_string(), "Regular validation".to_string()],
-                success_rate: successful_experiences.len() as f64 / self.learning_history.len() as f64,
+                conditions: vec![
+                    "High confidence".to_string(),
+                    "Clear objectives".to_string(),
+                ],
+                actions: vec![
+                    "Systematic approach".to_string(),
+                    "Regular validation".to_string(),
+                ],
+                success_rate: successful_experiences.len() as f64
+                    / self.learning_history.len() as f64,
                 frequency: successful_experiences.len(),
                 context_factors: vec!["historical_success".to_string()],
             });
@@ -1110,7 +1237,8 @@ impl ReflectionEngine {
     async fn analyze_historical_failure_patterns(&self) -> Result<Vec<FailurePattern>> {
         let mut patterns = Vec::new();
 
-        let failed_experiences: Vec<_> = self.learning_history
+        let failed_experiences: Vec<_> = self
+            .learning_history
             .iter()
             .filter(|exp| exp.success_level < 0.3)
             .collect();
@@ -1119,8 +1247,14 @@ impl ReflectionEngine {
             patterns.push(FailurePattern {
                 pattern_id: uuid::Uuid::new_v4().to_string(),
                 description: "Historical failure pattern".to_string(),
-                conditions: vec!["Low confidence".to_string(), "Unclear objectives".to_string()],
-                actions: vec!["Rushed approach".to_string(), "Insufficient validation".to_string()],
+                conditions: vec![
+                    "Low confidence".to_string(),
+                    "Unclear objectives".to_string(),
+                ],
+                actions: vec![
+                    "Rushed approach".to_string(),
+                    "Insufficient validation".to_string(),
+                ],
                 failure_rate: failed_experiences.len() as f64 / self.learning_history.len() as f64,
                 mitigation_strategies: vec![
                     "Improve planning".to_string(),
@@ -1136,7 +1270,10 @@ impl ReflectionEngine {
     }
 
     /// Identify advanced learning opportunities
-    async fn identify_advanced_learning_opportunities(&self, _context: &ExecutionContext) -> Result<Vec<LearningOpportunity>> {
+    async fn identify_advanced_learning_opportunities(
+        &self,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<LearningOpportunity>> {
         let mut opportunities = Vec::new();
 
         // Analyze patterns across learning history
@@ -1170,7 +1307,8 @@ impl ReflectionEngine {
             return 0.0;
         }
 
-        let total_success: f64 = self.learning_history
+        let total_success: f64 = self
+            .learning_history
             .iter()
             .map(|exp| exp.success_level)
             .sum();
@@ -1205,7 +1343,7 @@ impl Default for PerformanceMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::goal::{Goal, GoalType, GoalPriority};
+    use crate::goal::{Goal, GoalPriority, GoalType};
     use std::collections::HashMap;
 
     #[test]
@@ -1257,7 +1395,10 @@ mod tests {
 
         let trigger = engine.should_reflect(&context);
         assert!(trigger.is_some());
-        assert!(matches!(trigger.unwrap(), ReflectionTrigger::ScheduledInterval));
+        assert!(matches!(
+            trigger.unwrap(),
+            ReflectionTrigger::ScheduledInterval
+        ));
     }
 
     #[test]
@@ -1283,22 +1424,18 @@ mod tests {
         }
 
         // Test different trigger types
-        let routine_type = engine.determine_reflection_type(
-            &ReflectionTrigger::ScheduledInterval,
-            &context
-        );
+        let routine_type =
+            engine.determine_reflection_type(&ReflectionTrigger::ScheduledInterval, &context);
         assert!(matches!(routine_type, ReflectionType::Routine));
 
         let crisis_type = engine.determine_reflection_type(
             &ReflectionTrigger::CriticalError("test error".to_string()),
-            &context
+            &context,
         );
         assert!(matches!(crisis_type, ReflectionType::Crisis));
 
-        let triggered_type = engine.determine_reflection_type(
-            &ReflectionTrigger::LowConfidence(0.3),
-            &context
-        );
+        let triggered_type =
+            engine.determine_reflection_type(&ReflectionTrigger::LowConfidence(0.3), &context);
         assert!(matches!(triggered_type, ReflectionType::Triggered));
     }
 
@@ -1320,21 +1457,25 @@ mod tests {
         let mut context = ExecutionContext::new(goal);
 
         // Add some failure events
-        context.execution_history.push(crate::context::ExecutionEvent {
-            event_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: SystemTime::now(),
-            event_type: ExecutionEventType::TaskFailed,
-            description: "Task failed".to_string(),
-            metadata: HashMap::new(),
-        });
+        context
+            .execution_history
+            .push(crate::context::ExecutionEvent {
+                event_id: uuid::Uuid::new_v4().to_string(),
+                timestamp: SystemTime::now(),
+                event_type: ExecutionEventType::TaskFailed,
+                description: "Task failed".to_string(),
+                metadata: HashMap::new(),
+            });
 
-        context.execution_history.push(crate::context::ExecutionEvent {
-            event_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: SystemTime::now(),
-            event_type: ExecutionEventType::ErrorOccurred,
-            description: "Error occurred".to_string(),
-            metadata: HashMap::new(),
-        });
+        context
+            .execution_history
+            .push(crate::context::ExecutionEvent {
+                event_id: uuid::Uuid::new_v4().to_string(),
+                timestamp: SystemTime::now(),
+                event_type: ExecutionEventType::ErrorOccurred,
+                description: "Error occurred".to_string(),
+                metadata: HashMap::new(),
+            });
 
         let failure_count = engine.count_recent_failures(&context);
         assert_eq!(failure_count, 2);

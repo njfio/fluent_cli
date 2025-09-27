@@ -45,33 +45,33 @@ async fn demonstrate_deadlock_scenario() -> Result<(), FluentError> {
 
     // Safe approach: Always acquire locks in the same order
     println!("\n✅ Safe approach - consistent lock ordering:");
-    
+
     let sessions_clone = active_sessions.clone();
     let limiters_clone = rate_limiters.clone();
-    
+
     let task_a = tokio::spawn(async move {
         // SAFE: Always acquire active_sessions first, then rate_limiters
         let mut sessions = sessions_clone.write().await;
         let mut limiters = limiters_clone.write().await;
-        
+
         sessions.insert("user_1".to_string(), "session_1".to_string());
         limiters.insert("user_1".to_string(), 10);
-        
+
         println!("   ✅ Task A completed safely");
         sleep(Duration::from_millis(100)).await;
     });
 
     let sessions_clone2 = active_sessions.clone();
     let limiters_clone2 = rate_limiters.clone();
-    
+
     let task_b = tokio::spawn(async move {
         // SAFE: Same order - active_sessions first, then rate_limiters
         let mut sessions = sessions_clone2.write().await;
         let mut limiters = limiters_clone2.write().await;
-        
+
         sessions.insert("user_2".to_string(), "session_2".to_string());
         limiters.insert("user_2".to_string(), 20);
-        
+
         println!("   ✅ Task B completed safely");
         sleep(Duration::from_millis(100)).await;
     });
@@ -106,7 +106,8 @@ async fn demonstrate_lock_ordering() -> Result<(), FluentError> {
         Err(e) => println!("   ❌ Invalid: {}", e),
     }
 
-    let result = registry.validate_lock_order(&["lock_a".to_string(), "lock_b".to_string()], "lock_c");
+    let result =
+        registry.validate_lock_order(&["lock_a".to_string(), "lock_b".to_string()], "lock_c");
     match result {
         Ok(()) => println!("   ✅ Valid: acquiring lock_c while holding lock_a and lock_b"),
         Err(e) => println!("   ❌ Invalid: {}", e),
@@ -131,11 +132,13 @@ async fn demonstrate_deadlock_safe_manager() -> Result<(), FluentError> {
     let manager = DeadlockSafeLockManager::new(config);
 
     // Register locks with priorities
-    manager.register_locks(vec![
-        ("resource_a", 10),
-        ("resource_b", 20),
-        ("resource_c", 30),
-    ]).await?;
+    manager
+        .register_locks(vec![
+            ("resource_a", 10),
+            ("resource_b", 20),
+            ("resource_c", 30),
+        ])
+        .await?;
 
     // Create test resources
     let resource_a = Arc::new(Mutex::new("Resource A".to_string()));
@@ -152,10 +155,13 @@ async fn demonstrate_deadlock_safe_manager() -> Result<(), FluentError> {
     ];
 
     let guards = manager.acquire_locks_ordered(locks).await?;
-    
-    println!("✅ Successfully acquired {} locks in correct order:", guards.len());
+
+    println!(
+        "✅ Successfully acquired {} locks in correct order:",
+        guards.len()
+    );
     println!("   Lock order enforced: resource_a (10) -> resource_b (20) -> resource_c (30)");
-    
+
     // Use the resources
     for (i, guard) in guards.iter().enumerate() {
         println!("   Resource {}: {}", i + 1, **guard);
@@ -186,10 +192,10 @@ async fn demonstrate_security_manager_pattern() -> Result<(), FluentError> {
             // SAFE: Consistent lock order - always sessions before limiters
             let mut sessions = self.active_sessions.write().await;
             let mut limiters = self.rate_limiters.write().await;
-            
+
             sessions.insert(user_id.to_string(), session_id.to_string());
             limiters.insert(user_id.to_string(), 100); // Default rate limit
-            
+
             Ok(())
         }
 
@@ -197,10 +203,10 @@ async fn demonstrate_security_manager_pattern() -> Result<(), FluentError> {
             // SAFE: Same lock order - sessions before limiters
             let mut sessions = self.active_sessions.write().await;
             let mut limiters = self.rate_limiters.write().await;
-            
+
             sessions.remove(user_id);
             limiters.remove(user_id);
-            
+
             Ok(())
         }
 
@@ -221,7 +227,10 @@ async fn demonstrate_security_manager_pattern() -> Result<(), FluentError> {
             let session_id = format!("session_{}", i);
 
             // Create session
-            manager_clone.create_session(&user_id, &session_id).await.unwrap();
+            manager_clone
+                .create_session(&user_id, &session_id)
+                .await
+                .unwrap();
             println!("   ✅ Created session for {}", user_id);
 
             // Simulate some work
@@ -268,10 +277,10 @@ async fn demonstrate_orchestrator_pattern() -> Result<(), FluentError> {
             // SAFE: Consistent lock order - state before metrics
             let mut state = self.agent_state.write().await;
             let mut metrics = self.metrics.write().await;
-            
+
             *state = format!("Reasoning: {}", step_info);
             *metrics += 1;
-            
+
             println!("   📝 Recorded reasoning step: {}", step_info);
             Ok(())
         }
@@ -280,9 +289,9 @@ async fn demonstrate_orchestrator_pattern() -> Result<(), FluentError> {
             // SAFE: Acquire reflection engine and state in consistent order
             let mut reflection = self.reflection_engine.write().await;
             let state = self.agent_state.read().await;
-            
+
             *reflection = format!("Reflecting on: {} (State: {})", reason, *state);
-            
+
             println!("   🤔 Triggered reflection: {}", reason);
             Ok(())
         }
@@ -292,7 +301,7 @@ async fn demonstrate_orchestrator_pattern() -> Result<(), FluentError> {
             let state = self.agent_state.read().await;
             let metrics = self.metrics.read().await;
             let reflection = self.reflection_engine.read().await;
-            
+
             (state.clone(), *metrics, reflection.clone())
         }
     }
@@ -305,15 +314,23 @@ async fn demonstrate_orchestrator_pattern() -> Result<(), FluentError> {
         let orch_clone = orchestrator.clone();
         let handle = tokio::spawn(async move {
             // Record reasoning steps
-            orch_clone.record_reasoning_step(&format!("Step {}", i)).await.unwrap();
-            
+            orch_clone
+                .record_reasoning_step(&format!("Step {}", i))
+                .await
+                .unwrap();
+
             // Trigger reflection
-            orch_clone.trigger_reflection(&format!("Reason {}", i)).await.unwrap();
-            
+            orch_clone
+                .trigger_reflection(&format!("Reason {}", i))
+                .await
+                .unwrap();
+
             // Get status
             let (state, metrics, reflection) = orch_clone.get_status().await;
-            println!("   📊 Status - State: {}, Metrics: {}, Reflection: {}", 
-                     state, metrics, reflection);
+            println!(
+                "   📊 Status - State: {}, Metrics: {}, Reflection: {}",
+                state, metrics, reflection
+            );
         });
         handles.push(handle);
     }
@@ -337,19 +354,22 @@ mod tests {
         let config = LockTimeoutConfig::short_timeout();
         let manager = DeadlockSafeLockManager::new(config);
 
-        manager.register_locks(vec![
-            ("lock_a", 10),
-            ("lock_b", 20),
-        ]).await.unwrap();
+        manager
+            .register_locks(vec![("lock_a", 10), ("lock_b", 20)])
+            .await
+            .unwrap();
 
         let mutex_a = Arc::new(Mutex::new(1));
         let mutex_b = Arc::new(Mutex::new(2));
 
         // Test that locks are acquired in correct order regardless of request order
-        let guards = manager.acquire_locks_ordered(vec![
-            ("lock_b", &mutex_b), // Requested first but has higher priority
-            ("lock_a", &mutex_a), // Requested second but has lower priority
-        ]).await.unwrap();
+        let guards = manager
+            .acquire_locks_ordered(vec![
+                ("lock_b", &mutex_b), // Requested first but has higher priority
+                ("lock_a", &mutex_a), // Requested second but has lower priority
+            ])
+            .await
+            .unwrap();
 
         // Verify correct order: lock_a (priority 10) then lock_b (priority 20)
         assert_eq!(*guards[0], 1); // lock_a
@@ -363,9 +383,13 @@ mod tests {
         registry.register_lock("second", 20);
 
         // Valid order
-        assert!(registry.validate_lock_order(&["first".to_string()], "second").is_ok());
+        assert!(registry
+            .validate_lock_order(&["first".to_string()], "second")
+            .is_ok());
 
         // Invalid order
-        assert!(registry.validate_lock_order(&["second".to_string()], "first").is_err());
+        assert!(registry
+            .validate_lock_order(&["second".to_string()], "first")
+            .is_err());
     }
 }

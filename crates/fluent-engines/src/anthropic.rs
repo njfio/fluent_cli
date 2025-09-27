@@ -13,11 +13,11 @@ use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
-use tokio::time::{timeout, Duration};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tokio::time::{timeout, Duration};
 
 pub struct AnthropicEngine {
     config: EngineConfig,
@@ -37,25 +37,30 @@ impl AnthropicEngine {
 
         // Create reusable HTTP client with optimized settings
         let mut client_builder = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))  // Increased from 30 to 60 seconds
-            .connect_timeout(std::time::Duration::from_secs(30))  // Increased from 10 to 30 seconds
+let mut client_builder = Client::builder()
+    .timeout(std::time::Duration::from_secs(600)) // Keep in sync with the per-request timeout
+    .connect_timeout(std::time::Duration::from_secs(30)) // Increased from 10 to 30 seconds
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .tcp_keepalive(std::time::Duration::from_secs(60));
-            
+
         // Check for proxy settings from environment variables
-        if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
+        if let Ok(proxy_url) =
+            std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
                 client_builder = client_builder.proxy(proxy);
                 debug!("Using HTTPS proxy");
             }
-        } else if let Ok(proxy_url) = std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy")) {
+        } else if let Ok(proxy_url) =
+            std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
+        {
             if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
                 client_builder = client_builder.proxy(proxy);
                 debug!("Using HTTP proxy");
             }
         }
-            
+
         let client = client_builder
             .build()
             .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
@@ -211,15 +216,18 @@ impl Engine for AnthropicEngine {
                 debug!("Anthropic API request timeout error: {:?}", e);
                 anyhow!("Anthropic API request timed out after 10 minutes or failed with timeout error: {:?}", e)
             })??;
-            
+
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
-                res.json::<serde_json::Value>()
+                res.json::<serde_json::Value>(),
             )
             .await
             .map_err(|e| {
                 debug!("Response parsing error: {:?}", e);
-                anyhow!("Response parsing timed out after 30 seconds or failed with error: {:?}", e)
+                anyhow!(
+                    "Response parsing timed out after 30 seconds or failed with error: {:?}",
+                    e
+                )
             })??;
             debug!("Response: {:?}", response_body);
 
@@ -305,7 +313,7 @@ impl Engine for AnthropicEngine {
             // Read and encode the file with timeout
             let mut file = timeout(
                 Duration::from_secs(30), // 30 second timeout for file opening
-                File::open(file_path)
+                File::open(file_path),
             )
             .await
             .map_err(|_| anyhow!("File open timed out after 30 seconds"))?
@@ -314,7 +322,7 @@ impl Engine for AnthropicEngine {
             let mut buffer = Vec::new();
             timeout(
                 Duration::from_secs(60), // 1 minute timeout for file reading
-                file.read_to_end(&mut buffer)
+                file.read_to_end(&mut buffer),
             )
             .await
             .map_err(|_| anyhow!("File read timed out after 1 minute"))?
@@ -379,7 +387,7 @@ impl Engine for AnthropicEngine {
                 debug!("Vision API request timeout error: {:?}", e);
                 anyhow!("Vision API request timed out after 10 minutes or failed with timeout error: {:?}", e)
             })??;
-            
+
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
                 response.json::<serde_json::Value>()

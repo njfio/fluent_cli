@@ -1,5 +1,5 @@
+use fluent_core::config::{ConnectionConfig, EngineConfig};
 use fluent_engines::create_engine;
-use fluent_core::config::{EngineConfig, ConnectionConfig};
 
 #[tokio::test]
 async fn unknown_engine_type_returns_uniform_error() {
@@ -19,5 +19,8 @@ async fn unknown_engine_type_returns_uniform_error() {
     };
 
     let err = create_engine(&cfg).await.err().expect("should error");
-    assert!(err.to_string().to_lowercase().contains("unknown engine type"));
+    assert!(err
+        .to_string()
+        .to_lowercase()
+        .contains("unknown engine type"));
 }

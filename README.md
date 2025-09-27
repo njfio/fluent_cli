@@ -440,6 +440,17 @@ export GOOGLE_API_KEY="your-key"
 # ... etc
 ```
 
+## Logging
+
+- Human logs (default): human-readable.
+- JSON logs: set FLUENT_LOG_FORMAT=json or pass --json-logs.
+
+```bash
+FLUENT_LOG_FORMAT=json fluent tools list
+# or
+fluent --json-logs tools list
+```
+
 ## Shell Completions
 
 Generate completion scripts for your shell:

@@ -23,11 +23,7 @@ pub mod chunking {
                 break;
             }
 
-            start = if end > CHUNK_OVERLAP {
-                end - CHUNK_OVERLAP
-            } else {
-                0
-            };
+            start = end.saturating_sub(CHUNK_OVERLAP);
         }
 
         chunks

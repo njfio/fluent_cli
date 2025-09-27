@@ -30,16 +30,20 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
 
     let engine = crate::create_engine(config).await?;
     let response = std::pin::Pin::from(engine.execute(&llm_request)).await?;
-    
+
     // Extract just the Cypher query from the response
     let cypher = response.content.trim();
-    
+
     // Basic validation - ensure it looks like a Cypher query
-    if !cypher.to_uppercase().contains("MATCH") && 
-       !cypher.to_uppercase().contains("CREATE") && 
-       !cypher.to_uppercase().contains("MERGE") {
-        return Err(anyhow::anyhow!("Generated query doesn't appear to be valid Cypher: {}", cypher));
+    if !cypher.to_uppercase().contains("MATCH")
+        && !cypher.to_uppercase().contains("CREATE")
+        && !cypher.to_uppercase().contains("MERGE")
+    {
+        return Err(anyhow::anyhow!(
+            "Generated query doesn't appear to be valid Cypher: {}",
+            cypher
+        ));
     }
-    
+
     Ok(cypher.to_string())
 }

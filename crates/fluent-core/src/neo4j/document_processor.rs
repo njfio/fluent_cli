@@ -1,19 +1,19 @@
 //! Document processing and content extraction for Neo4j
-//! 
+//!
 //! This module handles document content extraction, chunking, and embedding creation
 //! for various file types including PDF, text files, and DOCX documents.
 
 use anyhow::{anyhow, Result};
+use log::debug;
 use neo4rs::{query, BoltInteger, BoltNull, BoltString, BoltType, Graph};
 use pdf_extract::extract_text;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
-use log::debug;
 
 use crate::neo4j_client::VoyageAIConfig;
-use crate::traits::{DocxProcessor, DocumentProcessor};
+use crate::traits::{DocumentProcessor, DocxProcessor};
 use crate::utils::chunking::chunk_document;
 use crate::voyageai_client::{get_voyage_embedding, EMBEDDING_DIMENSION};
 
@@ -88,11 +88,15 @@ impl<'a> ChunkEmbeddingManager<'a> {
 
     /// Process chunks and create embeddings
     async fn process_chunks(&self, document_id: &str, chunks: &[String]) -> Result<()> {
-        debug!("Creating chunks and embeddings for document {}", document_id);
-        
+        debug!(
+            "Creating chunks and embeddings for document {}",
+            document_id
+        );
+
         if let Some(_voyage_config) = self.voyage_config {
             for (i, chunk) in chunks.iter().enumerate() {
-                self.process_single_chunk(document_id, chunk, i, chunks).await?;
+                self.process_single_chunk(document_id, chunk, i, chunks)
+                    .await?;
             }
             Ok(())
         } else {
@@ -108,7 +112,8 @@ impl<'a> ChunkEmbeddingManager<'a> {
         index: usize,
         all_chunks: &[String],
     ) -> Result<()> {
-        let voyage_config = self.voyage_config
+        let voyage_config = self
+            .voyage_config
             .ok_or_else(|| anyhow!("VoyageAI configuration not found"))?;
         let embedding = get_voyage_embedding(chunk, voyage_config).await?;
 
@@ -118,7 +123,7 @@ impl<'a> ChunkEmbeddingManager<'a> {
 
         let chunk_id = Uuid::new_v4().to_string();
         let embedding_id = Uuid::new_v4().to_string();
-        
+
         let query = self.build_chunk_embedding_query(
             document_id,
             &chunk_id,
@@ -139,6 +144,7 @@ impl<'a> ChunkEmbeddingManager<'a> {
     }
 
     /// Build the Cypher query for creating chunks and embeddings
+    #[allow(clippy::too_many_arguments)]
     fn build_chunk_embedding_query(
         &self,
         document_id: &str,
@@ -169,11 +175,17 @@ impl<'a> ChunkEmbeddingManager<'a> {
             RETURN c.id as chunk_id, e.id as embedding_id
             ",
         )
-        .param("document_id", BoltType::String(BoltString::from(document_id)))
+        .param(
+            "document_id",
+            BoltType::String(BoltString::from(document_id)),
+        )
         .param("chunk_id", BoltType::String(BoltString::from(chunk_id)))
         .param("content", BoltType::String(BoltString::from(chunk_content)))
         .param("index", BoltType::Integer(BoltInteger::new(index as i64)))
-        .param("embedding_id", BoltType::String(BoltString::from(embedding_id)))
+        .param(
+            "embedding_id",
+            BoltType::String(BoltString::from(embedding_id)),
+        )
         .param("vector", embedding)
         .param(
             "prev_chunk_id",
@@ -206,16 +218,22 @@ impl<'a> DocumentUpsertManager<'a> {
 
         let content = DocumentExtractor::extract_content(file_path).await?;
         let document_id = self.create_or_update_document(&content, metadata).await?;
-        
+
         // Create chunks and embeddings
         let chunk_manager = ChunkEmbeddingManager::new(self.graph, self.voyage_config);
-        chunk_manager.create_chunks_and_embeddings(&document_id, &content).await?;
+        chunk_manager
+            .create_chunks_and_embeddings(&document_id, &content)
+            .await?;
 
         Ok(document_id)
     }
 
     /// Create or update document in Neo4j
-    async fn create_or_update_document(&self, content: &str, metadata: &[String]) -> Result<String> {
+    async fn create_or_update_document(
+        &self,
+        content: &str,
+        metadata: &[String],
+    ) -> Result<String> {
         let document_id = Uuid::new_v4().to_string();
         let query = query(
             "

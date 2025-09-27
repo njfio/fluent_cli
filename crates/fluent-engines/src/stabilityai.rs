@@ -155,7 +155,8 @@ impl Engine for StabilityAIEngine {
                 .await
                 .context("Failed to write image data to file")?;
 
-            let path_str = full_path.to_str()
+            let path_str = full_path
+                .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Path contains invalid UTF-8: {:?}", full_path))?;
 
             Ok(Response {

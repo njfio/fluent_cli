@@ -6,15 +6,15 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque, BTreeMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::context::ExecutionContext;
-use crate::memory::{MemoryItem, MemoryContent, WorkingMemory, WorkingMemoryConfig};
 use crate::memory::working_memory::ContentType;
+use crate::memory::{MemoryContent, MemoryItem, WorkingMemory, WorkingMemoryConfig};
 use fluent_core::traits::Engine;
 
 /// Enhanced multi-level memory system
@@ -261,7 +261,7 @@ pub struct InferenceRule {
 #[derive(Debug, Default)]
 pub struct ConceptOntology {
     hierarchy: HashMap<String, Vec<String>>, // parent -> children
-    categories: HashMap<String, String>, // concept -> category
+    categories: HashMap<String, String>,     // concept -> category
     taxonomies: Vec<Taxonomy>,
 }
 
@@ -495,14 +495,11 @@ pub enum ConsolidationStatus {
 
 impl EnhancedMemorySystem {
     /// Create a new enhanced memory system
-    pub async fn new(
-        base_engine: Arc<dyn Engine>,
-        config: EnhancedMemoryConfig,
-    ) -> Result<Self> {
+    pub async fn new(base_engine: Arc<dyn Engine>, config: EnhancedMemoryConfig) -> Result<Self> {
         let working_memory_config = WorkingMemoryConfig {
             max_active_items: config.working_memory_capacity,
             max_memory_size: 1024 * 1024 * 100, // 100MB default
-            attention_refresh_interval: 60, // 1 minute
+            attention_refresh_interval: 60,     // 1 minute
             relevance_decay_rate: 0.1,
             enable_consolidation: true,
             consolidation_threshold: 0.8,
@@ -529,7 +526,11 @@ impl EnhancedMemorySystem {
     /// Update all memory systems with new context
     pub async fn update_memory(&self, context: &ExecutionContext) -> Result<()> {
         // Update working memory
-        self.working_memory.write().await.update_attention(context).await?;
+        self.working_memory
+            .write()
+            .await
+            .update_attention(context)
+            .await?;
 
         // Create episodic memory from context
         self.create_episode_from_context(context).await?;
@@ -567,7 +568,9 @@ impl EnhancedMemorySystem {
 
         let mut episodic = self.episodic_memory.write().await;
         let timestamp = episode.timestamp;
-        episodic.episode_index.insert(episode.episode_id.clone(), timestamp);
+        episodic
+            .episode_index
+            .insert(episode.episode_id.clone(), timestamp);
         episodic.episodes.insert(timestamp, episode);
 
         // Prune old episodes if needed
@@ -584,7 +587,7 @@ impl EnhancedMemorySystem {
     /// Extract events from execution context
     async fn extract_events_from_context(&self, context: &ExecutionContext) -> Vec<EpisodicEvent> {
         let mut events = Vec::new();
-        
+
         // Extract goal-related events
         if let Some(goal) = context.get_current_goal() {
             events.push(EpisodicEvent {
@@ -597,7 +600,7 @@ impl EnhancedMemorySystem {
                 causal_links: Vec::new(),
             });
         }
-        
+
         // Extract action events
         for action in context.get_recent_actions() {
             events.push(EpisodicEvent {
@@ -610,19 +613,28 @@ impl EnhancedMemorySystem {
                 causal_links: Vec::new(),
             });
         }
-        
+
         events
     }
 
     /// Determine the outcome of an episode
     async fn determine_episode_outcome(&self, context: &ExecutionContext) -> EpisodeOutcome {
         let recent_actions = context.get_recent_actions();
-        
-        if recent_actions.iter().any(|a| a.description.to_lowercase().contains("success")) {
+
+        if recent_actions
+            .iter()
+            .any(|a| a.description.to_lowercase().contains("success"))
+        {
             EpisodeOutcome::Success
-        } else if recent_actions.iter().any(|a| a.description.to_lowercase().contains("error") || a.description.to_lowercase().contains("fail")) {
+        } else if recent_actions.iter().any(|a| {
+            a.description.to_lowercase().contains("error")
+                || a.description.to_lowercase().contains("fail")
+        }) {
             EpisodeOutcome::Failure
-        } else if recent_actions.iter().any(|a| a.description.to_lowercase().contains("learn")) {
+        } else if recent_actions
+            .iter()
+            .any(|a| a.description.to_lowercase().contains("learn"))
+        {
             EpisodeOutcome::Learning
         } else {
             EpisodeOutcome::Partial
@@ -632,18 +644,20 @@ impl EnhancedMemorySystem {
     /// Assess emotional valence of an episode
     async fn assess_emotional_valence(&self, context: &ExecutionContext) -> f64 {
         let summary = context.get_summary().to_lowercase();
-        
+
         let positive_indicators = ["success", "complete", "achieve", "good", "excellent"];
         let negative_indicators = ["fail", "error", "problem", "issue", "bad"];
-        
-        let positive_count = positive_indicators.iter()
+
+        let positive_count = positive_indicators
+            .iter()
             .map(|&indicator| summary.matches(indicator).count())
             .sum::<usize>() as f64;
-            
-        let negative_count = negative_indicators.iter()
+
+        let negative_count = negative_indicators
+            .iter()
             .map(|&indicator| summary.matches(indicator).count())
             .sum::<usize>() as f64;
-        
+
         if positive_count + negative_count == 0.0 {
             0.0 // Neutral
         } else {
@@ -654,25 +668,25 @@ impl EnhancedMemorySystem {
     /// Calculate importance score for an episode
     async fn calculate_importance_score(&self, context: &ExecutionContext) -> f64 {
         let mut score: f64 = 0.5; // Base importance
-        
+
         // Increase importance based on goal achievement
         if let Some(goal) = context.get_current_goal() {
             if goal.description.to_lowercase().contains("critical") {
                 score += 0.3;
             }
         }
-        
+
         // Increase importance based on learning events
         let summary = context.get_summary().to_lowercase();
         if summary.contains("learn") || summary.contains("discover") {
             score += 0.2;
         }
-        
+
         // Increase importance based on error recovery
         if summary.contains("error") && summary.contains("recover") {
             score += 0.3;
         }
-        
+
         score.min(1.0_f64)
     }
 
@@ -680,12 +694,12 @@ impl EnhancedMemorySystem {
     async fn generate_episode_tags(&self, context: &ExecutionContext) -> Vec<String> {
         let mut tags = Vec::new();
         let summary = context.get_summary().to_lowercase();
-        
+
         // Goal-based tags
         if let Some(goal) = context.get_current_goal() {
             tags.push(format!("goal:{}", goal.goal_type));
         }
-        
+
         // Content-based tags
         if summary.contains("file") {
             tags.push("file_operation".to_string());
@@ -699,17 +713,17 @@ impl EnhancedMemorySystem {
         if summary.contains("success") {
             tags.push("successful_outcome".to_string());
         }
-        
+
         tags
     }
 
     /// Update semantic knowledge from context
     async fn update_semantic_knowledge(&self, context: &ExecutionContext) -> Result<()> {
         let mut semantic = self.semantic_memory.write().await;
-        
+
         // Extract concepts from context
         let concepts = self.extract_concepts_from_context(context).await;
-        
+
         for concept in concepts {
             // Add or update concept node
             let concept_node = ConceptNode {
@@ -722,10 +736,13 @@ impl EnhancedMemorySystem {
                 last_accessed: SystemTime::now(),
                 access_count: 1,
             };
-            
-            semantic.knowledge_graph.nodes.insert(concept.clone(), concept_node);
+
+            semantic
+                .knowledge_graph
+                .nodes
+                .insert(concept.clone(), concept_node);
         }
-        
+
         Ok(())
     }
 
@@ -733,22 +750,30 @@ impl EnhancedMemorySystem {
     async fn extract_concepts_from_context(&self, context: &ExecutionContext) -> Vec<String> {
         let mut concepts = Vec::new();
         let summary = context.get_summary();
-        
+
         // Simple concept extraction (in practice, this would use NLP)
         let words: Vec<String> = summary
             .split_whitespace()
             .filter(|word| word.len() > 3)
-            .map(|word| word.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .map(|word| {
+                word.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
             .filter(|word| !word.is_empty())
             .collect();
-        
+
         // Filter for meaningful concepts
-        let meaningful_words: Vec<String> = words.into_iter()
+        let meaningful_words: Vec<String> = words
+            .into_iter()
             .filter(|word| {
-                !matches!(word.as_str(), "this" | "that" | "with" | "from" | "they" | "have" | "will" | "been")
+                !matches!(
+                    word.as_str(),
+                    "this" | "that" | "with" | "from" | "they" | "have" | "will" | "been"
+                )
             })
             .collect();
-        
+
         concepts.extend(meaningful_words);
         concepts
     }
@@ -756,7 +781,7 @@ impl EnhancedMemorySystem {
     /// Classify the type of a concept
     async fn classify_concept_type(&self, concept: &str) -> ConceptType {
         let concept_lower = concept.to_lowercase();
-        
+
         if concept_lower.ends_with("ing") {
             ConceptType::Process
         } else if concept_lower.contains("tool") || concept_lower.contains("system") {
@@ -771,7 +796,7 @@ impl EnhancedMemorySystem {
     /// Update procedural knowledge from context
     async fn update_procedural_knowledge(&self, context: &ExecutionContext) -> Result<()> {
         let mut procedural = self.procedural_memory.write().await;
-        
+
         // Extract action sequences
         let actions = context.get_recent_actions();
         if actions.len() >= 2 {
@@ -782,39 +807,47 @@ impl EnhancedMemorySystem {
                 success_rate: 0.8, // Initial estimate
                 generalization_level: 0.5,
             };
-            
+
             procedural.action_patterns.push(pattern);
         }
-        
+
         Ok(())
     }
 
     /// Update metacognitive awareness
     async fn update_metacognitive_awareness(&self, context: &ExecutionContext) -> Result<()> {
         let mut meta = self.meta_memory.write().await;
-        
+
         // Update domain awareness
         let summary = context.get_summary();
         if summary.contains("programming") {
-            if !meta.memory_awareness.known_domains.contains(&"programming".to_string()) {
-                meta.memory_awareness.known_domains.push("programming".to_string());
+            if !meta
+                .memory_awareness
+                .known_domains
+                .contains(&"programming".to_string())
+            {
+                meta.memory_awareness
+                    .known_domains
+                    .push("programming".to_string());
             }
         }
-        
+
         // Update confidence estimates
         if let Some(goal) = context.get_current_goal() {
             let domain = self.extract_domain_from_goal(goal).await;
             let success_rate = self.calculate_recent_success_rate(&domain).await;
-            meta.memory_awareness.confidence_estimates.insert(domain, success_rate);
+            meta.memory_awareness
+                .confidence_estimates
+                .insert(domain, success_rate);
         }
-        
+
         Ok(())
     }
 
     /// Extract domain from goal
     async fn extract_domain_from_goal(&self, goal: &crate::goal::Goal) -> String {
         let description = goal.description.to_lowercase();
-        
+
         if description.contains("code") || description.contains("program") {
             "programming".to_string()
         } else if description.contains("file") {
@@ -829,20 +862,23 @@ impl EnhancedMemorySystem {
     /// Calculate recent success rate for a domain
     async fn calculate_recent_success_rate(&self, domain: &str) -> f64 {
         let episodic = self.episodic_memory.read().await;
-        
-        let recent_episodes: Vec<_> = episodic.episodes.values()
+
+        let recent_episodes: Vec<_> = episodic
+            .episodes
+            .values()
             .filter(|e| e.tags.iter().any(|tag| tag.contains(domain)))
             .take(10) // Last 10 episodes
             .collect();
-        
+
         if recent_episodes.is_empty() {
             return 0.5; // Default uncertainty
         }
-        
-        let success_count = recent_episodes.iter()
+
+        let success_count = recent_episodes
+            .iter()
             .filter(|e| matches!(e.outcome, EpisodeOutcome::Success))
             .count();
-        
+
         success_count as f64 / recent_episodes.len() as f64
     }
 
@@ -855,27 +891,33 @@ impl EnhancedMemorySystem {
     /// Perform memory consolidation across all memory types
     async fn consolidate_memories(&self) -> Result<()> {
         // Consolidate working memory to long-term memory
-        let consolidation_result = self.working_memory.read().await.consolidate_memory().await?;
-        
+        let consolidation_result = self
+            .working_memory
+            .read()
+            .await
+            .consolidate_memory()
+            .await?;
+
         // Log consolidation results
         if consolidation_result.consolidated_items > 0 {
-            println!("Consolidated {} items, archived {} items, deleted {} items", 
+            println!(
+                "Consolidated {} items, archived {} items, deleted {} items",
                 consolidation_result.consolidated_items,
                 consolidation_result.archived_items,
                 consolidation_result.deleted_items
             );
         }
-        
+
         // Update memory monitoring
         self.update_memory_monitoring().await?;
-        
+
         Ok(())
     }
 
     /// Consolidate concept to semantic memory
     async fn consolidate_concept_to_semantic(&self, concept: String) -> Result<()> {
         let mut semantic = self.semantic_memory.write().await;
-        
+
         // Check if concept already exists
         if let Some(existing_node) = semantic.knowledge_graph.nodes.get_mut(&concept) {
             existing_node.activation_level += 0.1;
@@ -893,10 +935,10 @@ impl EnhancedMemorySystem {
                 last_accessed: SystemTime::now(),
                 access_count: 1,
             };
-            
+
             semantic.knowledge_graph.nodes.insert(concept, concept_node);
         }
-        
+
         Ok(())
     }
 
@@ -910,12 +952,15 @@ impl EnhancedMemorySystem {
     /// Prune old episodes to maintain memory capacity
     async fn prune_old_episodes(&self, episodic: &mut EpisodicMemory) -> () {
         // Remove episodes with lowest importance scores
-        let mut episodes_by_importance: Vec<_> = episodic.episodes.iter()
+        let mut episodes_by_importance: Vec<_> = episodic
+            .episodes
+            .iter()
             .map(|(time, episode)| (*time, episode.importance_score))
             .collect();
-        
-        episodes_by_importance.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        
+
+        episodes_by_importance
+            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
         // Remove bottom 10% of episodes
         let remove_count = episodes_by_importance.len() / 10;
         for (time, _) in episodes_by_importance.iter().take(remove_count) {
@@ -924,12 +969,20 @@ impl EnhancedMemorySystem {
     }
 
     /// Get relevant memories for a given context
-    pub async fn retrieve_relevant_memories(&self, context: &ExecutionContext) -> Result<RelevantMemories> {
-        let working_items = self.working_memory.read().await.search_relevant("", 50).await?;
+    pub async fn retrieve_relevant_memories(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<RelevantMemories> {
+        let working_items = self
+            .working_memory
+            .read()
+            .await
+            .search_relevant("", 50)
+            .await?;
         let relevant_episodes = self.get_relevant_episodes(context).await?;
         let relevant_concepts = self.get_relevant_concepts(context).await?;
         let relevant_skills = self.get_relevant_skills(context).await?;
-        
+
         Ok(RelevantMemories {
             working_memory_items: working_items,
             episodic_memories: relevant_episodes,
@@ -942,8 +995,10 @@ impl EnhancedMemorySystem {
     async fn get_relevant_episodes(&self, context: &ExecutionContext) -> Result<Vec<Episode>> {
         let episodic = self.episodic_memory.read().await;
         let context_summary = context.get_summary().to_lowercase();
-        
-        let relevant: Vec<Episode> = episodic.episodes.values()
+
+        let relevant: Vec<Episode> = episodic
+            .episodes
+            .values()
             .filter(|episode| {
                 // Simple relevance based on tag overlap
                 episode.tags.iter().any(|tag| context_summary.contains(tag))
@@ -951,7 +1006,7 @@ impl EnhancedMemorySystem {
             .take(5) // Limit to top 5 most relevant
             .cloned()
             .collect();
-        
+
         Ok(relevant)
     }
 
@@ -959,12 +1014,15 @@ impl EnhancedMemorySystem {
     async fn get_relevant_concepts(&self, context: &ExecutionContext) -> Result<Vec<ConceptNode>> {
         let semantic = self.semantic_memory.read().await;
         let concepts = self.extract_concepts_from_context(context).await;
-        
-        let relevant: Vec<ConceptNode> = semantic.knowledge_graph.nodes.values()
+
+        let relevant: Vec<ConceptNode> = semantic
+            .knowledge_graph
+            .nodes
+            .values()
             .filter(|node| concepts.contains(&node.concept_name))
             .cloned()
             .collect();
-        
+
         Ok(relevant)
     }
 
@@ -972,14 +1030,19 @@ impl EnhancedMemorySystem {
     async fn get_relevant_skills(&self, context: &ExecutionContext) -> Result<Vec<Skill>> {
         let procedural = self.procedural_memory.read().await;
         let context_summary = context.get_summary().to_lowercase();
-        
-        let relevant: Vec<Skill> = procedural.skills.values()
+
+        let relevant: Vec<Skill> = procedural
+            .skills
+            .values()
             .filter(|skill| {
-                skill.description.to_lowercase().contains(&context_summary[..50_usize.min(context_summary.len())])
+                skill
+                    .description
+                    .to_lowercase()
+                    .contains(&context_summary[..50_usize.min(context_summary.len())])
             })
             .cloned()
             .collect();
-        
+
         Ok(relevant)
     }
 }

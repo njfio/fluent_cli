@@ -80,13 +80,13 @@ impl McpToolRegistry {
     pub async fn initialize_standard_tools(&self) -> Result<()> {
         // Register file system tools
         self.register_file_system_tools().await?;
-        
+
         // Register memory tools
         self.register_memory_tools().await?;
-        
+
         // Register system tools
         self.register_system_tools().await?;
-        
+
         // Register code tools
         self.register_code_tools().await?;
 
@@ -129,14 +129,12 @@ impl McpToolRegistry {
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "Read README".to_string(),
-                    description: "Read the README.md file".to_string(),
-                    input: json!({"path": "README.md"}),
-                    expected_output: Some(json!({"content": "# Project Title\n...", "size": 1024})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "Read README".to_string(),
+                description: "Read the README.md file".to_string(),
+                input: json!({"path": "README.md"}),
+                expected_output: Some(json!({"content": "# Project Title\n...", "size": 1024})),
+            }],
         };
 
         // Write file tool
@@ -172,14 +170,12 @@ impl McpToolRegistry {
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "Write config".to_string(),
-                    description: "Write configuration to a file".to_string(),
-                    input: json!({"path": "config.json", "content": "{\"key\": \"value\"}"}),
-                    expected_output: Some(json!({"bytes_written": 16})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "Write config".to_string(),
+                description: "Write configuration to a file".to_string(),
+                input: json!({"path": "config.json", "content": "{\"key\": \"value\"}"}),
+                expected_output: Some(json!({"bytes_written": 16})),
+            }],
         };
 
         // List directory tool
@@ -219,18 +215,22 @@ impl McpToolRegistry {
                 }
             })),
             category: "filesystem".to_string(),
-            tags: vec!["directory".to_string(), "list".to_string(), "io".to_string()],
+            tags: vec![
+                "directory".to_string(),
+                "list".to_string(),
+                "io".to_string(),
+            ],
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "List current directory".to_string(),
-                    description: "List files in current directory".to_string(),
-                    input: json!({"path": "."}),
-                    expected_output: Some(json!({"entries": [{"name": "README.md", "type": "file", "size": 1024}]})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "List current directory".to_string(),
+                description: "List files in current directory".to_string(),
+                input: json!({"path": "."}),
+                expected_output: Some(
+                    json!({"entries": [{"name": "README.md", "type": "file", "size": 1024}]}),
+                ),
+            }],
         };
 
         self.register_tool(read_file_tool).await?;
@@ -277,18 +277,20 @@ impl McpToolRegistry {
                 }
             })),
             category: "memory".to_string(),
-            tags: vec!["memory".to_string(), "storage".to_string(), "persistence".to_string()],
+            tags: vec![
+                "memory".to_string(),
+                "storage".to_string(),
+                "persistence".to_string(),
+            ],
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "Store important fact".to_string(),
-                    description: "Store an important piece of information".to_string(),
-                    input: json!({"content": "User prefers JSON format for configuration", "importance": 0.8, "tags": ["preference", "config"]}),
-                    expected_output: Some(json!({"memory_id": "mem_12345"})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "Store important fact".to_string(),
+                description: "Store an important piece of information".to_string(),
+                input: json!({"content": "User prefers JSON format for configuration", "importance": 0.8, "tags": ["preference", "config"]}),
+                expected_output: Some(json!({"memory_id": "mem_12345"})),
+            }],
         };
 
         self.register_tool(store_memory_tool).await?;
@@ -330,18 +332,22 @@ impl McpToolRegistry {
                 }
             })),
             category: "system".to_string(),
-            tags: vec!["command".to_string(), "execution".to_string(), "system".to_string()],
+            tags: vec![
+                "command".to_string(),
+                "execution".to_string(),
+                "system".to_string(),
+            ],
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "List files".to_string(),
-                    description: "List files using ls command".to_string(),
-                    input: json!({"command": "ls", "args": ["-la"]}),
-                    expected_output: Some(json!({"stdout": "total 8\ndrwxr-xr-x...", "stderr": "", "exit_code": 0})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "List files".to_string(),
+                description: "List files using ls command".to_string(),
+                input: json!({"command": "ls", "args": ["-la"]}),
+                expected_output: Some(
+                    json!({"stdout": "total 8\ndrwxr-xr-x...", "stderr": "", "exit_code": 0}),
+                ),
+            }],
         };
 
         self.register_tool(execute_command_tool).await?;
@@ -379,18 +385,22 @@ impl McpToolRegistry {
                 }
             })),
             category: "code".to_string(),
-            tags: vec!["rust".to_string(), "compilation".to_string(), "development".to_string()],
+            tags: vec![
+                "rust".to_string(),
+                "compilation".to_string(),
+                "development".to_string(),
+            ],
             version: "1.0.0".to_string(),
             author: Some("Fluent CLI".to_string()),
             documentation_url: None,
-            examples: vec![
-                McpToolExample {
-                    name: "Compile main.rs".to_string(),
-                    description: "Compile a simple Rust file".to_string(),
-                    input: json!({"source_path": "src/main.rs"}),
-                    expected_output: Some(json!({"success": true, "output": "Compiled successfully", "errors": [], "warnings": []})),
-                }
-            ],
+            examples: vec![McpToolExample {
+                name: "Compile main.rs".to_string(),
+                description: "Compile a simple Rust file".to_string(),
+                input: json!({"source_path": "src/main.rs"}),
+                expected_output: Some(
+                    json!({"success": true, "output": "Compiled successfully", "errors": [], "warnings": []}),
+                ),
+            }],
         };
 
         self.register_tool(compile_rust_tool).await?;
@@ -414,7 +424,10 @@ impl McpToolRegistry {
         let mut stats = self.execution_stats.write().await;
         stats.insert(tool.name.clone(), McpToolStats::default());
 
-        println!("✅ Registered MCP tool: {} ({})", tool.name, tool.description);
+        println!(
+            "✅ Registered MCP tool: {} ({})",
+            tool.name, tool.description
+        );
         Ok(())
     }
 
@@ -463,7 +476,9 @@ impl McpToolRegistry {
         let start_time = std::time::Instant::now();
 
         // Get tool definition
-        let tool = self.get_tool(name).await
+        let tool = self
+            .get_tool(name)
+            .await
             .ok_or_else(|| anyhow!("Tool '{}' not found", name))?;
 
         // Validate input against schema
@@ -473,12 +488,17 @@ impl McpToolRegistry {
         let tool_args = self.convert_input_to_args(&input)?;
 
         // Convert string args to Value args for tool registry
-        let value_args: HashMap<String, Value> = tool_args.into_iter()
+        let value_args: HashMap<String, Value> = tool_args
+            .into_iter()
             .map(|(k, v)| (k, Value::String(v)))
             .collect();
 
         // Execute using base tool registry
-        let result = match self.base_tool_registry.execute_tool(name, &value_args).await {
+        let result = match self
+            .base_tool_registry
+            .execute_tool(name, &value_args)
+            .await
+        {
             Ok(output) => {
                 let execution_time = start_time.elapsed().as_millis() as u64;
 
@@ -591,7 +611,9 @@ impl McpToolRegistry {
 
     /// Get tools by category
     pub async fn get_tools_by_category(&self, category: &str) -> Vec<McpToolDefinition> {
-        self.tools.read().await
+        self.tools
+            .read()
+            .await
             .values()
             .filter(|tool| tool.category == category)
             .cloned()
@@ -600,7 +622,9 @@ impl McpToolRegistry {
 
     /// Search tools by tag
     pub async fn search_tools_by_tag(&self, tag: &str) -> Vec<McpToolDefinition> {
-        self.tools.read().await
+        self.tools
+            .read()
+            .await
             .values()
             .filter(|tool| tool.tags.contains(&tag.to_string()))
             .cloned()
@@ -610,7 +634,8 @@ impl McpToolRegistry {
     /// Get tool categories
     pub async fn get_categories(&self) -> Vec<String> {
         let tools = self.tools.read().await;
-        let mut categories: Vec<String> = tools.values()
+        let mut categories: Vec<String> = tools
+            .values()
             .map(|tool| tool.category.clone())
             .collect::<std::collections::HashSet<_>>()
             .into_iter()

@@ -5,4 +5,3 @@ async fn main() -> anyhow::Result<()> {
     let _ = env_logger::try_init();
     ConfigCli::run().await
 }
-

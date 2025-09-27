@@ -22,10 +22,7 @@ pub async fn create_llm_engine(engine_config: &EngineConfig) -> Result<Box<dyn E
             let engine = AnthropicEngine::new(engine_config.clone()).await?;
             Ok(Box::new(engine))
         }
-        _ => Err(anyhow!(
-            "Unsupported engine type: {}",
-            engine_config.engine
-        )),
+        _ => Err(anyhow!("Unsupported engine type: {}", engine_config.engine)),
     }
 }
 
@@ -44,7 +41,7 @@ pub async fn get_neo4j_query_llm(config: &Config) -> Option<(Box<dyn Engine>, &E
 /// Generate a Cypher query using the configured LLM
 pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result<String> {
     let engine = create_llm_engine(config).await?;
-    
+
     let cypher_prompt = format!(
         "Convert this natural language query to Cypher for Neo4j: {query}
         
@@ -63,17 +60,21 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
     };
 
     let response = Pin::from(engine.execute(&request)).await?;
-    
+
     // Extract just the Cypher query from the response
     let cypher = response.content.trim();
-    
+
     // Basic validation - ensure it looks like a Cypher query
-    if cypher.to_uppercase().contains("MATCH") 
-        || cypher.to_uppercase().contains("CREATE") 
-        || cypher.to_uppercase().contains("MERGE") {
+    if cypher.to_uppercase().contains("MATCH")
+        || cypher.to_uppercase().contains("CREATE")
+        || cypher.to_uppercase().contains("MERGE")
+    {
         Ok(cypher.to_string())
     } else {
-        Err(anyhow!("Generated response doesn't appear to be a valid Cypher query: {}", cypher))
+        Err(anyhow!(
+            "Generated response doesn't appear to be a valid Cypher query: {}",
+            cypher
+        ))
     }
 }
 
@@ -85,7 +86,10 @@ pub fn validate_engine_config(config: &EngineConfig) -> Result<()> {
 
     // Check if API key is available in parameters
     if config.parameters.get("api_key").is_none() && config.engine != "local" {
-        return Err(anyhow!("API key is required for engine type: {}", config.engine));
+        return Err(anyhow!(
+            "API key is required for engine type: {}",
+            config.engine
+        ));
     }
 
     // Validate parameters if they exist
@@ -132,13 +136,24 @@ pub fn create_test_engine_config(engine_type: &str) -> EngineConfig {
     use std::collections::HashMap;
 
     let mut parameters = HashMap::new();
-    parameters.insert("api_key".to_string(), serde_json::Value::String("test-key".to_string()));
-    parameters.insert("model".to_string(), serde_json::Value::String("test-model".to_string()));
-    parameters.insert("max_tokens".to_string(), serde_json::Value::Number(serde_json::Number::from(1000)));
-    parameters.insert("temperature".to_string(), serde_json::Value::Number(
-        serde_json::Number::from_f64(0.7)
-            .unwrap_or_else(|| serde_json::Number::from(1)) // Fallback to 1 if f64 conversion fails
-    ));
+    parameters.insert(
+        "api_key".to_string(),
+        serde_json::Value::String("test-key".to_string()),
+    );
+    parameters.insert(
+        "model".to_string(),
+        serde_json::Value::String("test-model".to_string()),
+    );
+    parameters.insert(
+        "max_tokens".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(1000)),
+    );
+    parameters.insert(
+        "temperature".to_string(),
+        serde_json::Value::Number(
+            serde_json::Number::from_f64(0.7).unwrap_or_else(|| serde_json::Number::from(1)), // Fallback to 1 if f64 conversion fails
+        ),
+    );
 
     EngineConfig {
         name: format!("test-{}", engine_type),

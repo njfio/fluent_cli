@@ -176,13 +176,20 @@ impl StateStore for MemoryStateStore {
 // Implement the pipeline_executor::StateStore trait as well
 #[async_trait]
 impl crate::pipeline_executor::StateStore for MemoryStateStore {
-    async fn save_state(&self, pipeline_name: &str, state: &crate::pipeline_executor::PipelineState) -> anyhow::Result<()> {
+    async fn save_state(
+        &self,
+        pipeline_name: &str,
+        state: &crate::pipeline_executor::PipelineState,
+    ) -> anyhow::Result<()> {
         let mut states = self.pipeline_states.write().await;
         states.insert(pipeline_name.to_string(), state.clone());
         Ok(())
     }
 
-    async fn load_state(&self, pipeline_name: &str) -> anyhow::Result<Option<crate::pipeline_executor::PipelineState>> {
+    async fn load_state(
+        &self,
+        pipeline_name: &str,
+    ) -> anyhow::Result<Option<crate::pipeline_executor::PipelineState>> {
         let states = self.pipeline_states.read().await;
         Ok(states.get(pipeline_name).cloned())
     }

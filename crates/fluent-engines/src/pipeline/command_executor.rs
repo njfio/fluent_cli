@@ -1,5 +1,5 @@
 //! Command execution module
-//! 
+//!
 //! This module handles the execution of command and shell command steps,
 //! including retry logic and output handling.
 
@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::process::Command as TokioCommand;
 
-use log::{debug, warn, error};
-use std::time::Duration;
-use std::io::Write;
+use log::{debug, error, warn};
 use std::collections::HashSet;
+use std::io::Write;
+use std::time::Duration;
 
 /// Handles execution of command and shell command steps
 pub struct CommandExecutor;
@@ -72,7 +72,10 @@ impl Default for CommandSecurityConfig {
 
 impl CommandExecutor {
     /// Validate command for security before execution
-    fn validate_command_security(command: &str, config: &CommandSecurityConfig) -> Result<(), Error> {
+    fn validate_command_security(
+        command: &str,
+        config: &CommandSecurityConfig,
+    ) -> Result<(), Error> {
         // Check command length
         if command.len() > config.max_command_length {
             return Err(anyhow!(
@@ -84,7 +87,9 @@ impl CommandExecutor {
 
         // Check for dangerous shell metacharacters if not allowed
         if !config.allow_shell_metacharacters {
-            let dangerous_chars = ['|', '&', ';', '`', '$', '(', ')', '<', '>', '*', '?', '[', ']', '{', '}'];
+            let dangerous_chars = [
+                '|', '&', ';', '`', '$', '(', ')', '<', '>', '*', '?', '[', ']', '{', '}',
+            ];
             for ch in dangerous_chars {
                 if command.contains(ch) {
                     return Err(anyhow!(
@@ -124,7 +129,10 @@ impl CommandExecutor {
         let security_config = CommandSecurityConfig::default();
         Self::validate_command_security(command, &security_config)?;
 
-        warn!("SECURITY WARNING: Executing command after validation: {}", command);
+        warn!(
+            "SECURITY WARNING: Executing command after validation: {}",
+            command
+        );
 
         let output = tokio::time::timeout(
             Duration::from_secs(security_config.timeout_seconds),
@@ -133,19 +141,24 @@ impl CommandExecutor {
                 .arg(command)
                 .env_clear() // Clear environment for security
                 .env("PATH", "/usr/bin:/bin") // Minimal PATH
-                .output()
+                .output(),
         )
         .await
-        .map_err(|_| anyhow!("Command execution timed out after {} seconds", security_config.timeout_seconds))?
+        .map_err(|_| {
+            anyhow!(
+                "Command execution timed out after {} seconds",
+                security_config.timeout_seconds
+            )
+        })?
         .map_err(|e| anyhow!("Failed to execute command: {}", e))?;
 
         let stdout = String::from_utf8(output.stdout)?;
         let mut result = HashMap::new();
-        
+
         if let Some(key) = save_output {
             result.insert(key.clone(), stdout.trim().to_string());
         }
-        
+
         Ok(result)
     }
 
@@ -160,7 +173,10 @@ impl CommandExecutor {
         let security_config = CommandSecurityConfig::default();
         Self::validate_command_security(command, &security_config)?;
 
-        warn!("SECURITY WARNING: Executing shell command after validation: {}", command);
+        warn!(
+            "SECURITY WARNING: Executing shell command after validation: {}",
+            command
+        );
 
         let output = tokio::time::timeout(
             Duration::from_secs(security_config.timeout_seconds),
@@ -169,19 +185,24 @@ impl CommandExecutor {
                 .arg(command)
                 .env_clear() // Clear environment for security
                 .env("PATH", "/usr/bin:/bin") // Minimal PATH
-                .output()
+                .output(),
         )
         .await
-        .map_err(|_| anyhow!("Command execution timed out after {} seconds", security_config.timeout_seconds))?
+        .map_err(|_| {
+            anyhow!(
+                "Command execution timed out after {} seconds",
+                security_config.timeout_seconds
+            )
+        })?
         .map_err(|e| anyhow!("Failed to execute command: {}", e))?;
 
         let stdout = String::from_utf8(output.stdout)?;
         let mut result = HashMap::new();
-        
+
         if let Some(key) = save_output {
             result.insert(key.clone(), stdout.trim().to_string());
         }
-        
+
         Ok(result)
     }
 
@@ -192,12 +213,12 @@ impl CommandExecutor {
         retry: &Option<RetryConfig>,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing command with retry: {}", command);
-        
+
         let retry_config = retry.clone().unwrap_or(RetryConfig {
             max_attempts: 1,
             delay_ms: 0,
         });
-        
+
         let mut attempts = 0;
 
         loop {
@@ -240,7 +261,7 @@ impl CommandExecutor {
             max_attempts: 1,
             delay_ms: 0,
         });
-        
+
         let mut attempts = 0;
 
         loop {
@@ -279,7 +300,7 @@ impl CommandExecutor {
         save_output: &Option<String>,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Running command: {}", command);
-        
+
         let output = TokioCommand::new("sh")
             .arg("-c")
             .arg(command)
@@ -329,13 +350,14 @@ impl CommandExecutor {
         if !is_in_temp {
             return Err(anyhow!(
                 "Script must be in temporary directory for security. Path: {:?}, Temp dir: {:?}",
-                canonical_path, temp_dir
+                canonical_path,
+                temp_dir
             ));
         }
 
         // Use absolute path to bash and clear environment
-        let bash_path = which::which("bash")
-            .map_err(|_| anyhow!("bash command not found in PATH"))?;
+        let bash_path =
+            which::which("bash").map_err(|_| anyhow!("bash command not found in PATH"))?;
 
         let output = TokioCommand::new(bash_path)
             .arg(&canonical_path)
@@ -408,7 +430,9 @@ mod tests {
         assert!(CommandExecutor::validate_command_security("rm -rf /", &config).is_err());
         assert!(CommandExecutor::validate_command_security("sudo rm file", &config).is_err());
         assert!(CommandExecutor::validate_command_security("chmod 777 file", &config).is_err());
-        assert!(CommandExecutor::validate_command_security("wget http://evil.com", &config).is_err());
+        assert!(
+            CommandExecutor::validate_command_security("wget http://evil.com", &config).is_err()
+        );
     }
 
     #[test]
@@ -417,8 +441,12 @@ mod tests {
 
         // Test dangerous shell metacharacters
         assert!(CommandExecutor::validate_command_security("echo hello | cat", &config).is_err());
-        assert!(CommandExecutor::validate_command_security("echo hello && rm file", &config).is_err());
-        assert!(CommandExecutor::validate_command_security("echo hello; rm file", &config).is_err());
+        assert!(
+            CommandExecutor::validate_command_security("echo hello && rm file", &config).is_err()
+        );
+        assert!(
+            CommandExecutor::validate_command_security("echo hello; rm file", &config).is_err()
+        );
         assert!(CommandExecutor::validate_command_security("echo `whoami`", &config).is_err());
         assert!(CommandExecutor::validate_command_security("echo $HOME", &config).is_err());
         assert!(CommandExecutor::validate_command_security("echo hello > file", &config).is_err());
@@ -458,7 +486,9 @@ mod tests {
 
         // Test that metacharacters are allowed when configured
         assert!(CommandExecutor::validate_command_security("echo hello | cat", &config).is_ok());
-        assert!(CommandExecutor::validate_command_security("echo hello && echo world", &config).is_ok());
+        assert!(
+            CommandExecutor::validate_command_security("echo hello && echo world", &config).is_ok()
+        );
 
         // But blocked commands should still be blocked
         assert!(CommandExecutor::validate_command_security("rm -rf /", &config).is_err());

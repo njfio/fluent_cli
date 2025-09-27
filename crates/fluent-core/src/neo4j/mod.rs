@@ -1,5 +1,5 @@
 //! Neo4j client modules
-//! 
+//!
 //! This module contains all the refactored Neo4j client functionality
 //! organized into focused, single-responsibility modules.
 

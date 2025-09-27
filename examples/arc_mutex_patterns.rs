@@ -46,7 +46,7 @@ async fn demonstrate_proper_mutex_usage() -> Result<(), Box<dyn std::error::Erro
                 let mut guard = data_clone.lock().await;
                 guard.push_str(&format!("_task_{}", i));
             } // Lock is released here
-            
+
             // Simulate some work outside the lock
             sleep(Duration::from_millis(10)).await;
         });
@@ -70,7 +70,7 @@ async fn demonstrate_rwlock_patterns() -> Result<(), Box<dyn std::error::Error>>
 
     // Configuration that's read frequently but written rarely
     let config = Arc::new(RwLock::new(std::collections::HashMap::new()));
-    
+
     // Initialize config
     {
         let mut write_guard = config.write().await;
@@ -211,7 +211,8 @@ async fn demonstrate_lock_scope_management() -> Result<(), Box<dyn std::error::E
         // Do async work outside the lock
         sleep(Duration::from_millis(100)).await;
         println!("✅ Async work completed");
-    }).await?;
+    })
+    .await?;
 
     // ✅ GOOD: Pattern for complex operations
     let counter_clone = shared_counter.clone();
@@ -232,7 +233,8 @@ async fn demonstrate_lock_scope_management() -> Result<(), Box<dyn std::error::E
             *guard = new_value;
             println!("✅ Counter updated to: {}", *guard);
         }
-    }).await?;
+    })
+    .await?;
 
     Ok(())
 }
@@ -259,7 +261,7 @@ mod tests {
     #[tokio::test]
     async fn test_rwlock_concurrent_reads() {
         let data = Arc::new(RwLock::new(100));
-        
+
         // Multiple concurrent readers
         let mut handles = Vec::new();
         for _ in 0..5 {

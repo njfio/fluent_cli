@@ -61,15 +61,7 @@ cargo test -p fluent-integration-tests --test comprehensive_option_tests global_
 
 #### Shell Script Tests
 ```bash
-cd /Users/n/RustroverProjects/fluent_cli/tests/functional_tests
-./test_all_cli_commands.sh
-```
 
-#### Python Tests
-```bash
-cd /Users/n/RustroverProjects/fluent_cli/tests/functional_tests
-./test_cli_scenarios.py
-```
 
 ## Test Coverage
 

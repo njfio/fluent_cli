@@ -34,6 +34,7 @@
 use anyhow::{anyhow, Result};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
+use security::security_framework::SecurityFramework;
 use std::path::Path;
 use std::pin::Pin;
 use std::process::Stdio;
@@ -43,6 +44,7 @@ use tokio::process::Command;
 // Advanced agentic modules
 pub mod action;
 pub mod adapters;
+pub mod autonomy;
 pub mod agent_with_mcp;
 pub mod benchmarks;
 pub mod config;
@@ -51,16 +53,16 @@ pub mod enhanced_mcp_client;
 pub mod goal;
 pub mod mcp_adapter;
 pub mod mcp_client;
-pub mod mcp_tool_registry;
 pub mod mcp_resource_manager;
+pub mod mcp_tool_registry;
 pub mod memory;
 pub mod monitoring;
 pub mod observation;
 pub mod orchestrator;
 pub mod performance;
 pub mod planning;
-pub mod profiling;
 pub mod production_mcp;
+pub mod profiling;
 pub mod reasoning;
 pub mod reflection;
 pub mod reflection_engine;
@@ -75,34 +77,42 @@ pub mod workflow;
 pub use action::{
     ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
 };
+pub use autonomy::{
+    AutonomySupervisor, AutonomySupervisorConfig, GuardrailDecision, RiskAssessment,
+    SupervisorIncident, SupervisorStage,
+};
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
-pub use memory::{MemoryConfig, MemoryStats, MemorySystem, IntegratedMemorySystem, MemoryItem, MemoryContent, WorkingMemory, ContextCompressor, CrossSessionPersistence};
+pub use memory::{
+    ContextCompressor, CrossSessionPersistence, IntegratedMemorySystem, MemoryConfig,
+    MemoryContent, MemoryItem, MemoryStats, MemorySystem, WorkingMemory,
+};
 pub use monitoring::{
-    PerformanceMonitor, PerformanceMetrics, QualityMetrics,
-    AdaptiveStrategySystem,
-    ErrorRecoverySystem, RecoveryConfig, ErrorInstance, ErrorType, ErrorSeverity, RecoveryResult,
+    AdaptiveStrategySystem, ErrorInstance, ErrorRecoverySystem, ErrorSeverity, ErrorType,
+    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult,
 };
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
-pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use orchestrator::{
+    AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics,
+};
 pub use planning::{
-    HTNPlanner, HTNConfig, HTNResult, DependencyAnalyzer, DynamicReplanner,
-    CompositePlanner, CompletePlanningResult
+    CompletePlanningResult, CompositePlanner, DependencyAnalyzer, DynamicReplanner, HTNConfig,
+    HTNPlanner, HTNResult,
 };
 pub use production_mcp::{
-    ProductionMcpManager, ProductionMcpConfig, McpError, HealthStatus, McpMetrics,
-    initialize_production_mcp, initialize_production_mcp_with_config,
+    initialize_production_mcp, initialize_production_mcp_with_config, HealthStatus, McpError,
+    McpMetrics, ProductionMcpConfig, ProductionMcpManager,
 };
 pub use reasoning::{
-    ReasoningEngine, ReasoningCapability, CompositeReasoningEngine,
-    TreeOfThoughtEngine, ToTConfig, ToTReasoningResult,
-    ChainOfThoughtEngine, CoTConfig, CoTReasoningResult,
-    MetaReasoningEngine, MetaConfig, MetaReasoningResult,
+    ChainOfThoughtEngine, CoTConfig, CoTReasoningResult, CompositeReasoningEngine, MetaConfig,
+    MetaReasoningEngine, MetaReasoningResult, ReasoningCapability, ReasoningEngine, ToTConfig,
+    ToTReasoningResult, TreeOfThoughtEngine,
 };
-pub use reflection_engine::{ReflectionEngine, ReflectionConfig, ReflectionResult, ReflectionType};
+pub use reflection_engine::{ReflectionConfig, ReflectionEngine, ReflectionResult, ReflectionType};
 pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
 pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
+pub use security::capability::CapabilityManager;
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
@@ -212,13 +222,16 @@ impl Agent {
             }
         }
 
-        let status = match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
-            Ok(r) => r?,
-            Err(_) => {
-                let _ = child.kill().await;
-                return Err(anyhow!("command did not terminate promptly after output read"));
-            }
-        };
+        let status =
+            match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+                Ok(r) => r?,
+                Err(_) => {
+                    let _ = child.kill().await;
+                    return Err(anyhow!(
+                        "command did not terminate promptly after output read"
+                    ));
+                }
+            };
 
         let mut combined = String::new();
         combined.push_str(&String::from_utf8_lossy(&out_buf));
@@ -340,7 +353,7 @@ impl Agent {
             "echo".to_string(),
             "pwd".to_string(),
             "which".to_string(),
-            "find".to_string()
+            "find".to_string(),
         ]
     }
 
@@ -368,23 +381,22 @@ impl Agent {
     fn is_safe_command_name(cmd: &str) -> bool {
         // List of dangerous patterns to check
         let dangerous_patterns = [
-            "../", "./", "/.", "//", "~/", "$", "`", ";", "&", "|", 
-            ">", "<", "*", "?", "[", "]", "{", "}", "(", ")", 
-            "||", "&&", ">>", "<<", "\\", "\n", "\r", "\t"
+            "../", "./", "/.", "//", "~/", "$", "`", ";", "&", "|", ">", "<", "*", "?", "[", "]",
+            "{", "}", "(", ")", "||", "&&", ">>", "<<", "\\", "\n", "\r", "\t",
         ];
-        
+
         // Check for dangerous patterns
         for pattern in &dangerous_patterns {
             if cmd.contains(pattern) {
                 return false;
             }
         }
-        
+
         // Additional checks
         if cmd.starts_with('-') || cmd.starts_with('.') {
             return false;
         }
-        
+
         true
     }
 
@@ -392,22 +404,21 @@ impl Agent {
     fn is_safe_argument(arg: &str) -> bool {
         // List of dangerous patterns to check in arguments
         let dangerous_patterns = [
-            "$(", "`", ";", "&", "|", ">", "<", ">>", "<<", 
-            "||", "&&", "\n", "\r", "\t"
+            "$(", "`", ";", "&", "|", ">", "<", ">>", "<<", "||", "&&", "\n", "\r", "\t",
         ];
-        
+
         // Check for dangerous patterns
         for pattern in &dangerous_patterns {
             if arg.contains(pattern) {
                 return false;
             }
         }
-        
+
         // Check for command substitution patterns
         if arg.contains("$(") || arg.contains("`") {
             return false;
         }
-        
+
         true
     }
 

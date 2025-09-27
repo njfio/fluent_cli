@@ -1,12 +1,12 @@
 // Configuration management for production MCP implementation
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::Duration;
-use anyhow::Result;
-use tokio::sync::RwLock;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
 
 /// Comprehensive MCP configuration for production use
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,11 +270,7 @@ impl Default for SandboxConfig {
                 "grep".to_string(),
                 "find".to_string(),
             ],
-            blocked_commands: vec![
-                "rm".to_string(),
-                "sudo".to_string(),
-                "chmod".to_string(),
-            ],
+            blocked_commands: vec!["rm".to_string(), "sudo".to_string(), "chmod".to_string()],
             allowed_paths: vec!["/tmp".to_string(), "/var/tmp".to_string()],
             blocked_paths: vec!["/etc".to_string(), "/root".to_string()],
             network_access: false,
@@ -423,10 +419,7 @@ impl ConfigManager {
     }
 
     /// Save configuration to file
-    pub async fn save_to_file<P: AsRef<Path>>(
-        config: &ProductionMcpConfig,
-        path: P,
-    ) -> Result<()> {
+    pub async fn save_to_file<P: AsRef<Path>>(config: &ProductionMcpConfig, path: P) -> Result<()> {
         let content = if path.as_ref().extension().and_then(|s| s.to_str()) == Some("json") {
             serde_json::to_string_pretty(config)?
         } else {
@@ -503,24 +496,33 @@ mod tests {
     #[tokio::test]
     async fn test_config_serialization() {
         let config = ProductionMcpConfig::default();
-        
+
         // Test JSON serialization
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: ProductionMcpConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(config.client.max_concurrent_connections, deserialized.client.max_concurrent_connections);
+        assert_eq!(
+            config.client.max_concurrent_connections,
+            deserialized.client.max_concurrent_connections
+        );
 
         // Test TOML serialization
         let toml = toml::to_string(&config).unwrap();
         let deserialized: ProductionMcpConfig = toml::from_str(&toml).unwrap();
-        assert_eq!(config.server.max_connections, deserialized.server.max_connections);
+        assert_eq!(
+            config.server.max_connections,
+            deserialized.server.max_connections
+        );
     }
 
     #[tokio::test]
     async fn test_config_manager() {
         let config = ProductionMcpConfig::default();
         let manager = ConfigManager::new(config.clone());
-        
+
         let retrieved_config = manager.get_config().await;
-        assert_eq!(config.client.max_concurrent_connections, retrieved_config.client.max_concurrent_connections);
+        assert_eq!(
+            config.client.max_concurrent_connections,
+            retrieved_config.client.max_concurrent_connections
+        );
     }
 }

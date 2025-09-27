@@ -24,10 +24,15 @@ async fn openai_basic_integration() -> Result<()> {
     }
 
     let mut params = std::collections::HashMap::new();
-    params.insert("api_key".to_string(), serde_json::json!(std::env::var("OPENAI_API_KEY").unwrap()));
+    params.insert(
+        "api_key".to_string(),
+        serde_json::json!(std::env::var("OPENAI_API_KEY").unwrap()),
+    );
     params.insert(
         "model".to_string(),
-        serde_json::json!(std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string())),
+        serde_json::json!(
+            std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string())
+        ),
     );
     params.insert("temperature".to_string(), serde_json::json!(0.0));
 
@@ -36,9 +41,14 @@ async fn openai_basic_integration() -> Result<()> {
         engine: "openai".to_string(),
         connection: ConnectionConfig {
             protocol: std::env::var("OPENAI_PROTOCOL").unwrap_or_else(|_| "https".to_string()),
-            hostname: std::env::var("OPENAI_HOSTNAME").unwrap_or_else(|_| "api.openai.com".to_string()),
-            port: std::env::var("OPENAI_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(443),
-            request_path: std::env::var("OPENAI_PATH").unwrap_or_else(|_| "/v1/chat/completions".to_string()),
+            hostname: std::env::var("OPENAI_HOSTNAME")
+                .unwrap_or_else(|_| "api.openai.com".to_string()),
+            port: std::env::var("OPENAI_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(443),
+            request_path: std::env::var("OPENAI_PATH")
+                .unwrap_or_else(|_| "/v1/chat/completions".to_string()),
         },
         parameters: params,
         session_id: None,
@@ -47,7 +57,10 @@ async fn openai_basic_integration() -> Result<()> {
     };
 
     let engine = create_engine(&cfg).await?;
-    let req = Request { flowname: "integration".to_string(), payload: "Reply with the word PING".to_string() };
+    let req = Request {
+        flowname: "integration".to_string(),
+        payload: "Reply with the word PING".to_string(),
+    };
     let resp = std::pin::Pin::from(engine.execute(&req)).await?;
     assert!(!resp.content.trim().is_empty());
     Ok(())

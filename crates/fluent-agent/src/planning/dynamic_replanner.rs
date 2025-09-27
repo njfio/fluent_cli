@@ -12,8 +12,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::task::TaskResult;
 use crate::planning::{ExecutionPlan, ScheduledTask};
+use crate::task::TaskResult;
 
 /// Dynamic replanner for adaptive execution planning
 pub struct DynamicReplanner {
@@ -283,49 +283,52 @@ impl DynamicReplanner {
         let mut active_plan = self.current_plan.write().await;
         active_plan.plan_id = Uuid::new_v4().to_string();
         active_plan.original_plan = Some(plan.clone());
-        active_plan.current_schedule = plan.phases
+        active_plan.current_schedule = plan
+            .phases
             .into_iter()
             .flat_map(|phase| {
                 let phase_id = phase.phase_id.clone();
-                phase.tasks.into_iter().map(move |task_id| 
-                    ScheduledTask {
-                        task_id,
-                        scheduled_start: Duration::from_secs(0),
-                        estimated_end: Duration::from_secs(300),
-                        execution_group: phase_id.clone(),
-                        dependencies_resolved: true,
-                        resource_allocation: Vec::new(),
-                    }
-                )
+                phase.tasks.into_iter().map(move |task_id| ScheduledTask {
+                    task_id,
+                    scheduled_start: Duration::from_secs(0),
+                    estimated_end: Duration::from_secs(300),
+                    execution_group: phase_id.clone(),
+                    dependencies_resolved: true,
+                    resource_allocation: Vec::new(),
+                })
             })
             .collect();
         active_plan.plan_start_time = Some(SystemTime::now());
-        
+
         // Initialize monitoring
         let mut monitor = self.execution_monitor.write().await;
         monitor.monitoring_start = Some(SystemTime::now());
-        
+
         Ok(())
     }
 
     /// Update task progress and check for replanning needs
-    pub async fn update_task_progress(&self, task_id: &str, result: &TaskResult) -> Result<Option<ReplanningResult>> {
+    pub async fn update_task_progress(
+        &self,
+        task_id: &str,
+        result: &TaskResult,
+    ) -> Result<Option<ReplanningResult>> {
         // Update progress tracking
         self.update_progress_tracking(task_id, result).await?;
-        
+
         // Check if replanning is needed
         if self.should_replan().await? {
             let replan_result = self.execute_replanning().await?;
             return Ok(Some(replan_result));
         }
-        
+
         Ok(None)
     }
 
     /// Update progress tracking for a task
     async fn update_progress_tracking(&self, task_id: &str, result: &TaskResult) -> Result<()> {
         let mut monitor = self.execution_monitor.write().await;
-        
+
         let progress = TaskProgress {
             task_id: task_id.to_string(),
             status: if result.success {
@@ -343,9 +346,9 @@ impl DynamicReplanner {
                 Vec::new()
             },
         };
-        
+
         monitor.task_progress.insert(task_id.to_string(), progress);
-        
+
         // Update plan state
         let mut active_plan = self.current_plan.write().await;
         if result.success {
@@ -355,7 +358,7 @@ impl DynamicReplanner {
             active_plan.failed_tasks.push(task_id.to_string());
             active_plan.in_progress_tasks.retain(|id| id != task_id);
         }
-        
+
         Ok(())
     }
 
@@ -363,7 +366,7 @@ impl DynamicReplanner {
     async fn should_replan(&self) -> Result<bool> {
         let monitor = self.execution_monitor.read().await;
         let active_plan = self.current_plan.read().await;
-        
+
         // Check failure rate
         let total_completed = active_plan.completed_tasks.len() + active_plan.failed_tasks.len();
         if total_completed > 0 {
@@ -372,51 +375,64 @@ impl DynamicReplanner {
                 return Ok(true);
             }
         }
-        
+
         // Check schedule deviation
-        let schedule_deviation = self.calculate_schedule_deviation(&active_plan, &monitor).await?;
+        let schedule_deviation = self
+            .calculate_schedule_deviation(&active_plan, &monitor)
+            .await?;
         if schedule_deviation > self.config.replan_threshold {
             return Ok(true);
         }
-        
+
         // Check time since last replan
         if let Some(last_replan) = active_plan.last_replan_time {
-            let time_since_replan = SystemTime::now().duration_since(last_replan).unwrap_or_default();
+            let time_since_replan = SystemTime::now()
+                .duration_since(last_replan)
+                .unwrap_or_default();
             if time_since_replan.as_secs() < self.config.min_replan_interval {
                 return Ok(false);
             }
         }
-        
+
         // Check triggers
         for trigger in &monitor.condition_triggers {
             if trigger.current_value > trigger.threshold {
                 return Ok(true);
             }
         }
-        
+
         Ok(false)
     }
 
     /// Calculate schedule deviation
-    async fn calculate_schedule_deviation(&self, plan: &ActivePlan, monitor: &ExecutionMonitor) -> Result<f64> {
+    async fn calculate_schedule_deviation(
+        &self,
+        plan: &ActivePlan,
+        monitor: &ExecutionMonitor,
+    ) -> Result<f64> {
         let mut total_deviation = 0.0;
         let mut task_count = 0;
-        
+
         for task in &plan.current_schedule {
             if let Some(progress) = monitor.task_progress.get(&task.task_id) {
-                if let (Some(actual_start), Some(actual_completion)) = 
-                   (progress.actual_start_time, progress.actual_completion) {
-                    let actual_duration = actual_completion.duration_since(actual_start).unwrap_or_default();
+                if let (Some(actual_start), Some(actual_completion)) =
+                    (progress.actual_start_time, progress.actual_completion)
+                {
+                    let actual_duration = actual_completion
+                        .duration_since(actual_start)
+                        .unwrap_or_default();
                     let expected_duration = task.estimated_end - task.scheduled_start;
-                    
-                    let deviation = (actual_duration.as_secs() as f64 - expected_duration.as_secs() as f64).abs() / 
-                                   expected_duration.as_secs().max(1) as f64;
+
+                    let deviation = (actual_duration.as_secs() as f64
+                        - expected_duration.as_secs() as f64)
+                        .abs()
+                        / expected_duration.as_secs().max(1) as f64;
                     total_deviation += deviation;
                     task_count += 1;
                 }
             }
         }
-        
+
         if task_count > 0 {
             Ok(total_deviation / task_count as f64)
         } else {
@@ -429,19 +445,21 @@ impl DynamicReplanner {
         let adaptation_engine = self.adaptation_engine.read().await;
         let current_plan = self.current_plan.read().await;
         let monitor = self.execution_monitor.read().await;
-        
+
         // Identify issues that need addressing
         let issues = self.identify_issues(&current_plan, &monitor).await?;
-        
+
         // Select adaptation strategy
-        let strategy = self.select_adaptation_strategy(&issues, &adaptation_engine).await?;
-        
+        let strategy = self
+            .select_adaptation_strategy(&issues, &adaptation_engine)
+            .await?;
+
         // Generate new plan
         let new_schedule = self.generate_new_schedule(&current_plan, &strategy).await?;
-        
+
         // Calculate expected improvement
         let expected_improvement = self.estimate_improvement(&strategy).await?;
-        
+
         let modifications = vec![PlanModification {
             modification_id: Uuid::new_v4().to_string(),
             modification_type: ModificationType::TaskReorder,
@@ -459,7 +477,10 @@ impl DynamicReplanner {
                 parallel_groups: Vec::new(),
             },
             modifications,
-            rationale: format!("Applied strategy: {} to address performance issues", strategy.strategy_name),
+            rationale: format!(
+                "Applied strategy: {} to address performance issues",
+                strategy.strategy_name
+            ),
             expected_improvement,
             confidence: 0.8,
             implementation_steps: vec![
@@ -471,27 +492,31 @@ impl DynamicReplanner {
     }
 
     /// Identify current issues in execution
-    async fn identify_issues(&self, plan: &ActivePlan, monitor: &ExecutionMonitor) -> Result<Vec<String>> {
+    async fn identify_issues(
+        &self,
+        plan: &ActivePlan,
+        monitor: &ExecutionMonitor,
+    ) -> Result<Vec<String>> {
         let mut issues = Vec::new();
-        
+
         // Check for failed tasks
         if !plan.failed_tasks.is_empty() {
             issues.push(format!("{} tasks have failed", plan.failed_tasks.len()));
         }
-        
+
         // Check for resource contention
         for (resource_id, usage) in &monitor.resource_usage {
             if usage.current_utilization > 0.9 {
                 issues.push(format!("High utilization on resource: {}", resource_id));
             }
         }
-        
+
         // Check for schedule delays
         let schedule_deviation = self.calculate_schedule_deviation(plan, monitor).await?;
         if schedule_deviation > 0.2 {
             issues.push("Significant schedule deviation detected".to_string());
         }
-        
+
         Ok(issues)
     }
 
@@ -502,8 +527,11 @@ impl DynamicReplanner {
         engine: &AdaptationEngine,
     ) -> Result<AdaptationStrategy> {
         // Select strategy with highest success rate
-        if let Some(strategy) = engine.adaptation_strategies.iter()
-            .max_by(|a, b| a.success_rate.partial_cmp(&b.success_rate).unwrap_or(std::cmp::Ordering::Equal)) {
+        if let Some(strategy) = engine.adaptation_strategies.iter().max_by(|a, b| {
+            a.success_rate
+                .partial_cmp(&b.success_rate)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) {
             Ok(strategy.clone())
         } else {
             // Default strategy
@@ -532,10 +560,10 @@ impl DynamicReplanner {
         // Simple implementation: reorder remaining tasks by priority
         let mut remaining_tasks = current_plan.pending_tasks.clone();
         remaining_tasks.sort(); // Simple alphabetical sort for now
-        
+
         let mut new_schedule = Vec::new();
         let mut current_time = Duration::from_secs(0);
-        
+
         for task_id in remaining_tasks {
             new_schedule.push(ScheduledTask {
                 task_id: task_id.clone(),
@@ -547,44 +575,48 @@ impl DynamicReplanner {
             });
             current_time += Duration::from_secs(300);
         }
-        
+
         Ok(new_schedule)
     }
 
     /// Estimate improvement from adaptation strategy
     async fn estimate_improvement(&self, strategy: &AdaptationStrategy) -> Result<f64> {
         // Average expected impact of all actions in the strategy
-        let total_impact: f64 = strategy.adaptation_actions.iter()
+        let total_impact: f64 = strategy
+            .adaptation_actions
+            .iter()
             .map(|action| action.expected_impact)
             .sum();
-        
+
         Ok(total_impact / strategy.adaptation_actions.len().max(1) as f64)
     }
 
     /// Apply replanning result to the current plan
     pub async fn apply_replan(&self, result: ReplanningResult) -> Result<()> {
         let mut active_plan = self.current_plan.write().await;
-        
+
         // Update the current schedule
         active_plan.current_schedule.clear();
         // Would extract schedule from result.new_plan
-        
+
         // Record modifications
         active_plan.plan_modifications.extend(result.modifications);
         active_plan.last_replan_time = Some(SystemTime::now());
-        
+
         // Record adaptation event
         let mut adaptation_engine = self.adaptation_engine.write().await;
-        adaptation_engine.recent_adaptations.push_back(AdaptationEvent {
-            event_id: Uuid::new_v4().to_string(),
-            timestamp: SystemTime::now(),
-            trigger_reason: result.rationale,
-            adaptation_applied: "Dynamic replan".to_string(),
-            performance_before: 0.5, // Would calculate actual performance
-            performance_after: None, // Will be updated later
-            success: None, // Will be evaluated after implementation
-        });
-        
+        adaptation_engine
+            .recent_adaptations
+            .push_back(AdaptationEvent {
+                event_id: Uuid::new_v4().to_string(),
+                timestamp: SystemTime::now(),
+                trigger_reason: result.rationale,
+                adaptation_applied: "Dynamic replan".to_string(),
+                performance_before: 0.5, // Would calculate actual performance
+                performance_after: None, // Will be updated later
+                success: None,           // Will be evaluated after implementation
+            });
+
         Ok(())
     }
 
@@ -592,7 +624,7 @@ impl DynamicReplanner {
     pub async fn get_plan_status(&self) -> Result<PlanStatus> {
         let plan = self.current_plan.read().await;
         let monitor = self.execution_monitor.read().await;
-        
+
         Ok(PlanStatus {
             plan_id: plan.plan_id.clone(),
             total_tasks: plan.current_schedule.len() as u32,

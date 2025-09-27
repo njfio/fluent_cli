@@ -1,24 +1,29 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::fs;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
-use crate::action::{ActionExecutor, ActionPlanner};
+use crate::action::{ActionExecutor, ActionPlan, ActionPlanner};
+use crate::autonomy::{
+    AutonomySupervisor, GuardrailDecision, RiskAssessment, SupervisorIncident, SupervisorStage,
+};
 use crate::config::AgentRuntimeConfig;
-use crate::context::{ExecutionContext, CheckpointType};
+use crate::context::{CheckpointType, ExecutionContext};
 use crate::goal::{Goal, GoalResult};
-// Memory system import removed as it uses new integrated memory system
 use crate::memory::MemorySystem;
+use crate::monitoring::{AdaptiveStrategySystem, PerformanceMetrics};
 use crate::observation::ObservationProcessor;
-use crate::reasoning::{ReasoningEngine, ReasoningCapability};
+use crate::planning::DynamicReplanner;
 use crate::reasoning::enhanced_multi_modal::{EnhancedMultiModalEngine, EnhancedReasoningConfig};
+use crate::reasoning::{ReasoningCapability, ReasoningEngine};
 use crate::reflection_engine::ReflectionEngine;
 use crate::state_manager::StateManager as PersistentStateManager;
 use crate::task::{Task, TaskResult};
-use tokio::fs;
-use std::path::Path;
 
 /// Core agent orchestrator implementing the ReAct (Reasoning, Acting, Observing) pattern
 ///
@@ -39,6 +44,9 @@ pub struct AgentOrchestrator {
     persistent_state_manager: Arc<PersistentStateManager>,
     reflection_engine: Arc<RwLock<ReflectionEngine>>,
     metrics: Arc<RwLock<OrchestrationMetrics>>,
+    autonomy_supervisor: Option<Arc<AutonomySupervisor>>,
+    dynamic_replanner: Option<Arc<DynamicReplanner>>,
+    adaptive_strategy: Option<Arc<AdaptiveStrategySystem>>,
 }
 
 /// Manages the execution state and context throughout the agent workflow
@@ -175,6 +183,9 @@ impl AgentOrchestrator {
         memory_system: Arc<MemorySystem>,
         persistent_state_manager: Arc<PersistentStateManager>,
         reflection_engine: ReflectionEngine,
+        autonomy_supervisor: Option<Arc<AutonomySupervisor>>,
+        dynamic_replanner: Option<Arc<DynamicReplanner>>,
+        adaptive_strategy: Option<Arc<AdaptiveStrategySystem>>,
     ) -> Self {
         Self {
             reasoning_engine,
@@ -186,6 +197,9 @@ impl AgentOrchestrator {
             persistent_state_manager,
             reflection_engine: Arc::new(RwLock::new(reflection_engine)),
             metrics: Arc::new(RwLock::new(OrchestrationMetrics::default())),
+            autonomy_supervisor,
+            dynamic_replanner,
+            adaptive_strategy,
         }
     }
 
@@ -198,6 +212,9 @@ impl AgentOrchestrator {
         memory_system: Arc<MemorySystem>,
         persistent_state_manager: Arc<PersistentStateManager>,
         reflection_engine: ReflectionEngine,
+        autonomy_supervisor: Option<Arc<AutonomySupervisor>>,
+        dynamic_replanner: Option<Arc<DynamicReplanner>>,
+        adaptive_strategy: Option<Arc<AdaptiveStrategySystem>>,
     ) -> Result<Self> {
         // Get the base engine from runtime config or create a mock one
         let base_engine = runtime_config.get_base_engine()
@@ -217,6 +234,9 @@ impl AgentOrchestrator {
             memory_system,
             persistent_state_manager,
             reflection_engine,
+            autonomy_supervisor,
+            dynamic_replanner,
+            adaptive_strategy,
         ).await)
     }
 
@@ -298,9 +318,8 @@ impl AgentOrchestrator {
             // Planning Phase: Determine specific action to take
             let action_plan = self
                 .action_planner
-                .plan_action(reasoning_result, &context)
+                .plan_action(reasoning_result.clone(), &context)
                 .await?;
-
             // Create checkpoint before action execution
             self.persistent_state_manager.create_checkpoint(
                 CheckpointType::BeforeAction,
@@ -323,6 +342,10 @@ impl AgentOrchestrator {
 
             // Convert to orchestrator ActionResult for recording
             let action_result = ActionResult {
+                action_id: action_execution_result.action_id.clone(),
+                action_type: action_execution_result.action_type.clone(),
+                parameters: action_execution_result.parameters.clone(),
+                execution_time: action_duration,
                 success: action_execution_result.success,
                 output: action_execution_result.output.clone(),
                 error: action_execution_result.error.clone(),
@@ -330,7 +353,7 @@ impl AgentOrchestrator {
             };
 
             // Record action step
-            self.record_action_step(action_result, action_duration)
+            self.record_action_step(action_result.clone(), action_duration)
                 .await?;
 
             // Observation Phase: Process results and update context
@@ -342,9 +365,19 @@ impl AgentOrchestrator {
             // Record observation
             self.record_observation(observation.clone()).await?;
 
-            // Update context with new information
-            context.add_observation(observation);
+            if let Some(supervisor) = &self.autonomy_supervisor {
+                let assessment = supervisor
+                    .assess_post_action(&action_result, &observation)
+                    .await?;
+                self.apply_guardrail(
+                    SupervisorStage::PostAction,
+                    "post action",
+                    &assessment,
+                )
+                .await?;
+            }
 
+            context.add_observation(observation);
             // Update memory system with new learnings
             self.memory_system.update_memory(&context).await?;
 
@@ -377,6 +410,7 @@ impl AgentOrchestrator {
                           reflection_result.confidence_assessment);
             }
             drop(reflection_engine); // Release the lock
+
 
             // Update agent state
             self.update_state(&context, iteration_count).await?;
@@ -492,8 +526,12 @@ impl AgentOrchestrator {
     async fn apply_strategy_adjustments(
         &self,
         context: &mut ExecutionContext,
+    async fn apply_strategy_adjustments(
+        &self,
+        context: &mut ExecutionContext,
         adjustments: &[crate::reflection::StrategyAdjustment],
     ) -> Result<()> {
+        for adjustment in adjustments {
         for adjustment in adjustments {
             // Apply the adjustment to the context
             let adjustment_description = format!(
@@ -506,27 +544,26 @@ impl AgentOrchestrator {
             context.add_strategy_adjustment(vec![adjustment_description]);
 
             // Log the adjustment
-            log::info!("Applied strategy adjustment: {} - {}",
-                      adjustment.adjustment_id, adjustment.description);
+            log::info!(
+                "Applied strategy adjustment: {} - {}",
+                adjustment.adjustment_id,
+                adjustment.description
+            );
 
             // Create checkpoint after applying adjustment
             self.persistent_state_manager.create_checkpoint(
                 CheckpointType::AfterAction,
-                format!("After applying strategy adjustment: {}", adjustment.adjustment_id)
+                format!(
+                    "After applying strategy adjustment: {}",
+                    adjustment.adjustment_id
+                )
             ).await?;
+        }
+                .optimization_opportunities += 1;
         }
 
         Ok(())
     }
-
-    /// Get reflection engine for external access
-    pub fn get_reflection_engine(&self) -> Arc<RwLock<ReflectionEngine>> {
-        self.reflection_engine.clone()
-    }
-
-    /// Trigger manual reflection
-    pub async fn trigger_reflection(&self, context: &ExecutionContext, _reason: String) -> Result<crate::reflection::ReflectionResult> {
-        let mut reflection_engine = self.reflection_engine.write().await;
         let trigger = crate::reflection::ReflectionTrigger::UserRequest;
 
         reflection_engine.reflect(
@@ -547,7 +584,7 @@ impl AgentOrchestrator {
             timestamp: SystemTime::now(),
             reasoning_type: ReasoningType::GoalAnalysis,
             input_context: "context summary".to_string(),
-            reasoning_output: reasoning.reasoning_output,
+            reasoning_output: reasoning.reasoning_output.clone(),
             confidence_score: reasoning.confidence_score,
             next_action_plan: reasoning.next_actions.first().cloned(),
         };
@@ -555,14 +592,19 @@ impl AgentOrchestrator {
         // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
         let mut metrics = self.metrics.write().await;
+        let mut perf = self.performance_metrics.write().await;
 
-        // Update both while holding both locks
         state.reasoning_history.push(step);
         metrics.total_reasoning_steps += 1;
         metrics.average_reasoning_time = (metrics.average_reasoning_time
             * (metrics.total_reasoning_steps - 1) as f64
             + duration.as_millis() as f64)
             / metrics.total_reasoning_steps as f64;
+
+        perf.execution_metrics.total_execution_time += duration;
+        perf.execution_metrics.tasks_completed += 1;
+        perf.execution_metrics.success_rate = (perf.execution_metrics.tasks_completed as f64)
+            / (perf.execution_metrics.tasks_completed + perf.execution_metrics.tasks_failed) as f64;
 
         Ok(())
     }
@@ -572,36 +614,48 @@ impl AgentOrchestrator {
         let step = ActionStep {
             action_id: uuid::Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
-            action_type: ActionType::ToolExecution, // Default type since we don't have it in ActionResult
-            parameters: HashMap::new(), // Default empty since we don't have it in ActionResult
-            execution_result: Some(action),
+            action_type: ActionType::ToolExecution,
+            parameters: HashMap::new(),
+            execution_result: Some(action.clone()),
             duration: Some(duration),
-        };
+use crate::action::{ActionExecutor, ActionPlan, ActionPlanner};
 
-        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
         let mut metrics = self.metrics.write().await;
+        let mut perf = self.performance_metrics.write().await;
 
-        // Update both while holding both locks
         state.last_action = Some(step);
         metrics.total_actions_taken += 1;
-        metrics.average_action_time = (metrics.average_action_time
+use crate::monitoring::{AdaptiveStrategySystem, PerformanceMetrics};
             * (metrics.total_actions_taken - 1) as f64
             + duration.as_millis() as f64)
             / metrics.total_actions_taken as f64;
+
+        perf.execution_metrics.total_execution_time += duration;
+        if action.success {
+            perf.execution_metrics.tasks_completed += 1;
+use serde_json::json;
+        } else {
+            perf.execution_metrics.tasks_failed += 1;
+        }
+        perf.execution_metrics.success_rate = (perf.execution_metrics.tasks_completed as f64)
+            / (perf.execution_metrics.tasks_completed + perf.execution_metrics.tasks_failed) as f64;
 
         Ok(())
     }
 
     /// Record an observation for analysis and learning
     async fn record_observation(&self, observation: Observation) -> Result<()> {
-        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
         let mut state = self.state_manager.current_state.write().await;
         let mut metrics = self.metrics.write().await;
+        let mut perf = self.performance_metrics.write().await;
 
-        // Update both while holding both locks
-        state.observations.push(observation);
+        state.observations.push(observation.clone());
         metrics.total_observations_made += 1;
+
+        if observation.content.to_lowercase().contains("error") {
+            perf.reliability_metrics.error_recovery_rate *= 0.95;
+        }
 
         Ok(())
     }
@@ -612,6 +666,10 @@ impl AgentOrchestrator {
         state.current_context = context.clone();
         state.iteration_count = iteration_count;
         state.last_update = SystemTime::now();
+
+        let mut perf = self.performance_metrics.write().await;
+        perf.execution_metrics.queue_length = context.active_tasks.len() as u32;
+        perf.execution_metrics.active_tasks = context.active_tasks.len() as u32;
 
         Ok(())
     }

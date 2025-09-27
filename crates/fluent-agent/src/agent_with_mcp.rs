@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use crate::context::ExecutionContext;
 use crate::goal::{Goal, GoalType};
 use crate::mcp_client::{McpClientManager, McpTool, McpToolResult};
-use crate::memory::{MemoryItem, MemoryContent};
+use crate::memory::{MemoryContent, MemoryItem};
 use crate::orchestrator::{Observation, ObservationType};
 use crate::reasoning::ReasoningEngine;
 
@@ -17,7 +17,7 @@ use crate::reasoning::ReasoningEngine;
 pub trait LongTermMemory: Send + Sync {
     async fn store(&self, item: MemoryItem) -> anyhow::Result<String>;
     async fn query(&self, query: &MemoryQuery) -> anyhow::Result<Vec<MemoryItem>>;
-    
+
     /// Search method as alias for query for backward compatibility
     async fn search(&self, query: MemoryQuery) -> anyhow::Result<Vec<MemoryItem>> {
         self.query(&query).await
@@ -87,8 +87,11 @@ impl AgentWithMcp {
                 content_type: crate::memory::working_memory::ContentType::ContextInformation,
                 data: format!(
                     "Connected to MCP server '{}' with command: {} {}",
-                    name, command, args.join(" ")
-                ).into_bytes(),
+                    name,
+                    command,
+                    args.join(" ")
+                )
+                .into_bytes(),
                 text_summary: format!("MCP connection to {}", name),
                 key_concepts: vec!["mcp".to_string(), "connection".to_string()],
                 relationships: Vec::new(),
@@ -176,7 +179,10 @@ impl AgentWithMcp {
         };
         context.add_observation(prompt_obs);
 
-        let reasoning_result = self.reasoning_engine.reason(&reasoning_prompt, &context).await?;
+        let reasoning_result = self
+            .reasoning_engine
+            .reason(&reasoning_prompt, &context)
+            .await?;
 
         // Parse the reasoning result
         if let Ok(parsed) = serde_json::from_str::<Value>(&reasoning_result) {
@@ -221,13 +227,22 @@ impl AgentWithMcp {
                     data: format!(
                         "Executed task '{}' using tool '{}' from server '{}'. Result: {}",
                         task, tool_name, server, result_text
-                    ).into_bytes(),
+                    )
+                    .into_bytes(),
                     text_summary: format!("MCP task execution: {}", task),
-                    key_concepts: vec!["mcp".to_string(), "execution".to_string(), tool_name.clone()],
+                    key_concepts: vec![
+                        "mcp".to_string(),
+                        "execution".to_string(),
+                        tool_name.clone(),
+                    ],
                     relationships: Vec::new(),
                 },
                 metadata: crate::memory::working_memory::ItemMetadata {
-                    tags: vec!["mcp".to_string(), "execution".to_string(), tool_name.clone()],
+                    tags: vec![
+                        "mcp".to_string(),
+                        "execution".to_string(),
+                        tool_name.clone(),
+                    ],
                     priority: crate::memory::working_memory::Priority::Medium,
                     source: "agent_with_mcp".to_string(),
                     size_bytes: 512,
@@ -254,7 +269,8 @@ impl AgentWithMcp {
                 item_id: uuid::Uuid::new_v4().to_string(),
                 content: MemoryContent {
                     content_type: crate::memory::working_memory::ContentType::LearningItem,
-                    data: format!("Could not find suitable MCP tool for task: {}", task).into_bytes(),
+                    data: format!("Could not find suitable MCP tool for task: {}", task)
+                        .into_bytes(),
                     text_summary: "No suitable MCP tool found".to_string(),
                     key_concepts: vec!["mcp".to_string(), "no_tool".to_string()],
                     relationships: Vec::new(),

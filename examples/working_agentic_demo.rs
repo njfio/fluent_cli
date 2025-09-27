@@ -21,10 +21,10 @@
 //! - Comprehensive logging and debugging output
 use anyhow::Result;
 use fluent_agent::{
+    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    agent_with_mcp::LongTermMemory,
     memory::AsyncSqliteMemoryStore,
     tools::{FileSystemExecutor, ToolExecutionConfig, ToolRegistry},
 };
@@ -138,7 +138,7 @@ async fn demo_memory_system() -> Result<()> {
             "✅ Stored memory: {}",
             stored_id
         );
-        
+
         // Retrieve the memory by ID to verify it was stored
         if let Some(retrieved_memory) = memory_store.retrieve(&stored_id).await? {
             println!("   📝 Retrieved: {}", retrieved_memory.content.text_summary);

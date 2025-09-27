@@ -29,7 +29,7 @@ pub async fn run_agentic_mode(
     use crate::agentic::{AgenticConfig, AgenticExecutor};
     // The agent builds its own engines; avoid strict global config loading
     let config = fluent_core::config::Config::new(vec![]);
-    
+
     let agentic_config = AgenticConfig::new(
         goal_description.to_string(),
         agent_config_path.to_string(),

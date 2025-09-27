@@ -3,15 +3,17 @@
 //! This module contains various reasoning engines that implement different
 //! cognitive patterns for autonomous problem solving.
 
-pub mod tree_of_thought;
 pub mod chain_of_thought;
-pub mod meta_reasoning;
 pub mod enhanced_multi_modal;
+pub mod meta_reasoning;
+pub mod tree_of_thought;
 
-pub use tree_of_thought::{TreeOfThoughtEngine, ToTConfig, ToTReasoningResult};
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
-pub use meta_reasoning::{MetaReasoningEngine, MetaConfig, MetaReasoningResult};
-pub use enhanced_multi_modal::{EnhancedMultiModalEngine, EnhancedReasoningConfig, EnhancedReasoningResult};
+pub use enhanced_multi_modal::{
+    EnhancedMultiModalEngine, EnhancedReasoningConfig, EnhancedReasoningResult,
+};
+pub use meta_reasoning::{MetaConfig, MetaReasoningEngine, MetaReasoningResult};
+pub use tree_of_thought::{ToTConfig, ToTReasoningResult, TreeOfThoughtEngine};
 
 // Re-export the main reasoning traits
 use anyhow::Result;
@@ -76,7 +78,10 @@ pub enum ReasoningSelectionStrategy {
 
 impl CompositeReasoningEngine {
     /// Create a new composite reasoning engine
-    pub fn new(engines: Vec<Box<dyn ReasoningEngine>>, strategy: ReasoningSelectionStrategy) -> Self {
+    pub fn new(
+        engines: Vec<Box<dyn ReasoningEngine>>,
+        strategy: ReasoningSelectionStrategy,
+    ) -> Self {
         Self {
             engines,
             selection_strategy: strategy,
@@ -105,7 +110,7 @@ impl CompositeReasoningEngine {
 
         let mut score = 0.0;
         let prompt_lower = prompt.to_lowercase();
-        
+
         for (indicator, weight) in complexity_indicators {
             if prompt_lower.contains(indicator) {
                 score += weight;
@@ -125,7 +130,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
         match self.selection_strategy {
             ReasoningSelectionStrategy::ComplexityBased => {
                 let complexity = self.assess_problem_complexity(prompt);
-                
+
                 if complexity > 0.5 {
                     // Use Tree-of-Thought for complex problems
                     if let Some(tot_engine) = self.engines.iter().find(|e| {
@@ -135,7 +140,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
                         return tot_engine.reason(prompt, context).await;
                     }
                 }
-                
+
                 // Fallback to first available engine
                 if let Some(engine) = self.engines.first() {
                     engine.reason(prompt, context).await
@@ -165,7 +170,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
 
             ReasoningSelectionStrategy::EnsembleVoting => {
                 let mut results = Vec::new();
-                
+
                 for engine in &self.engines {
                     if let Ok(result) = engine.reason(prompt, context).await {
                         results.push(result);
@@ -177,7 +182,8 @@ impl ReasoningEngine for CompositeReasoningEngine {
                 } else {
                     Ok(format!(
                         "Ensemble Reasoning Results:\n\n{}",
-                        results.into_iter()
+                        results
+                            .into_iter()
                             .enumerate()
                             .map(|(i, r)| format!("Engine {}: {}", i + 1, r))
                             .collect::<Vec<_>>()
@@ -189,14 +195,14 @@ impl ReasoningEngine for CompositeReasoningEngine {
             ReasoningSelectionStrategy::ProblemTypeMatching => {
                 // Simple heuristic-based engine selection
                 let prompt_lower = prompt.to_lowercase();
-                
+
                 if prompt_lower.contains("explore") || prompt_lower.contains("alternative") {
                     // Use Tree-of-Thought for exploration
                     if let Some(tot_engine) = self.engines.first() {
                         return tot_engine.reason(prompt, context).await;
                     }
                 }
-                
+
                 // Default to first engine
                 if let Some(engine) = self.engines.first() {
                     engine.reason(prompt, context).await
@@ -209,7 +215,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
 
     async fn get_capabilities(&self) -> Vec<ReasoningCapability> {
         let mut all_capabilities = Vec::new();
-        
+
         for engine in &self.engines {
             let mut capabilities = engine.get_capabilities().await;
             all_capabilities.append(&mut capabilities);
@@ -218,7 +224,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
         // Deduplicate capabilities
         all_capabilities.sort_by_key(|c| format!("{:?}", c));
         all_capabilities.dedup_by_key(|c| format!("{:?}", c));
-        
+
         all_capabilities
     }
 

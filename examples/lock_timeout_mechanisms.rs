@@ -1,7 +1,9 @@
 // Lock timeout mechanisms example
 use fluent_core::error::{FluentError, LockTimeoutConfig};
 use fluent_core::lock_timeout::{LockContentionMonitor, LockTimeoutUtils};
-use fluent_core::{safe_tokio_lock_with_timeout, safe_tokio_lock_short_timeout, safe_tokio_lock_medium_timeout};
+use fluent_core::{
+    safe_tokio_lock_medium_timeout, safe_tokio_lock_short_timeout, safe_tokio_lock_with_timeout,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
@@ -75,7 +77,10 @@ async fn demonstrate_basic_timeout_handling() -> Result<(), FluentError> {
 
     match success_result {
         Ok(guard) => {
-            println!("✅ Successfully acquired lock after long-running task completed: {:?}", *guard);
+            println!(
+                "✅ Successfully acquired lock after long-running task completed: {:?}",
+                *guard
+            );
         }
         Err(e) => println!("❌ Unexpected error: {}", e),
     }
@@ -109,7 +114,8 @@ async fn demonstrate_lock_contention_monitoring() -> Result<(), FluentError> {
                     std::thread::sleep(Duration::from_millis(100));
                     Ok(*counter)
                 },
-            ).await;
+            )
+            .await;
 
             match result {
                 Ok(value) => println!("✅ Task {} completed with value: {}", i, value),
@@ -131,7 +137,10 @@ async fn demonstrate_lock_contention_monitoring() -> Result<(), FluentError> {
     println!("   Total timeouts: {}", stats.total_timeouts);
     println!("   Timeout rate: {:.2}%", stats.timeout_rate);
     println!("   Average wait time: {:.2}ms", stats.average_wait_time_ms);
-    println!("   Max concurrent waiters: {}", stats.max_concurrent_waiters);
+    println!(
+        "   Max concurrent waiters: {}",
+        stats.max_concurrent_waiters
+    );
     println!("   Contention warnings: {}", stats.contention_warnings);
 
     Ok(())
@@ -168,11 +177,13 @@ async fn demonstrate_timeout_strategies() -> Result<(), FluentError> {
     };
 
     println!("⚙️  Testing custom timeout (500ms):");
-    let custom_result = fluent_core::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
-        &shared_data,
-        "custom_timeout_test",
-        &custom_config,
-    ).await;
+    let custom_result =
+        fluent_core::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+            &shared_data,
+            "custom_timeout_test",
+            &custom_config,
+        )
+        .await;
 
     match custom_result {
         Ok(guard) => println!("✅ Custom timeout succeeded: {}", *guard),
@@ -191,11 +202,13 @@ async fn demonstrate_rwlock_timeout_handling() -> Result<(), FluentError> {
 
     // Initialize some data
     {
-        let mut write_guard = fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout(
-            &shared_config,
-            "rwlock_init",
-            &config,
-        ).await?;
+        let mut write_guard =
+            fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout(
+                &shared_config,
+                "rwlock_init",
+                &config,
+            )
+            .await?;
         write_guard.insert("setting1".to_string(), "value1".to_string());
         write_guard.insert("setting2".to_string(), "value2".to_string());
         println!("✅ Initialized RwLock with data");
@@ -207,11 +220,13 @@ async fn demonstrate_rwlock_timeout_handling() -> Result<(), FluentError> {
         let config_clone = shared_config.clone();
         let config_ref = config.clone();
         let handle = tokio::spawn(async move {
-            let read_result = fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_read_with_timeout(
-                &config_clone,
-                &format!("rwlock_reader_{}", i),
-                &config_ref,
-            ).await;
+            let read_result =
+                fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_read_with_timeout(
+                    &config_clone,
+                    &format!("rwlock_reader_{}", i),
+                    &config_ref,
+                )
+                .await;
 
             match read_result {
                 Ok(guard) => {
@@ -231,11 +246,13 @@ async fn demonstrate_rwlock_timeout_handling() -> Result<(), FluentError> {
     }
 
     // Test write with timeout
-    let write_result = fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout(
-        &shared_config,
-        "rwlock_writer",
-        &config,
-    ).await;
+    let write_result =
+        fluent_core::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout(
+            &shared_config,
+            "rwlock_writer",
+            &config,
+        )
+        .await;
 
     match write_result {
         Ok(mut guard) => {
@@ -281,7 +298,8 @@ async fn demonstrate_high_contention_scenarios() -> Result<(), FluentError> {
                     std::thread::sleep(Duration::from_millis(200));
                     Ok(*counter)
                 },
-            ).await;
+            )
+            .await;
 
             match result {
                 Ok(value) => println!("✅ High contention task {} completed: {}", i, value),
@@ -303,7 +321,10 @@ async fn demonstrate_high_contention_scenarios() -> Result<(), FluentError> {
     println!("   Total timeouts: {}", stats.total_timeouts);
     println!("   Timeout rate: {:.2}%", stats.timeout_rate);
     println!("   Average wait time: {:.2}ms", stats.average_wait_time_ms);
-    println!("   Max concurrent waiters: {}", stats.max_concurrent_waiters);
+    println!(
+        "   Max concurrent waiters: {}",
+        stats.max_concurrent_waiters
+    );
     println!("   Contention warnings: {}", stats.contention_warnings);
 
     if stats.contention_warnings > 0 {
@@ -323,11 +344,13 @@ mod tests {
         let config = LockTimeoutConfig::with_timeout(Duration::from_millis(100));
 
         // This should succeed quickly
-        let result = fluent_core::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
-            &mutex,
-            "test_timeout",
-            &config,
-        ).await;
+        let result =
+            fluent_core::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+                &mutex,
+                "test_timeout",
+                &config,
+            )
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(*result.unwrap(), 42);
@@ -348,7 +371,8 @@ mod tests {
                 *data += 1;
                 Ok(*data)
             },
-        ).await;
+        )
+        .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);

@@ -11,17 +11,16 @@ use tokio::process::Command as TokioCommand;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile;
 
-use anyhow::{anyhow, Error};
 pub use anyhow::Error as PipelineError;
+use anyhow::{anyhow, Error};
 
 // Import modular pipeline components
 use crate::pipeline::{
-    CommandExecutor, ParallelExecutor,
-    ConditionExecutor, LoopExecutor, VariableExpander, StepExecutor
+    CommandExecutor, ConditionExecutor, LoopExecutor, ParallelExecutor, StepExecutor,
+    VariableExpander,
 };
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
-
 
 use schemars::JsonSchema;
 use uuid::Uuid;
@@ -434,9 +433,14 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 } => {
                     debug!("Executing Command step: {}", name);
                     debug!("Command: {}", command);
-                    let expanded_command = VariableExpander::expand_variables(command, &state.data).await?;
-                    CommandExecutor::execute_command_with_retry(&expanded_command, save_output, retry)
-                        .await
+                    let expanded_command =
+                        VariableExpander::expand_variables(command, &state.data).await?;
+                    CommandExecutor::execute_command_with_retry(
+                        &expanded_command,
+                        save_output,
+                        retry,
+                    )
+                    .await
                 }
 
                 PipelineStep::ShellCommand {
@@ -447,9 +451,14 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 } => {
                     debug!("Executing ShellCommand step: {}", name);
                     debug!("Command: {}", command);
-                    let expanded_command = VariableExpander::expand_variables(command, &state.data).await?;
-                    CommandExecutor::execute_shell_command_with_retry(&expanded_command, save_output, retry)
-                        .await
+                    let expanded_command =
+                        VariableExpander::expand_variables(command, &state.data).await?;
+                    CommandExecutor::execute_shell_command_with_retry(
+                        &expanded_command,
+                        save_output,
+                        retry,
+                    )
+                    .await
                 }
 
                 PipelineStep::Condition {
@@ -461,13 +470,19 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     debug!("Evaluating Condition step: {}", name);
                     debug!("Condition: {}", condition);
                     ConditionExecutor::execute_condition_with_expansion(
-                        name, condition, if_true, if_false, &state.data
-                    ).await
+                        name,
+                        condition,
+                        if_true,
+                        if_false,
+                        &state.data,
+                    )
+                    .await
                 }
 
                 PipelineStep::PrintOutput { name, value } => {
                     debug!("Executing PrintOutput step: {}", name);
-                    let expanded_value = VariableExpander::expand_variables(value, &state.data).await?;
+                    let expanded_value =
+                        VariableExpander::expand_variables(value, &state.data).await?;
                     if !self.json_output {
                         eprintln!("{}", expanded_value); // Print to stderr instead of stdout
                     }
@@ -490,7 +505,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     for item in input_data.split(',') {
                         let item = item.trim();
                         debug!("Processing item: {}", item);
-                        let expanded_command = VariableExpander::expand_variables(command, &state.data).await?;
+                        let expanded_command =
+                            VariableExpander::expand_variables(command, &state.data).await?;
                         let item_command = expanded_command.replace("${ITEM}", item);
                         debug!("Executing command: {}", item_command);
                         match self
@@ -521,7 +537,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                 } => {
                     debug!("Executing HumanInTheLoop step: {}", name);
                     debug!("Prompt: {}", prompt);
-                    let expanded_prompt = VariableExpander::expand_variables(prompt, &state.data).await?;
+                    let expanded_prompt =
+                        VariableExpander::expand_variables(prompt, &state.data).await?;
                     println!("{}", expanded_prompt);
 
                     let mut input = String::new();
@@ -549,7 +566,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     debug!("Executing ForEach step: {}", name);
                     debug!("Items: {}", items);
                     debug!("Steps: {:?}", steps);
-                    let expanded_items = VariableExpander::expand_variables(items, &state.data).await?;
+                    let expanded_items =
+                        VariableExpander::expand_variables(items, &state.data).await?;
                     LoopExecutor::execute_for_each(name, &expanded_items, steps, state).await
                 }
 
@@ -563,7 +581,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
                     debug!("Try Steps: {:?}", try_steps);
                     debug!("Catch Steps: {:?}", catch_steps);
                     debug!("Finally Steps: {:?}", finally_steps);
-                    StepExecutor::execute_try_catch(try_steps, catch_steps, finally_steps, state).await
+                    StepExecutor::execute_try_catch(try_steps, catch_steps, finally_steps, state)
+                        .await
                 }
 
                 PipelineStep::Parallel { name, steps } => {
@@ -586,16 +605,6 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
             }
         })
     }
-
-
-
-
-
-
-
-
-
-
 
     async fn execute_shell_command(
         &self,
@@ -664,7 +673,8 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
         if !is_in_temp {
             return Err(anyhow!(
                 "Script must be in temporary directory for security. Path: {:?}, Temp dir: {:?}",
-                canonical_path, temp_dir
+                canonical_path,
+                temp_dir
             ));
         }
 
@@ -696,8 +706,6 @@ impl<S: StateStore + Clone + std::marker::Sync + std::marker::Send> PipelineExec
 
         Ok(stdout.trim().to_string())
     }
-
-
 }
 
 impl PipelineStep {

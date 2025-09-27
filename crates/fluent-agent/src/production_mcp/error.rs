@@ -1,8 +1,8 @@
 // Comprehensive error handling for production MCP implementation
 
-use thiserror::Error;
-use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use thiserror::Error;
 
 /// Comprehensive MCP error types for production use
 #[derive(Debug, Error, Clone, Serialize, Deserialize)]
@@ -58,7 +58,10 @@ pub enum McpError {
     },
 
     #[error("Timeout error: {operation} - exceeded {timeout:?}")]
-    Timeout { operation: String, timeout: Duration },
+    Timeout {
+        operation: String,
+        timeout: Duration,
+    },
 
     #[error("Validation error: {field} - {message}")]
     Validation { field: String, message: String },
@@ -125,7 +128,9 @@ impl McpError {
             }
             McpError::Timeout { .. } => Some(Duration::from_secs(5)),
             McpError::ServerUnavailable { .. } => Some(Duration::from_secs(30)),
-            McpError::Transport { recoverable: true, .. } => Some(Duration::from_secs(10)),
+            McpError::Transport {
+                recoverable: true, ..
+            } => Some(Duration::from_secs(10)),
             _ => None,
         }
     }
@@ -188,7 +193,11 @@ impl McpError {
     }
 
     /// Create a connection error
-    pub fn connection(endpoint: impl Into<String>, message: impl Into<String>, retry_count: u32) -> Self {
+    pub fn connection(
+        endpoint: impl Into<String>,
+        message: impl Into<String>,
+        retry_count: u32,
+    ) -> Self {
         Self::Connection {
             endpoint: endpoint.into(),
             message: message.into(),
@@ -333,7 +342,10 @@ mod tests {
             window: Duration::from_secs(60),
             retry_after: Some(Duration::from_secs(30)),
         };
-        assert_eq!(rate_limit_error.retry_delay(), Some(Duration::from_secs(30)));
+        assert_eq!(
+            rate_limit_error.retry_delay(),
+            Some(Duration::from_secs(30))
+        );
 
         let config_error = McpError::configuration("field", "invalid");
         assert_eq!(config_error.retry_delay(), None);

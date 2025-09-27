@@ -1,15 +1,15 @@
 //! Neo4j operations and utilities
-//! 
+//!
 //! This module contains functions for handling Neo4j database operations
 //! including document upserts, batch processing, and statistics.
 
-use anyhow::{anyhow, Result, Error};
+use crate::utils::{extract_cypher_query, format_as_csv};
+use anyhow::{anyhow, Error, Result};
 use clap::ArgMatches;
 use fluent_core::config::{EngineConfig, Neo4jConfig};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
-use crate::utils::{extract_cypher_query, format_as_csv};
 use log::debug;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -18,7 +18,9 @@ use tokio::fs;
 
 /// Handle document upsert operations for Neo4j
 pub async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {
-    let neo4j_config = engine_config.neo4j.as_ref()
+    let neo4j_config = engine_config
+        .neo4j
+        .as_ref()
         .ok_or_else(|| anyhow!("Neo4j configuration not found for this engine"))?;
 
     let neo4j_client = Arc::new(Neo4jClient::new(neo4j_config).await?);
@@ -57,9 +59,7 @@ async fn handle_single_file_upsert(
     metadata: &[String],
 ) -> Result<()> {
     let document_id = neo4j_client.upsert_document(file_path, metadata).await?;
-    eprintln!(
-        "Uploaded document with ID: {document_id}. Embeddings and chunks created."
-    );
+    eprintln!("Uploaded document with ID: {document_id}. Embeddings and chunks created.");
     Ok(())
 }
 
@@ -70,11 +70,10 @@ async fn handle_directory_upsert(
     metadata: &[String],
 ) -> Result<()> {
     let file_paths = collect_files_from_directory(directory_path).await?;
-    let uploaded_count = process_files_concurrently(neo4j_client.clone(), file_paths, metadata).await?;
+    let uploaded_count =
+        process_files_concurrently(neo4j_client.clone(), file_paths, metadata).await?;
 
-    eprintln!(
-        "Uploaded {uploaded_count} documents with embeddings and chunks"
-    );
+    eprintln!("Uploaded {uploaded_count} documents with embeddings and chunks");
     Ok(())
 }
 
@@ -112,7 +111,9 @@ async fn process_files_concurrently(
         let permit = semaphore.clone();
 
         let handle = tokio::spawn(async move {
-            let _permit = permit.acquire().await
+            let _permit = permit
+                .acquire()
+                .await
                 .map_err(|e| anyhow!("Failed to acquire semaphore permit: {}", e))?;
             let document_id = neo4j_client.upsert_document(&path, &metadata).await?;
             Ok::<(PathBuf, String), anyhow::Error>((path, document_id))
@@ -128,7 +129,7 @@ async fn process_upload_results(
     handles: Vec<tokio::task::JoinHandle<Result<(PathBuf, String)>>>,
 ) -> Result<usize> {
     let mut uploaded_count = 0;
-    
+
     for handle in handles {
         match handle.await? {
             Ok((path, document_id)) => {
@@ -144,7 +145,7 @@ async fn process_upload_results(
             }
         }
     }
-    
+
     Ok(uploaded_count)
 }
 

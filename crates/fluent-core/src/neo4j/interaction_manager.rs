@@ -1,5 +1,5 @@
 //! Interaction management for Neo4j
-//! 
+//!
 //! This module handles the creation and management of questions, responses,
 //! and interactions in the Neo4j database for LLM conversation tracking.
 
@@ -10,7 +10,7 @@ use neo4rs::{query, BoltFloat, BoltList, BoltMap, BoltString, BoltType, Graph};
 use log::debug;
 
 use crate::neo4j::query_executor::QueryExecutor;
-use crate::neo4j_client::{Neo4jQuestion, Neo4jResponse, Neo4jModel, Neo4jTokenUsage};
+use crate::neo4j_client::{Neo4jModel, Neo4jQuestion, Neo4jResponse, Neo4jTokenUsage};
 
 /// Session data structure for Neo4j
 #[derive(Debug, Clone)]
@@ -65,7 +65,10 @@ impl<'a> InteractionManager<'a> {
         question: &Neo4jQuestion,
         interaction_id: &str,
     ) -> Result<String> {
-        debug!("Creating or updating question for interaction {}", interaction_id);
+        debug!(
+            "Creating or updating question for interaction {}",
+            interaction_id
+        );
 
         let query_str = r#"
         MERGE (q:Question {content: $content})
@@ -106,7 +109,10 @@ impl<'a> InteractionManager<'a> {
         interaction_id: &str,
         model_id: &str,
     ) -> Result<String> {
-        debug!("Creating response for interaction {} with model {}", interaction_id, model_id);
+        debug!(
+            "Creating response for interaction {} with model {}",
+            interaction_id, model_id
+        );
 
         let query_str = r#"
         CREATE (r:Response {
@@ -134,7 +140,10 @@ impl<'a> InteractionManager<'a> {
                     .param("vector", BoltType::List(response.vector.clone()))
                     .param("timestamp", response.timestamp.to_rfc3339().as_str())
                     .param("confidence", response.confidence)
-                    .param("llm_specific_data", response.llm_specific_data.to_string().as_str())
+                    .param(
+                        "llm_specific_data",
+                        response.llm_specific_data.to_string().as_str(),
+                    )
                     .param("interaction_id", interaction_id)
                     .param("model_id", model_id),
             )
@@ -300,17 +309,20 @@ impl<'a> InteractionManager<'a> {
 
         let rows = self
             .query_executor
-            .execute_query_with_params(
-                query(query_str).param("session_id", session_id)
-            )
+            .execute_query_with_params(query(query_str).param("session_id", session_id))
             .await?;
 
         if let Some(row) = rows.first() {
             // Calculate real response time from timestamps
-            let response_time = self.calculate_session_response_time(session_id).await.unwrap_or(0.0);
+            let response_time = self
+                .calculate_session_response_time(session_id)
+                .await
+                .unwrap_or(0.0);
 
             // Get actual finish reason from the most recent interaction
-            let finish_reason = self.get_session_finish_reason(session_id).await
+            let finish_reason = self
+                .get_session_finish_reason(session_id)
+                .await
                 .unwrap_or_else(|_| "completed".to_string());
 
             Ok(InteractionStats {
@@ -321,19 +333,22 @@ impl<'a> InteractionManager<'a> {
                 finish_reason,
             })
         } else {
-            Err(anyhow!("No interaction statistics found for session {}", session_id))
+            Err(anyhow!(
+                "No interaction statistics found for session {}",
+                session_id
+            ))
         }
     }
 
     /// Build question properties for Neo4j
     fn build_question_properties(&self, question: &Neo4jQuestion) -> Result<BoltMap> {
         let mut props = BoltMap::new();
-        
+
         props.put(
             BoltString::from("id"),
             BoltType::String(BoltString::from(question.id.as_str())),
         );
-        
+
         props.put(
             BoltString::from("content"),
             BoltType::String(BoltString::from(question.content.as_str())),
@@ -366,9 +381,7 @@ impl<'a> InteractionManager<'a> {
 
         let rows = self
             .query_executor
-            .execute_query_with_params(
-                query(query_str).param("session_id", session_id)
-            )
+            .execute_query_with_params(query(query_str).param("session_id", session_id))
             .await?;
 
         if let Some(row) = rows.first() {
@@ -391,9 +404,7 @@ impl<'a> InteractionManager<'a> {
 
         let rows = self
             .query_executor
-            .execute_query_with_params(
-                query(query_str).param("session_id", session_id)
-            )
+            .execute_query_with_params(query(query_str).param("session_id", session_id))
             .await?;
 
         if let Some(row) = rows.first() {
@@ -413,10 +424,16 @@ impl<'a> InteractionManager<'a> {
     }
 
     /// Parse a Neo4j row into a Neo4jInteraction struct
-    fn parse_interaction_from_row(&self, row: &neo4rs::Row, session_id: &str) -> Result<Neo4jInteraction> {
+    fn parse_interaction_from_row(
+        &self,
+        row: &neo4rs::Row,
+        session_id: &str,
+    ) -> Result<Neo4jInteraction> {
         // Extract interaction data
         let interaction_id: String = row.get("i.id").unwrap_or_else(|_| "unknown".to_string());
-        let timestamp_str: String = row.get("i.timestamp").unwrap_or_else(|_| Utc::now().to_rfc3339());
+        let timestamp_str: String = row
+            .get("i.timestamp")
+            .unwrap_or_else(|_| Utc::now().to_rfc3339());
         let order: i64 = row.get("i.order").unwrap_or(0);
 
         // Parse timestamp
@@ -427,7 +444,9 @@ impl<'a> InteractionManager<'a> {
         // Extract question data if present
         let question = if let Ok(question_id) = row.get::<String>("q.id") {
             let content: String = row.get("q.content").unwrap_or_default();
-            let question_timestamp_str: String = row.get("q.timestamp").unwrap_or_else(|_| timestamp.to_rfc3339());
+            let question_timestamp_str: String = row
+                .get("q.timestamp")
+                .unwrap_or_else(|_| timestamp.to_rfc3339());
             let question_timestamp = DateTime::parse_from_rfc3339(&question_timestamp_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or(timestamp);
@@ -448,14 +467,19 @@ impl<'a> InteractionManager<'a> {
         // Extract response data if present
         let response = if let Ok(response_id) = row.get::<String>("r.id") {
             let content: String = row.get("r.content").unwrap_or_default();
-            let response_timestamp_str: String = row.get("r.timestamp").unwrap_or_else(|_| timestamp.to_rfc3339());
+            let response_timestamp_str: String = row
+                .get("r.timestamp")
+                .unwrap_or_else(|_| timestamp.to_rfc3339());
             let response_timestamp = DateTime::parse_from_rfc3339(&response_timestamp_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or(timestamp);
 
             let confidence: f64 = row.get("r.confidence").unwrap_or(0.0);
-            let llm_specific_data_str: String = row.get("r.llm_specific_data").unwrap_or_else(|_| "{}".to_string());
-            let llm_specific_data = serde_json::from_str(&llm_specific_data_str).unwrap_or_default();
+            let llm_specific_data_str: String = row
+                .get("r.llm_specific_data")
+                .unwrap_or_else(|_| "{}".to_string());
+            let llm_specific_data =
+                serde_json::from_str(&llm_specific_data_str).unwrap_or_default();
 
             // Extract vector if present (create empty BoltList for now)
             let vector = BoltList::new(); // Placeholder - would need proper BoltList parsing from Neo4j
@@ -483,7 +507,11 @@ impl<'a> InteractionManager<'a> {
     }
 
     /// Get recent interactions for a session
-    pub async fn get_recent_interactions(&self, session_id: &str, limit: i64) -> Result<Vec<Neo4jInteraction>> {
+    pub async fn get_recent_interactions(
+        &self,
+        session_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Neo4jInteraction>> {
         let query_str = r#"
         MATCH (s:Session {id: $session_id})-[:HAS_INTERACTION]->(i:Interaction)
         OPTIONAL MATCH (i)-[:HAS_QUESTION]->(q:Question)
@@ -498,7 +526,7 @@ impl<'a> InteractionManager<'a> {
             .execute_query_with_params(
                 query(query_str)
                     .param("session_id", session_id)
-                    .param("limit", limit)
+                    .param("limit", limit),
             )
             .await?;
 
@@ -527,7 +555,7 @@ mod tests {
             response_time: 1.5,
             finish_reason: "stop".to_string(),
         };
-        
+
         assert_eq!(stats.total_tokens, 150);
         assert_eq!(stats.response_time, 1.5);
     }
@@ -540,7 +568,7 @@ mod tests {
             vector: vec![0.1, 0.2, 0.3],
             timestamp: Utc::now(),
         };
-        
+
         assert_eq!(question.content, "Test question");
         assert_eq!(question.vector.len(), 3);
     }

@@ -12,8 +12,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::reasoning::{ReasoningEngine, ReasoningCapability};
 use crate::context::ExecutionContext;
+use crate::reasoning::{ReasoningCapability, ReasoningEngine};
 use fluent_core::traits::Engine;
 
 /// Meta-reasoning engine for strategy evaluation and adaptation
@@ -165,18 +165,28 @@ impl MetaReasoningEngine {
     }
 
     /// Perform meta-reasoning analysis
-    pub async fn meta_reason(&self, context: &ExecutionContext, recent_reasoning: &str) -> Result<MetaReasoningResult> {
+    pub async fn meta_reason(
+        &self,
+        context: &ExecutionContext,
+        recent_reasoning: &str,
+    ) -> Result<MetaReasoningResult> {
         // Evaluate current strategy
-        let strategy_eval = self.evaluate_current_strategy(context, recent_reasoning).await?;
-        
+        let strategy_eval = self
+            .evaluate_current_strategy(context, recent_reasoning)
+            .await?;
+
         // Analyze performance trends
         let performance_analysis = self.analyze_performance_trends().await?;
-        
+
         // Generate adaptation recommendations
-        let recommendations = self.generate_adaptation_recommendations(&strategy_eval, &performance_analysis).await?;
-        
+        let recommendations = self
+            .generate_adaptation_recommendations(&strategy_eval, &performance_analysis)
+            .await?;
+
         // Calculate meta-confidence
-        let meta_confidence = self.calculate_meta_confidence(&strategy_eval, &performance_analysis).await;
+        let meta_confidence = self
+            .calculate_meta_confidence(&strategy_eval, &performance_analysis)
+            .await;
 
         Ok(MetaReasoningResult {
             strategy_evaluation: strategy_eval,
@@ -187,7 +197,11 @@ impl MetaReasoningEngine {
     }
 
     /// Evaluate the effectiveness of the current reasoning strategy
-    async fn evaluate_current_strategy(&self, context: &ExecutionContext, recent_reasoning: &str) -> Result<StrategyEvaluation> {
+    async fn evaluate_current_strategy(
+        &self,
+        context: &ExecutionContext,
+        recent_reasoning: &str,
+    ) -> Result<StrategyEvaluation> {
         let prompt = format!(
             r#"Evaluate this reasoning approach:
 
@@ -221,7 +235,7 @@ ALTERNATIVES: [list alternative approaches]"#,
     /// Analyze performance trends from recent executions
     async fn analyze_performance_trends(&self) -> Result<PerformanceAnalysis> {
         let tracker = self.performance_tracker.read().await;
-        
+
         if tracker.recent_performances.len() < 3 {
             return Ok(PerformanceAnalysis {
                 current_performance_level: 0.5,
@@ -232,17 +246,21 @@ ALTERNATIVES: [list alternative approaches]"#,
         }
 
         // Calculate performance metrics
-        let recent_scores: Vec<f64> = tracker.recent_performances.iter()
+        let recent_scores: Vec<f64> = tracker
+            .recent_performances
+            .iter()
             .map(|p| if p.success { p.confidence } else { 0.0 })
             .collect();
 
         let current_level = recent_scores.iter().sum::<f64>() / recent_scores.len() as f64;
-        
+
         // Determine trend
         let trend = if recent_scores.len() >= 5 {
-            let first_half: f64 = recent_scores[..recent_scores.len()/2].iter().sum::<f64>() / (recent_scores.len()/2) as f64;
-            let second_half: f64 = recent_scores[recent_scores.len()/2..].iter().sum::<f64>() / (recent_scores.len() - recent_scores.len()/2) as f64;
-            
+            let first_half: f64 = recent_scores[..recent_scores.len() / 2].iter().sum::<f64>()
+                / (recent_scores.len() / 2) as f64;
+            let second_half: f64 = recent_scores[recent_scores.len() / 2..].iter().sum::<f64>()
+                / (recent_scores.len() - recent_scores.len() / 2) as f64;
+
             if second_half - first_half > 0.1 {
                 PerformanceTrend::Improving
             } else if first_half - second_half > 0.1 {
@@ -257,13 +275,19 @@ ALTERNATIVES: [list alternative approaches]"#,
         Ok(PerformanceAnalysis {
             current_performance_level: current_level,
             performance_trend: trend,
-            bottlenecks_identified: self.identify_bottlenecks(&tracker.recent_performances).await,
+            bottlenecks_identified: self
+                .identify_bottlenecks(&tracker.recent_performances)
+                .await,
             strengths_identified: self.identify_strengths(&tracker.recent_performances).await,
         })
     }
 
     /// Generate recommendations for strategy adaptation
-    async fn generate_adaptation_recommendations(&self, strategy_eval: &StrategyEvaluation, performance_analysis: &PerformanceAnalysis) -> Result<Vec<AdaptationSuggestion>> {
+    async fn generate_adaptation_recommendations(
+        &self,
+        strategy_eval: &StrategyEvaluation,
+        performance_analysis: &PerformanceAnalysis,
+    ) -> Result<Vec<AdaptationSuggestion>> {
         let mut recommendations = Vec::new();
 
         // If current strategy is underperforming, suggest alternatives
@@ -278,12 +302,17 @@ ALTERNATIVES: [list alternative approaches]"#,
         }
 
         // If performance is declining, suggest more robust approach
-        if matches!(performance_analysis.performance_trend, PerformanceTrend::Declining) {
+        if matches!(
+            performance_analysis.performance_trend,
+            PerformanceTrend::Declining
+        ) {
             recommendations.push(AdaptationSuggestion {
                 suggestion_id: Uuid::new_v4().to_string(),
                 suggested_strategy: StrategyType::Composite,
                 confidence: 0.7,
-                rationale: "Declining performance trend - composite approach may provide better resilience".to_string(),
+                rationale:
+                    "Declining performance trend - composite approach may provide better resilience"
+                        .to_string(),
                 expected_improvement: 0.25,
             });
         }
@@ -292,16 +321,22 @@ ALTERNATIVES: [list alternative approaches]"#,
     }
 
     /// Calculate confidence in meta-reasoning analysis
-    async fn calculate_meta_confidence(&self, strategy_eval: &StrategyEvaluation, performance_analysis: &PerformanceAnalysis) -> f64 {
+    async fn calculate_meta_confidence(
+        &self,
+        strategy_eval: &StrategyEvaluation,
+        performance_analysis: &PerformanceAnalysis,
+    ) -> f64 {
         let tracker = self.performance_tracker.read().await;
         let sample_size_factor = (tracker.recent_performances.len() as f64 / 10.0).min(1.0);
-        let evaluation_consistency = (strategy_eval.current_strategy_effectiveness + strategy_eval.strategy_appropriateness) / 2.0;
-        
+        let evaluation_consistency = (strategy_eval.current_strategy_effectiveness
+            + strategy_eval.strategy_appropriateness)
+            / 2.0;
+
         (sample_size_factor * 0.4 + evaluation_consistency * 0.6).clamp(0.0, 1.0)
     }
 
     // Helper methods
-    
+
     fn parse_strategy_evaluation(&self, response: &str) -> Result<StrategyEvaluation> {
         let mut effectiveness = 0.5;
         let mut appropriateness = 0.5;
@@ -316,15 +351,18 @@ ALTERNATIVES: [list alternative approaches]"#,
                 }
             } else if line.starts_with("APPROPRIATENESS:") {
                 if let Some(val_str) = line.strip_prefix("APPROPRIATENESS:") {
-                    appropriateness = (val_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
+                    appropriateness =
+                        (val_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
                 }
             } else if line.starts_with("IMPROVEMENT_POTENTIAL:") {
                 if let Some(val_str) = line.strip_prefix("IMPROVEMENT_POTENTIAL:") {
-                    improvement_potential = (val_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
+                    improvement_potential =
+                        (val_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
                 }
             } else if line.starts_with("ALTERNATIVES:") {
                 if let Some(alts_str) = line.strip_prefix("ALTERNATIVES:") {
-                    alternatives = alts_str.split(',')
+                    alternatives = alts_str
+                        .split(',')
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
                         .collect();
@@ -342,21 +380,22 @@ ALTERNATIVES: [list alternative approaches]"#,
 
     async fn identify_bottlenecks(&self, performances: &[PerformanceMetric]) -> Vec<String> {
         let mut bottlenecks = Vec::new();
-        
+
         // Check for time bottlenecks
-        let avg_time: Duration = performances.iter()
+        let avg_time: Duration = performances
+            .iter()
             .map(|p| p.execution_time)
-            .sum::<Duration>() / performances.len() as u32;
-            
+            .sum::<Duration>()
+            / performances.len() as u32;
+
         if avg_time > Duration::from_secs(60) {
             bottlenecks.push("Long execution times detected".to_string());
         }
 
         // Check for confidence issues
-        let avg_confidence: f64 = performances.iter()
-            .map(|p| p.confidence)
-            .sum::<f64>() / performances.len() as f64;
-            
+        let avg_confidence: f64 =
+            performances.iter().map(|p| p.confidence).sum::<f64>() / performances.len() as f64;
+
         if avg_confidence < 0.6 {
             bottlenecks.push("Low confidence in reasoning outputs".to_string());
         }
@@ -366,18 +405,16 @@ ALTERNATIVES: [list alternative approaches]"#,
 
     async fn identify_strengths(&self, performances: &[PerformanceMetric]) -> Vec<String> {
         let mut strengths = Vec::new();
-        
-        let success_rate = performances.iter()
-            .filter(|p| p.success)
-            .count() as f64 / performances.len() as f64;
+
+        let success_rate =
+            performances.iter().filter(|p| p.success).count() as f64 / performances.len() as f64;
 
         if success_rate > 0.8 {
             strengths.push("High success rate maintained".to_string());
         }
 
-        let avg_confidence: f64 = performances.iter()
-            .map(|p| p.confidence)
-            .sum::<f64>() / performances.len() as f64;
+        let avg_confidence: f64 =
+            performances.iter().map(|p| p.confidence).sum::<f64>() / performances.len() as f64;
 
         if avg_confidence > 0.8 {
             strengths.push("Consistently high confidence levels".to_string());
@@ -389,7 +426,9 @@ ALTERNATIVES: [list alternative approaches]"#,
     fn format_context_summary(&self, context: &ExecutionContext) -> String {
         format!(
             "Goal: {}, Iteration: {}, Context items: {}",
-            context.current_goal.as_ref()
+            context
+                .current_goal
+                .as_ref()
                 .map(|g| g.description.clone())
                 .unwrap_or_else(|| "No goal set".to_string()),
             context.iteration_count,
@@ -401,14 +440,14 @@ ALTERNATIVES: [list alternative approaches]"#,
     pub async fn record_performance(&self, metric: PerformanceMetric) -> Result<()> {
         let mut tracker = self.performance_tracker.write().await;
         tracker.recent_performances.push(metric);
-        
+
         // Keep only recent performances
         let window_size = self.config.strategy_window_size as usize;
         if tracker.recent_performances.len() > window_size {
             let excess = tracker.recent_performances.len() - window_size;
             tracker.recent_performances.drain(0..excess);
         }
-        
+
         Ok(())
     }
 }
@@ -417,7 +456,7 @@ ALTERNATIVES: [list alternative approaches]"#,
 impl ReasoningEngine for MetaReasoningEngine {
     async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
         let result = self.meta_reason(context, prompt).await?;
-        
+
         let summary = format!(
             "Meta-reasoning Analysis:\n\nStrategy Effectiveness: {:.2}\nPerformance Level: {:.2}\nTrend: {:?}\nRecommendations: {}\nMeta-confidence: {:.2}",
             result.strategy_evaluation.current_strategy_effectiveness,
@@ -426,7 +465,7 @@ impl ReasoningEngine for MetaReasoningEngine {
             result.adaptation_recommendations.len(),
             result.meta_confidence
         );
-        
+
         Ok(summary)
     }
 

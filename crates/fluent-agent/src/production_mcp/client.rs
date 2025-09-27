@@ -3,17 +3,17 @@
 // ⚠️  DEVELOPMENT STATUS: This client implementation provides core MCP functionality
 // but should be thoroughly tested in your environment before production use.
 
-use super::error::McpError;
 use super::config::ClientConfig;
-use super::metrics::{MetricsCollector, ClientMetrics};
+use super::error::McpError;
 use super::health::{HealthMonitor, HealthStatus};
+use super::metrics::{ClientMetrics, MetricsCollector};
 use anyhow::Result;
-use rmcp::{RoleClient, ServiceExt, model::*, service::RunningService};
+use rmcp::{model::*, service::RunningService, RoleClient, ServiceExt};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, Mutex};
+use tokio::sync::{Mutex, RwLock};
 
 /// MCP client manager (Development Stage)
 ///
@@ -181,7 +181,7 @@ impl ProductionMcpClientManager {
     /// Shutdown all clients
     pub async fn shutdown(&self) -> Result<(), McpError> {
         let mut clients = self.clients.write().await;
-        
+
         for (_, client) in clients.drain() {
             if let Err(e) = client.disconnect().await {
                 log::warn!("Error disconnecting client: {}", e);
@@ -225,10 +225,12 @@ impl ProductionMcpClientManager {
             loop {
                 interval.tick().await;
                 let clients_guard = clients.read().await;
-                
+
                 for (name, client) in clients_guard.iter() {
                     let health_status = client.check_health().await;
-                    health_monitor.update_client_health(name, health_status).await;
+                    health_monitor
+                        .update_client_health(name, health_status)
+                        .await;
                 }
             }
         });
@@ -246,7 +248,7 @@ impl ProductionMcpClientManager {
             loop {
                 interval.tick().await;
                 let clients_guard = clients.read().await;
-                
+
                 for client in clients_guard.values() {
                     if let Err(e) = client.maintain_connection().await {
                         log::warn!("Connection maintenance failed: {}", e);
@@ -312,7 +314,9 @@ impl ProductionMcpClient {
         let transport = TokioChildProcess::new(cmd)
             .map_err(|e| McpError::transport("stdio", e.to_string(), true))?;
 
-        let service = ().serve(transport).await
+        let service = ()
+            .serve(transport)
+            .await
             .map_err(|e| McpError::connection(&self.name, e.to_string(), 0))?;
 
         *self.service.lock().await = Some(service);
@@ -341,7 +345,8 @@ impl ProductionMcpClient {
         parameters: Value,
     ) -> Result<CallToolResult, McpError> {
         let service_guard = self.service.lock().await;
-        let service = service_guard.as_ref()
+        let service = service_guard
+            .as_ref()
             .ok_or_else(|| McpError::connection(&self.name, "Not connected".to_string(), 0))?;
 
         let request = CallToolRequestParam {
@@ -349,7 +354,9 @@ impl ProductionMcpClient {
             arguments: parameters.as_object().cloned(),
         };
 
-        let result = service.call_tool(request).await
+        let result = service
+            .call_tool(request)
+            .await
             .map_err(|e| McpError::tool_execution(tool_name, e.to_string(), None))?;
 
         Ok(result)
@@ -403,10 +410,13 @@ impl ProductionMcpClient {
     /// Refresh tools cache
     async fn refresh_tools_cache(&self) -> Result<Vec<Tool>, McpError> {
         let service_guard = self.service.lock().await;
-        let service = service_guard.as_ref()
+        let service = service_guard
+            .as_ref()
             .ok_or_else(|| McpError::connection(&self.name, "Not connected".to_string(), 0))?;
 
-        let tools_result = service.list_tools(Default::default()).await
+        let tools_result = service
+            .list_tools(Default::default())
+            .await
             .map_err(|e| McpError::protocol(-1, e.to_string()))?;
 
         let tools = tools_result.tools;

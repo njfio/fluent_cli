@@ -1,12 +1,12 @@
 //! Query execution and result processing for Neo4j
-//! 
+//!
 //! This module handles Cypher query execution, transaction management,
 //! and result processing for Neo4j database operations.
 
 use anyhow::{anyhow, Result};
+use log::info;
 use neo4rs::{query, Graph, Row};
 use serde_json::{json, Value};
-use log::info;
 
 /// Query executor for Neo4j operations
 pub struct QueryExecutor<'a> {
@@ -33,10 +33,7 @@ impl<'a> QueryExecutor<'a> {
     }
 
     /// Execute a query with parameters
-    pub async fn execute_query_with_params(
-        &self,
-        query: neo4rs::Query,
-    ) -> Result<Vec<Row>> {
+    pub async fn execute_query_with_params(&self, query: neo4rs::Query) -> Result<Vec<Row>> {
         let mut result = self.graph.execute(query).await?;
         let mut rows = Vec::new();
 
@@ -50,10 +47,13 @@ impl<'a> QueryExecutor<'a> {
     /// Execute a query in a transaction
     pub async fn execute_in_transaction<F, T>(&self, operation: F) -> Result<T>
     where
-        F: FnOnce(&mut neo4rs::Txn) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + Send + '_>>,
+        F: FnOnce(
+            &mut neo4rs::Txn,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + Send + '_>>,
     {
         let mut txn = self.graph.start_txn().await?;
-        
+
         match operation(&mut txn).await {
             Ok(result) => {
                 txn.commit().await?;
@@ -110,9 +110,11 @@ impl<'a> QueryExecutor<'a> {
 
     /// Execute a query and return count
     pub async fn execute_count_query(&self, cypher_query: &str) -> Result<i64> {
-        let row = self.execute_single_result(cypher_query).await?
+        let row = self
+            .execute_single_result(cypher_query)
+            .await?
             .ok_or_else(|| anyhow!("No result returned from count query"))?;
-        
+
         // Try different possible column names for count
         if let Ok(count) = row.get::<i64>("count") {
             Ok(count)
@@ -131,12 +133,11 @@ impl<'a> QueryExecutor<'a> {
             "MATCH (n:{}) WHERE n.id = $node_id RETURN count(n) as count",
             node_type
         );
-        
-        let cypher_query = neo4rs::query(&query)
-            .param("node_id", node_id);
-        
+
+        let cypher_query = neo4rs::query(&query).param("node_id", node_id);
+
         let rows = self.execute_query_with_params(cypher_query).await?;
-        
+
         if let Some(row) = rows.first() {
             let count: i64 = row.get("count")?;
             Ok(count > 0)
@@ -152,11 +153,12 @@ impl<'a> QueryExecutor<'a> {
             MATCH (n)
             WHERE (n:Document OR n:Question OR n:Response) AND n.id = $node_id
             RETURN n.content AS content
-            "
-        ).param("node_id", node_id);
+            ",
+        )
+        .param("node_id", node_id);
 
         let rows = self.execute_query_with_params(query).await?;
-        
+
         if let Some(row) = rows.first() {
             Ok(row.get("content")?)
         } else {
@@ -171,7 +173,7 @@ impl<'a> QueryExecutor<'a> {
             MATCH (n)
             WHERE (n:Document OR n:Question OR n:Response)
             RETURN n.content AS content
-            "
+            ",
         );
 
         let rows = self.execute_query_with_params(query).await?;
@@ -272,17 +274,20 @@ impl VerificationResult {
             None
         } else {
             let mut errors = Vec::new();
-            
+
             if !self.missing_items.is_empty() {
                 errors.push(format!("Missing items: {:?}", self.missing_items));
             }
-            
+
             if !self.extra_items.is_empty() {
                 errors.push(format!("Extra items: {:?}", self.extra_items));
             }
-            
-            Some(format!("Verification failed for node {}: {}", 
-                        self.node_id, errors.join(", ")))
+
+            Some(format!(
+                "Verification failed for node {}: {}",
+                self.node_id,
+                errors.join(", ")
+            ))
         }
     }
 }
@@ -300,7 +305,7 @@ mod tests {
             missing_items: vec![],
             extra_items: vec![],
         };
-        
+
         assert!(result.is_valid());
         assert!(result.error_message().is_none());
     }
@@ -314,7 +319,7 @@ mod tests {
             missing_items: vec!["item1".to_string()],
             extra_items: vec![],
         };
-        
+
         assert!(!result.is_valid());
         assert!(result.error_message().is_some());
     }

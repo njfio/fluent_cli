@@ -1,15 +1,15 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{info, error};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::secure_plugin_system::{PluginRuntime, SecurePluginEngine};
 use fluent_core::config::EngineConfig;
 use fluent_core::traits::Engine;
-use crate::secure_plugin_system::{PluginRuntime, SecurePluginEngine};
 
 /// Secure plugin configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ impl SecurePluginManager {
         // Create secure runtime with signature verification and audit logging
         let signature_verifier = Arc::new(crate::secure_plugin_system::DefaultSignatureVerifier);
         let audit_logger = Arc::new(crate::secure_plugin_system::DefaultAuditLogger::new(
-            config.audit_log_path.clone()
+            config.audit_log_path.clone(),
         ));
 
         let runtime = Arc::new(PluginRuntime::new(
@@ -58,7 +58,10 @@ impl SecurePluginManager {
             audit_logger,
         ));
 
-        info!("Secure plugin manager initialized with directory: {:?}", config.plugin_directory);
+        info!(
+            "Secure plugin manager initialized with directory: {:?}",
+            config.plugin_directory
+        );
 
         Ok(Self {
             config,
@@ -73,7 +76,10 @@ impl SecurePluginManager {
         {
             let plugins = self.loaded_plugins.read().await;
             if plugins.len() >= self.config.max_plugins {
-                return Err(anyhow!("Maximum number of plugins ({}) reached", self.config.max_plugins));
+                return Err(anyhow!(
+                    "Maximum number of plugins ({}) reached",
+                    self.config.max_plugins
+                ));
             }
         }
 
@@ -116,7 +122,8 @@ impl SecurePluginManager {
     /// Get a loaded plugin engine
     pub async fn get_plugin(&self, plugin_id: &str) -> Result<Arc<SecurePluginEngine>> {
         let plugins = self.loaded_plugins.read().await;
-        plugins.get(plugin_id)
+        plugins
+            .get(plugin_id)
             .cloned()
             .ok_or_else(|| anyhow!("Plugin '{}' not loaded", plugin_id))
     }
@@ -175,7 +182,10 @@ impl SecurePluginManager {
 
         for plugin_id in plugin_ids {
             if let Err(e) = self.unload_plugin(&plugin_id).await {
-                error!("Failed to unload plugin '{}' during shutdown: {}", plugin_id, e);
+                error!(
+                    "Failed to unload plugin '{}' during shutdown: {}",
+                    plugin_id, e
+                );
             }
         }
 
@@ -254,7 +264,10 @@ impl SecurePluginFactory {
             ));
         }
 
-        info!("Creating secure engine from plugin '{}' with type '{}'", plugin_id, config.engine);
+        info!(
+            "Creating secure engine from plugin '{}' with type '{}'",
+            plugin_id, config.engine
+        );
         Ok(Box::new((*plugin).clone()) as Box<dyn Engine>)
     }
 
@@ -285,7 +298,9 @@ pub struct PluginSecurityValidator;
 
 impl PluginSecurityValidator {
     /// Perform comprehensive security validation on a plugin
-    pub async fn validate_plugin_security(plugin_path: &PathBuf) -> Result<SecurityValidationReport> {
+    pub async fn validate_plugin_security(
+        plugin_path: &PathBuf,
+    ) -> Result<SecurityValidationReport> {
         let mut report = SecurityValidationReport::new();
 
         // Check manifest exists and is valid
@@ -328,7 +343,10 @@ impl PluginSecurityValidator {
         }
 
         // Check for suspicious capabilities
-        if manifest.capabilities.contains(&crate::secure_plugin_system::PluginCapability::FileSystemWrite) {
+        if manifest
+            .capabilities
+            .contains(&crate::secure_plugin_system::PluginCapability::FileSystemWrite)
+        {
             report.add_warning("Plugin requests file system write access");
         }
 

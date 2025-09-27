@@ -12,8 +12,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::Goal;
 use crate::context::ExecutionContext;
+use crate::Goal;
 use fluent_core::traits::Engine;
 
 /// Context compressor for managing long-running task memory
@@ -315,34 +315,39 @@ impl ContextCompressor {
     /// Compress execution context when it exceeds size limits
     pub async fn compress_context(&self, context: &ExecutionContext) -> Result<CompressionResult> {
         let start_time = SystemTime::now();
-        
+
         // Analyze context for compression opportunities
         let analysis = self.analyze_context(context).await?;
-        
+
         // Determine optimal compression strategy
         let strategy = self.select_compression_strategy(&analysis).await?;
-        
+
         // Perform compression
         let compressed = self.execute_compression(context, &strategy).await?;
-        
+
         // Calculate quality metrics
-        let quality = self.evaluate_compression_quality(&compressed, context).await?;
-        
+        let quality = self
+            .evaluate_compression_quality(&compressed, context)
+            .await?;
+
         // Record compression operation
         let operation = CompressionOperation {
             operation_id: Uuid::new_v4().to_string(),
             timestamp: start_time,
             original_size: self.estimate_context_size(context).await?,
             compressed_size: compressed.metadata.compressed_size,
-            compression_ratio: compressed.metadata.compressed_size as f64 / compressed.metadata.original_size as f64,
+            compression_ratio: compressed.metadata.compressed_size as f64
+                / compressed.metadata.original_size as f64,
             compression_type: CompressionType::Combined,
             information_loss: 1.0 - quality.information_preserved,
-            processing_time: SystemTime::now().duration_since(start_time).unwrap_or_default(),
+            processing_time: SystemTime::now()
+                .duration_since(start_time)
+                .unwrap_or_default(),
             quality_score: quality.compression_quality,
         };
-        
+
         self.record_compression(&operation).await?;
-        
+
         Ok(CompressionResult {
             compressed_context: compressed,
             compression_stats: operation,
@@ -353,32 +358,38 @@ impl ContextCompressor {
     }
 
     /// Restore context from compressed representation
-    pub async fn restore_context(&self, compressed: &CompressedContext) -> Result<ExecutionContext> {
+    pub async fn restore_context(
+        &self,
+        compressed: &CompressedContext,
+    ) -> Result<ExecutionContext> {
         // For now, create a minimal context with key information
         let mut restored_context = ExecutionContext::new(Goal::new(
             "Restored context goal".to_string(),
-            crate::goal::GoalType::Analysis
+            crate::goal::GoalType::Analysis,
         ));
-        
+
         // Restore key information from summary
-        restored_context.add_context_item("summary".to_string(), compressed.summary.summary_text.clone());
-        
+        restored_context.add_context_item(
+            "summary".to_string(),
+            compressed.summary.summary_text.clone(),
+        );
+
         for achievement in &compressed.summary.key_achievements {
             restored_context.add_context_item("achievement".to_string(), achievement.clone());
         }
-        
+
         for decision in &compressed.summary.critical_decisions {
             restored_context.add_context_item("decision".to_string(), decision.clone());
         }
-        
+
         // Add key extracts
         for extract in &compressed.key_extracts {
             restored_context.add_context_item(
                 format!("{:?}", extract.extract_type),
-                extract.content.clone()
+                extract.content.clone(),
             );
         }
-        
+
         // Record restoration
         let mut history = self.compression_history.write().await;
         history.restored_contexts.insert(
@@ -388,25 +399,25 @@ impl ContextCompressor {
                 original_context: compressed.clone(),
                 restoration_accuracy: 0.8, // Would calculate actual accuracy
                 restored_at: SystemTime::now(),
-            }
+            },
         );
-        
+
         Ok(restored_context)
     }
 
     /// Analyze context to determine compression strategy
     async fn analyze_context(&self, context: &ExecutionContext) -> Result<ContextAnalysis> {
         let _analyzer = self.context_analyzer.read().await;
-        
+
         // Analyze importance of different context elements
         let importance_scores = self.score_importance(context).await?;
-        
+
         // Detect patterns in context
         let patterns = self.detect_patterns(context).await?;
-        
+
         // Identify redundant information
         let redundancies = self.identify_redundancies(context).await?;
-        
+
         Ok(ContextAnalysis {
             importance_scores,
             patterns,
@@ -417,7 +428,10 @@ impl ContextCompressor {
     }
 
     /// Select optimal compression strategy
-    async fn select_compression_strategy(&self, analysis: &ContextAnalysis) -> Result<CompressionStrategy> {
+    async fn select_compression_strategy(
+        &self,
+        analysis: &ContextAnalysis,
+    ) -> Result<CompressionStrategy> {
         // Select strategy based on analysis results
         if analysis.redundancies.len() > 10 {
             Ok(CompressionStrategy::Redundancy)
@@ -436,18 +450,19 @@ impl ContextCompressor {
     ) -> Result<CompressedContext> {
         let context_id = Uuid::new_v4().to_string();
         let original_size = self.estimate_context_size(context).await?;
-        
+
         // Generate context summary using LLM
         let summary = self.generate_context_summary(context).await?;
-        
+
         // Extract key information
         let key_extracts = self.extract_key_information(context).await?;
-        
+
         // Compress the raw data (simplified)
         let compressed_data = self.compress_raw_data(context).await?;
-        
-        let compressed_size = compressed_data.len() + summary.summary_text.len() + 
-            key_extracts.iter().map(|e| e.content.len()).sum::<usize>();
+
+        let compressed_size = compressed_data.len()
+            + summary.summary_text.len()
+            + key_extracts.iter().map(|e| e.content.len()).sum::<usize>();
 
         Ok(CompressedContext {
             context_id,
@@ -470,7 +485,9 @@ impl ContextCompressor {
     async fn generate_context_summary(&self, context: &ExecutionContext) -> Result<ContextSummary> {
         let context_text = format!(
             "Context Summary Request:\nGoal: {}\nContext Data: {} items\nIteration: {}",
-            context.current_goal.as_ref()
+            context
+                .current_goal
+                .as_ref()
                 .map(|g| g.description.clone())
                 .unwrap_or_else(|| "No goal set".to_string()),
             context.context_data.len(),
@@ -488,7 +505,7 @@ impl ContextCompressor {
         };
 
         let response = std::pin::Pin::from(self.compression_engine.execute(&request)).await?;
-        
+
         Ok(ContextSummary {
             summary_text: response.content,
             key_achievements: vec!["Context processed successfully".to_string()],
@@ -515,7 +532,7 @@ impl ContextCompressor {
     /// Extract key information that should be preserved
     async fn extract_key_information(&self, context: &ExecutionContext) -> Result<Vec<KeyExtract>> {
         let mut extracts = Vec::new();
-        
+
         // Extract current goal as critical information
         if let Some(goal) = &context.current_goal {
             extracts.push(KeyExtract {
@@ -527,7 +544,7 @@ impl ContextCompressor {
                 temporal_position: Duration::from_secs(0),
             });
         }
-        
+
         // Extract context data items with high importance
         for (key, value) in &context.context_data {
             if key.contains("error") || key.contains("critical") || key.contains("important") {
@@ -545,22 +562,24 @@ impl ContextCompressor {
                 });
             }
         }
-        
+
         Ok(extracts)
     }
 
     // Helper methods (simplified implementations)
-    
+
     async fn estimate_context_size(&self, context: &ExecutionContext) -> Result<usize> {
         let mut size = 0;
-        size += context.context_data.iter()
+        size += context
+            .context_data
+            .iter()
             .map(|(k, v)| k.len() + v.len())
             .sum::<usize>();
-        
+
         if let Some(goal) = &context.current_goal {
             size += goal.description.len();
         }
-        
+
         Ok(size)
     }
 
@@ -590,12 +609,19 @@ impl ContextCompressor {
         }])
     }
 
-    async fn identify_redundancies(&self, _context: &ExecutionContext) -> Result<Vec<RedundantGroup>> {
+    async fn identify_redundancies(
+        &self,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<RedundantGroup>> {
         // Simplified redundancy detection
         Ok(Vec::new())
     }
 
-    async fn evaluate_compression_quality(&self, _compressed: &CompressedContext, _original: &ExecutionContext) -> Result<CompressionQuality> {
+    async fn evaluate_compression_quality(
+        &self,
+        _compressed: &CompressedContext,
+        _original: &ExecutionContext,
+    ) -> Result<CompressionQuality> {
         Ok(CompressionQuality {
             information_preserved: 0.85,
             key_insights: vec!["Context successfully compressed".to_string()],
@@ -606,17 +632,18 @@ impl ContextCompressor {
     async fn record_compression(&self, operation: &CompressionOperation) -> Result<()> {
         let mut history = self.compression_history.write().await;
         history.operations.push_back(operation.clone());
-        
+
         // Update statistics
         history.compression_stats.total_operations += 1;
         history.compression_stats.total_bytes_compressed += operation.original_size;
-        history.compression_stats.total_bytes_saved += operation.original_size - operation.compressed_size;
-        
+        history.compression_stats.total_bytes_saved +=
+            operation.original_size - operation.compressed_size;
+
         // Keep only recent operations
         while history.operations.len() > 1000 {
             history.operations.pop_front();
         }
-        
+
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
 use crate::error::CliError;
+use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use fluent_core::traits::Engine;
@@ -126,7 +126,12 @@ impl EngineCommand {
             .engines
             .iter()
             .find(|e| e.name == engine_name)
-            .ok_or_else(|| CliError::Config(format!("Engine '{}' not found in configuration", engine_name)))?;
+            .ok_or_else(|| {
+                CliError::Config(format!(
+                    "Engine '{}' not found in configuration",
+                    engine_name
+                ))
+            })?;
 
         // Create engine
         let engine = create_engine(engine_config).await?;
@@ -168,25 +173,29 @@ impl EngineCommand {
         let engines = &config.engines;
 
         if json_output {
-            let engine_list: Vec<serde_json::Value> = engines.iter().map(|engine| {
-                let url = format!("{}://{}:{}{}",
-                    engine.connection.protocol,
-                    engine.connection.hostname,
-                    engine.connection.port,
-                    engine.connection.request_path
-                );
-                serde_json::json!({
-                    "name": engine.name,
-                    "engine": engine.engine,
-                    "connection": {
-                        "protocol": engine.connection.protocol,
-                        "hostname": engine.connection.hostname,
-                        "port": engine.connection.port,
-                        "request_path": engine.connection.request_path,
-                        "url": url
-                    }
+            let engine_list: Vec<serde_json::Value> = engines
+                .iter()
+                .map(|engine| {
+                    let url = format!(
+                        "{}://{}:{}{}",
+                        engine.connection.protocol,
+                        engine.connection.hostname,
+                        engine.connection.port,
+                        engine.connection.request_path
+                    );
+                    serde_json::json!({
+                        "name": engine.name,
+                        "engine": engine.engine,
+                        "connection": {
+                            "protocol": engine.connection.protocol,
+                            "hostname": engine.connection.hostname,
+                            "port": engine.connection.port,
+                            "request_path": engine.connection.request_path,
+                            "url": url
+                        }
+                    })
                 })
-            }).collect();
+                .collect();
 
             println!("{}", serde_json::to_string_pretty(&engine_list)?);
         } else {
@@ -198,7 +207,8 @@ impl EngineCommand {
             }
 
             for engine in engines {
-                let url = format!("{}://{}:{}{}",
+                let url = format!(
+                    "{}://{}:{}{}",
                     engine.connection.protocol,
                     engine.connection.hostname,
                     engine.connection.port,
@@ -223,9 +233,16 @@ impl EngineCommand {
             .ok_or_else(|| CliError::Validation("Engine name is required".to_string()))?;
 
         // Find the engine in config
-        let engine_config = config.engines.iter()
+        let engine_config = config
+            .engines
+            .iter()
             .find(|e| e.name == *engine_name)
-            .ok_or_else(|| CliError::Config(format!("Engine '{}' not found in configuration", engine_name)))?;
+            .ok_or_else(|| {
+                CliError::Config(format!(
+                    "Engine '{}' not found in configuration",
+                    engine_name
+                ))
+            })?;
 
         println!("🔍 Testing engine: {engine_name}");
 
@@ -244,7 +261,10 @@ impl EngineCommand {
                 match Pin::from(engine.execute(&test_request)).await {
                     Ok(response) => {
                         println!("✅ Connectivity test successful!");
-                        println!("📝 Test response: {}", response.content.chars().take(100).collect::<String>());
+                        println!(
+                            "📝 Test response: {}",
+                            response.content.chars().take(100).collect::<String>()
+                        );
                         if response.content.len() > 100 {
                             println!("   ... (truncated)");
                         }
@@ -252,7 +272,9 @@ impl EngineCommand {
                     Err(e) => {
                         println!("⚠️  Engine created but connectivity test failed: {e}");
                         println!("🔧 This might indicate API key issues or network problems");
-                        return Err(CliError::Network(format!("Connectivity test failed: {}", e)).into());
+                        return Err(
+                            CliError::Network(format!("Connectivity test failed: {}", e)).into(),
+                        );
                     }
                 }
             }
@@ -269,14 +291,12 @@ impl EngineCommand {
 impl CommandHandler for EngineCommand {
     async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
         match matches.subcommand() {
-            Some(("list", sub_matches)) => {
-                Self::list_engines(sub_matches, config).await
-            }
-            Some(("test", sub_matches)) => {
-                Self::test_engine(sub_matches, config).await
-            }
+            Some(("list", sub_matches)) => Self::list_engines(sub_matches, config).await,
+            Some(("test", sub_matches)) => Self::test_engine(sub_matches, config).await,
             _ => {
-                eprintln!("No subcommand provided. Use 'fluent engine --help' for usage information.");
+                eprintln!(
+                    "No subcommand provided. Use 'fluent engine --help' for usage information."
+                );
                 Ok(())
             }
         }

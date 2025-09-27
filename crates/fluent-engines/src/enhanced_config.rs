@@ -403,7 +403,9 @@ impl ConfigManager {
         );
         parameters.insert(
             "temperature".to_string(),
-            Value::Number(serde_json::Number::from_f64(0.7).unwrap_or_else(|| serde_json::Number::from(1))),
+            Value::Number(
+                serde_json::Number::from_f64(0.7).unwrap_or_else(|| serde_json::Number::from(1)),
+            ),
         );
         parameters.insert(
             "max_tokens".to_string(),

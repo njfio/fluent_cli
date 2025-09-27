@@ -134,7 +134,8 @@ impl ConnectionPool {
             self.update_stats(|stats| {
                 stats.cache_hits += 1;
                 stats.total_clients_reused += 1;
-            }).await;
+            })
+            .await;
             return Ok(client);
         }
 
@@ -144,7 +145,8 @@ impl ConnectionPool {
         self.update_stats(|stats| {
             stats.cache_misses += 1;
             stats.total_clients_created += 1;
-        }).await;
+        })
+        .await;
 
         Ok(client)
     }
@@ -162,7 +164,8 @@ impl ConnectionPool {
 
             self.update_stats(|stats| {
                 stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-            }).await;
+            })
+            .await;
         }
     }
 
@@ -183,7 +186,8 @@ impl ConnectionPool {
         self.update_stats(|stats| {
             stats.total_clients_expired += total_expired as u64;
             stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-        }).await;
+        })
+        .await;
     }
 
     /// Get pool statistics
@@ -198,7 +202,8 @@ impl ConnectionPool {
 
         self.update_stats(|stats| {
             stats.current_pool_size = 0;
-        }).await;
+        })
+        .await;
     }
 
     /// Get the number of clients in the pool for a specific host
@@ -257,7 +262,8 @@ impl ConnectionPool {
             stats.health_check_failures += total_failures;
             stats.unhealthy_clients_removed += total_removed;
             stats.current_pool_size = pools.values().map(|p| p.len()).sum();
-        }).await;
+        })
+        .await;
 
         Ok(())
     }

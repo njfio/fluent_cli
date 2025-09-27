@@ -147,8 +147,8 @@ def test_pipeline_scenarios():
     
     # Test pipeline with required file
     result = runner.run_command(['pipeline', '--file', pipeline_file, '--config', config_file, '--dry-run'])
-    # This might fail due to missing API keys, but should at least parse correctly
-    
+    assert result and result.returncode == 0, "Pipeline dry-run should complete without errors"
+
     # Test pipeline with all options
     result = runner.run_command([
         'pipeline',
@@ -162,8 +162,7 @@ def test_pipeline_scenarios():
         '--dry-run',
         '--json'
     ])
-    # Should at least parse correctly
-    
+    assert result and result.returncode == 0, "Pipeline with all options should complete without errors"
     runner.cleanup()
     print("✅ Pipeline scenarios tests passed")
 

@@ -277,11 +277,7 @@ impl MineSweeperSolitaire {
                         }
                         let nx = x as i32 + dx;
                         let ny = y as i32 + dy;
-                        if nx >= 0
-                            && nx < self.width as i32
-                            && ny >= 0
-                            && ny < self.height as i32
-                        {
+                        if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
                             if self.grid[ny as usize][nx as usize].is_mine() {
                                 count += 1;
                             }
@@ -345,11 +341,7 @@ impl MineSweeperSolitaire {
                     }
                     let nx = cx as i32 + dx;
                     let ny = cy as i32 + dy;
-                    if nx >= 0
-                        && nx < self.width as i32
-                        && ny >= 0
-                        && ny < self.height as i32
-                    {
+                    if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
                         let nx = nx as usize;
                         let ny = ny as usize;
                         let cell = &mut self.grid[ny][nx];
@@ -433,10 +425,19 @@ impl MineSweeperSolitaire {
         false
     }
 
-    fn move_card_to_cell(&mut self, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> bool {
-        if self.game_over 
-            || from_x >= self.width || from_y >= self.height
-            || to_x >= self.width || to_y >= self.height {
+    fn move_card_to_cell(
+        &mut self,
+        from_x: usize,
+        from_y: usize,
+        to_x: usize,
+        to_y: usize,
+    ) -> bool {
+        if self.game_over
+            || from_x >= self.width
+            || from_y >= self.height
+            || to_x >= self.width
+            || to_y >= self.height
+        {
             return false;
         }
 
@@ -446,7 +447,10 @@ impl MineSweeperSolitaire {
         }
 
         // Check if to cell is valid for placement
-        if self.grid[to_y][to_x].is_revealed() || self.grid[to_y][to_x].is_flagged() || self.grid[to_y][to_x].is_mine() {
+        if self.grid[to_y][to_x].is_revealed()
+            || self.grid[to_y][to_x].is_flagged()
+            || self.grid[to_y][to_x].is_mine()
+        {
             return false;
         }
 
@@ -467,13 +471,13 @@ impl MineSweeperSolitaire {
             } else {
                 (&mut right[from_x - to_x], &mut left[to_x])
             };
-            
+
             // Perform the move
             let card = from_cell.card.take().unwrap();
             to_cell.card = Some(card);
             to_cell.cell_type = CellType::Revealed;
             to_cell.card.as_mut().map(|card| card.is_face_up = true);
-            
+
             from_cell.cell_type = CellType::Empty;
         } else {
             // Different rows - need to handle borrowing carefully by using indices
@@ -481,8 +485,11 @@ impl MineSweeperSolitaire {
             let card = self.grid[from_y][from_x].card.take().unwrap();
             self.grid[to_y][to_x].card = Some(card);
             self.grid[to_y][to_x].cell_type = CellType::Revealed;
-            self.grid[to_y][to_x].card.as_mut().map(|card| card.is_face_up = true);
-            
+            self.grid[to_y][to_x]
+                .card
+                .as_mut()
+                .map(|card| card.is_face_up = true);
+
             self.grid[from_y][from_x].cell_type = CellType::Empty;
         }
 
@@ -491,7 +498,6 @@ impl MineSweeperSolitaire {
     }
 
     fn check_win_condition(&mut self) {
-
         let foundation_complete = self.foundation.iter().all(|pile| {
             pile.len() == 13 // All 13 cards in sequence
         });
@@ -517,7 +523,10 @@ impl MineSweeperSolitaire {
 
     fn display(&self) {
         println!("\n=== MineSweeper Solitaire ===");
-        println!("Mines: {} | Game Over: {} | Won: {}", self.mine_count, self.game_over, self.won);
+        println!(
+            "Mines: {} | Game Over: {} | Won: {}",
+            self.mine_count, self.game_over, self.won
+        );
         println!();
 
         // Display column headers
@@ -566,7 +575,9 @@ impl MineSweeperSolitaire {
 }
 
 fn get_user_input() -> Option<(usize, usize, String)> {
-    print!("Enter command (r x y = reveal, f x y = flag, m x y = move to foundation, c fx fy tx ty = move card between cells, q = quit): ");
+    print!(
+        "Enter command (r x y = reveal, f x y = flag, m x y = move to foundation, c fx fy tx ty = move card between cells, q = quit): "
+    );
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
@@ -616,17 +627,19 @@ fn main() {
     println!("- Reveal cells to find playing cards");
     println!("- Avoid mines (💣) - they end the game!");
     println!("- Move cards to foundations in sequence (A, 2, 3, ..., K) by suit");
-    println!("- Move cards between cells following Solitaire rules (alternating colors, descending rank pairs)");
+    println!(
+        "- Move cards between cells following Solitaire rules (alternating colors, descending rank pairs)"
+    );
     println!("- Flag suspected mines with 'f x y'");
     println!("- Move cards to foundation with 'm x y'");
     println!("- Move cards between cells with 'c from_x from_y to_x to_y'");
     println!();
 
     let mut game = MineSweeperSolitaire::new(8, 8, 10);
-    
+
     loop {
         game.display();
-        
+
         if game.game_over {
             if game.won {
                 println!("🎉 Congratulations! You won the game!");
@@ -641,43 +654,41 @@ fn main() {
                 println!("Thanks for playing!");
                 break;
             }
-            Some((x, y, command)) => {
-                match command.as_str() {
-                    "reveal" => {
-                        if !game.reveal_cell(x, y) {
-                            println!("Invalid move or mine hit!");
-                        }
-                    }
-                    "flag" => {
-                        game.toggle_flag(x, y);
-                    }
-                    "move" => {
-                        if game.move_card_to_foundation(x, y) {
-                            println!("Card moved to foundation!");
-                        } else {
-                            println!("Invalid move to foundation!");
-                        }
-                    }
-                    cmd if cmd.starts_with("cell") => {
-                        let parts: Vec<&str> = cmd.split_whitespace().collect();
-                        if parts.len() == 3 {
-                            let to_x = parts[1].parse().unwrap_or(0);
-                            let to_y = parts[2].parse().unwrap_or(0);
-                            if game.move_card_to_cell(x, y, to_x, to_y) {
-                                println!("Card moved between cells!");
-                            } else {
-                                println!("Invalid card move between cells!");
-                            }
-                        }
-                    }
-                    "invalid" => {
-                        println!("Invalid command! Please try again.");
-                    }
-                    _ => {
-                        println!("Unknown command! Please try again.");
+            Some((x, y, command)) => match command.as_str() {
+                "reveal" => {
+                    if !game.reveal_cell(x, y) {
+                        println!("Invalid move or mine hit!");
                     }
                 }
-            }
+                "flag" => {
+                    game.toggle_flag(x, y);
+                }
+                "move" => {
+                    if game.move_card_to_foundation(x, y) {
+                        println!("Card moved to foundation!");
+                    } else {
+                        println!("Invalid move to foundation!");
+                    }
+                }
+                cmd if cmd.starts_with("cell") => {
+                    let parts: Vec<&str> = cmd.split_whitespace().collect();
+                    if parts.len() == 3 {
+                        let to_x = parts[1].parse().unwrap_or(0);
+                        let to_y = parts[2].parse().unwrap_or(0);
+                        if game.move_card_to_cell(x, y, to_x, to_y) {
+                            println!("Card moved between cells!");
+                        } else {
+                            println!("Invalid card move between cells!");
+                        }
+                    }
+                }
+                "invalid" => {
+                    println!("Invalid command! Please try again.");
+                }
+                _ => {
+                    println!("Unknown command! Please try again.");
+                }
+            },
         }
     }
 }

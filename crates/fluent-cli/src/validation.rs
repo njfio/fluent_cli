@@ -1,4 +1,3 @@
-
 use clap::ArgMatches;
 use fluent_core::error::{FluentError, FluentResult, ValidationError};
 use fluent_core::input_validator::InputValidator;
@@ -21,7 +20,8 @@ pub fn validate_required_string(
             FluentError::Validation(ValidationError::MissingField(format!(
                 "{arg_name} is required for {context}"
             )))
-        }).cloned()
+        })
+        .cloned()
 }
 
 /// Validate file path with security checks
@@ -264,7 +264,7 @@ mod tests {
         // Test path traversal detection
         assert!(validate_file_path_secure("../etc/passwd", "test").is_err());
         assert!(validate_file_path_secure("~/secret", "test").is_err());
-        
+
         // Test empty path
         assert!(validate_file_path_secure("", "test").is_err());
     }

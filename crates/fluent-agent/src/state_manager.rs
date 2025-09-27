@@ -7,7 +7,7 @@ use tokio::fs;
 use tokio::sync::RwLock;
 use tokio::time::interval;
 
-use crate::context::{ExecutionContext, CheckpointType};
+use crate::context::{CheckpointType, ExecutionContext};
 
 /// Advanced state manager for handling execution context persistence and recovery
 pub struct StateManager {
@@ -79,11 +79,12 @@ impl StateManager {
     pub async fn set_context(&self, context: ExecutionContext) -> Result<()> {
         let mut current = self.current_context.write().await;
         *current = Some(context);
-        
+        drop(current);
+
         if self.auto_save_enabled {
             self.auto_save().await?;
         }
-        
+
         Ok(())
     }
 
@@ -117,14 +118,19 @@ impl StateManager {
     }
 
     /// Create a checkpoint for the current context
-    pub async fn create_checkpoint(&self, checkpoint_type: CheckpointType, description: String) -> Result<String> {
+    pub async fn create_checkpoint(
+        &self,
+        checkpoint_type: CheckpointType,
+        description: String,
+    ) -> Result<String> {
         let mut context = self.current_context.write().await;
         if let Some(ref mut ctx) = *context {
             let checkpoint_id = ctx.create_checkpoint(checkpoint_type, description);
 
             // Save checkpoint to disk with optional compression
             let checkpoint_path = self.get_checkpoint_file_path(&ctx.context_id, &checkpoint_id);
-            ctx.save_checkpoint_to_disk(&checkpoint_id, &checkpoint_path).await?;
+            ctx.save_checkpoint_to_disk(&checkpoint_id, &checkpoint_path)
+                .await?;
 
             // Apply compression if enabled
             if self.compression_enabled {
@@ -152,19 +158,23 @@ impl StateManager {
     }
 
     /// Restore context from a checkpoint
-    pub async fn restore_from_checkpoint(&self, context_id: &str, checkpoint_id: &str) -> Result<()> {
+    pub async fn restore_from_checkpoint(
+        &self,
+        context_id: &str,
+        checkpoint_id: &str,
+    ) -> Result<()> {
         // Load the checkpoint
         let checkpoint_path = self.get_checkpoint_file_path(context_id, checkpoint_id);
         let checkpoint = ExecutionContext::load_checkpoint_from_disk(checkpoint_path).await?;
-        
+
         // Load the context and restore from checkpoint
         let mut context = self.load_context(context_id).await?;
         context.restore_from_checkpoint(&checkpoint);
-        
+
         // Set as current context
         let mut current = self.current_context.write().await;
         *current = Some(context);
-        
+
         Ok(())
     }
 
@@ -172,7 +182,7 @@ impl StateManager {
     pub async fn list_contexts(&self) -> Result<Vec<String>> {
         let mut contexts = Vec::new();
         let mut entries = fs::read_dir(&self.state_directory).await?;
-        
+
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
@@ -185,18 +195,18 @@ impl StateManager {
                 }
             }
         }
-        
+
         Ok(contexts)
     }
 
     /// Get recovery information for a context
     pub async fn get_recovery_info(&self, context_id: &str) -> Result<StateRecoveryInfo> {
         let file_path = self.get_context_file_path(context_id);
-        
+
         if !file_path.exists() {
             return Err(anyhow::anyhow!("Context file not found: {}", context_id));
         }
-        
+
         // Try to load the context to check for corruption
         let context_result = ExecutionContext::load_from_disk(&file_path).await;
         let (recovery_possible, corruption_detected) = match context_result {
@@ -209,16 +219,20 @@ impl StateManager {
             }
             Err(_) => (false, true),
         };
-        
+
         let metadata = fs::metadata(&file_path).await?;
         let last_saved = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-        
+
         let (iteration_count, checkpoint_count, state_version) = if let Ok(ctx) = context_result {
-            (ctx.iteration_count, ctx.checkpoints.len(), ctx.state_version)
+            (
+                ctx.iteration_count,
+                ctx.checkpoints.len(),
+                ctx.state_version,
+            )
         } else {
             (0, 0, 0)
         };
-        
+
         Ok(StateRecoveryInfo {
             context_id: context_id.to_string(),
             last_saved,
@@ -232,9 +246,10 @@ impl StateManager {
 
     /// Clean up old checkpoints and backups
     pub async fn cleanup_old_data(&self, retention_days: u32) -> Result<()> {
-        let cutoff_time = SystemTime::now() - Duration::from_secs(retention_days as u64 * 24 * 60 * 60);
+        let cutoff_time =
+            SystemTime::now() - Duration::from_secs(retention_days as u64 * 24 * 60 * 60);
         let mut entries = fs::read_dir(&self.state_directory).await?;
-        
+
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if let Ok(metadata) = fs::metadata(&path).await {
@@ -247,7 +262,7 @@ impl StateManager {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -258,7 +273,8 @@ impl StateManager {
 
     /// Get the file path for a checkpoint
     fn get_checkpoint_file_path(&self, context_id: &str, checkpoint_id: &str) -> PathBuf {
-        self.state_directory.join(format!("{}_checkpoint_{}.json", context_id, checkpoint_id))
+        self.state_directory
+            .join(format!("{}_checkpoint_{}.json", context_id, checkpoint_id))
     }
 
     /// Validate state directory integrity
@@ -266,16 +282,16 @@ impl StateManager {
         if !self.state_directory.exists() {
             return Err(anyhow::anyhow!("State directory does not exist"));
         }
-        
+
         if !self.state_directory.is_dir() {
             return Err(anyhow::anyhow!("State directory path is not a directory"));
         }
-        
+
         // Check write permissions by creating a temporary file
         let test_file = self.state_directory.join(".write_test");
         fs::write(&test_file, "test").await?;
         fs::remove_file(&test_file).await?;
-        
+
         Ok(())
     }
 
@@ -284,14 +300,14 @@ impl StateManager {
         let mut total_contexts = 0;
         let mut total_checkpoints = 0;
         let mut total_size = 0;
-        
+
         let mut entries = fs::read_dir(&self.state_directory).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.is_file() {
                 if let Ok(metadata) = fs::metadata(&path).await {
                     total_size += metadata.len();
-                    
+
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if name.contains("checkpoint") {
                             total_checkpoints += 1;
@@ -302,7 +318,7 @@ impl StateManager {
                 }
             }
         }
-        
+
         Ok(StateManagerStatistics {
             total_contexts,
             total_checkpoints,
@@ -347,7 +363,11 @@ impl StateManager {
             let files_to_remove = checkpoint_files.len() - self.max_checkpoints;
             for (path, _) in checkpoint_files.iter().take(files_to_remove) {
                 if let Err(e) = fs::remove_file(path).await {
-                    eprintln!("Warning: Failed to remove old checkpoint {}: {}", path.display(), e);
+                    eprintln!(
+                        "Warning: Failed to remove old checkpoint {}: {}",
+                        path.display(),
+                        e
+                    );
                 }
             }
         }
@@ -445,7 +465,7 @@ pub struct StateManagerStatistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::goal::{Goal, GoalType, GoalPriority};
+    use crate::goal::{Goal, GoalPriority, GoalType};
     use std::collections::HashMap;
     use tempfile::tempdir;
 
@@ -456,7 +476,7 @@ mod tests {
             state_directory: temp_dir.path().to_path_buf(),
             ..Default::default()
         };
-        
+
         let state_manager = StateManager::new(config).await.unwrap();
         assert!(state_manager.state_directory.exists());
     }
@@ -469,9 +489,9 @@ mod tests {
             auto_save_enabled: false, // Disable auto-save for test
             ..Default::default()
         };
-        
+
         let state_manager = StateManager::new(config).await.unwrap();
-        
+
         // Create a test context
         let goal = Goal {
             goal_id: "test-goal".to_string(),
@@ -483,19 +503,22 @@ mod tests {
             timeout: None,
             metadata: HashMap::new(),
         };
-        
+
         let mut context = ExecutionContext::new(goal);
         context.set_variable("test_key".to_string(), "test_value".to_string());
         let context_id = context.context_id.clone();
-        
+
         // Set and save context
         state_manager.set_context(context).await.unwrap();
         state_manager.save_context().await.unwrap();
-        
+
         // Load context
         let loaded_context = state_manager.load_context(&context_id).await.unwrap();
         assert_eq!(loaded_context.context_id, context_id);
-        assert_eq!(loaded_context.variables.get("test_key"), Some(&"test_value".to_string()));
+        assert_eq!(
+            loaded_context.variables.get("test_key"),
+            Some(&"test_value".to_string())
+        );
     }
 
     #[tokio::test]
@@ -529,24 +552,31 @@ mod tests {
         state_manager.set_context(context).await.unwrap();
 
         // Create multiple checkpoints (more than max_checkpoints)
-        let checkpoint1 = state_manager.create_checkpoint(
-            CheckpointType::Manual,
-            "First checkpoint".to_string()
-        ).await.unwrap();
+        let checkpoint1 = state_manager
+            .create_checkpoint(CheckpointType::Manual, "First checkpoint".to_string())
+            .await
+            .unwrap();
 
-        let checkpoint2 = state_manager.create_checkpoint(
-            CheckpointType::Manual,
-            "Second checkpoint".to_string()
-        ).await.unwrap();
+        let checkpoint2 = state_manager
+            .create_checkpoint(CheckpointType::Manual, "Second checkpoint".to_string())
+            .await
+            .unwrap();
 
-        let checkpoint3 = state_manager.create_checkpoint(
-            CheckpointType::Manual,
-            "Third checkpoint".to_string()
-        ).await.unwrap();
+        let checkpoint3 = state_manager
+            .create_checkpoint(CheckpointType::Manual, "Third checkpoint".to_string())
+            .await
+            .unwrap();
 
         // Verify that only max_checkpoints are kept
-        let checkpoint_count = state_manager.get_checkpoint_count(&context_id).await.unwrap();
-        assert!(checkpoint_count <= 2, "Should have at most 2 checkpoints, but found {}", checkpoint_count);
+        let checkpoint_count = state_manager
+            .get_checkpoint_count(&context_id)
+            .await
+            .unwrap();
+        assert!(
+            checkpoint_count <= 2,
+            "Should have at most 2 checkpoints, but found {}",
+            checkpoint_count
+        );
 
         // The latest checkpoints should still exist
         assert!(!checkpoint1.is_empty());

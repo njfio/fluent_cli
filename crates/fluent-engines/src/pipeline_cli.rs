@@ -96,9 +96,15 @@ impl PipelineCli {
         let cli = PipelineCli::parse();
 
         // Get directories from CLI args or use centralized config defaults
-        let pipeline_dir = cli.pipeline_dir.unwrap_or_else(|| config.get_pipeline_dir());
-        let state_dir = cli.state_dir.unwrap_or_else(|| config.get_pipeline_state_dir());
-        let log_dir = cli.log_dir.unwrap_or_else(|| config.paths.pipeline_logs_directory.clone());
+        let pipeline_dir = cli
+            .pipeline_dir
+            .unwrap_or_else(|| config.get_pipeline_dir());
+        let state_dir = cli
+            .state_dir
+            .unwrap_or_else(|| config.get_pipeline_state_dir());
+        let log_dir = cli
+            .log_dir
+            .unwrap_or_else(|| config.paths.pipeline_logs_directory.clone());
 
         // Ensure directories exist
         tokio::fs::create_dir_all(&pipeline_dir).await?;
@@ -112,7 +118,10 @@ impl PipelineCli {
                 ref name,
                 ref var,
                 ref resume,
-            } => Self::execute_pipeline(&pipeline_dir, &state_dir, name, var.clone(), resume.clone()).await,
+            } => {
+                Self::execute_pipeline(&pipeline_dir, &state_dir, name, var.clone(), resume.clone())
+                    .await
+            }
             Commands::Validate { name } => Self::validate_pipeline(&pipeline_dir, &name).await,
             Commands::Create { name, description } => {
                 Self::create_pipeline(&pipeline_dir, &name, description.as_deref()).await
@@ -385,7 +394,9 @@ impl PipelineCli {
                     ]
                     .into_iter()
                     .collect(),
-                    timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
+                    timeout: Some(Duration::from_secs(
+                        ConfigManager::get().pipeline.default_timeout_seconds,
+                    )),
                     retry_config: Some(RetryConfig {
                         max_attempts: ConfigManager::get().pipeline.retry_attempts,
                         base_delay_ms: ConfigManager::get().pipeline.retry_base_delay_ms,
@@ -406,7 +417,9 @@ impl PipelineCli {
                     )]
                     .into_iter()
                     .collect(),
-                    timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
+                    timeout: Some(Duration::from_secs(
+                        ConfigManager::get().pipeline.default_timeout_seconds,
+                    )),
                     retry_config: None,
                     depends_on: vec!["hello".to_string()],
                     condition: None,
@@ -416,16 +429,22 @@ impl PipelineCli {
             global_config: [
                 (
                     "timeout".to_string(),
-                    Value::Number(serde_json::Number::from(ConfigManager::get().pipeline.default_timeout_seconds)),
+                    Value::Number(serde_json::Number::from(
+                        ConfigManager::get().pipeline.default_timeout_seconds,
+                    )),
                 ),
                 (
                     "max_parallel".to_string(),
-                    Value::Number(serde_json::Number::from(ConfigManager::get().pipeline.max_parallel_steps)),
+                    Value::Number(serde_json::Number::from(
+                        ConfigManager::get().pipeline.max_parallel_steps,
+                    )),
                 ),
             ]
             .into_iter()
             .collect(),
-            timeout: Some(Duration::from_secs(ConfigManager::get().pipeline.default_timeout_seconds)),
+            timeout: Some(Duration::from_secs(
+                ConfigManager::get().pipeline.default_timeout_seconds,
+            )),
             max_parallel: Some(ConfigManager::get().pipeline.max_parallel_steps),
         };
 

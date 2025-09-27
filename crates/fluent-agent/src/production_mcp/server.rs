@@ -3,10 +3,10 @@
 // ⚠️  DEVELOPMENT STATUS: This server implementation provides basic MCP server functionality
 // but requires comprehensive testing and security review before production deployment.
 
-use super::error::McpError;
 use super::config::ServerConfig;
-use super::metrics::MetricsCollector;
+use super::error::McpError;
 use super::health::HealthMonitor;
+use super::metrics::MetricsCollector;
 use anyhow::Result;
 use std::sync::Arc;
 

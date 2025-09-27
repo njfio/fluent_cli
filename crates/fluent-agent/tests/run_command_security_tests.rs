@@ -6,15 +6,23 @@ struct NoopEngine;
 #[async_trait::async_trait]
 impl fluent_core::traits::Engine for NoopEngine {
     async fn execute(&self, _request: &Request) -> Result<fluent_core::types::Response> {
-        Ok(fluent_core::types::Response { content: String::new() })
+        Ok(fluent_core::types::Response {
+            content: String::new(),
+        })
     }
-    async fn upload_file(&self, _path: &std::path::Path) -> Result<String> { Ok(String::new()) }
+    async fn upload_file(&self, _path: &std::path::Path) -> Result<String> {
+        Ok(String::new())
+    }
 }
 
 #[tokio::test]
 async fn denies_disallowed_command_by_default() {
     let agent = Agent::new(Box::new(NoopEngine));
-    let err = agent.run_command("notallowedcmd", &[]).await.err().expect("should error");
+    let err = agent
+        .run_command("notallowedcmd", &[])
+        .await
+        .err()
+        .expect("should error");
     assert!(err.to_string().contains("not in allowed list"));
 }
 

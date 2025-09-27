@@ -68,8 +68,13 @@ mod tests {
             .with_operation("test_operation")
             .with_metadata("test_key", "test_value");
 
-        assert!(context.operation_stack.contains(&"test_operation".to_string()));
-        assert_eq!(context.metadata.get("test_key"), Some(&"test_value".to_string()));
+        assert!(context
+            .operation_stack
+            .contains(&"test_operation".to_string()));
+        assert_eq!(
+            context.metadata.get("test_key"),
+            Some(&"test_value".to_string())
+        );
     }
 
     #[test]

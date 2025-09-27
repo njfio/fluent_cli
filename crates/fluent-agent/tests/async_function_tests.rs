@@ -1,14 +1,14 @@
+use anyhow::Result;
+use chrono::Utc;
 use fluent_agent::{
     memory::{AsyncSqliteMemoryStore, LongTermMemory, MemoryItem, MemoryQuery, MemoryType},
-    transport::{RetryConfig, BackoffStrategy},
+    transport::{BackoffStrategy, RetryConfig},
 };
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use chrono::Utc;
-use anyhow::Result;
 use tokio;
 use tokio::time::timeout;
-use futures::StreamExt;
 
 /// Comprehensive async function tests
 /// Tests async patterns, error propagation, timeout handling, and concurrent operations
@@ -16,7 +16,7 @@ use futures::StreamExt;
 #[tokio::test]
 async fn test_async_memory_operations() -> Result<()> {
     let store = AsyncSqliteMemoryStore::new(":memory:").await?;
-    
+
     // Test basic async store operation
     let memory = MemoryItem {
         memory_id: "async_test_001".to_string(),
@@ -30,11 +30,11 @@ async fn test_async_memory_operations() -> Result<()> {
         tags: vec!["async".to_string()],
         embedding: None,
     };
-    
+
     // Test async store with timeout
     let store_result = timeout(Duration::from_secs(5), store.store(memory.clone())).await?;
     assert!(store_result.is_ok());
-    
+
     // Test async retrieve with timeout
     let query = MemoryQuery {
         query_text: "async".to_string(),
@@ -44,20 +44,20 @@ async fn test_async_memory_operations() -> Result<()> {
         limit: Some(10),
         tags: vec![],
     };
-    
+
     let retrieve_result = timeout(Duration::from_secs(5), store.retrieve(&query)).await?;
     assert!(retrieve_result.is_ok());
     let memories = retrieve_result?;
     assert_eq!(memories.len(), 1);
     assert_eq!(memories[0].memory_id, "async_test_001");
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_async_error_propagation() -> Result<()> {
     let store = AsyncSqliteMemoryStore::new(":memory:").await?;
-    
+
     // Test error propagation in async chain
     let invalid_memory = MemoryItem {
         memory_id: "".to_string(), // Invalid empty ID
@@ -71,31 +71,31 @@ async fn test_async_error_propagation() -> Result<()> {
         tags: vec![],
         embedding: None,
     };
-    
+
     // This should either succeed or fail gracefully
     let result = store.store(invalid_memory).await;
     assert!(result.is_ok() || result.is_err()); // Either outcome is acceptable
-    
+
     // Test error propagation through async operations
     let query = MemoryQuery {
         query_text: "nonexistent".to_string(),
         memory_types: vec![],
         time_range: None,
         importance_threshold: Some(2.0), // Invalid threshold > 1.0
-        limit: Some(0), // Invalid limit
+        limit: Some(0),                  // Invalid limit
         tags: vec![],
     };
-    
+
     let result = store.retrieve(&query).await;
     assert!(result.is_ok()); // Should handle gracefully
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_async_timeout_handling() -> Result<()> {
     let store = AsyncSqliteMemoryStore::new(":memory:").await?;
-    
+
     // Test operation with very short timeout
     let memory = MemoryItem {
         memory_id: "timeout_test".to_string(),
@@ -109,20 +109,21 @@ async fn test_async_timeout_handling() -> Result<()> {
         tags: vec![],
         embedding: None,
     };
-    
+
     // Test with reasonable timeout (should succeed)
     let result = timeout(Duration::from_secs(10), store.store(memory.clone())).await;
     assert!(result.is_ok());
-    
+
     // Test with very short timeout (may timeout, but should handle gracefully)
     let short_timeout_result = timeout(Duration::from_nanos(1), async {
         tokio::time::sleep(Duration::from_millis(10)).await;
         Ok::<(), anyhow::Error>(())
-    }).await;
-    
+    })
+    .await;
+
     // Should timeout
     assert!(short_timeout_result.is_err());
-    
+
     Ok(())
 }
 
@@ -155,12 +156,12 @@ async fn test_concurrent_async_operations() -> Result<()> {
         });
         handles.push(handle);
     }
-    
+
     // Wait for all operations with timeout
     let start_time = Instant::now();
     let mut success_count = 0;
     let mut error_count = 0;
-    
+
     for handle in handles {
         let result = timeout(Duration::from_secs(30), handle).await?;
         match result {
@@ -169,11 +170,11 @@ async fn test_concurrent_async_operations() -> Result<()> {
             Err(_) => error_count += 1, // Join error
         }
     }
-    
+
     let elapsed = start_time.elapsed();
     println!("Concurrent operations completed in {:?}", elapsed);
     println!("Success: {}, Errors: {}", success_count, error_count);
-    
+
     // Should have processed all operations
     assert_eq!(success_count + error_count, num_operations);
 
@@ -205,7 +206,7 @@ async fn test_concurrent_async_operations() -> Result<()> {
 
     let stored_memories = shared_store.retrieve(&query).await?;
     assert_eq!(stored_memories.len(), 1);
-    
+
     Ok(())
 }
 
@@ -242,7 +243,7 @@ async fn test_async_retry_mechanisms() -> Result<()> {
 async fn test_async_resource_cleanup() -> Result<()> {
     // Test that async operations properly clean up resources
     let store = AsyncSqliteMemoryStore::new(":memory:").await?;
-    
+
     // Create a scope where resources should be cleaned up
     {
         let memory = MemoryItem {
@@ -257,10 +258,10 @@ async fn test_async_resource_cleanup() -> Result<()> {
             tags: vec![],
             embedding: None,
         };
-        
+
         store.store(memory).await?;
     } // Resources should be cleaned up here
-    
+
     // Verify the store is still functional after cleanup
     let query = MemoryQuery {
         query_text: "cleanup".to_string(),
@@ -270,20 +271,20 @@ async fn test_async_resource_cleanup() -> Result<()> {
         limit: Some(10),
         tags: vec![],
     };
-    
+
     let memories = store.retrieve(&query).await?;
     assert_eq!(memories.len(), 1);
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_async_cancellation() -> Result<()> {
     use tokio_util::sync::CancellationToken;
-    
+
     let token = CancellationToken::new();
     let token_clone = token.clone();
-    
+
     // Start a long-running async operation
     let handle = tokio::spawn(async move {
         tokio::select! {
@@ -295,15 +296,15 @@ async fn test_async_cancellation() -> Result<()> {
             }
         }
     });
-    
+
     // Cancel after a short delay
     tokio::time::sleep(Duration::from_millis(100)).await;
     token.cancel();
-    
+
     let result = handle.await?;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("cancelled"));
-    
+
     Ok(())
 }
 
@@ -318,14 +319,12 @@ async fn test_async_mcp_client_operations() -> Result<()> {
     assert!(!client.is_connected());
 
     // Test async timeout with a simple operation
-    let timeout_result = timeout(
-        Duration::from_millis(100),
-        async {
-            // Simulate some async work
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            Ok::<(), anyhow::Error>(())
-        }
-    ).await;
+    let timeout_result = timeout(Duration::from_millis(100), async {
+        // Simulate some async work
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
 
     // Should complete within timeout
     assert!(timeout_result.is_ok());
@@ -339,27 +338,23 @@ async fn test_async_transport_operations() -> Result<()> {
 
     // Test connection timeout simulation
     let connection_timeout = Duration::from_millis(100);
-    let connection_result = timeout(
-        connection_timeout,
-        async {
-            // Simulate connection attempt
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            Ok::<(), anyhow::Error>(())
-        }
-    ).await;
+    let connection_result = timeout(connection_timeout, async {
+        // Simulate connection attempt
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
 
     assert!(connection_result.is_ok());
 
     // Test request timeout simulation
     let request_timeout = Duration::from_millis(200);
-    let request_result = timeout(
-        request_timeout,
-        async {
-            // Simulate request processing
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok::<String, anyhow::Error>("Response".to_string())
-        }
-    ).await;
+    let request_result = timeout(request_timeout, async {
+        // Simulate request processing
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok::<String, anyhow::Error>("Response".to_string())
+    })
+    .await;
 
     assert!(request_result.is_ok());
 
@@ -378,10 +373,7 @@ async fn test_async_workflow_execution() -> Result<()> {
     };
 
     // Test step execution with timeout
-    let execution_result = timeout(
-        Duration::from_secs(10),
-        step_execution
-    ).await;
+    let execution_result = timeout(Duration::from_secs(10), step_execution).await;
 
     // Should complete within timeout
     assert!(execution_result.is_ok());
@@ -415,14 +407,16 @@ async fn test_async_memory_batch_operations() -> Result<()> {
     }
 
     // Store all memories concurrently
-    let store_futures: Vec<_> = memories.into_iter()
+    let store_futures: Vec<_> = memories
+        .into_iter()
         .map(|memory| store.store(memory))
         .collect();
 
     let results = timeout(
         Duration::from_secs(30),
-        futures::future::join_all(store_futures)
-    ).await?;
+        futures::future::join_all(store_futures),
+    )
+    .await?;
 
     // Count successful operations
     let success_count = results.iter().filter(|r| r.is_ok()).count();
@@ -456,7 +450,11 @@ async fn test_async_error_recovery() -> Result<()> {
         let memory = MemoryItem {
             memory_id: format!("recovery_test_{}", i),
             memory_type: MemoryType::Experience,
-            content: if i % 3 == 0 { "".to_string() } else { format!("Content {}", i) },
+            content: if i % 3 == 0 {
+                "".to_string()
+            } else {
+                format!("Content {}", i)
+            },
             metadata: HashMap::new(),
             importance: if i % 4 == 0 { -0.1 } else { 0.5 }, // Some invalid
             created_at: Utc::now(),
@@ -507,7 +505,8 @@ async fn test_async_stream_processing() -> Result<()> {
         // Simulate async processing
         tokio::time::sleep(Duration::from_millis(1)).await;
         n * 2
-    }).buffer_unordered(10); // Process up to 10 items concurrently
+    })
+    .buffer_unordered(10); // Process up to 10 items concurrently
 
     while let Some(result) = StreamExt::next(&mut stream).await {
         processed_count += 1;

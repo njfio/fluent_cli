@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use fluent_core::config::load_engine_config;
+use fluent_core::storage::sqlite::SqlitePoolConfig;
 use fluent_core::traits::Engine;
 use fluent_engines::create_engine;
 use log::warn;
@@ -7,6 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
+
+use crate::autonomy::AutonomySupervisorConfig;
+use crate::performance::PerformanceConfig;
+use crate::state_manager::StateManagerConfig;
 
 /// Configuration for the agentic framework that integrates with fluent_cli's existing patterns
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +31,9 @@ pub struct AgentEngineConfig {
     pub config_path: Option<String>,
     pub max_iterations: Option<u32>,
     pub timeout_seconds: Option<u64>,
+    pub supervisor: Option<SupervisorConfig>,
+    pub performance: Option<PerformanceConfig>,
+    pub state_management: Option<StateManagerConfig>,
 }
 
 /// Tool configuration for the agent
@@ -45,6 +54,10 @@ pub struct AgentRuntimeConfig {
     pub reflection_engine: Arc<Box<dyn Engine>>,
     pub config: AgentEngineConfig,
     pub credentials: HashMap<String, String>,
+    pub memory_pool: Option<SqlitePoolConfig>,
+    pub supervisor: Option<SupervisorConfig>,
+    pub performance: PerformanceConfig,
+    pub state_overrides: Option<StateManagerConfig>,
 }
 
 impl AgentRuntimeConfig {
@@ -78,17 +91,32 @@ impl AgentEngineConfig {
 
         // Create reasoning engine
         let reasoning_engine = self
-            .create_engine(&fluent_config_content, &self.reasoning_engine, &credentials, model_override)
+            .create_engine(
+                &fluent_config_content,
+                &self.reasoning_engine,
+                &credentials,
+                model_override,
+            )
             .await?;
 
         // Create action engine (can be the same as reasoning)
         let action_engine = if self.action_engine == self.reasoning_engine {
             // Create a new instance of the same engine
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
-                .await?
+            self.create_engine(
+                &fluent_config_content,
+                &self.action_engine,
+                &credentials,
+                model_override,
+            )
+            .await?
         } else {
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
-                .await?
+            self.create_engine(
+                &fluent_config_content,
+                &self.action_engine,
+                &credentials,
+                model_override,
+            )
+            .await?
         };
 
         // Create reflection engine (can be the same as reasoning)
@@ -126,7 +154,46 @@ impl AgentEngineConfig {
             reflection_engine: Arc::new(reflection_engine),
             config: self.clone(),
             credentials,
+            memory_pool: self.prepare_memory_pool().await?,
+            supervisor: self.supervisor.clone(),
+            performance: self.performance.clone().unwrap_or_default(),
+            state_overrides: self.state_management.clone(),
         })
+    }
+
+    async fn prepare_memory_pool(&self) -> Result<Option<SqlitePoolConfig>> {
+        if !self.memory_database.starts_with("sqlite://") {
+            return Ok(None);
+        }
+
+        let path = self.memory_database.trim_start_matches("sqlite://");
+        if path.trim().is_empty() {
+            return Ok(None);
+        }
+
+        let mut pool = SqlitePoolConfig::default();
+        pool.database_url = Some(path.to_string());
+        pool.max_connections = Some(8);
+        pool.min_connections = Some(1);
+        pool.idle_timeout = Some(Duration::from_secs(30));
+        pool.max_lifetime = Some(Duration::from_secs(5 * 60));
+        pool.after_create_sql = Some(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;"
+                .to_string(),
+        );
+        Ok(Some(pool))
+    }
+
+    pub fn supervisor_config(&self) -> AutonomySupervisorConfig {
+        self.supervisor.clone().unwrap_or_default()
+    }
+
+    pub fn performance_config(&self) -> PerformanceConfig {
+        self.performance.clone().unwrap_or_default()
+    }
+
+    pub fn state_manager_overrides(&self) -> Option<StateManagerConfig> {
+        self.state_management.clone()
     }
 
     /// Create a specific engine using fluent_cli's configuration system with fallback
@@ -153,16 +220,15 @@ impl AgentEngineConfig {
                             "Failed to create engine '{}' with config: {}",
                             engine_name, e
                         );
-                        self.create_default_engine(engine_name, credentials, model_override).await
+                        self.create_default_engine(engine_name, credentials, model_override)
+                            .await
                     }
                 }
             }
             Err(e) => {
-                warn!(
-                    "Engine '{}' not found in config: {}",
-                    engine_name, e
-                );
-                self.create_default_engine(engine_name, credentials, model_override).await
+                warn!("Engine '{}' not found in config: {}", engine_name, e);
+                self.create_default_engine(engine_name, credentials, model_override)
+                    .await
             }
         }
     }

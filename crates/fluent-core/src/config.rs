@@ -230,7 +230,8 @@ pub fn load_config(
     }
 
     // Otherwise, load only the requested engine
-    let engine_config = load_engine_config(&file_contents, engine_name, &overrides, &HashMap::new())?;
+    let engine_config =
+        load_engine_config(&file_contents, engine_name, &overrides, &HashMap::new())?;
     Ok(Config::new(vec![engine_config]))
 }
 
@@ -305,10 +306,10 @@ impl VariableResolver for EnvVarResolver {
         key.starts_with("ENV_") || (key.starts_with("${") && key.ends_with("}"))
     }
     fn resolve(&self, key: &str) -> Result<String> {
-        let env_key = if key.starts_with("ENV_") {
-            &key[4..] // Skip the "ENV_" prefix
+        let env_key = if let Some(stripped) = key.strip_prefix("ENV_") {
+            stripped // Skip the "ENV_" prefix
         } else if key.starts_with("${") && key.ends_with("}") {
-            &key[2..key.len()-1] // Extract variable name from ${VAR}
+            &key[2..key.len() - 1] // Extract variable name from ${VAR}
         } else {
             return Err(anyhow!("Invalid environment variable format: {}", key));
         };

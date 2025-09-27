@@ -17,7 +17,9 @@ struct InMemoryLongTermMemory {
 
 impl InMemoryLongTermMemory {
     fn new() -> Self {
-        Self { items: tokio::sync::RwLock::new(HashMap::new()) }
+        Self {
+            items: tokio::sync::RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -34,7 +36,10 @@ impl LongTermMemory for InMemoryLongTermMemory {
     }
 
     async fn update(&self, memory: MemoryItem) -> Result<()> {
-        self.items.write().await.insert(memory.memory_id.clone(), memory);
+        self.items
+            .write()
+            .await
+            .insert(memory.memory_id.clone(), memory);
         Ok(())
     }
 
@@ -57,7 +62,11 @@ impl LongTermMemory for InMemoryLongTermMemory {
         Ok(v)
     }
 
-    async fn get_by_importance(&self, min_importance: f32, limit: usize) -> Result<Vec<MemoryItem>> {
+    async fn get_by_importance(
+        &self,
+        min_importance: f32,
+        limit: usize,
+    ) -> Result<Vec<MemoryItem>> {
         let mut v: Vec<_> = self
             .items
             .read()
@@ -90,7 +99,11 @@ impl EpisodicMemory for InMemoryEpisodicMemory {
         Ok(self.0.read().await.clone())
     }
 
-    async fn get_similar_episodes(&self, _context: &ExecutionContext, limit: usize) -> Result<Vec<Episode>> {
+    async fn get_similar_episodes(
+        &self,
+        _context: &ExecutionContext,
+        limit: usize,
+    ) -> Result<Vec<Episode>> {
         let mut v = self.0.read().await.clone();
         v.truncate(limit);
         Ok(v)
@@ -139,7 +152,7 @@ async fn memory_system_updates_and_stats() -> Result<()> {
     let sem_conc = Arc::new(InMemorySemanticMemory(tokio::sync::RwLock::new(Vec::new())));
     let epi: Arc<dyn EpisodicMemory> = epi_conc.clone();
     let sem: Arc<dyn SemanticMemory> = sem_conc.clone();
-    
+
     let config = MemoryConfig::default();
 
     let system = MemorySystem::new(ltm, epi, sem, config);
@@ -160,7 +173,7 @@ async fn memory_system_store_experience_and_learning() -> Result<()> {
     let sem_conc = Arc::new(InMemorySemanticMemory(tokio::sync::RwLock::new(Vec::new())));
     let epi: Arc<dyn EpisodicMemory> = epi_conc.clone();
     let sem: Arc<dyn SemanticMemory> = sem_conc.clone();
-    
+
     let mut cfg = MemoryConfig::default();
     cfg.short_term_capacity = 1;
     cfg.consolidation_threshold = 0.0;
@@ -180,7 +193,13 @@ async fn memory_system_store_experience_and_learning() -> Result<()> {
     let ep_id = system.store_experience(&ctx, outcome).await?;
     assert!(!ep_id.is_empty());
 
-    let evidence = Evidence { evidence_id: uuid::Uuid::new_v4().to_string(), description: "doc".to_string(), strength: 0.9, source: "test".to_string(), timestamp: std::time::SystemTime::now() };
+    let evidence = Evidence {
+        evidence_id: uuid::Uuid::new_v4().to_string(),
+        description: "doc".to_string(),
+        strength: 0.9,
+        source: "test".to_string(),
+        timestamp: std::time::SystemTime::now(),
+    };
     let know_id = system.store_learning("topic", "content", evidence).await?;
     assert!(!know_id.is_empty());
 

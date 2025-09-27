@@ -605,9 +605,7 @@ impl Engine for UniversalEngine {
         &'a self,
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Err(anyhow!("File upload not implemented for universal engine"))
-        })
+        Box::new(async move { Err(anyhow!("File upload not implemented for universal engine")) })
     }
 
     fn process_request_with_file<'a>(
@@ -616,7 +614,9 @@ impl Engine for UniversalEngine {
         _file_path: &'a Path,
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
-            Err(anyhow!("File processing not implemented for universal engine"))
+            Err(anyhow!(
+                "File processing not implemented for universal engine"
+            ))
         })
     }
 }
@@ -719,5 +719,4 @@ impl UniversalEngine {
 
         None
     }
-
 }

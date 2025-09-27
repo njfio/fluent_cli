@@ -12,8 +12,8 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::task::Task;
 use crate::context::ExecutionContext;
+use crate::task::Task;
 
 /// Dependency analyzer for task scheduling and parallel execution
 pub struct DependencyAnalyzer {
@@ -217,7 +217,7 @@ impl DependencyGraph {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Add a node to the graph
     pub fn add_node(&mut self, task_id: String) {
         if !self.nodes.contains_key(&task_id) {
@@ -243,17 +243,17 @@ impl DependencyGraph {
             self.dependents.insert(task_id.clone(), HashSet::new());
         }
     }
-    
+
     /// Add an edge (dependency) to the graph
     pub fn add_edge(&mut self, from: String, to: String) {
         // Ensure both nodes exist
         self.add_node(from.clone());
         self.add_node(to.clone());
-        
+
         // Add dependency: 'to' depends on 'from'
         self.dependencies.get_mut(&to).unwrap().insert(from.clone());
         self.dependents.get_mut(&from).unwrap().insert(to.clone());
-        
+
         // Update counts
         if let Some(to_node) = self.nodes.get_mut(&to) {
             to_node.dependency_count += 1;
@@ -282,25 +282,25 @@ impl DependencyAnalyzer {
     ) -> Result<DependencyAnalysis> {
         // Build dependency graph
         self.build_dependency_graph(tasks).await?;
-        
+
         // Perform topological sort
         let topo_order = self.topological_sort().await?;
-        
+
         // Identify parallel execution opportunities
         let parallel_groups = self.identify_parallel_groups().await?;
-        
+
         // Calculate critical path
         let critical_path = self.calculate_critical_path().await?;
-        
+
         // Generate execution schedule
         let schedule = self.generate_execution_schedule().await?;
-        
+
         // Identify bottlenecks
         let bottlenecks = self.identify_bottlenecks().await?;
-        
+
         // Generate optimization suggestions
         let optimizations = self.generate_optimizations().await?;
-        
+
         // Calculate metrics
         let metrics = self.calculate_metrics().await?;
 
@@ -318,7 +318,7 @@ impl DependencyAnalyzer {
     /// Build the dependency graph from tasks
     async fn build_dependency_graph(&self, tasks: &[Task]) -> Result<()> {
         let mut graph = self.dependency_graph.write().await;
-        
+
         // Clear existing graph
         graph.nodes.clear();
         graph.dependencies.clear();
@@ -333,7 +333,7 @@ impl DependencyAnalyzer {
                     name: task.description.clone(),
                     description: task.description.clone(),
                     task_type: format!("{:?}", task.task_type),
-                    complexity: 1.0, // Default complexity
+                    complexity: 1.0,        // Default complexity
                     can_run_parallel: true, // Default to parallel-capable
                 },
                 dependency_count: 0,
@@ -349,15 +349,19 @@ impl DependencyAnalyzer {
                 earliest_start: None,
                 latest_finish: None,
             };
-            
+
             graph.nodes.insert(task.task_id.clone(), node);
-            graph.dependencies.insert(task.task_id.clone(), HashSet::new());
-            graph.dependents.insert(task.task_id.clone(), HashSet::new());
+            graph
+                .dependencies
+                .insert(task.task_id.clone(), HashSet::new());
+            graph
+                .dependents
+                .insert(task.task_id.clone(), HashSet::new());
         }
 
         // Analyze task descriptions to infer dependencies
         self.infer_dependencies(tasks, &mut graph).await?;
-        
+
         // Detect resource conflicts if enabled
         if self.config.enable_resource_analysis {
             self.detect_resource_conflicts(&mut graph).await?;
@@ -373,16 +377,18 @@ impl DependencyAnalyzer {
             for task_b in tasks.iter().skip(i + 1) {
                 if self.has_dependency(task_a, task_b).await? {
                     // task_a depends on task_b
-                    graph.dependencies
+                    graph
+                        .dependencies
                         .entry(task_a.task_id.clone())
                         .or_default()
                         .insert(task_b.task_id.clone());
-                    
-                    graph.dependents
+
+                    graph
+                        .dependents
                         .entry(task_b.task_id.clone())
                         .or_default()
                         .insert(task_a.task_id.clone());
-                    
+
                     // Update counts
                     if let Some(node_a) = graph.nodes.get_mut(&task_a.task_id) {
                         node_a.dependency_count += 1;
@@ -401,7 +407,7 @@ impl DependencyAnalyzer {
         // Simple keyword-based heuristic
         let desc_a = task_a.description.to_lowercase();
         let desc_b = task_b.description.to_lowercase();
-        
+
         // Check for common dependency patterns
         let dependency_keywords = [
             ("after", "before"),
@@ -412,14 +418,17 @@ impl DependencyAnalyzer {
         ];
 
         for (dep_word, _) in dependency_keywords {
-            if desc_a.contains(dep_word) && desc_a.contains(&desc_b.split_whitespace().next().unwrap_or("")) {
+            if desc_a.contains(dep_word)
+                && desc_a.contains(&desc_b.split_whitespace().next().unwrap_or(""))
+            {
                 return Ok(true);
             }
         }
 
         // Check task type relationships
-        if matches!(task_a.task_type, crate::task::TaskType::Testing) && 
-           matches!(task_b.task_type, crate::task::TaskType::CodeGeneration) {
+        if matches!(task_a.task_type, crate::task::TaskType::Testing)
+            && matches!(task_b.task_type, crate::task::TaskType::CodeGeneration)
+        {
             return Ok(true);
         }
 
@@ -429,11 +438,12 @@ impl DependencyAnalyzer {
     /// Detect resource conflicts between tasks
     async fn detect_resource_conflicts(&self, graph: &mut DependencyGraph) -> Result<()> {
         let task_ids: Vec<String> = graph.nodes.keys().cloned().collect();
-        
+
         for task_a in &task_ids {
             for task_b in &task_ids {
                 if task_a != task_b && self.has_resource_conflict(task_a, task_b, graph).await? {
-                    graph.resource_conflicts
+                    graph
+                        .resource_conflicts
                         .entry(task_a.clone())
                         .or_default()
                         .insert(task_b.clone());
@@ -444,10 +454,15 @@ impl DependencyAnalyzer {
     }
 
     /// Check if two tasks have resource conflicts
-    async fn has_resource_conflict(&self, task_a: &str, task_b: &str, graph: &DependencyGraph) -> Result<bool> {
+    async fn has_resource_conflict(
+        &self,
+        task_a: &str,
+        task_b: &str,
+        graph: &DependencyGraph,
+    ) -> Result<bool> {
         let node_a = graph.nodes.get(task_a);
         let node_b = graph.nodes.get(task_b);
-        
+
         if let (Some(a), Some(b)) = (node_a, node_b) {
             // Check for overlapping resource requirements
             for resource in &a.resource_requirements {
@@ -468,9 +483,12 @@ impl DependencyAnalyzer {
 
         // Calculate in-degrees
         for task_id in graph.nodes.keys() {
-            let degree = graph.dependencies.get(task_id).map_or(0, |deps| deps.len() as u32);
+            let degree = graph
+                .dependencies
+                .get(task_id)
+                .map_or(0, |deps| deps.len() as u32);
             in_degree.insert(task_id.clone(), degree);
-            
+
             if degree == 0 {
                 queue.push_back(task_id.clone());
             }
@@ -479,7 +497,7 @@ impl DependencyAnalyzer {
         // Process queue
         while let Some(task_id) = queue.pop_front() {
             result.push(task_id.clone());
-            
+
             // Reduce in-degree of dependent tasks
             if let Some(dependents) = graph.dependents.get(&task_id) {
                 for dependent in dependents {
@@ -533,7 +551,10 @@ impl DependencyAnalyzer {
                     group_id: Uuid::new_v4().to_string(),
                     group_name: format!("Parallel Group {}", groups.len() + 1),
                     tasks: parallel_tasks.clone(),
-                    max_concurrency: self.config.max_parallel_tasks.min(parallel_tasks.len() as u32),
+                    max_concurrency: self
+                        .config
+                        .max_parallel_tasks
+                        .min(parallel_tasks.len() as u32),
                     estimated_duration: Duration::from_secs(300), // Default
                     resource_requirements: Vec::new(),
                 });
@@ -544,7 +565,12 @@ impl DependencyAnalyzer {
     }
 
     /// Check if two tasks can run in parallel
-    async fn can_run_parallel(&self, task_a: &str, task_b: &str, graph: &DependencyGraph) -> Result<bool> {
+    async fn can_run_parallel(
+        &self,
+        task_a: &str,
+        task_b: &str,
+        graph: &DependencyGraph,
+    ) -> Result<bool> {
         // Check direct dependencies
         if let Some(deps_a) = graph.dependencies.get(task_a) {
             if deps_a.contains(task_b) {
@@ -567,7 +593,7 @@ impl DependencyAnalyzer {
         // Check if both tasks support parallel execution
         let node_a = graph.nodes.get(task_a);
         let node_b = graph.nodes.get(task_b);
-        
+
         if let (Some(a), Some(b)) = (node_a, node_b) {
             if !a.task_info.can_run_parallel || !b.task_info.can_run_parallel {
                 return Ok(false);
@@ -580,14 +606,18 @@ impl DependencyAnalyzer {
     /// Calculate the critical path through the task network
     async fn calculate_critical_path(&self) -> Result<Vec<String>> {
         let graph = self.dependency_graph.read().await;
-        
+
         // Simple implementation: find the longest path through dependencies
         let mut path = Vec::new();
         let mut max_length = 0;
-        
+
         // For each task without dependencies, trace the longest path
         for task_id in graph.nodes.keys() {
-            if graph.dependencies.get(task_id).map_or(true, |deps| deps.is_empty()) {
+            if graph
+                .dependencies
+                .get(task_id)
+                .map_or(true, |deps| deps.is_empty())
+            {
                 let current_path = self.find_longest_path(task_id, &graph).await?;
                 if current_path.len() > max_length {
                     max_length = current_path.len();
@@ -600,7 +630,11 @@ impl DependencyAnalyzer {
     }
 
     /// Find longest path starting from a given task
-    fn find_longest_path<'a>(&'a self, start_task: &'a str, graph: &'a DependencyGraph) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>>> + Send + 'a>> {
+    fn find_longest_path<'a>(
+        &'a self,
+        start_task: &'a str,
+        graph: &'a DependencyGraph,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>>> + Send + 'a>> {
         Box::pin(async move {
             let mut path = vec![start_task.to_string()];
             let mut current = start_task.to_string();
@@ -652,7 +686,7 @@ impl DependencyAnalyzer {
                 dependencies_resolved: true,
                 resource_allocation: Vec::new(),
             };
-            
+
             current_time += Duration::from_secs(300);
             schedule.push(scheduled_task);
         }
@@ -671,9 +705,19 @@ impl DependencyAnalyzer {
                 bottlenecks.push(Bottleneck {
                     bottleneck_id: Uuid::new_v4().to_string(),
                     bottleneck_type: BottleneckType::DependencyChain,
-                    affected_tasks: graph.dependents.get(task_id).unwrap_or(&HashSet::new()).iter().cloned().collect(),
-                    impact_description: format!("Task {} has {} dependents", task_id, node.dependent_count),
-                    suggested_resolution: "Consider breaking down this task or reducing dependencies".to_string(),
+                    affected_tasks: graph
+                        .dependents
+                        .get(task_id)
+                        .unwrap_or(&HashSet::new())
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    impact_description: format!(
+                        "Task {} has {} dependents",
+                        task_id, node.dependent_count
+                    ),
+                    suggested_resolution:
+                        "Consider breaking down this task or reducing dependencies".to_string(),
                 });
             }
         }
@@ -684,7 +728,7 @@ impl DependencyAnalyzer {
     /// Generate optimization suggestions
     async fn generate_optimizations(&self) -> Result<Vec<OptimizationSuggestion>> {
         let mut suggestions = Vec::new();
-        
+
         // Suggest increasing parallelism where possible
         let parallel_groups = self.identify_parallel_groups().await?;
         if parallel_groups.len() < 3 {
@@ -703,23 +747,27 @@ impl DependencyAnalyzer {
     /// Calculate analysis metrics
     async fn calculate_metrics(&self) -> Result<AnalysisMetrics> {
         let graph = self.dependency_graph.read().await;
-        let total_deps: u32 = graph.dependencies.values().map(|deps| deps.len() as u32).sum();
+        let total_deps: u32 = graph
+            .dependencies
+            .values()
+            .map(|deps| deps.len() as u32)
+            .sum();
         let parallel_groups = self.identify_parallel_groups().await?;
-        
+
         Ok(AnalysisMetrics {
             total_tasks: graph.nodes.len() as u32,
             dependency_count: total_deps,
             parallelization_ratio: parallel_groups.len() as f64 / graph.nodes.len().max(1) as f64,
             critical_path_length: Duration::from_secs(1500), // Placeholder
-            average_wait_time: Duration::from_secs(60), // Placeholder
-            resource_utilization: 0.75, // Placeholder
+            average_wait_time: Duration::from_secs(60),      // Placeholder
+            resource_utilization: 0.75,                      // Placeholder
         })
     }
 
     /// Add a new task to the dependency graph
     pub async fn add_task(&self, task: &Task) -> Result<()> {
         let mut graph = self.dependency_graph.write().await;
-        
+
         let node = TaskNode {
             task_id: task.task_id.clone(),
             task_info: TaskInfo {
@@ -737,11 +785,15 @@ impl DependencyAnalyzer {
             earliest_start: None,
             latest_finish: None,
         };
-        
+
         graph.nodes.insert(task.task_id.clone(), node);
-        graph.dependencies.insert(task.task_id.clone(), HashSet::new());
-        graph.dependents.insert(task.task_id.clone(), HashSet::new());
-        
+        graph
+            .dependencies
+            .insert(task.task_id.clone(), HashSet::new());
+        graph
+            .dependents
+            .insert(task.task_id.clone(), HashSet::new());
+
         Ok(())
     }
 
@@ -763,7 +815,7 @@ impl DependencyAnalyzer {
         // Simple implementation: find longest path
         let mut longest_path = Vec::new();
         let mut max_length = 0;
-        
+
         for node_id in graph.nodes.keys() {
             let path = self.find_longest_path_simple(node_id, graph).await?;
             if path.len() > max_length {
@@ -771,26 +823,29 @@ impl DependencyAnalyzer {
                 longest_path = path;
             }
         }
-        
+
         Ok(longest_path)
     }
-    
+
     /// Find parallel execution opportunities (simplified version)
-    pub async fn find_parallel_opportunities(&self, graph: &DependencyGraph) -> Result<Vec<ParallelGroup>> {
+    pub async fn find_parallel_opportunities(
+        &self,
+        graph: &DependencyGraph,
+    ) -> Result<Vec<ParallelGroup>> {
         let mut parallel_groups = Vec::new();
         let mut processed = HashSet::new();
-        
+
         for node_id in graph.nodes.keys() {
             if processed.contains(node_id) {
                 continue;
             }
-            
+
             let parallel_tasks = self.find_parallel_tasks_simple(node_id, graph).await?;
             if parallel_tasks.len() > 1 {
                 for task in &parallel_tasks {
                     processed.insert(task.clone());
                 }
-                
+
                 parallel_groups.push(ParallelGroup {
                     group_id: uuid::Uuid::new_v4().to_string(),
                     group_name: format!("parallel_group_{}", parallel_groups.len()),
@@ -801,53 +856,62 @@ impl DependencyAnalyzer {
                 });
             }
         }
-        
+
         Ok(parallel_groups)
     }
-    
+
     /// Detect circular dependencies (simplified version)
     pub async fn detect_cycles(&self, graph: &DependencyGraph) -> Result<Vec<Vec<String>>> {
         let mut cycles = Vec::new();
         let mut visited = HashSet::new();
         let mut rec_stack = HashSet::new();
-        
+
         for node_id in graph.nodes.keys() {
             if !visited.contains(node_id) {
-                if let Some(cycle) = self.dfs_cycle_detection_simple(node_id, graph, &mut visited, &mut rec_stack).await? {
+                if let Some(cycle) = self
+                    .dfs_cycle_detection_simple(node_id, graph, &mut visited, &mut rec_stack)
+                    .await?
+                {
                     cycles.push(cycle);
                 }
             }
         }
-        
+
         Ok(cycles)
     }
-    
+
     /// Find bottlenecks in the execution plan (simplified version)
     pub async fn find_bottlenecks(&self, graph: &DependencyGraph) -> Result<Vec<String>> {
         let mut bottlenecks = Vec::new();
-        
+
         for (node_id, node) in &graph.nodes {
             // Consider a task a bottleneck if it has many dependents
             if node.dependent_count > 3 {
                 bottlenecks.push(node_id.clone());
             }
         }
-        
+
         Ok(bottlenecks)
     }
-    
+
     /// Helper method to find longest path from a node (simplified)
-    async fn find_longest_path_simple(&self, start: &str, graph: &DependencyGraph) -> Result<Vec<String>> {
+    async fn find_longest_path_simple(
+        &self,
+        start: &str,
+        graph: &DependencyGraph,
+    ) -> Result<Vec<String>> {
         let mut path = vec![start.to_string()];
         let mut current = start;
-        
+
         // Simple greedy approach: follow the path with most dependencies
         loop {
             if let Some(dependents) = graph.dependents.get(current) {
-                if let Some(next) = dependents.iter().max_by_key(|&dep| {
-                    graph.nodes.get(dep).map(|n| n.dependent_count).unwrap_or(0)
-                }) {
-                    if !path.contains(next) {  // Avoid cycles
+                if let Some(next) = dependents
+                    .iter()
+                    .max_by_key(|&dep| graph.nodes.get(dep).map(|n| n.dependent_count).unwrap_or(0))
+                {
+                    if !path.contains(next) {
+                        // Avoid cycles
                         path.push(next.clone());
                         current = next;
                     } else {
@@ -860,53 +924,74 @@ impl DependencyAnalyzer {
                 break;
             }
         }
-        
+
         Ok(path)
     }
-    
+
     /// Find tasks that can run in parallel with the given task (simplified)
-    async fn find_parallel_tasks_simple(&self, task_id: &str, graph: &DependencyGraph) -> Result<Vec<String>> {
+    async fn find_parallel_tasks_simple(
+        &self,
+        task_id: &str,
+        graph: &DependencyGraph,
+    ) -> Result<Vec<String>> {
         let mut parallel_tasks = vec![task_id.to_string()];
-        
+
         for (other_id, _) in &graph.nodes {
-            if other_id != task_id && self.can_run_parallel_check(task_id, other_id, graph).await? {
+            if other_id != task_id
+                && self
+                    .can_run_parallel_check(task_id, other_id, graph)
+                    .await?
+            {
                 parallel_tasks.push(other_id.clone());
             }
         }
-        
+
         Ok(parallel_tasks)
     }
-    
+
     /// Simple parallel check (no direct dependencies)
-    async fn can_run_parallel_check(&self, task_a: &str, task_b: &str, graph: &DependencyGraph) -> Result<bool> {
+    async fn can_run_parallel_check(
+        &self,
+        task_a: &str,
+        task_b: &str,
+        graph: &DependencyGraph,
+    ) -> Result<bool> {
         // Check if there's a direct dependency either way
-        let a_depends_on_b = graph.dependencies.get(task_a)
+        let a_depends_on_b = graph
+            .dependencies
+            .get(task_a)
             .map(|deps| deps.contains(task_b))
             .unwrap_or(false);
-            
-        let b_depends_on_a = graph.dependencies.get(task_b)
+
+        let b_depends_on_a = graph
+            .dependencies
+            .get(task_b)
             .map(|deps| deps.contains(task_a))
             .unwrap_or(false);
-        
+
         Ok(!a_depends_on_b && !b_depends_on_a)
     }
-    
+
     /// DFS-based cycle detection (simplified)
     fn dfs_cycle_detection_simple<'a>(
         &'a self,
         node: &'a str,
         graph: &'a DependencyGraph,
         visited: &'a mut HashSet<String>,
-        rec_stack: &'a mut HashSet<String>
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<String>>>> + Send + 'a>> {
+        rec_stack: &'a mut HashSet<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<String>>>> + Send + 'a>>
+    {
         Box::pin(async move {
             visited.insert(node.to_string());
             rec_stack.insert(node.to_string());
-            
+
             if let Some(dependents) = graph.dependents.get(node) {
                 for dependent in dependents {
                     if !visited.contains(dependent) {
-                        if let Some(cycle) = self.dfs_cycle_detection_simple(dependent, graph, visited, rec_stack).await? {
+                        if let Some(cycle) = self
+                            .dfs_cycle_detection_simple(dependent, graph, visited, rec_stack)
+                            .await?
+                        {
                             return Ok(Some(cycle));
                         }
                     } else if rec_stack.contains(dependent) {
@@ -915,7 +1000,7 @@ impl DependencyAnalyzer {
                     }
                 }
             }
-            
+
             rec_stack.remove(node);
             Ok(None)
         })

@@ -1,10 +1,10 @@
+use anyhow::Result;
+use chrono::Utc;
 use fluent_agent::memory::{
-    LongTermMemory, MemoryItem, MemoryQuery, MemoryType, AsyncSqliteMemoryStore,
-    ShortTermMemory, MemoryConfig
+    AsyncSqliteMemoryStore, LongTermMemory, MemoryConfig, MemoryItem, MemoryQuery, MemoryType,
+    ShortTermMemory,
 };
 use std::collections::HashMap;
-use chrono::Utc;
-use anyhow::Result;
 use tokio;
 
 /// Integration tests for memory system functionality
@@ -13,7 +13,7 @@ use tokio;
 #[tokio::test]
 async fn test_memory_lifecycle_integration() -> Result<()> {
     let store = AsyncSqliteMemoryStore::new(":memory:").await?;
-    
+
     // Test storing different types of memories
     let experience_memory = MemoryItem {
         memory_id: "exp_001".to_string(),
@@ -21,8 +21,14 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
         content: "Successfully completed task A using strategy X".to_string(),
         metadata: {
             let mut meta = HashMap::new();
-            meta.insert("task_id".to_string(), serde_json::Value::String("task_a".to_string()));
-            meta.insert("strategy".to_string(), serde_json::Value::String("strategy_x".to_string()));
+            meta.insert(
+                "task_id".to_string(),
+                serde_json::Value::String("task_a".to_string()),
+            );
+            meta.insert(
+                "strategy".to_string(),
+                serde_json::Value::String("strategy_x".to_string()),
+            );
             meta
         },
         importance: 0.8,
@@ -39,7 +45,10 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
         content: "Strategy X works well for tasks involving file operations".to_string(),
         metadata: {
             let mut meta = HashMap::new();
-            meta.insert("domain".to_string(), serde_json::Value::String("file_operations".to_string()));
+            meta.insert(
+                "domain".to_string(),
+                serde_json::Value::String("file_operations".to_string()),
+            );
             meta
         },
         importance: 0.9,
@@ -53,7 +62,7 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     // Store memories
     let exp_id = store.store(experience_memory.clone()).await?;
     let learn_id = store.store(learning_memory.clone()).await?;
-    
+
     assert_eq!(exp_id, "exp_001");
     assert_eq!(learn_id, "learn_001");
 
@@ -70,7 +79,8 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     let high_importance_memories = store.search(high_importance_query).await?;
     assert!(high_importance_memories.len() >= 1);
     // Find the learning memory in the results
-    let learning_memory = high_importance_memories.iter()
+    let learning_memory = high_importance_memories
+        .iter()
         .find(|m| m.memory_id == "learn_001")
         .expect("Learning memory should be found");
     assert_eq!(learning_memory.memory_id, "learn_001");
@@ -88,7 +98,8 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     let experience_memories = store.search(experience_query).await?;
     assert!(experience_memories.len() >= 1);
     // Find the experience memory in the results
-    let experience_memory_found = experience_memories.iter()
+    let experience_memory_found = experience_memories
+        .iter()
         .find(|m| m.memory_type == MemoryType::Experience)
         .expect("Experience memory should be found");
     assert_eq!(experience_memory_found.memory_type, MemoryType::Experience);
@@ -101,8 +112,8 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     let mut updated_memory = experience_memory.clone();
     updated_memory.access_count = 5;
     updated_memory.importance = 0.9;
-    
-    store.update( updated_memory).await?;
+
+    store.update(updated_memory).await?;
 
     // Verify update
     let all_memories_query = MemoryQuery {
@@ -115,13 +126,16 @@ async fn test_memory_lifecycle_integration() -> Result<()> {
     };
 
     let all_memories = store.search(all_memories_query).await?;
-    let updated = all_memories.iter().find(|m| m.memory_id == "exp_001").unwrap();
+    let updated = all_memories
+        .iter()
+        .find(|m| m.memory_id == "exp_001")
+        .unwrap();
     assert_eq!(updated.access_count, 5);
     assert_eq!(updated.importance, 0.9);
 
     // Test memory deletion
     store.delete(&learn_id).await?;
-    
+
     let remaining_memories = store.search(all_memories_query).await?;
     assert_eq!(remaining_memories.len(), 1);
     assert_eq!(remaining_memories[0].memory_id, "exp_001");

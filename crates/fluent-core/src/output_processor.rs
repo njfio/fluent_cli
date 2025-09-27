@@ -155,7 +155,7 @@ impl OutputProcessor {
         } else {
             let extracted_name = Url::parse(url)?
                 .path_segments()
-                .and_then(|segments| segments.last())
+                .and_then(|mut segments| segments.next_back())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("download_{}", Uuid::new_v4()));
             Self::sanitize_filename(&extracted_name)
@@ -201,7 +201,7 @@ impl OutputProcessor {
         Url::parse(url)
             .ok()?
             .path_segments()?
-            .last()?
+            .next_back()?
             .split('?')
             .next()
             .map(|s| s.to_string())
@@ -252,16 +252,39 @@ impl OutputProcessor {
 
         // Check for dangerous patterns
         let dangerous_patterns = [
-            "rm -rf", "sudo", "chmod", "chown", "passwd", "su ",
-            "eval", "exec", "system", "shell_exec", "passthru",
-            "curl", "wget", "nc ", "netcat", "telnet", "ssh",
-            "/etc/", "/proc/", "/sys/", "/dev/", "/root/",
-            "import os", "import subprocess", "import sys",
+            "rm -rf",
+            "sudo",
+            "chmod",
+            "chown",
+            "passwd",
+            "su ",
+            "eval",
+            "exec",
+            "system",
+            "shell_exec",
+            "passthru",
+            "curl",
+            "wget",
+            "nc ",
+            "netcat",
+            "telnet",
+            "ssh",
+            "/etc/",
+            "/proc/",
+            "/sys/",
+            "/dev/",
+            "/root/",
+            "import os",
+            "import subprocess",
+            "import sys",
         ];
 
         for pattern in &dangerous_patterns {
             if script.to_lowercase().contains(pattern) {
-                return Err(anyhow!("Script contains potentially dangerous pattern: {}", pattern));
+                return Err(anyhow!(
+                    "Script contains potentially dangerous pattern: {}",
+                    pattern
+                ));
             }
         }
 
@@ -416,10 +439,12 @@ impl OutputProcessor {
 
         // Default safe command whitelist
         vec![
-            "echo", "cat", "ls", "pwd", "date", "whoami", "id",
-            "head", "tail", "wc", "grep", "sort", "uniq", "find",
-            "which", "type", "file", "stat", "du", "df"
-        ].into_iter().map(|s| s.to_string()).collect()
+            "echo", "cat", "ls", "pwd", "date", "whoami", "id", "head", "tail", "wc", "grep",
+            "sort", "uniq", "find", "which", "type", "file", "stat", "du", "df",
+        ]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     /// Check if a command is considered safe for execution
@@ -430,18 +455,60 @@ impl OutputProcessor {
         }
 
         // Must be alphanumeric with optional hyphens/underscores
-        if !command.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !command
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return false;
         }
 
         // Blacklist of dangerous commands
         let dangerous_commands = [
-            "rm", "rmdir", "del", "format", "mkfs", "dd", "fdisk", "parted",
-            "mount", "umount", "sudo", "su", "chmod", "chown", "chgrp",
-            "curl", "wget", "nc", "netcat", "telnet", "ssh", "scp", "rsync",
-            "ftp", "sftp", "python", "perl", "ruby", "node", "php", "bash",
-            "sh", "zsh", "fish", "csh", "eval", "exec", "source", "kill",
-            "killall", "pkill", "nohup", "systemctl", "service", "crontab"
+            "rm",
+            "rmdir",
+            "del",
+            "format",
+            "mkfs",
+            "dd",
+            "fdisk",
+            "parted",
+            "mount",
+            "umount",
+            "sudo",
+            "su",
+            "chmod",
+            "chown",
+            "chgrp",
+            "curl",
+            "wget",
+            "nc",
+            "netcat",
+            "telnet",
+            "ssh",
+            "scp",
+            "rsync",
+            "ftp",
+            "sftp",
+            "python",
+            "perl",
+            "ruby",
+            "node",
+            "php",
+            "bash",
+            "sh",
+            "zsh",
+            "fish",
+            "csh",
+            "eval",
+            "exec",
+            "source",
+            "kill",
+            "killall",
+            "pkill",
+            "nohup",
+            "systemctl",
+            "service",
+            "crontab",
         ];
 
         !dangerous_commands.contains(&command)
@@ -456,16 +523,11 @@ impl OutputProcessor {
 
         // Check for dangerous patterns
         let dangerous_patterns = [
-            "rm ", "rmdir", "del ", "format", "mkfs",
-            "dd ", "fdisk", "parted", "mount", "umount",
-            "sudo", "su ", "chmod +x", "chown", "chgrp",
-            "curl", "wget", "nc ", "netcat", "telnet",
-            "ssh", "scp", "rsync", "ftp", "sftp",
-            "python", "perl", "ruby", "node", "php",
-            "bash", "sh ", "zsh", "fish", "csh",
-            "eval", "exec", "source", ".", "$(", "`",
-            "&&", "||", ";", "|", ">", ">>", "<",
-            "kill", "killall", "pkill", "nohup", "&"
+            "rm ", "rmdir", "del ", "format", "mkfs", "dd ", "fdisk", "parted", "mount", "umount",
+            "sudo", "su ", "chmod +x", "chown", "chgrp", "curl", "wget", "nc ", "netcat", "telnet",
+            "ssh", "scp", "rsync", "ftp", "sftp", "python", "perl", "ruby", "node", "php", "bash",
+            "sh ", "zsh", "fish", "csh", "eval", "exec", "source", ".", "$(", "`", "&&", "||", ";",
+            "|", ">", ">>", "<", "kill", "killall", "pkill", "nohup", "&",
         ];
 
         for pattern in &dangerous_patterns {

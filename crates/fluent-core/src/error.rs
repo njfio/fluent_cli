@@ -789,7 +789,10 @@ impl PoisonHandlingConfig {
 impl ThreadSafeErrorHandler {
     /// Handle a mutex lock result safely with default fail-fast strategy
     pub fn handle_mutex_lock<'a, T>(
-        result: Result<std::sync::MutexGuard<'a, T>, std::sync::PoisonError<std::sync::MutexGuard<'a, T>>>,
+        result: Result<
+            std::sync::MutexGuard<'a, T>,
+            std::sync::PoisonError<std::sync::MutexGuard<'a, T>>,
+        >,
         context: &str,
     ) -> Result<std::sync::MutexGuard<'a, T>, FluentError> {
         Self::handle_mutex_lock_with_config(result, context, &PoisonHandlingConfig::fail_fast())
@@ -797,7 +800,10 @@ impl ThreadSafeErrorHandler {
 
     /// Handle a mutex lock result with configurable poison recovery strategy
     pub fn handle_mutex_lock_with_config<'a, T>(
-        result: Result<std::sync::MutexGuard<'a, T>, std::sync::PoisonError<std::sync::MutexGuard<'a, T>>>,
+        result: Result<
+            std::sync::MutexGuard<'a, T>,
+            std::sync::PoisonError<std::sync::MutexGuard<'a, T>>,
+        >,
         context: &str,
         config: &PoisonHandlingConfig,
     ) -> Result<std::sync::MutexGuard<'a, T>, FluentError> {
@@ -815,14 +821,12 @@ impl ThreadSafeErrorHandler {
                 }
 
                 match config.strategy {
-                    PoisonRecoveryStrategy::FailFast => {
-                        Err(FluentError::Internal(format!(
-                            "Mutex poisoned in {}: {}. Thread: {:?}",
-                            context,
-                            poison_error,
-                            thread::current().id()
-                        )))
-                    }
+                    PoisonRecoveryStrategy::FailFast => Err(FluentError::Internal(format!(
+                        "Mutex poisoned in {}: {}. Thread: {:?}",
+                        context,
+                        poison_error,
+                        thread::current().id()
+                    ))),
                     PoisonRecoveryStrategy::RecoverData => {
                         // Recover the data from the poisoned mutex
                         Ok(poison_error.into_inner())
@@ -853,7 +857,10 @@ impl ThreadSafeErrorHandler {
 
     /// Handle a RwLock read result safely
     pub fn handle_rwlock_read<'a, T>(
-        result: Result<std::sync::RwLockReadGuard<'a, T>, std::sync::PoisonError<std::sync::RwLockReadGuard<'a, T>>>,
+        result: Result<
+            std::sync::RwLockReadGuard<'a, T>,
+            std::sync::PoisonError<std::sync::RwLockReadGuard<'a, T>>,
+        >,
         context: &str,
     ) -> Result<std::sync::RwLockReadGuard<'a, T>, FluentError> {
         result.map_err(|e| {
@@ -868,7 +875,10 @@ impl ThreadSafeErrorHandler {
 
     /// Handle a RwLock write result safely
     pub fn handle_rwlock_write<'a, T>(
-        result: Result<std::sync::RwLockWriteGuard<'a, T>, std::sync::PoisonError<std::sync::RwLockWriteGuard<'a, T>>>,
+        result: Result<
+            std::sync::RwLockWriteGuard<'a, T>,
+            std::sync::PoisonError<std::sync::RwLockWriteGuard<'a, T>>,
+        >,
         context: &str,
     ) -> Result<std::sync::RwLockWriteGuard<'a, T>, FluentError> {
         result.map_err(|e| {
@@ -917,9 +927,13 @@ impl ThreadSafeErrorHandler {
                             let mut guard = poison_error.into_inner();
                             return operation(&mut *guard);
                         }
-                        PoisonRecoveryStrategy::RetryWithDelay if attempts <= config.max_retries => {
+                        PoisonRecoveryStrategy::RetryWithDelay
+                            if attempts <= config.max_retries =>
+                        {
                             // Wait and retry
-                            std::thread::sleep(std::time::Duration::from_millis(config.retry_delay_ms));
+                            std::thread::sleep(std::time::Duration::from_millis(
+                                config.retry_delay_ms,
+                            ));
                             continue;
                         }
                         _ => {
@@ -956,20 +970,14 @@ impl ThreadSafeErrorHandler {
                 }
 
                 match config.strategy {
-                    PoisonRecoveryStrategy::RecoverData => {
-                        Ok(poison_error.into_inner().clone())
-                    }
-                    PoisonRecoveryStrategy::UseDefault => {
-                        Ok(T::default())
-                    }
-                    _ => {
-                        Err(FluentError::Internal(format!(
-                            "Mutex poisoned in {} and recovery not configured: {}. Thread: {:?}",
-                            context,
-                            poison_error,
-                            thread::current().id()
-                        )))
-                    }
+                    PoisonRecoveryStrategy::RecoverData => Ok(poison_error.into_inner().clone()),
+                    PoisonRecoveryStrategy::UseDefault => Ok(T::default()),
+                    _ => Err(FluentError::Internal(format!(
+                        "Mutex poisoned in {} and recovery not configured: {}. Thread: {:?}",
+                        context,
+                        poison_error,
+                        thread::current().id()
+                    ))),
                 }
             }
         }
@@ -983,23 +991,18 @@ impl ThreadSafeErrorHandler {
     ) -> Result<tokio::sync::MutexGuard<'a, T>, FluentError> {
         let start_time = std::time::Instant::now();
 
-        if config.log_timeout_events {
-            if config.timeout.as_secs() < 60 {
-                eprintln!(
-                    "🔒 Acquiring mutex lock in {} with timeout: {:?}",
-                    context, config.timeout
-                );
-            }
+        if config.log_timeout_events && config.timeout.as_secs() < 60 {
+            eprintln!(
+                "🔒 Acquiring mutex lock in {} with timeout: {:?}",
+                context, config.timeout
+            );
         }
 
         match tokio::time::timeout(config.timeout, mutex.lock()).await {
             Ok(guard) => {
                 let elapsed = start_time.elapsed();
                 if config.log_timeout_events && elapsed > Duration::from_millis(100) {
-                    eprintln!(
-                        "✅ Acquired mutex lock in {} after {:?}",
-                        context, elapsed
-                    );
+                    eprintln!("✅ Acquired mutex lock in {} after {:?}", context, elapsed);
                 }
                 Ok(guard)
             }
@@ -1033,13 +1036,11 @@ impl ThreadSafeErrorHandler {
     ) -> Result<tokio::sync::RwLockReadGuard<'a, T>, FluentError> {
         let start_time = std::time::Instant::now();
 
-        if config.log_timeout_events {
-            if config.timeout.as_secs() < 60 {
-                eprintln!(
-                    "🔒 Acquiring RwLock read lock in {} with timeout: {:?}",
-                    context, config.timeout
-                );
-            }
+        if config.log_timeout_events && config.timeout.as_secs() < 60 {
+            eprintln!(
+                "🔒 Acquiring RwLock read lock in {} with timeout: {:?}",
+                context, config.timeout
+            );
         }
 
         match tokio::time::timeout(config.timeout, rwlock.read()).await {
@@ -1083,13 +1084,11 @@ impl ThreadSafeErrorHandler {
     ) -> Result<tokio::sync::RwLockWriteGuard<'a, T>, FluentError> {
         let start_time = std::time::Instant::now();
 
-        if config.log_timeout_events {
-            if config.timeout.as_secs() < 60 {
-                eprintln!(
-                    "🔒 Acquiring RwLock write lock in {} with timeout: {:?}",
-                    context, config.timeout
-                );
-            }
+        if config.log_timeout_events && config.timeout.as_secs() < 60 {
+            eprintln!(
+                "🔒 Acquiring RwLock write lock in {} with timeout: {:?}",
+                context, config.timeout
+            );
         }
 
         match tokio::time::timeout(config.timeout, rwlock.write()).await {
@@ -1126,10 +1125,7 @@ impl ThreadSafeErrorHandler {
     }
 
     /// Create a thread-safe error with context
-    pub fn create_error_with_context(
-        error: FluentError,
-        context: ErrorContext,
-    ) -> FluentError {
+    pub fn create_error_with_context(error: FluentError, context: ErrorContext) -> FluentError {
         match error {
             FluentError::Internal(msg) => FluentError::Internal(format!(
                 "{} | Context: Thread {:?} ({}), Operations: {:?}",
@@ -1171,7 +1167,11 @@ macro_rules! safe_write_lock {
 #[macro_export]
 macro_rules! safe_lock_with_config {
     ($mutex:expr, $context:expr, $config:expr) => {
-        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_config($mutex.lock(), $context, $config)
+        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_config(
+            $mutex.lock(),
+            $context,
+            $config,
+        )
     };
 }
 
@@ -1179,7 +1179,9 @@ macro_rules! safe_lock_with_config {
 #[macro_export]
 macro_rules! safe_lock_with_retry {
     ($mutex:expr, $context:expr, $config:expr, $operation:expr) => {
-        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_retry($mutex, $context, $config, $operation)
+        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_retry(
+            $mutex, $context, $config, $operation,
+        )
     };
 }
 
@@ -1187,7 +1189,9 @@ macro_rules! safe_lock_with_retry {
 #[macro_export]
 macro_rules! safe_lock_with_default {
     ($mutex:expr, $context:expr, $config:expr) => {
-        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_default($mutex, $context, $config)
+        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_default(
+            $mutex, $context, $config,
+        )
     };
 }
 
@@ -1196,7 +1200,9 @@ macro_rules! safe_lock_with_default {
 macro_rules! poison_resistant_operation {
     ($mutex:expr, $context:expr, $operation:expr) => {{
         let config = $crate::error::PoisonHandlingConfig::recover_data();
-        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_retry($mutex, $context, &config, $operation)
+        $crate::error::ThreadSafeErrorHandler::handle_mutex_lock_with_retry(
+            $mutex, $context, &config, $operation,
+        )
     }};
 }
 
@@ -1205,7 +1211,10 @@ macro_rules! poison_resistant_operation {
 macro_rules! safe_tokio_lock_with_timeout {
     ($mutex:expr, $context:expr, $timeout:expr) => {{
         let config = $crate::error::LockTimeoutConfig::with_timeout($timeout);
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout($mutex, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+            $mutex, $context, &config,
+        )
+        .await
     }};
 }
 
@@ -1214,7 +1223,10 @@ macro_rules! safe_tokio_lock_with_timeout {
 macro_rules! safe_tokio_read_lock_with_timeout {
     ($rwlock:expr, $context:expr, $timeout:expr) => {{
         let config = $crate::error::LockTimeoutConfig::with_timeout($timeout);
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_rwlock_read_with_timeout($rwlock, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_rwlock_read_with_timeout(
+            $rwlock, $context, &config,
+        )
+        .await
     }};
 }
 
@@ -1223,7 +1235,10 @@ macro_rules! safe_tokio_read_lock_with_timeout {
 macro_rules! safe_tokio_write_lock_with_timeout {
     ($rwlock:expr, $context:expr, $timeout:expr) => {{
         let config = $crate::error::LockTimeoutConfig::with_timeout($timeout);
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout($rwlock, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_rwlock_write_with_timeout(
+            $rwlock, $context, &config,
+        )
+        .await
     }};
 }
 
@@ -1232,7 +1247,10 @@ macro_rules! safe_tokio_write_lock_with_timeout {
 macro_rules! safe_tokio_lock_short_timeout {
     ($mutex:expr, $context:expr) => {{
         let config = $crate::error::LockTimeoutConfig::short_timeout();
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout($mutex, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+            $mutex, $context, &config,
+        )
+        .await
     }};
 }
 
@@ -1241,7 +1259,10 @@ macro_rules! safe_tokio_lock_short_timeout {
 macro_rules! safe_tokio_lock_medium_timeout {
     ($mutex:expr, $context:expr) => {{
         let config = $crate::error::LockTimeoutConfig::medium_timeout();
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout($mutex, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+            $mutex, $context, &config,
+        )
+        .await
     }};
 }
 
@@ -1250,7 +1271,10 @@ macro_rules! safe_tokio_lock_medium_timeout {
 macro_rules! safe_tokio_lock_long_timeout {
     ($mutex:expr, $context:expr) => {{
         let config = $crate::error::LockTimeoutConfig::long_timeout();
-        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout($mutex, $context, &config).await
+        $crate::error::ThreadSafeErrorHandler::handle_tokio_mutex_lock_with_timeout(
+            $mutex, $context, &config,
+        )
+        .await
     }};
 }
 

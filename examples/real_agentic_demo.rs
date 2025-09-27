@@ -1,14 +1,13 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
 use fluent_agent::{
+    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig, ToolConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    agent_with_mcp::LongTermMemory,
     memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
 };
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -214,7 +213,10 @@ async fn demo_context_system() -> Result<()> {
     }
 
     // Demonstrate context operations by adding metadata
-    context.add_metadata("compilation_status".to_string(), serde_json::json!("success"));
+    context.add_metadata(
+        "compilation_status".to_string(),
+        serde_json::json!("success"),
+    );
     context.add_metadata("testing_status".to_string(), serde_json::json!("passed"));
     context.add_metadata("linting_status".to_string(), serde_json::json!("clean"));
 

@@ -41,20 +41,18 @@ async fn test_agentic_run_function_exists() -> Result<()> {
     // This validates the public API structure
 
     let goal = "Test goal processing";
-    let result = fluent_cli::run_agentic_mode(
-        goal,
-        "test_config.json",
-        3,
-        true,
-        "test_config.toml"
-    ).await;
+    let result =
+        fluent_cli::run_agentic_mode(goal, "test_config.json", 3, true, "test_config.toml").await;
 
     // The result may fail due to missing LLM configuration, but the structure should work
     // We're testing that the code path executes without panicking
     match result {
         Ok(_) => println!("✅ Goal processing succeeded"),
         Err(e) => {
-            println!("⚠️  Goal processing failed as expected (missing LLM config): {}", e);
+            println!(
+                "⚠️  Goal processing failed as expected (missing LLM config): {}",
+                e
+            );
             // This is expected in test environment without real LLM configuration
         }
     }
@@ -93,9 +91,18 @@ fn create_test_config() -> Config {
     };
 
     let mut parameters = HashMap::new();
-    parameters.insert("model".to_string(), serde_json::Value::String("gpt-3.5-turbo".to_string()));
-    parameters.insert("max_tokens".to_string(), serde_json::Value::Number(serde_json::Number::from(1000)));
-    parameters.insert("temperature".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(0.7).unwrap()));
+    parameters.insert(
+        "model".to_string(),
+        serde_json::Value::String("gpt-3.5-turbo".to_string()),
+    );
+    parameters.insert(
+        "max_tokens".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(1000)),
+    );
+    parameters.insert(
+        "temperature".to_string(),
+        serde_json::Value::Number(serde_json::Number::from_f64(0.7).unwrap()),
+    );
 
     let engine_config = EngineConfig {
         name: "test".to_string(),
@@ -125,8 +132,9 @@ async fn test_complete_agentic_workflow() -> Result<()> {
         "test_config.json",
         2,
         true,
-        "test_config.toml"
-    ).await;
+        "test_config.toml",
+    )
+    .await;
 
     // 3. Verify the workflow completes without panicking
     match goal_result {

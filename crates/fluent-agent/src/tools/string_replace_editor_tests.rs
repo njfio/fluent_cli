@@ -140,7 +140,7 @@ mod comprehensive_tests {
         // Check that backup file exists and contains original content
         let backup_path = result.backup_path.unwrap();
         assert!(fs::metadata(&backup_path).await.is_ok());
-        
+
         let backup_content = fs::read_to_string(&backup_path).await.unwrap();
         assert_eq!(backup_content, original_content);
 

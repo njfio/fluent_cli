@@ -1,9 +1,8 @@
 use anyhow::Result;
-use fluent_agent::{
-    ExecutionContext, StateManager, StateManagerConfig,
-    Goal, GoalType, GoalPriority,
-};
 use fluent_agent::context::CheckpointType;
+use fluent_agent::{
+    ExecutionContext, Goal, GoalPriority, GoalType, StateManager, StateManagerConfig,
+};
 use std::collections::HashMap;
 use tempfile::tempdir;
 use tokio;
@@ -64,12 +63,14 @@ async fn main() -> Result<()> {
 
     // Demonstrate checkpoint creation
     println!("\n🔄 Checkpoint Management:");
-    
+
     // Create manual checkpoint
-    let checkpoint_id = state_manager.create_checkpoint(
-        CheckpointType::Manual,
-        "Initial state checkpoint".to_string()
-    ).await?;
+    let checkpoint_id = state_manager
+        .create_checkpoint(
+            CheckpointType::Manual,
+            "Initial state checkpoint".to_string(),
+        )
+        .await?;
     println!("   Created manual checkpoint: {}", checkpoint_id);
 
     // Simulate some iterations with automatic checkpoints
@@ -78,35 +79,40 @@ async fn main() -> Result<()> {
         let mut current_context = state_manager.get_context().await.unwrap();
         current_context.set_variable("iteration_count".to_string(), i.to_string());
         current_context.increment_iteration();
-        
+
         // Create checkpoint before action
-        let before_checkpoint = state_manager.create_checkpoint(
-            CheckpointType::BeforeAction,
-            format!("Before action at iteration {}", i)
-        ).await?;
-        
+        let before_checkpoint = state_manager
+            .create_checkpoint(
+                CheckpointType::BeforeAction,
+                format!("Before action at iteration {}", i),
+            )
+            .await?;
+
         // Simulate some work
-        current_context.set_variable(
-            "last_action".to_string(), 
-            format!("action_{}", i)
-        );
-        
+        current_context.set_variable("last_action".to_string(), format!("action_{}", i));
+
         // Create checkpoint after action
-        let after_checkpoint = state_manager.create_checkpoint(
-            CheckpointType::AfterAction,
-            format!("After action at iteration {}", i)
-        ).await?;
-        
+        let after_checkpoint = state_manager
+            .create_checkpoint(
+                CheckpointType::AfterAction,
+                format!("After action at iteration {}", i),
+            )
+            .await?;
+
         // Update state manager
         state_manager.set_context(current_context.clone()).await?;
-        
-        println!("   Iteration {}: Before={}, After={}", 
-                 i, &before_checkpoint[..8], &after_checkpoint[..8]);
+
+        println!(
+            "   Iteration {}: Before={}, After={}",
+            i,
+            &before_checkpoint[..8],
+            &after_checkpoint[..8]
+        );
     }
 
     // Demonstrate state persistence
     println!("\n💾 State Persistence:");
-    
+
     // Save current state
     state_manager.save_context().await?;
     println!("   Saved current context to disk");
@@ -114,14 +120,17 @@ async fn main() -> Result<()> {
     // Get current context for comparison
     let original_context = state_manager.get_context().await.unwrap();
     let original_id = original_context.context_id.clone();
-    
+
     // Load context from disk
     let loaded_context = state_manager.load_context(&original_id).await?;
     println!("   Loaded context from disk: {}", loaded_context.context_id);
-    
+
     // Verify data integrity
     assert_eq!(original_context.context_id, loaded_context.context_id);
-    assert_eq!(original_context.iteration_count, loaded_context.iteration_count);
+    assert_eq!(
+        original_context.iteration_count,
+        loaded_context.iteration_count
+    );
     assert_eq!(original_context.variables, loaded_context.variables);
     println!("   ✅ Data integrity verified");
 
@@ -141,7 +150,10 @@ async fn main() -> Result<()> {
     println!("   Checkpoint Count: {}", recovery_info.checkpoint_count);
     println!("   State Version: {}", recovery_info.state_version);
     println!("   Recovery Possible: {}", recovery_info.recovery_possible);
-    println!("   Corruption Detected: {}", recovery_info.corruption_detected);
+    println!(
+        "   Corruption Detected: {}",
+        recovery_info.corruption_detected
+    );
 
     // Demonstrate checkpoint restoration
     println!("\n🔄 Checkpoint Restoration:");
@@ -149,8 +161,14 @@ async fn main() -> Result<()> {
     if let Some(checkpoint) = checkpoints.first() {
         let mut test_context = loaded_context.clone();
         test_context.restore_from_checkpoint(checkpoint);
-        println!("   Restored context from checkpoint: {}", checkpoint.checkpoint_id);
-        println!("   State version after restoration: {}", test_context.get_state_version());
+        println!(
+            "   Restored context from checkpoint: {}",
+            checkpoint.checkpoint_id
+        );
+        println!(
+            "   State version after restoration: {}",
+            test_context.get_state_version()
+        );
     }
 
     // Show statistics
@@ -164,13 +182,22 @@ async fn main() -> Result<()> {
     // Show context statistics
     println!("\n📊 Context Statistics:");
     let context_stats = loaded_context.get_stats();
-    println!("   Total Observations: {}", context_stats.total_observations);
+    println!(
+        "   Total Observations: {}",
+        context_stats.total_observations
+    );
     println!("   Active Tasks: {}", context_stats.active_tasks);
     println!("   Completed Tasks: {}", context_stats.completed_tasks);
     println!("   Variables Count: {}", context_stats.variables_count);
     println!("   Execution Events: {}", context_stats.execution_events);
-    println!("   Strategy Adjustments: {}", context_stats.strategy_adjustments);
-    println!("   Execution Duration: {:?}", context_stats.execution_duration);
+    println!(
+        "   Strategy Adjustments: {}",
+        context_stats.strategy_adjustments
+    );
+    println!(
+        "   Execution Duration: {:?}",
+        context_stats.execution_duration
+    );
     println!("   Iteration Count: {}", context_stats.iteration_count);
 
     // Demonstrate context summary

@@ -1,5 +1,5 @@
-use fluent_core::types::{Request, Response, Usage, Cost};
 use anyhow::Result;
+use fluent_core::types::{Cost, Request, Response, Usage};
 use tokio;
 
 /// Integration tests for storage components
@@ -107,7 +107,10 @@ async fn test_data_structure_validation() -> Result<()> {
     };
 
     // Validate usage calculations
-    assert_eq!(response.usage.total_tokens, response.usage.prompt_tokens + response.usage.completion_tokens);
+    assert_eq!(
+        response.usage.total_tokens,
+        response.usage.prompt_tokens + response.usage.completion_tokens
+    );
 
     // Validate cost calculations (with floating point tolerance)
     let expected_total = response.cost.prompt_cost + response.cost.completion_cost;

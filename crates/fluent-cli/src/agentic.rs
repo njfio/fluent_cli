@@ -1,15 +1,15 @@
 //! Agentic mode operations and autonomous execution
-//! 
+//!
 //! This module contains all the functionality for running the fluent_cli
 //! in agentic mode, including goal processing, autonomous execution,
 //! and MCP integration.
 
 use anyhow::{anyhow, Result};
-use log::{debug, info, warn, error};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
-use std::pin::Pin;
+use log::{debug, error, info, warn};
 use std::fs;
+use std::pin::Pin;
 use std::sync::Arc;
 
 /// Configuration for agentic mode execution
@@ -84,7 +84,10 @@ impl AgenticConfig {
             model_override,
             gen_retries,
             min_html_size,
-            dry_run: std::env::var("FLUENT_AGENT_DRY_RUN").ok().map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false),
+            dry_run: std::env::var("FLUENT_AGENT_DRY_RUN")
+                .ok()
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         }
     }
 }
@@ -140,24 +143,30 @@ impl AgenticExecutor {
 
         let agent_config = self.load_agent_configuration().await?;
         let credentials = self.load_and_validate_credentials(&agent_config).await?;
-        let runtime_config = self.create_runtime_configuration(&agent_config, credentials).await?;
+        let runtime_config = self
+            .create_runtime_configuration(&agent_config, credentials)
+            .await?;
         let goal = self.create_goal()?;
 
         // Optional quick engine test
         let _ = self.test_engines(&runtime_config).await;
 
         // Build autonomous orchestrator with tools/memory
-        use fluent_agent::adapters::{
-            RegistryToolAdapter,
-            LlmCodeGenerator,
-            FsFileManager,
-            SimpleRiskAssessor,
+        use fluent_agent::action::{
+            ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
         };
-        use fluent_agent::{AgentOrchestrator, MemorySystem, ReflectionEngine, StateManager, StateManagerConfig};
-        use fluent_agent::action::{ComprehensiveActionExecutor, ActionPlanner, ActionExecutor, IntelligentActionPlanner};
-        use fluent_agent::observation::{ComprehensiveObservationProcessor, BasicResultAnalyzer, BasicPatternDetector, BasicImpactAssessor, BasicLearningExtractor};
         use fluent_agent::adapters::CompositePlanner;
+        use fluent_agent::adapters::{
+            FsFileManager, LlmCodeGenerator, RegistryToolAdapter, SimpleRiskAssessor,
+        };
+        use fluent_agent::observation::{
+            BasicImpactAssessor, BasicLearningExtractor, BasicPatternDetector, BasicResultAnalyzer,
+            ComprehensiveObservationProcessor,
+        };
         use fluent_agent::tools::ToolRegistry;
+        use fluent_agent::{
+            AgentOrchestrator, MemorySystem, ReflectionEngine, StateManager, StateManagerConfig,
+        };
 
         let mut tool_registry = if self.config.enable_tools {
             ToolRegistry::with_standard_tools(&runtime_config.config.tools)
@@ -179,11 +188,15 @@ impl AgenticExecutor {
             use fluent_agent::production_mcp::initialize_production_mcp;
             if let Ok(manager) = initialize_production_mcp().await {
                 // Attempt auto-connect from config file (config_path)
-                if let Err(e) = Self::auto_connect_mcp_servers(&self.config.config_path, &manager).await {
+                if let Err(e) =
+                    Self::auto_connect_mcp_servers(&self.config.config_path, &manager).await
+                {
                     println!("⚠️ MCP auto-connect skipped: {}", e);
                 }
 
-                let mcp_exec = std::sync::Arc::new(fluent_agent::adapters::McpRegistryExecutor::new(manager.clone()));
+                let mcp_exec = std::sync::Arc::new(
+                    fluent_agent::adapters::McpRegistryExecutor::new(manager.clone()),
+                );
                 tool_registry.register("mcp".to_string(), mcp_exec);
                 println!("🔌 MCP integrated: remote tools available via registry");
             } else {
@@ -194,9 +207,15 @@ impl AgenticExecutor {
         // Finalize registry, then create shared Arc for adapters/planners
         let arc_registry = Arc::new(tool_registry);
         let tool_adapter = Box::new(RegistryToolAdapter::new(arc_registry.clone()));
-        let codegen = Box::new(LlmCodeGenerator::new(runtime_config.reasoning_engine.clone()));
+        let codegen = Box::new(LlmCodeGenerator::new(
+            runtime_config.reasoning_engine.clone(),
+        ));
         let filemgr = Box::new(FsFileManager);
-        let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(tool_adapter, codegen, filemgr));
+        let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(
+            tool_adapter,
+            codegen,
+            filemgr,
+        ));
         let action_executor: Box<dyn ActionExecutor> = if self.config.dry_run {
             println!("🧪 Dry-run mode: no side effects will be executed");
             Box::new(fluent_agent::adapters::DryRunActionExecutor)
@@ -205,8 +224,12 @@ impl AgenticExecutor {
         };
 
         // Planner and observation (adaptive + reflective)
-        let base_planner: Box<dyn ActionPlanner> = Box::new(IntelligentActionPlanner::new(Box::new(SimpleRiskAssessor)));
-        let planner: Box<dyn ActionPlanner> = Box::new(CompositePlanner::new_with_registry(base_planner, arc_registry.clone()));
+        let base_planner: Box<dyn ActionPlanner> =
+            Box::new(IntelligentActionPlanner::new(Box::new(SimpleRiskAssessor)));
+        let planner: Box<dyn ActionPlanner> = Box::new(CompositePlanner::new_with_registry(
+            base_planner,
+            arc_registry.clone(),
+        ));
         let obs = Box::new(ComprehensiveObservationProcessor::new(
             Box::new(BasicResultAnalyzer),
             Box::new(BasicPatternDetector),
@@ -250,9 +273,17 @@ impl AgenticExecutor {
             timeout_secs
         );
 
-        info!("agent.react.start goal='{}' timeout_secs={}", self.config.goal_description, timeout_secs);
+        info!(
+            "agent.react.start goal='{}' timeout_secs={}",
+            self.config.goal_description, timeout_secs
+        );
         // Explicit autonomous loop for visibility
-        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), self.run_autonomous_execution(&goal, &runtime_config)).await {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            self.run_autonomous_execution(&goal, &runtime_config),
+        )
+        .await
+        {
             Ok(Ok(())) => {
                 info!("agent.react.done success=true explicit_autonomous_loop=true");
                 println!("✅ Goal execution finished. Success: true");
@@ -264,7 +295,10 @@ impl AgenticExecutor {
                 Err(e)
             }
             Err(_) => {
-                error!("agent.react.timeout secs={} goal='{}'", timeout_secs, self.config.goal_description);
+                error!(
+                    "agent.react.timeout secs={} goal='{}'",
+                    timeout_secs, self.config.goal_description
+                );
                 eprintln!("⏳ Agent timed out after {}s. Aborting.", timeout_secs);
                 Err(anyhow::anyhow!(format!(
                     "Agent timed out after {}s while executing the goal",
@@ -310,26 +344,59 @@ impl AgenticExecutor {
                             let mut parts = s.splitn(2, ':');
                             let name = parts.next().unwrap_or("");
                             let cmd_and_args = parts.next().unwrap_or("").trim();
-                            if name.is_empty() || cmd_and_args.is_empty() { continue; }
+                            if name.is_empty() || cmd_and_args.is_empty() {
+                                continue;
+                            }
                             let mut split = cmd_and_args.split_whitespace();
                             if let Some(command) = split.next() {
                                 let args: Vec<String> = split.map(|x| x.to_string()).collect();
-                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                let _ = manager
+                                    .client_manager()
+                                    .connect_server(name.to_string(), command.to_string(), args)
+                                    .await;
                             }
                         }
                         Value::Object(map) => {
                             let name = map.get("name").and_then(|v| v.as_str()).unwrap_or("");
                             let command = map.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                            let args: Vec<String> = map.get("args")
+                            let args: Vec<String> = map
+                                .get("args")
                                 .and_then(|v| v.as_array())
-                                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                                .map(|a| {
+                                    a.iter()
+                                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                                        .collect()
+                                })
                                 .unwrap_or_default();
                             if !name.is_empty() && !command.is_empty() {
-                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                let _ = manager
+                                    .client_manager()
+                                    .connect_server(name.to_string(), command.to_string(), args)
+                                    .await;
                             }
                         }
                         _ => {}
@@ -352,7 +419,7 @@ impl AgenticExecutor {
     /// Load agent configuration from file
     async fn load_agent_configuration(&self) -> Result<fluent_agent::config::AgentEngineConfig> {
         use fluent_agent::config::AgentEngineConfig;
-        
+
         let agent_config = AgentEngineConfig::load_from_file(&self.config.agent_config_path)
             .await
             .map_err(|e| anyhow!("Failed to load agent config: {}", e))?;
@@ -372,9 +439,12 @@ impl AgenticExecutor {
         agent_config: &fluent_agent::config::AgentEngineConfig,
     ) -> Result<std::collections::HashMap<String, String>> {
         use fluent_agent::config::credentials;
-        
+
         let credentials = credentials::load_from_environment();
-        println!("🔑 Loaded {} credential(s) from environment", credentials.len());
+        println!(
+            "🔑 Loaded {} credential(s) from environment",
+            credentials.len()
+        );
 
         // Validate required credentials
         let required_engines = vec![
@@ -394,9 +464,13 @@ impl AgenticExecutor {
         credentials: std::collections::HashMap<String, String>,
     ) -> Result<fluent_agent::config::AgentRuntimeConfig> {
         println!("🔧 Creating LLM engines...");
-        
+
         let runtime_config = agent_config
-            .create_runtime_config(&self.config.config_path, credentials, self.config.model_override.as_deref())
+            .create_runtime_config(
+                &self.config.config_path,
+                credentials,
+                self.config.model_override.as_deref(),
+            )
             .await?;
 
         println!("✅ LLM engines created successfully!");
@@ -406,9 +480,12 @@ impl AgenticExecutor {
     /// Create goal from description
     fn create_goal(&self) -> Result<fluent_agent::goal::Goal> {
         use fluent_agent::goal::{Goal, GoalType};
-        
-        let mut builder = Goal::builder(self.config.goal_description.clone(), GoalType::CodeGeneration)
-            .max_iterations(self.config.max_iterations);
+
+        let mut builder = Goal::builder(
+            self.config.goal_description.clone(),
+            GoalType::CodeGeneration,
+        )
+        .max_iterations(self.config.max_iterations);
 
         // Load success criteria from env if provided by --goal-file path
         if let Ok(sc) = std::env::var("FLUENT_AGENT_SUCCESS_CRITERIA") {
@@ -432,9 +509,12 @@ impl AgenticExecutor {
     }
 
     /// Test engines to ensure they're working
-    async fn test_engines(&self, runtime_config: &fluent_agent::config::AgentRuntimeConfig) -> Result<()> {
+    async fn test_engines(
+        &self,
+        runtime_config: &fluent_agent::config::AgentRuntimeConfig,
+    ) -> Result<()> {
         println!("\n🧠 Testing reasoning engine...");
-        
+
         let test_request = Request {
             flowname: "agentic_test".to_string(),
             payload: "Hello! Please respond with 'Agentic mode is working!' to confirm the engine is operational.".to_string(),
@@ -480,7 +560,7 @@ impl AgenticExecutor {
         runtime_config: &fluent_agent::config::AgentRuntimeConfig,
     ) -> Result<()> {
         println!("\n🚀 Starting autonomous execution...");
-        
+
         let executor = AutonomousExecutor::new(
             goal.clone(),
             runtime_config,
@@ -506,15 +586,26 @@ impl<'a> AutonomousExecutor<'a> {
         gen_retries: u32,
         min_html_size: usize,
     ) -> Self {
-        Self { goal, runtime_config, gen_retries, min_html_size }
+        Self {
+            goal,
+            runtime_config,
+            gen_retries,
+            min_html_size,
+        }
     }
 
     /// Execute autonomous loop
     pub async fn execute(&self, max_iterations: u32) -> Result<()> {
         use fluent_agent::context::ExecutionContext;
-        
-        println!("🎯 Starting autonomous execution for goal: {}", self.goal.description);
-        info!("agent.loop.begin goal='{}' max_iterations={}", self.goal.description, max_iterations);
+
+        println!(
+            "🎯 Starting autonomous execution for goal: {}",
+            self.goal.description
+        );
+        info!(
+            "agent.loop.begin goal='{}' max_iterations={}",
+            self.goal.description, max_iterations
+        );
 
         let mut context = ExecutionContext::new(self.goal.clone());
 
@@ -523,16 +614,26 @@ impl<'a> AutonomousExecutor<'a> {
             debug!("agent.loop.iteration start iter={}", iteration);
 
             let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
-            debug!("agent.loop.reasoning.done len={} preview='{}'", reasoning_response.len(), &reasoning_response.chars().take(160).collect::<String>());
-            
+            debug!(
+                "agent.loop.reasoning.done len={} preview='{}'",
+                reasoning_response.len(),
+                &reasoning_response.chars().take(160).collect::<String>()
+            );
+
             if self.is_game_goal() {
                 info!("agent.loop.path game=true");
                 self.handle_game_creation(&mut context).await?;
                 return Ok(());
             } else {
                 info!("agent.loop.path game=false");
-                self.handle_general_goal(&mut context, &reasoning_response, iteration, max_iterations).await?;
-                
+                self.handle_general_goal(
+                    &mut context,
+                    &reasoning_response,
+                    iteration,
+                    max_iterations,
+                )
+                .await?;
+
                 if self.should_complete_goal(iteration, max_iterations) {
                     info!("agent.loop.complete iter={}", iteration);
                     return Ok(());
@@ -568,11 +669,25 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
-        debug!("agent.reasoning.request flow='{}' len={}", reasoning_request.flowname, reasoning_request.payload.len());
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&reasoning_request)).await {
+        debug!(
+            "agent.reasoning.request flow='{}' len={}",
+            reasoning_request.flowname,
+            reasoning_request.payload.len()
+        );
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&reasoning_request),
+        )
+        .await
+        {
             Ok(response) => {
                 println!("🤖 Agent reasoning: {}", response.content);
-                debug!("agent.reasoning.response len={} preview='{}'", response.content.len(), &response.content.chars().take(200).collect::<String>());
+                debug!(
+                    "agent.reasoning.response len={} preview='{}'",
+                    response.content.len(),
+                    &response.content.chars().take(200).collect::<String>()
+                );
                 Ok(response.content)
             }
             Err(e) => {
@@ -587,17 +702,24 @@ impl<'a> AutonomousExecutor<'a> {
     fn is_game_goal(&self) -> bool {
         let description = self.goal.description.to_lowercase();
         description.contains("game")
-
             || description.contains("tetris")
             || description.contains("javascript")
             || description.contains("html")
     }
 
     /// Handle game creation goals
-    async fn handle_game_creation(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
+    async fn handle_game_creation(
+        &self,
+        context: &mut fluent_agent::context::ExecutionContext,
+    ) -> Result<()> {
         println!("🎮 Agent decision: Create the game now!");
 
-        let game_creator = GameCreator::new(&self.goal, self.runtime_config, self.gen_retries, self.min_html_size);
+        let game_creator = GameCreator::new(
+            &self.goal,
+            self.runtime_config,
+            self.gen_retries,
+            self.min_html_size,
+        );
         game_creator.create_game(context).await
     }
 
@@ -611,10 +733,13 @@ impl<'a> AutonomousExecutor<'a> {
     ) -> Result<()> {
         println!("🔍 Processing complex analytical goal...");
 
-        let action_response = self.plan_action(reasoning_response, iteration, max_iterations).await?;
-        
+        let action_response = self
+            .plan_action(reasoning_response, iteration, max_iterations)
+            .await?;
+
         if self.goal.description.to_lowercase().contains("reflection") {
-            self.handle_reflection_analysis(context, &action_response, iteration, max_iterations).await?;
+            self.handle_reflection_analysis(context, &action_response, iteration, max_iterations)
+                .await?;
         } else {
             println!("🔧 Processing general goal: {}", self.goal.description);
             context.increment_iteration();
@@ -624,7 +749,12 @@ impl<'a> AutonomousExecutor<'a> {
     }
 
     /// Plan specific action based on reasoning
-    async fn plan_action(&self, reasoning_response: &str, iteration: u32, max_iterations: u32) -> Result<String> {
+    async fn plan_action(
+        &self,
+        reasoning_response: &str,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<String> {
         let action_request = Request {
             flowname: "action_planning".to_string(),
             payload: format!(
@@ -634,18 +764,28 @@ impl<'a> AutonomousExecutor<'a> {
                 Iteration: {}/{}\n\n\
                 What specific file should be analyzed, created, or modified? \
                 Respond with just the file path and a brief description of what to do with it.",
-                self.goal.description,
-                reasoning_response,
-                iteration,
-                max_iterations
+                self.goal.description, reasoning_response, iteration, max_iterations
             ),
         };
 
-        debug!("agent.action.request flow='{}' len={}", action_request.flowname, action_request.payload.len());
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&action_request)).await {
+        debug!(
+            "agent.action.request flow='{}' len={}",
+            action_request.flowname,
+            action_request.payload.len()
+        );
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&action_request),
+        )
+        .await
+        {
             Ok(response) => {
                 println!("📋 Planned action: {}", response.content);
-                info!("agent.action.planned first_line='{}'", response.content.lines().next().unwrap_or(""));
+                info!(
+                    "agent.action.planned first_line='{}'",
+                    response.content.lines().next().unwrap_or("")
+                );
                 Ok(response.content)
             }
             Err(e) => {
@@ -671,9 +811,17 @@ impl<'a> AutonomousExecutor<'a> {
             println!("⚠️ Could not create analysis directory: {e}");
         }
 
-        let analysis_response = self.perform_reflection_analysis(iteration, max_iterations).await?;
-        self.write_analysis_file(analysis_file, &analysis_response, action_response, iteration).await?;
-        
+        let analysis_response = self
+            .perform_reflection_analysis(iteration, max_iterations)
+            .await?;
+        self.write_analysis_file(
+            analysis_file,
+            &analysis_response,
+            action_response,
+            iteration,
+        )
+        .await?;
+
         // Update context with progress
         context.set_variable("analysis_iteration".to_string(), iteration.to_string());
         context.set_variable("analysis_file".to_string(), analysis_file.to_string());
@@ -683,7 +831,11 @@ impl<'a> AutonomousExecutor<'a> {
     }
 
     /// Perform reflection system analysis
-    async fn perform_reflection_analysis(&self, iteration: u32, max_iterations: u32) -> Result<String> {
+    async fn perform_reflection_analysis(
+        &self,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<String> {
         let analysis_request = Request {
             flowname: "reflection_analysis".to_string(),
             payload: format!(
@@ -699,7 +851,13 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&analysis_request)).await {
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&analysis_request),
+        )
+        .await
+        {
             Ok(response) => Ok(response.content),
             Err(e) => {
                 println!("❌ Analysis failed: {e}");
@@ -745,10 +903,11 @@ impl<'a> AutonomousExecutor<'a> {
     /// Check if goal should be completed
     fn should_complete_goal(&self, iteration: u32, max_iterations: u32) -> bool {
         if self.goal.description.to_lowercase().contains("reflection")
-            && iteration >= max_iterations / 2 {
-                println!("🎯 Comprehensive analysis completed across {iteration} iterations!");
-                return true;
-            }
+            && iteration >= max_iterations / 2
+        {
+            println!("🎯 Comprehensive analysis completed across {iteration} iterations!");
+            return true;
+        }
         false
     }
 }
@@ -768,26 +927,48 @@ impl<'a> GameCreator<'a> {
         gen_retries: u32,
         min_html_size: usize,
     ) -> Self {
-        Self { goal, runtime_config, gen_retries, min_html_size }
+        Self {
+            goal,
+            runtime_config,
+            gen_retries,
+            min_html_size,
+        }
     }
 
     /// Create game based on goal description
-    pub async fn create_game(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
+    pub async fn create_game(
+        &self,
+        context: &mut fluent_agent::context::ExecutionContext,
+    ) -> Result<()> {
         let (file_extension, code_prompt, file_path) = self.determine_game_type();
-        info!("agent.codegen.select type='{}' path='{}'", file_extension, file_path);
-        let game_code = self.generate_game_code(&code_prompt, file_extension).await?;
-        debug!("agent.codegen.generated len={} ext='{}'", game_code.len(), file_extension);
+        info!(
+            "agent.codegen.select type='{}' path='{}'",
+            file_extension, file_path
+        );
+        let game_code = self
+            .generate_game_code(&code_prompt, file_extension)
+            .await?;
+        debug!(
+            "agent.codegen.generated len={} ext='{}'",
+            game_code.len(),
+            file_extension
+        );
         self.write_game_file(file_path, &game_code)?;
         self.update_context(context, file_path, file_extension);
-        
-        println!("🎉 Goal achieved! {} game created successfully!", file_extension.to_uppercase());
+
+        println!(
+            "🎉 Goal achieved! {} game created successfully!",
+            file_extension.to_uppercase()
+        );
         Ok(())
     }
 
     /// Determine what type of game to create
     fn determine_game_type(&self) -> (&str, String, &str) {
         let description = self.goal.description.to_lowercase();
-        let wants_web = description.contains("javascript") || description.contains("html") || description.contains("web");
+        let wants_web = description.contains("javascript")
+            || description.contains("html")
+            || description.contains("web");
 
         // Check for specific game types in order of preference
         if description.contains("tetris") {
@@ -902,16 +1083,26 @@ impl<'a> GameCreator<'a> {
 
     /// Generate game code using LLM
     async fn generate_game_code(&self, code_prompt: &str, file_extension: &str) -> Result<String> {
-        info!("agent.codegen.start ext='{}' retries={}", file_extension, self.gen_retries);
+        info!(
+            "agent.codegen.start ext='{}' retries={}",
+            file_extension, self.gen_retries
+        );
         let code_request = Request {
             flowname: "code_generation".to_string(),
             payload: code_prompt.to_string(),
         };
 
-        println!("🧠 Generating {} game code with selected LLM...", file_extension.to_uppercase());
+        println!(
+            "🧠 Generating {} game code with selected LLM...",
+            file_extension.to_uppercase()
+        );
 
         // Helper: try execute with retry/backoff
-        async fn try_execute_with_retry(engine: &Box<dyn fluent_core::traits::Engine>, req: &Request, attempts: u32) -> Result<fluent_core::types::Response> {
+        async fn try_execute_with_retry(
+            engine: &Box<dyn fluent_core::traits::Engine>,
+            req: &Request,
+            attempts: u32,
+        ) -> Result<fluent_core::types::Response> {
             let mut delay = 500u64;
             let max_attempts = attempts.max(1);
             let mut last_err: Option<anyhow::Error> = None;
@@ -923,20 +1114,35 @@ impl<'a> GameCreator<'a> {
                         last_err = Some(e);
                         if attempt < max_attempts {
                             println!("⚠️ LLM request failed (attempt {attempt}/{max_attempts}). Retrying in {}ms...", delay);
-                            warn!("agent.codegen.retry attempt={}/{} delay_ms={}", attempt, max_attempts, delay);
+                            warn!(
+                                "agent.codegen.retry attempt={}/{} delay_ms={}",
+                                attempt, max_attempts, delay
+                            );
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             delay *= 2;
                         }
                     }
                 }
             }
-            Err(anyhow::anyhow!(format!("LLM request failed after retries: {}", last_err.unwrap_or_else(|| anyhow::anyhow!("unknown error")))))
+            Err(anyhow::anyhow!(format!(
+                "LLM request failed after retries: {}",
+                last_err.unwrap_or_else(|| anyhow::anyhow!("unknown error"))
+            )))
         }
 
         // First attempt with retry
-        let mut code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &code_request, self.gen_retries).await?;
+        let mut code_response = try_execute_with_retry(
+            self.runtime_config.reasoning_engine.as_ref(),
+            &code_request,
+            self.gen_retries,
+        )
+        .await?;
         let mut game_code = crate::utils::extract_code(&code_response.content, file_extension);
-        debug!("agent.codegen.extracted len={} ext='{}'", game_code.len(), file_extension);
+        debug!(
+            "agent.codegen.extracted len={} ext='{}'",
+            game_code.len(),
+            file_extension
+        );
 
         // Lightweight validation for Tetris deliverables
         let desc = self.goal.description.to_lowercase();
@@ -944,11 +1150,22 @@ impl<'a> GameCreator<'a> {
         let mut valid = true;
         if needs_tetris && file_extension == "html" {
             let lc = game_code.to_lowercase();
-            let has_canvas = lc.contains("<canvas") || lc.contains("getelementbyid('tetriscanvas'") || lc.contains("getelementbyid(\"tetriscanvas\"");
-            let has_controls = lc.contains("keydown") || lc.contains("addEventListener('keydown'") || lc.contains("addEventListener(\"keydown\"");
-            let has_logic = lc.contains("tetromino") || lc.contains("rotation") || lc.contains("rotate(") || lc.contains("lines") || lc.contains("score");
+            let has_canvas = lc.contains("<canvas")
+                || lc.contains("getelementbyid('tetriscanvas'")
+                || lc.contains("getelementbyid(\"tetriscanvas\"");
+            let has_controls = lc.contains("keydown")
+                || lc.contains("addEventListener('keydown'")
+                || lc.contains("addEventListener(\"keydown\"");
+            let has_logic = lc.contains("tetromino")
+                || lc.contains("rotation")
+                || lc.contains("rotate(")
+                || lc.contains("lines")
+                || lc.contains("score");
             let long_enough = game_code.len() > self.min_html_size; // require non-trivial output
-            debug!("agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}", has_canvas, has_controls, has_logic, long_enough);
+            debug!(
+                "agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}",
+                has_canvas, has_controls, has_logic, long_enough
+            );
             valid = has_canvas && has_controls && has_logic && long_enough;
         }
 
@@ -967,8 +1184,16 @@ impl<'a> GameCreator<'a> {
                 if file_extension == "html" { "HTML (embedded JS/CSS)" } else { "Rust" }
             );
 
-            let refine_request = Request { flowname: "code_generation_refine".to_string(), payload: refine_prompt };
-            code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &refine_request, self.gen_retries).await?;
+            let refine_request = Request {
+                flowname: "code_generation_refine".to_string(),
+                payload: refine_prompt,
+            };
+            code_response = try_execute_with_retry(
+                self.runtime_config.reasoning_engine.as_ref(),
+                &refine_request,
+                self.gen_retries,
+            )
+            .await?;
             game_code = crate::utils::extract_code(&code_response.content, file_extension);
 
             // Re-validate refined output; if still clearly a placeholder, keep the raw content to aid debugging
@@ -988,14 +1213,23 @@ impl<'a> GameCreator<'a> {
     /// Write game code to file
     fn write_game_file(&self, file_path: &str, game_code: &str) -> Result<()> {
         fs::write(file_path, game_code)?;
-        info!("agent.codegen.file_written path='{}' bytes={}", file_path, game_code.len());
+        info!(
+            "agent.codegen.file_written path='{}' bytes={}",
+            file_path,
+            game_code.len()
+        );
         println!("✅ Created game at: {file_path}");
         println!("📝 Game code length: {} characters", game_code.len());
         Ok(())
     }
 
     /// Update execution context with game creation info
-    fn update_context(&self, context: &mut fluent_agent::context::ExecutionContext, file_path: &str, file_extension: &str) {
+    fn update_context(
+        &self,
+        context: &mut fluent_agent::context::ExecutionContext,
+        file_path: &str,
+        file_extension: &str,
+    ) {
         context.set_variable("game_created".to_string(), "true".to_string());
         context.set_variable("game_path".to_string(), file_path.to_string());
         context.set_variable("game_type".to_string(), file_extension.to_string());

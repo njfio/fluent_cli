@@ -12,9 +12,9 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::goal::Goal;
 use crate::context::ExecutionContext;
-use crate::planning::dependency_analyzer::{DependencyAnalyzer, DependencyGraph, AnalyzerConfig};
+use crate::goal::Goal;
+use crate::planning::dependency_analyzer::{AnalyzerConfig, DependencyAnalyzer, DependencyGraph};
 use fluent_core::traits::Engine;
 
 /// Enhanced HTN Planner with advanced planning capabilities
@@ -689,10 +689,7 @@ pub struct QualityAssessment {
 
 impl EnhancedHTNPlanner {
     /// Create a new enhanced HTN planner
-    pub async fn new(
-        base_engine: Arc<dyn Engine>,
-        config: EnhancedHTNConfig,
-    ) -> Result<Self> {
+    pub async fn new(base_engine: Arc<dyn Engine>, config: EnhancedHTNConfig) -> Result<Self> {
         let dependency_analyzer = Arc::new(DependencyAnalyzer::new(AnalyzerConfig::default()));
         let resource_manager = Arc::new(RwLock::new(ResourceManager::default()));
         let scheduling_engine = Arc::new(RwLock::new(SchedulingEngine::default()));
@@ -762,7 +759,7 @@ impl EnhancedHTNPlanner {
     async fn create_enhanced_root_task(&self, goal: &Goal) -> Result<EnhancedNetworkTask> {
         let complexity = self.assess_goal_complexity(goal).await;
         let priority = self.determine_goal_priority(goal).await;
-        
+
         Ok(EnhancedNetworkTask {
             id: Uuid::new_v4().to_string(),
             description: goal.description.clone(),
@@ -788,36 +785,45 @@ impl EnhancedHTNPlanner {
     /// Initialize the enhanced task network
     async fn initialize_enhanced_network(&self, root_task: EnhancedNetworkTask) -> Result<()> {
         let mut network = self.task_network.write().await;
+        network.tasks.clear();
+        network.dependency_graph = DependencyGraph::new();
+        network.resource_requirements.clear();
+        network.task_metrics.clear();
+        network.execution_history.clear();
         let root_id = root_task.id.clone();
-        
+
         network.tasks.insert(root_id.clone(), root_task);
         network.root_id = Some(root_id);
-        
+
         Ok(())
+    }
     }
 
     /// Perform intelligent task decomposition
     async fn perform_smart_decomposition(&self, context: &ExecutionContext) -> Result<()> {
         let mut decomposition_queue = VecDeque::new();
-        
+
         if let Some(root_id) = &self.task_network.read().await.root_id {
             decomposition_queue.push_back(root_id.clone());
         }
 
         while let Some(task_id) = decomposition_queue.pop_front() {
             let task = self.task_network.read().await.tasks.get(&task_id).cloned();
-            
+
             if let Some(task) = task {
                 if self.should_decompose_task(&task).await? {
                     let strategy = self.select_decomposition_strategy(&task, context).await?;
-                    let subtasks = self.decompose_with_strategy(&task, strategy, context).await?;
-                    
+                    let subtasks = self
+                        .decompose_with_strategy(&task, strategy, context)
+                        .await?;
+
                     // Add subtasks to network and queue compound tasks for further decomposition
-                    self.add_subtasks_to_network(&task_id, subtasks, &mut decomposition_queue).await?;
+                    self.add_subtasks_to_network(&task_id, subtasks, &mut decomposition_queue)
+                        .await?;
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -825,23 +831,25 @@ impl EnhancedHTNPlanner {
     async fn perform_basic_decomposition(&self, context: &ExecutionContext) -> Result<()> {
         // Simplified decomposition logic
         let mut to_process = VecDeque::new();
-        
+
         if let Some(root_id) = &self.task_network.read().await.root_id {
             to_process.push_back(root_id.clone());
         }
 
         while let Some(task_id) = to_process.pop_front() {
             let task = self.task_network.read().await.tasks.get(&task_id).cloned();
-            
+
             if let Some(task) = task {
-                if task.depth < self.config.max_depth && 
-                   matches!(task.task_type, EnhancedTaskType::Compound) {
+                if task.depth < self.config.max_depth
+                    && matches!(task.task_type, EnhancedTaskType::Compound)
+                {
                     let subtasks = self.basic_decompose_task(&task, context).await?;
-                    self.add_subtasks_to_network(&task_id, subtasks, &mut to_process).await?;
+                    self.add_subtasks_to_network(&task_id, subtasks, &mut to_process)
+                        .await?;
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -849,7 +857,7 @@ impl EnhancedHTNPlanner {
     async fn analyze_dependencies(&self) -> Result<DependencyAnalysisResult> {
         let network = self.task_network.read().await;
         let tasks: Vec<_> = network.tasks.values().collect();
-        
+
         // Build dependency graph
         let mut dependency_graph = DependencyGraph::new();
         for task in &tasks {
@@ -858,19 +866,31 @@ impl EnhancedHTNPlanner {
                 dependency_graph.add_edge(prerequisite.clone(), task.id.clone());
             }
         }
-        
+
         // Analyze critical path
-        let critical_path = self.dependency_analyzer.find_critical_path(&dependency_graph).await?;
-        
+        let critical_path = self
+            .dependency_analyzer
+            .find_critical_path(&dependency_graph)
+            .await?;
+
         // Find parallel opportunities
-        let parallel_opportunities = self.dependency_analyzer.find_parallel_opportunities(&dependency_graph).await?;
-        
+        let parallel_opportunities = self
+            .dependency_analyzer
+            .find_parallel_opportunities(&dependency_graph)
+            .await?;
+
         // Detect circular dependencies
-        let circular_dependencies = self.dependency_analyzer.detect_cycles(&dependency_graph).await?;
-        
+        let circular_dependencies = self
+            .dependency_analyzer
+            .detect_cycles(&dependency_graph)
+            .await?;
+
         // Identify bottlenecks
-        let bottlenecks = self.dependency_analyzer.find_bottlenecks(&dependency_graph).await?;
-        
+        let bottlenecks = self
+            .dependency_analyzer
+            .find_bottlenecks(&dependency_graph)
+            .await?;
+
         Ok(DependencyAnalysisResult {
             critical_path_length: critical_path.len() as u32,
             parallel_opportunities: parallel_opportunities.len() as u32,
@@ -884,23 +904,24 @@ impl EnhancedHTNPlanner {
     async fn plan_resources(&self) -> Result<ResourceAnalysisResult> {
         let network = self.task_network.read().await;
         let mut resource_manager = self.resource_manager.write().await;
-        
+
         // Analyze resource requirements for all tasks
         for task in network.tasks.values() {
             for resource_req in &task.resource_requirements {
-                self.register_resource_requirement(&mut resource_manager, task, resource_req).await;
+                self.register_resource_requirement(&mut resource_manager, task, resource_req)
+                    .await;
             }
         }
-        
+
         // Calculate peak usage
         let peak_usage = self.calculate_peak_resource_usage(&resource_manager).await;
-        
+
         // Identify contention periods
         let contention_periods = self.identify_resource_contention(&resource_manager).await;
-        
+
         // Find optimization opportunities
         let optimizations = self.find_resource_optimizations(&resource_manager).await;
-        
+
         Ok(ResourceAnalysisResult {
             peak_resource_usage: peak_usage,
             resource_contention_periods: contention_periods,
@@ -923,33 +944,36 @@ impl EnhancedHTNPlanner {
     async fn create_enhanced_execution_plan(&self) -> Result<EnhancedExecutionPlan> {
         let network = self.task_network.read().await;
         let scheduling_engine = self.scheduling_engine.read().await;
-        
+
         // Get all executable tasks (primitives)
-        let executable_tasks: Vec<_> = network.tasks.values()
+        let executable_tasks: Vec<_> = network
+            .tasks
+            .values()
             .filter(|t| matches!(t.task_type, EnhancedTaskType::Primitive))
             .collect();
-        
+
         // Create execution phases
         let phases = self.create_execution_phases(&executable_tasks).await;
-        
+
         // Identify critical path
         let critical_path = self.identify_critical_path(&executable_tasks).await;
-        
+
         // Create parallel blocks
         let parallel_blocks = self.create_parallel_blocks(&executable_tasks).await;
-        
+
         // Create resource schedule
         let resource_schedule = self.create_resource_schedule(&executable_tasks).await;
-        
+
         // Calculate total time estimate
-        let total_time = phases.iter()
+        let total_time = phases
+            .iter()
             .map(|p| p.estimated_duration)
             .max()
             .unwrap_or_default();
-        
+
         // Assess risks
         let risk_assessment = self.assess_execution_risks(&executable_tasks).await;
-        
+
         Ok(EnhancedExecutionPlan {
             plan_id: Uuid::new_v4().to_string(),
             execution_phases: phases,
@@ -968,11 +992,13 @@ impl EnhancedHTNPlanner {
         let decomposition_quality = self.assess_decomposition_quality().await;
         let scheduling_quality = self.assess_scheduling_quality(plan).await;
         let resource_quality = self.assess_resource_optimization_quality(plan).await;
-        let risk_quality = self.assess_risk_management_quality(&plan.risk_assessment).await;
-        
-        let overall_quality = (decomposition_quality + scheduling_quality + 
-                              resource_quality + risk_quality) / 4.0;
-        
+        let risk_quality = self
+            .assess_risk_management_quality(&plan.risk_assessment)
+            .await;
+
+        let overall_quality =
+            (decomposition_quality + scheduling_quality + resource_quality + risk_quality) / 4.0;
+
         Ok(QualityAssessment {
             overall_quality,
             decomposition_quality,
@@ -987,10 +1013,10 @@ impl EnhancedHTNPlanner {
     async fn calculate_enhanced_metrics(&self, start_time: SystemTime) -> EnhancedPlanningMetrics {
         let network = self.task_network.read().await;
         let planning_duration = start_time.elapsed().unwrap_or_default();
-        
+
         let total_tasks = network.tasks.len() as u32;
         let max_depth = network.tasks.values().map(|t| t.depth).max().unwrap_or(0);
-        
+
         EnhancedPlanningMetrics {
             total_tasks,
             max_depth,
@@ -1006,27 +1032,46 @@ impl EnhancedHTNPlanner {
 
     /// Get all tasks from the network
     pub async fn get_all_tasks(&self) -> Vec<EnhancedNetworkTask> {
-        self.task_network.read().await.tasks.values().cloned().collect()
+        self.task_network
+            .read()
+            .await
+            .tasks
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Check if a task should be decomposed further
     async fn should_decompose_task(&self, task: &EnhancedNetworkTask) -> Result<bool> {
-        Ok(matches!(task.task_type, EnhancedTaskType::Compound) && 
-           task.depth < self.config.max_depth)
+        Ok(matches!(task.task_type, EnhancedTaskType::Compound)
+            && task.depth < self.config.max_depth)
     }
 
     /// Select decomposition strategy for a task
-    async fn select_decomposition_strategy(&self, task: &EnhancedNetworkTask, _context: &ExecutionContext) -> Result<DecompositionStrategy> {
+    async fn select_decomposition_strategy(
+        &self,
+        task: &EnhancedNetworkTask,
+        _context: &ExecutionContext,
+    ) -> Result<DecompositionStrategy> {
         // Simple strategy selection based on task complexity
         match task.complexity {
-            TaskComplexity::VeryComplex | TaskComplexity::Complex => Ok(DecompositionStrategy::Hierarchical),
+            TaskComplexity::VeryComplex | TaskComplexity::Complex => {
+                Ok(DecompositionStrategy::Hierarchical)
+            }
             TaskComplexity::Moderate => Ok(DecompositionStrategy::GoalOriented),
-            TaskComplexity::Simple | TaskComplexity::Trivial => Ok(DecompositionStrategy::Sequential),
+            TaskComplexity::Simple | TaskComplexity::Trivial => {
+                Ok(DecompositionStrategy::Sequential)
+            }
         }
     }
 
     /// Decompose task with a specific strategy
-    async fn decompose_with_strategy(&self, task: &EnhancedNetworkTask, strategy: DecompositionStrategy, _context: &ExecutionContext) -> Result<Vec<EnhancedNetworkTask>> {
+    async fn decompose_with_strategy(
+        &self,
+        task: &EnhancedNetworkTask,
+        strategy: DecompositionStrategy,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<EnhancedNetworkTask>> {
         match strategy {
             DecompositionStrategy::Hierarchical => self.hierarchical_decompose(task).await,
             DecompositionStrategy::GoalOriented => self.goal_oriented_decompose(task).await,
@@ -1039,10 +1084,14 @@ impl EnhancedHTNPlanner {
     }
 
     /// Basic task decomposition method
-    async fn basic_decompose_task(&self, task: &EnhancedNetworkTask, _context: &ExecutionContext) -> Result<Vec<EnhancedNetworkTask>> {
+    async fn basic_decompose_task(
+        &self,
+        task: &EnhancedNetworkTask,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<EnhancedNetworkTask>> {
         // Simple decomposition into 2-3 subtasks
         let mut subtasks = Vec::new();
-        
+
         for i in 0..2 {
             subtasks.push(EnhancedNetworkTask {
                 id: Uuid::new_v4().to_string(),
@@ -1069,42 +1118,50 @@ impl EnhancedHTNPlanner {
                 execution_context: HashMap::new(),
             });
         }
-        
+
         Ok(subtasks)
     }
 
     /// Add subtasks to the task network
-    async fn add_subtasks_to_network(&self, parent_id: &str, subtasks: Vec<EnhancedNetworkTask>, queue: &mut VecDeque<String>) -> Result<()> {
+    async fn add_subtasks_to_network(
+        &self,
+        parent_id: &str,
+        subtasks: Vec<EnhancedNetworkTask>,
+        queue: &mut VecDeque<String>,
+    ) -> Result<()> {
         let mut network = self.task_network.write().await;
-        
+
         // Update parent task with children
         if let Some(parent) = network.tasks.get_mut(parent_id) {
             for subtask in &subtasks {
                 parent.children.push(subtask.id.clone());
             }
         }
-        
+
         // Add subtasks to network and queue compound tasks for further processing
         for subtask in subtasks {
             let task_id = subtask.id.clone();
             let is_compound = matches!(subtask.task_type, EnhancedTaskType::Compound);
-            
+
             network.tasks.insert(task_id.clone(), subtask);
-            
+
             if is_compound {
                 queue.push_back(task_id);
             }
         }
-        
+
         Ok(())
     }
 
     /// Hierarchical decomposition strategy
-    async fn hierarchical_decompose(&self, task: &EnhancedNetworkTask) -> Result<Vec<EnhancedNetworkTask>> {
+    async fn hierarchical_decompose(
+        &self,
+        task: &EnhancedNetworkTask,
+    ) -> Result<Vec<EnhancedNetworkTask>> {
         // Break into planning, execution, and validation phases
         let mut subtasks: Vec<EnhancedNetworkTask> = Vec::new();
         let phases = ["plan", "execute", "validate"];
-        
+
         for (i, phase) in phases.iter().enumerate() {
             subtasks.push(EnhancedNetworkTask {
                 id: Uuid::new_v4().to_string(),
@@ -1122,7 +1179,11 @@ impl EnhancedHTNPlanner {
                 priority: task.priority.clone(),
                 complexity: task.complexity.clone(),
                 resource_requirements: task.resource_requirements.clone(),
-                prerequisites: if i > 0 { vec![subtasks[i-1].id.clone()] } else { Vec::new() },
+                prerequisites: if i > 0 {
+                    vec![subtasks[i - 1].id.clone()]
+                } else {
+                    Vec::new()
+                },
                 success_criteria: Vec::new(),
                 failure_conditions: Vec::new(),
                 estimated_duration: Duration::from_secs(task.estimated_duration.as_secs() / 3),
@@ -1131,15 +1192,18 @@ impl EnhancedHTNPlanner {
                 execution_context: HashMap::new(),
             });
         }
-        
+
         Ok(subtasks)
     }
 
     /// Goal-oriented decomposition strategy
-    async fn goal_oriented_decompose(&self, task: &EnhancedNetworkTask) -> Result<Vec<EnhancedNetworkTask>> {
+    async fn goal_oriented_decompose(
+        &self,
+        task: &EnhancedNetworkTask,
+    ) -> Result<Vec<EnhancedNetworkTask>> {
         // Break down based on goal achievement
         let mut subtasks: Vec<EnhancedNetworkTask> = Vec::new();
-        
+
         // Analyze, implement, test pattern
         for (i, phase) in ["analyze", "implement", "test"].iter().enumerate() {
             subtasks.push(EnhancedNetworkTask {
@@ -1163,7 +1227,11 @@ impl EnhancedHTNPlanner {
                 priority: task.priority.clone(),
                 complexity: task.complexity.clone(),
                 resource_requirements: task.resource_requirements.clone(),
-                prerequisites: if i > 0 { vec![subtasks[i-1].id.clone()] } else { Vec::new() },
+                prerequisites: if i > 0 {
+                    vec![subtasks[i - 1].id.clone()]
+                } else {
+                    Vec::new()
+                },
                 success_criteria: Vec::new(),
                 failure_conditions: Vec::new(),
                 estimated_duration: Duration::from_secs(match *phase {
@@ -1177,16 +1245,19 @@ impl EnhancedHTNPlanner {
                 execution_context: HashMap::new(),
             });
         }
-        
+
         Ok(subtasks)
     }
 
     /// Sequential decomposition strategy
-    async fn sequential_decompose(&self, task: &EnhancedNetworkTask) -> Result<Vec<EnhancedNetworkTask>> {
+    async fn sequential_decompose(
+        &self,
+        task: &EnhancedNetworkTask,
+    ) -> Result<Vec<EnhancedNetworkTask>> {
         // Simple sequential breakdown
         let mut subtasks: Vec<EnhancedNetworkTask> = Vec::new();
         let num_subtasks = 3;
-        
+
         for i in 0..num_subtasks {
             subtasks.push(EnhancedNetworkTask {
                 id: Uuid::new_v4().to_string(),
@@ -1200,41 +1271,64 @@ impl EnhancedHTNPlanner {
                 priority: task.priority.clone(),
                 complexity: TaskComplexity::Simple,
                 resource_requirements: task.resource_requirements.clone(),
-                prerequisites: if i > 0 { vec![subtasks[i-1].id.clone()] } else { Vec::new() },
+                prerequisites: if i > 0 {
+                    vec![subtasks[i - 1].id.clone()]
+                } else {
+                    Vec::new()
+                },
                 success_criteria: Vec::new(),
                 failure_conditions: Vec::new(),
-                estimated_duration: Duration::from_secs(task.estimated_duration.as_secs() / num_subtasks as u64),
+                estimated_duration: Duration::from_secs(
+                    task.estimated_duration.as_secs() / num_subtasks as u64,
+                ),
                 confidence_score: task.confidence_score * 0.95,
                 decomposition_strategy: task.decomposition_strategy.clone(),
                 execution_context: HashMap::new(),
             });
         }
-        
+
         Ok(subtasks)
     }
-    
+
     /// Register resource requirement (stub implementation)
-    async fn register_resource_requirement(&self, _resource_manager: &mut ResourceManager, _task: &EnhancedNetworkTask, _resource_req: &String) {
+    async fn register_resource_requirement(
+        &self,
+        _resource_manager: &mut ResourceManager,
+        _task: &EnhancedNetworkTask,
+        _resource_req: &String,
+    ) {
         // Stub implementation - would convert String to ResourceRequirement
     }
-    
+
     /// Calculate peak resource usage (stub implementation)
-    async fn calculate_peak_resource_usage(&self, _resource_manager: &ResourceManager) -> HashMap<ResourceType, f64> {
+    async fn calculate_peak_resource_usage(
+        &self,
+        _resource_manager: &ResourceManager,
+    ) -> HashMap<ResourceType, f64> {
         HashMap::new()
     }
-    
+
     /// Identify resource contention periods (stub implementation)
-    async fn identify_resource_contention(&self, _resource_manager: &ResourceManager) -> Vec<ContentionPeriod> {
+    async fn identify_resource_contention(
+        &self,
+        _resource_manager: &ResourceManager,
+    ) -> Vec<ContentionPeriod> {
         Vec::new()
     }
-    
+
     /// Find resource optimizations (stub implementation)
-    async fn find_resource_optimizations(&self, _resource_manager: &ResourceManager) -> Vec<String> {
+    async fn find_resource_optimizations(
+        &self,
+        _resource_manager: &ResourceManager,
+    ) -> Vec<String> {
         Vec::new()
     }
-    
+
     /// Create execution phases (stub implementation)
-    async fn create_execution_phases(&self, tasks: &[&EnhancedNetworkTask]) -> Vec<EnhancedExecutionPhase> {
+    async fn create_execution_phases(
+        &self,
+        tasks: &[&EnhancedNetworkTask],
+    ) -> Vec<EnhancedExecutionPhase> {
         vec![EnhancedExecutionPhase {
             phase_id: uuid::Uuid::new_v4().to_string(),
             phase_type: PhaseType::Execution,
@@ -1246,14 +1340,17 @@ impl EnhancedHTNPlanner {
             contingency_plans: Vec::new(),
         }]
     }
-    
+
     /// Identify critical path (stub implementation)
     async fn identify_critical_path(&self, tasks: &[&EnhancedNetworkTask]) -> Vec<String> {
         tasks.iter().take(3).map(|t| t.id.clone()).collect()
     }
-    
+
     /// Create parallel blocks (stub implementation)
-    async fn create_parallel_blocks(&self, tasks: &[&EnhancedNetworkTask]) -> Vec<ParallelExecutionBlock> {
+    async fn create_parallel_blocks(
+        &self,
+        tasks: &[&EnhancedNetworkTask],
+    ) -> Vec<ParallelExecutionBlock> {
         vec![ParallelExecutionBlock {
             block_id: uuid::Uuid::new_v4().to_string(),
             tasks: tasks.iter().map(|t| t.id.clone()).collect(),
@@ -1262,7 +1359,7 @@ impl EnhancedHTNPlanner {
             resource_constraints: Vec::new(),
         }]
     }
-    
+
     /// Create resource schedule (stub implementation)
     async fn create_resource_schedule(&self, tasks: &[&EnhancedNetworkTask]) -> ResourceSchedule {
         ResourceSchedule {
@@ -1272,7 +1369,7 @@ impl EnhancedHTNPlanner {
             peak_usage_periods: Vec::new(),
         }
     }
-    
+
     /// Assess execution risks (stub implementation)
     async fn assess_execution_risks(&self, tasks: &[&EnhancedNetworkTask]) -> RiskAssessment {
         RiskAssessment {
@@ -1296,27 +1393,27 @@ impl EnhancedHTNPlanner {
             contingency_triggers: Vec::new(),
         }
     }
-    
+
     /// Assess decomposition quality (stub implementation)
     async fn assess_decomposition_quality(&self) -> f64 {
         0.8
     }
-    
+
     /// Assess scheduling quality (stub implementation)
     async fn assess_scheduling_quality(&self, _plan: &EnhancedExecutionPlan) -> f64 {
         0.8
     }
-    
+
     /// Assess resource optimization quality (stub implementation)
     async fn assess_resource_optimization_quality(&self, _plan: &EnhancedExecutionPlan) -> f64 {
         0.8
     }
-    
+
     /// Assess risk management quality (stub implementation)
     async fn assess_risk_management_quality(&self, _risk_assessment: &RiskAssessment) -> f64 {
         0.8
     }
-    
+
     /// Generate improvement suggestions (stub implementation)
     async fn generate_improvement_suggestions(&self, _quality: f64) -> Vec<String> {
         vec!["Consider parallel optimization".to_string()]
@@ -1326,7 +1423,7 @@ impl EnhancedHTNPlanner {
     async fn assess_goal_complexity(&self, goal: &Goal) -> TaskComplexity {
         let description_length = goal.description.len();
         let criteria_count = goal.success_criteria.len();
-        
+
         match (description_length, criteria_count) {
             (0..=50, 0..=1) => TaskComplexity::Simple,
             (51..=150, 2..=3) => TaskComplexity::Moderate,
@@ -1338,7 +1435,7 @@ impl EnhancedHTNPlanner {
     async fn determine_goal_priority(&self, goal: &Goal) -> TaskPriority {
         // Simple heuristic based on goal description keywords
         let description = goal.description.to_lowercase();
-        
+
         if description.contains("critical") || description.contains("urgent") {
             TaskPriority::Critical
         } else if description.contains("important") || description.contains("high") {
@@ -1354,7 +1451,7 @@ impl EnhancedHTNPlanner {
         // Extract resource requirements from goal description
         let mut requirements = Vec::new();
         let description = goal.description.to_lowercase();
-        
+
         if description.contains("file") || description.contains("write") {
             requirements.push("file_system".to_string());
         }
@@ -1364,7 +1461,7 @@ impl EnhancedHTNPlanner {
         if description.contains("compute") || description.contains("process") {
             requirements.push("cpu".to_string());
         }
-        
+
         requirements
     }
 
@@ -1372,7 +1469,7 @@ impl EnhancedHTNPlanner {
     async fn calculate_complexity_score(&self, _network: &EnhancedTaskNetwork) -> f64 {
         0.5 // Default complexity score
     }
-    
+
     /// Calculate parallel efficiency (stub implementation)
     async fn calculate_parallel_efficiency(&self, _network: &EnhancedTaskNetwork) -> f64 {
         0.7 // Default parallel efficiency

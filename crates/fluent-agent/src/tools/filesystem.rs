@@ -44,9 +44,12 @@ impl FileSystemExecutor {
                             e
                         )
                     })?;
-                    let file_name = validated_path
-                        .file_name()
-                        .ok_or_else(|| anyhow!("Path '{}' has no file name component", validated_path.display()))?;
+                    let file_name = validated_path.file_name().ok_or_else(|| {
+                        anyhow!(
+                            "Path '{}' has no file name component",
+                            validated_path.display()
+                        )
+                    })?;
                     canonical_parent.join(file_name)
                 } else {
                     validated_path.clone()
@@ -278,7 +281,9 @@ impl ToolExecutor for FileSystemExecutor {
                 let file_info = FileInfo {
                     name: path
                         .file_name()
-                        .ok_or_else(|| anyhow!("Path '{}' has no file name component", path.display()))?
+                        .ok_or_else(|| {
+                            anyhow!("Path '{}' has no file name component", path.display())
+                        })?
                         .to_string_lossy()
                         .to_string(),
                     is_directory: metadata.is_dir(),
@@ -315,28 +320,38 @@ impl ToolExecutor for FileSystemExecutor {
                 match paths_val {
                     serde_json::Value::Array(arr) => {
                         for v in arr {
-                            if let Some(s) = v.as_str() { inputs.push(s.to_string()); }
+                            if let Some(s) = v.as_str() {
+                                inputs.push(s.to_string());
+                            }
                         }
                     }
                     serde_json::Value::String(s) => inputs.push(s.clone()),
                     _ => return Err(anyhow!("'paths' must be an array of strings or a string")),
                 }
 
-                if inputs.is_empty() { return Err(anyhow!("No input paths provided")); }
+                if inputs.is_empty() {
+                    return Err(anyhow!("No input paths provided"));
+                }
 
                 // Validate and read inputs
                 let mut combined = String::new();
                 for (idx, p) in inputs.iter().enumerate() {
                     let path = self.validate_path(p)?;
                     let content = self.read_file_safe(&path).await?;
-                    if idx > 0 { combined.push_str(separator); }
+                    if idx > 0 {
+                        combined.push_str(separator);
+                    }
                     combined.push_str(&content);
                 }
 
                 // Write destination
                 let dest = self.validate_path(dest_str)?;
                 self.write_file_safe(&dest, &combined).await?;
-                Ok(format!("Successfully concatenated {} files into {}", inputs.len(), dest.display()))
+                Ok(format!(
+                    "Successfully concatenated {} files into {}",
+                    inputs.len(),
+                    dest.display()
+                ))
             }
 
             _ => Err(anyhow!("Unknown file system tool: {}", tool_name)),
@@ -419,19 +434,28 @@ impl ToolExecutor for FileSystemExecutor {
                 match paths_val {
                     serde_json::Value::Array(arr) => {
                         for v in arr {
-                            if let Some(p) = v.as_str() { let _ = self.validate_path(p)?; }
+                            if let Some(p) = v.as_str() {
+                                let _ = self.validate_path(p)?;
+                            }
                         }
                     }
-                    serde_json::Value::String(s) => { let _ = self.validate_path(s)?; }
+                    serde_json::Value::String(s) => {
+                        let _ = self.validate_path(s)?;
+                    }
                     _ => return Err(anyhow!("'paths' must be array of strings or string")),
                 }
             } else {
                 return Err(anyhow!("'paths' parameter required"));
             }
             if let Some(dest_val) = parameters.get("dest") {
-                if let Some(dest_str) = dest_val.as_str() { let _ = self.validate_path(dest_str)?; }
-                else { return Err(anyhow!("'dest' must be string")); }
-            } else { return Err(anyhow!("'dest' parameter required")); }
+                if let Some(dest_str) = dest_val.as_str() {
+                    let _ = self.validate_path(dest_str)?;
+                } else {
+                    return Err(anyhow!("'dest' must be string"));
+                }
+            } else {
+                return Err(anyhow!("'dest' parameter required"));
+            }
         }
 
         Ok(())

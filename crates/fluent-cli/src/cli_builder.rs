@@ -36,6 +36,20 @@ pub fn build_cli() -> Command {
                 .action(ArgAction::SetTrue)
                 .global(true),
         )
+        .arg(
+            Arg::new("json-logs")
+                .long("json-logs")
+                .help("Emit JSON logs (same as FLUENT_LOG_FORMAT=json)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            Arg::new("human-logs")
+                .long("human-logs")
+                .help("Emit human-readable logs (default if not set)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand(
             Command::new("pipeline")
                 .about("Execute a pipeline from a YAML file")
@@ -57,7 +71,6 @@ pub fn build_cli() -> Command {
                 )
                 .arg(
                     Arg::new("variables")
-                        .short('v')
                         .long("variables")
                         .value_name("KEY=VALUE")
                         .help("Pipeline variables")

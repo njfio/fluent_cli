@@ -3,19 +3,14 @@
 //! This module provides the main entry point for the CLI application
 //! and routes commands to their appropriate handlers.
 
+use crate::error::CliError;
 use anyhow::Result;
 use std::path::Path;
-use crate::error::CliError;
 
 use crate::cli_builder::build_cli;
 use crate::commands::{
-    agent::AgentCommand,
-    engine::EngineCommand,
-    mcp::McpCommand,
-    neo4j::Neo4jCommand,
-    pipeline::PipelineCommand,
-    tools::ToolsCommand,
-    CommandHandler,
+    agent::AgentCommand, engine::EngineCommand, mcp::McpCommand, neo4j::Neo4jCommand,
+    pipeline::PipelineCommand, tools::ToolsCommand, CommandHandler,
 };
 
 /// Main CLI entry point
@@ -32,7 +27,9 @@ pub async fn run_modular() -> Result<()> {
                 return Err(CliError::ArgParse(err.to_string()).into());
             } else {
                 // This is help or version, just print and exit successfully
-                err.print().map_err(|e| CliError::Unknown(format!("Failed to print help/version: {}", e)))?;
+                err.print().map_err(|e| {
+                    CliError::Unknown(format!("Failed to print help/version: {}", e))
+                })?;
                 return Ok(());
             }
         }
@@ -45,51 +42,96 @@ pub async fn run_modular() -> Result<()> {
     if matches.get_flag("verbose") {
         std::env::set_var("FLUENT_VERBOSE", "1");
     }
+    if matches.get_flag("json-logs") {
+        std::env::set_var("FLUENT_LOG_FORMAT", "json");
+    } else if matches.get_flag("human-logs") {
+        std::env::set_var("FLUENT_LOG_FORMAT", "human");
+    }
 
-    // Load configuration - handle missing config files gracefully
-    let config_path = matches.get_one::<String>("config").map(|s| s.as_str()).unwrap_or("fluent_config.toml");
-    let config = if Path::new(config_path).exists() {
-        match fluent_core::config::load_config(config_path, "", &std::collections::HashMap::new()) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                // Be lenient for agent flows: they construct engines themselves
-                let sub = matches.subcommand_name().unwrap_or("");
-                if sub == "agent" {
-                    eprintln!("⚠️  Config load warning (agent mode will continue): {}", e);
-                    fluent_core::config::Config::new(vec![])
-                } else {
-                    return Err(CliError::Config(e.to_string()).into());
+    // Capture config path argument early for logging metadata
+    let config_path = matches
+        .get_one::<String>("config")
+        .map(|s| s.as_str())
+        .unwrap_or("fluent_config.toml");
+
+    // Determine if the selected subcommand requires configuration
+    let requires_config = match matches.subcommand() {
+        Some(("tools", _)) => false,
+        Some(("completions", _)) => false,
+        Some(("engine", sub_m)) => match sub_m.subcommand() {
+            Some(("list", _)) => false,
+            _ => true,
+        },
+        _ => true,
+    };
+
+    // Load configuration only if required; otherwise, use an empty default config
+    let config = if requires_config {
+        let config_path = matches
+            .get_one::<String>("config")
+            .map(|s| s.as_str())
+            .unwrap_or("fluent_config.toml");
+        if Path::new(config_path).exists() {
+            match fluent_core::config::load_config(
+                config_path,
+                "",
+                &std::collections::HashMap::new(),
+            ) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    // Be lenient for agent flows: they construct engines themselves
+                    let sub = matches.subcommand_name().unwrap_or("");
+                    if sub == "agent" {
+                        eprintln!("⚠️  Config load warning (agent mode will continue): {}", e);
+                        fluent_core::config::Config::new(vec![])
+                    } else {
+                        return Err(CliError::Config(e.to_string()).into());
+                    }
                 }
             }
+        } else {
+            // Create a minimal default config if no config file exists
+            fluent_core::config::Config::new(vec![])
         }
     } else {
-        // Create a minimal default config if no config file exists
         fluent_core::config::Config::new(vec![])
     };
 
     // Route to appropriate command handler
     match matches.subcommand() {
         Some(("pipeline", sub_matches)) => {
+            let span = tracing::info_span!("pipeline", config_path = %config_path);
+            let _e = span.enter();
             let handler = PipelineCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("agent", sub_matches)) => {
+            let span = tracing::info_span!("agent", config_path = %config_path);
+            let _e = span.enter();
             let handler = AgentCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("mcp", sub_matches)) => {
+            let span = tracing::info_span!("mcp", config_path = %config_path);
+            let _e = span.enter();
             let handler = McpCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("neo4j", sub_matches)) => {
+            let span = tracing::info_span!("neo4j", config_path = %config_path);
+            let _e = span.enter();
             let handler = Neo4jCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("engine", sub_matches)) => {
+            let span = tracing::info_span!("engine", config_path = %config_path);
+            let _e = span.enter();
             let handler = EngineCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("tools", sub_matches)) => {
+            let span = tracing::info_span!("tools", config_path = %config_path);
+            let _e = span.enter();
             let handler = ToolsCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
@@ -98,10 +140,15 @@ pub async fn run_modular() -> Result<()> {
             use std::fs::File;
             use std::io::{self, Write};
 
-            let shell = sub_matches.get_one::<String>("shell").map(|s| s.as_str()).unwrap_or("");
+            let shell = sub_matches
+                .get_one::<String>("shell")
+                .map(|s| s.as_str())
+                .unwrap_or("");
             let output = sub_matches.get_one::<String>("output").cloned();
             let mut writer: Box<dyn Write> = match output {
-                Some(path) => Box::new(File::create(path).map_err(|e| CliError::Unknown(format!("Failed to open output file: {}", e)))?),
+                Some(path) => Box::new(File::create(path).map_err(|e| {
+                    CliError::Unknown(format!("Failed to open output file: {}", e))
+                })?),
                 None => Box::new(io::stdout()),
             };
             let out: &mut dyn Write = &mut *writer;
@@ -158,9 +205,7 @@ mod tests {
         assert_eq!(app.get_name(), "fluent");
 
         // Test that main subcommands are present
-        let subcommands: Vec<&str> = app.get_subcommands()
-            .map(|cmd| cmd.get_name())
-            .collect();
+        let subcommands: Vec<&str> = app.get_subcommands().map(|cmd| cmd.get_name()).collect();
 
         assert!(subcommands.contains(&"pipeline"));
         assert!(subcommands.contains(&"agent"));
@@ -197,7 +242,13 @@ mod tests {
         let app = build_cli();
 
         // Test parsing with config argument
-        let matches = app.try_get_matches_from(vec!["fluent", "--config", "test_config.toml", "pipeline", "list"]);
+        let matches = app.try_get_matches_from(vec![
+            "fluent",
+            "--config",
+            "test_config.toml",
+            "pipeline",
+            "list",
+        ]);
 
         match matches {
             Ok(matches) => {
@@ -216,19 +267,25 @@ mod tests {
         let app = build_cli();
 
         // Test pipeline subcommand
-        let result = app.clone().try_get_matches_from(vec!["fluent", "pipeline", "list"]);
+        let result = app
+            .clone()
+            .try_get_matches_from(vec!["fluent", "pipeline", "list"]);
         if let Ok(matches) = result {
             assert_eq!(matches.subcommand_name(), Some("pipeline"));
         }
 
         // Test agent subcommand
-        let result = app.clone().try_get_matches_from(vec!["fluent", "agent", "status"]);
+        let result = app
+            .clone()
+            .try_get_matches_from(vec!["fluent", "agent", "status"]);
         if let Ok(matches) = result {
             assert_eq!(matches.subcommand_name(), Some("agent"));
         }
 
         // Test engine subcommand
-        let result = app.clone().try_get_matches_from(vec!["fluent", "engine", "list"]);
+        let result = app
+            .clone()
+            .try_get_matches_from(vec!["fluent", "engine", "list"]);
         if let Ok(matches) = result {
             assert_eq!(matches.subcommand_name(), Some("engine"));
         }
@@ -248,7 +305,9 @@ mod tests {
         let app = build_cli();
 
         // Test invalid subcommand
-        let result = app.clone().try_get_matches_from(vec!["fluent", "invalid_command"]);
+        let result = app
+            .clone()
+            .try_get_matches_from(vec!["fluent", "invalid_command"]);
         assert!(result.is_err());
 
         // Test missing required arguments (this should be handled gracefully)
@@ -262,12 +321,8 @@ mod tests {
         let app = build_cli();
 
         // Test that global arguments are recognized
-        let result = app.try_get_matches_from(vec![
-            "fluent",
-            "--config", "test.toml",
-            "pipeline",
-            "list"
-        ]);
+        let result =
+            app.try_get_matches_from(vec!["fluent", "--config", "test.toml", "pipeline", "list"]);
 
         if let Ok(matches) = result {
             let config_arg = matches.get_one::<String>("config");

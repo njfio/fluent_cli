@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
@@ -359,15 +359,19 @@ impl WorkingMemory {
     }
 
     /// Store a new item in working memory
-    pub async fn store_item(&self, content: MemoryContent, metadata: ItemMetadata) -> Result<String> {
+    pub async fn store_item(
+        &self,
+        content: MemoryContent,
+        metadata: ItemMetadata,
+    ) -> Result<String> {
         let item_id = Uuid::new_v4().to_string();
-        
+
         // Calculate initial relevance score
         let relevance_score = self.calculate_relevance(&content, &metadata).await?;
-        
+
         // Check capacity and optimize if needed
         self.ensure_capacity().await?;
-        
+
         let item = MemoryItem {
             item_id: item_id.clone(),
             content,
@@ -383,38 +387,40 @@ impl WorkingMemory {
         // Store item
         let mut store = self.memory_store.write().await;
         store.active_items.insert(item_id.clone(), item);
-        
+
         // Update attention system
         self.update_attention_for_new_item(&item_id).await?;
-        
+
         // Log access
-        self.log_access(&item_id, AccessType::Write, "Initial storage").await?;
-        
+        self.log_access(&item_id, AccessType::Write, "Initial storage")
+            .await?;
+
         Ok(item_id)
     }
 
     /// Retrieve an item from working memory
     pub async fn retrieve_item(&self, item_id: &str) -> Result<Option<MemoryItem>> {
         let mut store = self.memory_store.write().await;
-        
+
         if let Some(mut item) = store.active_items.get(item_id).cloned() {
             // Update access statistics
             item.last_accessed = SystemTime::now();
             item.access_count += 1;
-            
+
             // Update relevance based on access
             item.relevance_score = self.update_relevance_on_access(&item).await?;
-            
+
             // Store updated item
             store.active_items.insert(item_id.to_string(), item.clone());
-            
+
             // Update attention
             self.update_attention_on_access(item_id).await?;
-            
+
             // Log access
             drop(store);
-            self.log_access(item_id, AccessType::Read, "Item retrieval").await?;
-            
+            self.log_access(item_id, AccessType::Read, "Item retrieval")
+                .await?;
+
             Ok(Some(item))
         } else {
             // Check if item is archived
@@ -423,42 +429,52 @@ impl WorkingMemory {
     }
 
     /// Search for relevant items based on query
-    pub async fn search_relevant(&self, query: &str, max_results: usize) -> Result<Vec<MemoryItem>> {
+    pub async fn search_relevant(
+        &self,
+        query: &str,
+        max_results: usize,
+    ) -> Result<Vec<MemoryItem>> {
         let store = self.memory_store.read().await;
         let candidates: Vec<(&String, &MemoryItem)> = store.active_items.iter().collect();
-        
+
         // Score items based on query relevance
         let mut scored_items = Vec::new();
         for (_id, item) in candidates {
             let score = self.calculate_query_relevance(item, query).await?;
             scored_items.push((score, item.clone()));
         }
-        
+
         // Sort by relevance score
         scored_items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         // Update attention for accessed items
         for (_, item) in scored_items.iter().take(max_results) {
             self.update_attention_on_access(&item.item_id).await?;
         }
-        
-        Ok(scored_items.into_iter().take(max_results).map(|(_, item)| item).collect())
+
+        Ok(scored_items
+            .into_iter()
+            .take(max_results)
+            .map(|(_, item)| item)
+            .collect())
     }
 
     /// Update attention based on current context
     pub async fn update_attention(&self, context: &ExecutionContext) -> Result<()> {
         let mut attention = self.attention_system.write().await;
-        
+
         // Extract current focus from context
-        let current_focus = context.current_goal.as_ref()
+        let current_focus = context
+            .current_goal
+            .as_ref()
             .map(|g| g.description.clone())
             .unwrap_or_else(|| "general".to_string());
-        
+
         // Update attention weights based on context relevance
         let store = self.memory_store.read().await;
         for (item_id, item) in &store.active_items {
             let context_relevance = self.calculate_context_relevance(item, context).await?;
-            
+
             let attention_weight = AttentionWeight {
                 item_id: item_id.clone(),
                 weight: context_relevance,
@@ -468,13 +484,15 @@ impl WorkingMemory {
                 context_relevance,
                 temporal_relevance: self.calculate_temporal_relevance(item.created_at).await?,
             };
-            
-            attention.attention_weights.insert(item_id.clone(), attention_weight);
+
+            attention
+                .attention_weights
+                .insert(item_id.clone(), attention_weight);
         }
-        
+
         // Update current focus
         attention.current_focus = Some(current_focus);
-        
+
         Ok(())
     }
 
@@ -490,10 +508,10 @@ impl WorkingMemory {
 
         // Identify items for consolidation
         let consolidation_candidates = self.identify_consolidation_candidates().await?;
-        
+
         for item_id in consolidation_candidates {
             let consolidation_action = self.determine_consolidation_action(&item_id).await?;
-            
+
             match consolidation_action {
                 ConsolidationAction::Compress => {
                     self.compress_item(&item_id).await?;
@@ -523,7 +541,11 @@ impl WorkingMemory {
 
     // Helper methods (simplified implementations)
 
-    async fn calculate_relevance(&self, content: &MemoryContent, _metadata: &ItemMetadata) -> Result<f64> {
+    async fn calculate_relevance(
+        &self,
+        content: &MemoryContent,
+        _metadata: &ItemMetadata,
+    ) -> Result<f64> {
         // Simplified relevance calculation based on content type
         let base_score = match content.content_type {
             ContentType::TaskResult => 0.8,
@@ -534,75 +556,86 @@ impl WorkingMemory {
             ContentType::LearningItem => 0.8,
             ContentType::ReferenceData => 0.4,
         };
-        
+
         Ok(base_score)
     }
 
     async fn ensure_capacity(&self) -> Result<()> {
         let manager = self.capacity_manager.read().await;
         let usage = &manager.current_usage;
-        
-        let usage_ratio = usage.active_size_bytes as f64 / manager.capacity_limits.max_size_bytes as f64;
-        
+
+        let usage_ratio =
+            usage.active_size_bytes as f64 / manager.capacity_limits.max_size_bytes as f64;
+
         if usage_ratio > manager.capacity_limits.warning_threshold {
             drop(manager);
             self.optimize_memory().await?;
         }
-        
+
         Ok(())
     }
 
     async fn optimize_memory(&self) -> Result<()> {
         // Simple LRU eviction for now
         let store = self.memory_store.read().await;
-        let mut items_by_access: Vec<_> = store.active_items.iter()
+        let mut items_by_access: Vec<_> = store
+            .active_items
+            .iter()
             .map(|(id, item)| (item.last_accessed, id.clone()))
             .collect();
-        
+
         items_by_access.sort_by_key(|(time, _)| *time);
-        
+
         // Remove oldest 10% of items
         let items_to_remove = items_by_access.len() / 10;
         drop(store);
-        
+
         for (_, item_id) in items_by_access.into_iter().take(items_to_remove) {
             self.archive_item(&item_id).await?;
         }
-        
+
         Ok(())
     }
 
     async fn update_attention_for_new_item(&self, item_id: &str) -> Result<()> {
         let mut attention = self.attention_system.write().await;
-        
-        attention.attention_weights.insert(item_id.to_string(), AttentionWeight {
-            item_id: item_id.to_string(),
-            weight: 1.0, // New items get full attention initially
-            last_accessed: SystemTime::now(),
-            access_frequency: 1,
-            importance_score: 0.8,
-            context_relevance: 0.8,
-            temporal_relevance: 1.0,
-        });
-        
+
+        attention.attention_weights.insert(
+            item_id.to_string(),
+            AttentionWeight {
+                item_id: item_id.to_string(),
+                weight: 1.0, // New items get full attention initially
+                last_accessed: SystemTime::now(),
+                access_frequency: 1,
+                importance_score: 0.8,
+                context_relevance: 0.8,
+                temporal_relevance: 1.0,
+            },
+        );
+
         Ok(())
     }
 
     async fn update_attention_on_access(&self, item_id: &str) -> Result<()> {
         let mut attention = self.attention_system.write().await;
-        
+
         if let Some(weight) = attention.attention_weights.get_mut(item_id) {
             weight.access_frequency += 1;
             weight.last_accessed = SystemTime::now();
             weight.weight = (weight.weight * 0.9 + 0.1).min(1.0); // Boost attention
         }
-        
+
         Ok(())
     }
 
-    async fn log_access(&self, item_id: &str, access_type: AccessType, context: &str) -> Result<()> {
+    async fn log_access(
+        &self,
+        item_id: &str,
+        access_type: AccessType,
+        context: &str,
+    ) -> Result<()> {
         let mut store = self.memory_store.write().await;
-        
+
         store.access_log.push_back(AccessEvent {
             event_id: Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
@@ -611,12 +644,12 @@ impl WorkingMemory {
             context: context.to_string(),
             relevance_boost: 0.1,
         });
-        
+
         // Keep only recent access events
         while store.access_log.len() > 10000 {
             store.access_log.pop_front();
         }
-        
+
         Ok(())
     }
 
@@ -627,7 +660,7 @@ impl WorkingMemory {
 
     async fn retrieve_from_archive(&self, item_id: &str) -> Result<Option<MemoryItem>> {
         let store = self.memory_store.read().await;
-        
+
         if let Some(archived) = store.archived_items.get(item_id) {
             // Would decompress and restore item
             // For now, return a placeholder
@@ -664,14 +697,14 @@ impl WorkingMemory {
         // Simple text matching for now
         let summary = &item.content.text_summary.to_lowercase();
         let query_lower = query.to_lowercase();
-        
+
         let mut score = 0.0;
-        
+
         // Check for exact matches
         if summary.contains(&query_lower) {
             score += 0.5;
         }
-        
+
         // Check for word matches
         let query_words: Vec<&str> = query_lower.split_whitespace().collect();
         for word in query_words {
@@ -679,27 +712,31 @@ impl WorkingMemory {
                 score += 0.1;
             }
         }
-        
+
         // Factor in existing relevance
         score = (score + item.relevance_score) / 2.0;
-        
+
         Ok(score.min(1.0))
     }
 
-    async fn calculate_context_relevance(&self, item: &MemoryItem, context: &ExecutionContext) -> Result<f64> {
+    async fn calculate_context_relevance(
+        &self,
+        item: &MemoryItem,
+        context: &ExecutionContext,
+    ) -> Result<f64> {
         // Simple context relevance based on current goal
         if let Some(goal) = &context.current_goal {
             let goal_description_lower = goal.description.to_lowercase();
             let goal_words: Vec<&str> = goal_description_lower.split_whitespace().collect();
             let summary = item.content.text_summary.to_lowercase();
-            
+
             let mut matches = 0;
             for word in goal_words {
                 if summary.contains(word) {
                     matches += 1;
                 }
             }
-            
+
             Ok((matches as f64 * 0.2).min(1.0))
         } else {
             Ok(0.5) // Neutral relevance
@@ -707,9 +744,11 @@ impl WorkingMemory {
     }
 
     async fn calculate_temporal_relevance(&self, created_at: SystemTime) -> Result<f64> {
-        let age = SystemTime::now().duration_since(created_at).unwrap_or_default();
+        let age = SystemTime::now()
+            .duration_since(created_at)
+            .unwrap_or_default();
         let age_hours = age.as_secs() as f64 / 3600.0;
-        
+
         // Exponential decay based on age
         let relevance = (-age_hours * self.config.relevance_decay_rate).exp();
         Ok(relevance.max(0.1)) // Minimum relevance threshold
@@ -718,20 +757,23 @@ impl WorkingMemory {
     async fn identify_consolidation_candidates(&self) -> Result<Vec<String>> {
         let store = self.memory_store.read().await;
         let attention = self.attention_system.read().await;
-        
+
         let mut candidates = Vec::new();
-        
+
         for (item_id, item) in &store.active_items {
-            let attention_weight = attention.attention_weights.get(item_id)
+            let attention_weight = attention
+                .attention_weights
+                .get(item_id)
                 .map(|w| w.weight)
                 .unwrap_or(0.5);
-                
-            if item.relevance_score < self.config.consolidation_threshold && 
-               attention_weight < self.config.consolidation_threshold {
+
+            if item.relevance_score < self.config.consolidation_threshold
+                && attention_weight < self.config.consolidation_threshold
+            {
                 candidates.push(item_id.clone());
             }
         }
-        
+
         Ok(candidates)
     }
 
@@ -747,7 +789,7 @@ impl WorkingMemory {
 
     async fn archive_item(&self, item_id: &str) -> Result<()> {
         let mut store = self.memory_store.write().await;
-        
+
         if let Some(item) = store.active_items.remove(item_id) {
             let archived = ArchivedItem {
                 item_id: item.item_id,
@@ -757,10 +799,10 @@ impl WorkingMemory {
                 original_size: item.metadata.size_bytes,
                 access_frequency: item.access_count as f64,
             };
-            
+
             store.archived_items.insert(item_id.to_string(), archived);
         }
-        
+
         Ok(())
     }
 
