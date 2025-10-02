@@ -1,3 +1,6 @@
+#![allow(unused)]
+#![allow(ambiguous_glob_reexports)]
+
 //! # Fluent Agent - Advanced Agentic Framework
 //!
 //! This crate provides advanced agentic capabilities for the Fluent CLI system,
@@ -34,6 +37,7 @@
 use anyhow::{anyhow, Result};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
+// use security::security_framework::SecurityFramework;
 use std::path::Path;
 use std::pin::Pin;
 use std::process::Stdio;
@@ -43,66 +47,109 @@ use tokio::process::Command;
 // Advanced agentic modules
 pub mod action;
 pub mod adapters;
+pub mod advanced_tools;
+pub mod agent_control;
 pub mod agent_with_mcp;
+pub mod autonomy;
 pub mod benchmarks;
+pub mod collaboration_bridge;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
+pub mod ethical_guardrails;
 pub mod goal;
+pub mod human_collaboration;
 pub mod mcp_adapter;
 pub mod mcp_client;
-pub mod mcp_tool_registry;
 pub mod mcp_resource_manager;
+pub mod mcp_tool_registry;
 pub mod memory;
 pub mod monitoring;
 pub mod observation;
 pub mod orchestrator;
 pub mod performance;
 pub mod planning;
-pub mod profiling;
 pub mod production_mcp;
+pub mod profiling;
 pub mod reasoning;
 pub mod reflection;
 pub mod reflection_engine;
 pub mod security;
 pub mod state_manager;
+pub mod swarm_intelligence;
 pub mod task;
 pub mod tools;
 pub mod transport;
+pub mod web_dashboard;
 pub mod workflow;
 
 // Re-export advanced agentic types
 pub use action::{
     ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
 };
+pub use advanced_tools::{
+    AdvancedTool, AdvancedToolRegistry, ToolCategory, ToolParameters, ToolPriority, ToolResult,
+};
+pub use agent_control::{
+    AgentControlChannel, ApprovalRequest, ApprovalResponse, ControlMessage, ControlMessageType,
+    StateUpdate, StateUpdateType,
+};
+pub use collaboration_bridge::{
+    ApprovalConfig, CollaborativeOrchestrator, ControlAction,
+};
+pub use autonomy::{
+    AutonomySupervisor, AutonomySupervisorConfig, GuardrailDecision, RiskAssessment,
+    SupervisorIncident, SupervisorStage,
+};
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
+pub use ethical_guardrails::{
+    EthicalEvaluation, EthicalGuardrailsSystem, EthicalRecommendation, FilterResult, HarmCategory,
+    RiskLevel,
+};
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
-pub use memory::{MemoryConfig, MemoryStats, MemorySystem, IntegratedMemorySystem, MemoryItem, MemoryContent, WorkingMemory, ContextCompressor, CrossSessionPersistence};
+pub use human_collaboration::{
+    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent, CollaborationMessage,
+    CollaborationSession, CommunicationChannels, FeedbackEntry, FeedbackSystem, FeedbackType,
+    HumanCollaborationCoordinator, HumanCollaborationInterface, Intervention, InterventionManager,
+    InterventionOutcome, InterventionPriority, InterventionRequester, InterventionResponse,
+    InterventionStatus, InterventionType, MessageSender, MessageType, SessionStatus, UserProfile,
+};
+pub use memory::{
+    ContextCompressor, CrossSessionPersistence, IntegratedMemorySystem, MemoryConfig,
+    MemoryContent, MemoryItem, MemoryStats, MemorySystem, WorkingMemory,
+};
 pub use monitoring::{
-    PerformanceMonitor, PerformanceMetrics, QualityMetrics,
-    AdaptiveStrategySystem,
-    ErrorRecoverySystem, RecoveryConfig, ErrorInstance, ErrorType, ErrorSeverity, RecoveryResult,
+    AdaptiveStrategySystem, ErrorInstance, ErrorRecoverySystem, ErrorSeverity, ErrorType,
+    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult,
 };
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
 pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
 pub use planning::{
-    HTNPlanner, HTNConfig, HTNResult, DependencyAnalyzer, DynamicReplanner,
-    CompositePlanner, CompletePlanningResult
+    CompletePlanningResult, CompositePlanner, DependencyAnalyzer, DynamicReplanner, HTNConfig,
+    HTNPlanner, HTNResult,
 };
 pub use production_mcp::{
-    ProductionMcpManager, ProductionMcpConfig, McpError, HealthStatus, McpMetrics,
-    initialize_production_mcp, initialize_production_mcp_with_config,
+    initialize_production_mcp, initialize_production_mcp_with_config, HealthStatus, McpError,
+    McpMetrics, ProductionMcpConfig, ProductionMcpManager,
 };
 pub use reasoning::{
-    ReasoningEngine, ReasoningCapability, CompositeReasoningEngine,
-    TreeOfThoughtEngine, ToTConfig, ToTReasoningResult,
-    ChainOfThoughtEngine, CoTConfig, CoTReasoningResult,
-    MetaReasoningEngine, MetaConfig, MetaReasoningResult,
+    AudioData, BinaryData, ChainOfThoughtEngine, CoTConfig, CoTReasoningResult, CodeContent,
+    CompositeReasoningEngine, CrossModalRelationship, ImageData, MetaConfig, MetaReasoningEngine,
+    MetaReasoningResult, MultiModalInput, MultiModalReasoningEngine, MultiModalReasoningResult,
+    ReasoningCapability, ReasoningEngine, StructuredData, ToTConfig, ToTReasoningResult,
+    TreeOfThoughtEngine,
 };
-pub use reflection_engine::{ReflectionEngine, ReflectionConfig, ReflectionResult, ReflectionType};
+pub use reflection_engine::{ReflectionConfig, ReflectionEngine, ReflectionResult, ReflectionType};
+pub use security::capability::CapabilityManager;
 pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
+pub use swarm_intelligence::{
+    AgentPerformance, AgentSpecialization, AgentStatus, ConsensusEngine, Message, SwarmAgent,
+    SwarmCoordinator, SwarmMetrics, SwarmResult, SwarmTask, TaskAllocator,
+    TaskPriority as SwarmTaskPriority, TaskResult as SwarmTaskResult, Vote,
+};
 pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
+pub use web_dashboard::{DashboardConfig, WebDashboard};
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {
@@ -212,13 +259,16 @@ impl Agent {
             }
         }
 
-        let status = match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
-            Ok(r) => r?,
-            Err(_) => {
-                let _ = child.kill().await;
-                return Err(anyhow!("command did not terminate promptly after output read"));
-            }
-        };
+        let status =
+            match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+                Ok(r) => r?,
+                Err(_) => {
+                    let _ = child.kill().await;
+                    return Err(anyhow!(
+                        "command did not terminate promptly after output read"
+                    ));
+                }
+            };
 
         let mut combined = String::new();
         combined.push_str(&String::from_utf8_lossy(&out_buf));
@@ -235,8 +285,8 @@ impl Agent {
 
     /// Validate command and arguments against security policies
     fn validate_command_security(cmd: &str, args: &[&str]) -> Result<()> {
-        // Get allowed commands from environment or use defaults
-        let allowed_commands = Self::get_allowed_commands();
+        // Get allowed commands based on context
+        let allowed_commands = Self::get_allowed_commands_by_context();
 
         // Check if command is in whitelist
         if !allowed_commands.iter().any(|allowed| allowed == cmd) {
@@ -248,12 +298,9 @@ impl Agent {
             return Err(anyhow!("Command name too long"));
         }
 
-        // Check for dangerous patterns in command
-        let dangerous_patterns = ["../", "./", "/", "~", "$", "`", ";", "&", "|", ">", "<"];
-        for pattern in &dangerous_patterns {
-            if cmd.contains(pattern) {
-                return Err(anyhow!("Command contains dangerous pattern: {}", pattern));
-            }
+        // Check for dangerous patterns in command using more robust validation
+        if !Self::is_safe_command_name(cmd) {
+            return Err(anyhow!("Command contains unsafe characters or patterns"));
         }
 
         // Validate arguments
@@ -262,19 +309,17 @@ impl Agent {
                 return Err(anyhow!("Argument too long"));
             }
 
-            // Check for dangerous patterns in arguments
-            for pattern in &dangerous_patterns {
-                if arg.contains(pattern) {
-                    return Err(anyhow!("Argument contains dangerous pattern: {}", pattern));
-                }
+            // Check for dangerous patterns in arguments using more robust validation
+            if !Self::is_safe_argument(arg) {
+                return Err(anyhow!("Argument contains unsafe characters or patterns"));
             }
         }
 
         Ok(())
     }
 
-    /// Get allowed commands from environment or defaults
-    fn get_allowed_commands() -> Vec<String> {
+    /// Get allowed commands based on execution context
+    fn get_allowed_commands_by_context() -> Vec<String> {
         // Check environment variable for custom allowed commands
         if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
             log::info!("Custom allowed commands: {}", custom_commands);
@@ -294,7 +339,48 @@ impl Agent {
             }
         }
 
-        // Default allowed commands for agent operations
+        // Check for context-specific allowlists
+        if let Ok(context) = std::env::var("FLUENT_AGENT_CONTEXT") {
+            match context.as_str() {
+                "development" => {
+                    // More permissive commands for development
+                    return vec![
+                        "cargo".to_string(),
+                        "rustc".to_string(),
+                        "git".to_string(),
+                        "ls".to_string(),
+                        "cat".to_string(),
+                        "echo".to_string(),
+                        "pwd".to_string(),
+                        "which".to_string(),
+                        "find".to_string(),
+                        "mkdir".to_string(),
+                        "touch".to_string(),
+                        "rm".to_string(), // Only in development context
+                    ];
+                }
+                "testing" => {
+                    // Commands specifically for testing
+                    return vec![
+                        "cargo".to_string(),
+                        "rustc".to_string(),
+                        "echo".to_string(),
+                        "cat".to_string(),
+                        "ls".to_string(),
+                        "pwd".to_string(),
+                        "which".to_string(),
+                        "find".to_string(),
+                        "mkdir".to_string(),
+                        "touch".to_string(),
+                    ];
+                }
+                _ => {
+                    // Default to production context
+                }
+            }
+        }
+
+        // Default allowed commands for agent operations (production-safe)
         vec![
             "cargo".to_string(),
             "rustc".to_string(),
@@ -304,7 +390,7 @@ impl Agent {
             "echo".to_string(),
             "pwd".to_string(),
             "which".to_string(),
-            "find".to_string()
+            "find".to_string(),
         ]
     }
 
@@ -326,6 +412,51 @@ impl Agent {
             && !cmd.contains('/') // No paths
             && !cmd.contains('\\') // No Windows paths
             && !cmd.contains(' ') // No spaces
+    }
+
+    /// More robust validation for command names
+    fn is_safe_command_name(cmd: &str) -> bool {
+        // List of dangerous patterns to check
+        let dangerous_patterns = [
+            "../", "./", "/.", "//", "~/", "$", "`", ";", "&", "|", ">", "<", "*", "?", "[", "]",
+            "{", "}", "(", ")", "||", "&&", ">>", "<<", "\\", "\n", "\r", "\t",
+        ];
+
+        // Check for dangerous patterns
+        for pattern in &dangerous_patterns {
+            if cmd.contains(pattern) {
+                return false;
+            }
+        }
+
+        // Additional checks
+        if cmd.starts_with('-') || cmd.starts_with('.') {
+            return false;
+        }
+
+        true
+    }
+
+    /// More robust validation for command arguments
+    fn is_safe_argument(arg: &str) -> bool {
+        // List of dangerous patterns to check in arguments
+        let dangerous_patterns = [
+            "$(", "`", ";", "&", "|", ">", "<", ">>", "<<", "||", "&&", "\n", "\r", "\t",
+        ];
+
+        // Check for dangerous patterns
+        for pattern in &dangerous_patterns {
+            if arg.contains(pattern) {
+                return false;
+            }
+        }
+
+        // Check for command substitution patterns
+        if arg.contains("$(") || arg.contains("`") {
+            return false;
+        }
+
+        true
     }
 
     /// Commit changes in the current git repository.

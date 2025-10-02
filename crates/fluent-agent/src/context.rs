@@ -481,7 +481,11 @@ impl ExecutionContext {
     }
 
     /// Create a checkpoint of the current context state
-    pub fn create_checkpoint(&mut self, checkpoint_type: CheckpointType, description: String) -> String {
+    pub fn create_checkpoint(
+        &mut self,
+        checkpoint_type: CheckpointType,
+        description: String,
+    ) -> String {
         let checkpoint_id = uuid::Uuid::new_v4().to_string();
 
         let snapshot = ExecutionContextSnapshot {
@@ -551,14 +555,22 @@ impl ExecutionContext {
 
     /// Get checkpoint by ID
     pub fn get_checkpoint(&self, checkpoint_id: &str) -> Option<&ContextCheckpoint> {
-        self.checkpoints.iter().find(|cp| cp.checkpoint_id == checkpoint_id)
+        self.checkpoints
+            .iter()
+            .find(|cp| cp.checkpoint_id == checkpoint_id)
     }
 
     /// Get all checkpoints of a specific type
-    pub fn get_checkpoints_by_type(&self, checkpoint_type: &CheckpointType) -> Vec<&ContextCheckpoint> {
+    pub fn get_checkpoints_by_type(
+        &self,
+        checkpoint_type: &CheckpointType,
+    ) -> Vec<&ContextCheckpoint> {
         self.checkpoints
             .iter()
-            .filter(|cp| std::mem::discriminant(&cp.checkpoint_type) == std::mem::discriminant(checkpoint_type))
+            .filter(|cp| {
+                std::mem::discriminant(&cp.checkpoint_type)
+                    == std::mem::discriminant(checkpoint_type)
+            })
             .collect()
     }
 
@@ -581,7 +593,11 @@ impl ExecutionContext {
     }
 
     /// Save a checkpoint to disk
-    pub async fn save_checkpoint_to_disk<P: AsRef<Path>>(&self, checkpoint_id: &str, path: P) -> Result<()> {
+    pub async fn save_checkpoint_to_disk<P: AsRef<Path>>(
+        &self,
+        checkpoint_id: &str,
+        path: P,
+    ) -> Result<()> {
         if let Some(checkpoint) = self.get_checkpoint(checkpoint_id) {
             let json_data = serde_json::to_string_pretty(checkpoint)?;
             fs::write(path, json_data).await?;
@@ -613,11 +629,20 @@ impl ExecutionContext {
             event_id: uuid::Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
             event_type: ExecutionEventType::ContextRestored,
-            description: format!("Context restored from checkpoint: {}", checkpoint.checkpoint_id),
+            description: format!(
+                "Context restored from checkpoint: {}",
+                checkpoint.checkpoint_id
+            ),
             metadata: {
                 let mut meta = HashMap::new();
-                meta.insert("checkpoint_id".to_string(), serde_json::json!(checkpoint.checkpoint_id));
-                meta.insert("checkpoint_type".to_string(), serde_json::json!(checkpoint.checkpoint_type));
+                meta.insert(
+                    "checkpoint_id".to_string(),
+                    serde_json::json!(checkpoint.checkpoint_id),
+                );
+                meta.insert(
+                    "checkpoint_type".to_string(),
+                    serde_json::json!(checkpoint.checkpoint_type),
+                );
                 meta
             },
         });
@@ -651,13 +676,18 @@ impl ExecutionContext {
         }
 
         if self.iteration_count > 0 && self.execution_history.is_empty() {
-            return Err(anyhow::anyhow!("Execution history should not be empty with non-zero iterations"));
+            return Err(anyhow::anyhow!(
+                "Execution history should not be empty with non-zero iterations"
+            ));
         }
 
         // Check that completed tasks have completion timestamps
         for task in &self.completed_tasks {
             if task.completed_at.is_none() {
-                return Err(anyhow::anyhow!("Completed task missing completion timestamp: {}", task.task_id));
+                return Err(anyhow::anyhow!(
+                    "Completed task missing completion timestamp: {}",
+                    task.task_id
+                ));
             }
         }
 
@@ -667,7 +697,9 @@ impl ExecutionContext {
                 return Err(anyhow::anyhow!("Checkpoint ID cannot be empty"));
             }
             if checkpoint.iteration_count > self.iteration_count {
-                return Err(anyhow::anyhow!("Checkpoint iteration count cannot exceed current iteration count"));
+                return Err(anyhow::anyhow!(
+                    "Checkpoint iteration count cannot exceed current iteration count"
+                ));
             }
         }
 
@@ -842,10 +874,8 @@ mod tests {
         let mut context = ExecutionContext::new(goal);
 
         // Create a manual checkpoint
-        let checkpoint_id = context.create_checkpoint(
-            CheckpointType::Manual,
-            "Test checkpoint".to_string()
-        );
+        let checkpoint_id =
+            context.create_checkpoint(CheckpointType::Manual, "Test checkpoint".to_string());
 
         assert!(!checkpoint_id.is_empty());
         assert_eq!(context.checkpoints.len(), 1);

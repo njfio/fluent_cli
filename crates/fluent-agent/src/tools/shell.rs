@@ -69,7 +69,7 @@ impl ShellExecutor {
             exit_code: output.status.code().unwrap_or_else(|| {
                 // Different error codes for different failure scenarios
                 if output.status.success() {
-                    0  // Success but no code (shouldn't happen)
+                    0 // Success but no code (shouldn't happen)
                 } else {
                     #[cfg(unix)]
                     {

@@ -1,5 +1,5 @@
 //! Strategy adjustment and optimization components
-//! 
+//!
 //! This module handles strategy adjustments, optimization recommendations,
 //! and implementation planning for reflection-driven improvements.
 
@@ -22,38 +22,49 @@ impl StrategyAdjustmentGenerator {
         let mut adjustments = Vec::new();
 
         // Generate bottleneck-based adjustments
-        let bottleneck_adjustments = Self::generate_bottleneck_adjustments(&analysis.bottlenecks_identified).await?;
+        let bottleneck_adjustments =
+            Self::generate_bottleneck_adjustments(&analysis.bottlenecks_identified).await?;
         adjustments.extend(bottleneck_adjustments);
 
         // Generate performance-based adjustments
         let performance_adjustments = Self::generate_performance_adjustments(
             &analysis.strategy_effectiveness,
             performance_threshold,
-        ).await?;
+        )
+        .await?;
         adjustments.extend(performance_adjustments);
 
         // Generate learning-based adjustments
-        let learning_adjustments = Self::generate_learning_adjustments(&analysis.learning_opportunities).await?;
+        let learning_adjustments =
+            Self::generate_learning_adjustments(&analysis.learning_opportunities).await?;
         adjustments.extend(learning_adjustments);
 
         // Generate resource-based adjustments
-        let resource_adjustments = Self::generate_resource_adjustments(&analysis.resource_utilization).await?;
+        let resource_adjustments =
+            Self::generate_resource_adjustments(&analysis.resource_utilization).await?;
         adjustments.extend(resource_adjustments);
 
         Ok(adjustments)
     }
 
     /// Generate adjustments for identified bottlenecks
-    async fn generate_bottleneck_adjustments(bottlenecks: &[Bottleneck]) -> Result<Vec<StrategyAdjustment>> {
+    async fn generate_bottleneck_adjustments(
+        bottlenecks: &[Bottleneck],
+    ) -> Result<Vec<StrategyAdjustment>> {
         let mut adjustments = Vec::new();
 
         for bottleneck in bottlenecks {
-            if bottleneck.severity == ImpactLevel::High || bottleneck.severity == ImpactLevel::Critical {
+            if bottleneck.severity == ImpactLevel::High
+                || bottleneck.severity == ImpactLevel::Critical
+            {
                 adjustments.push(StrategyAdjustment {
                     adjustment_id: uuid::Uuid::new_v4().to_string(),
                     adjustment_type: AdjustmentType::ApproachModification,
                     description: format!("Address bottleneck: {}", bottleneck.description),
-                    rationale: format!("High-impact bottleneck with {:.2} frequency requires strategy adjustment", bottleneck.frequency),
+                    rationale: format!(
+                        "High-impact bottleneck with {:.2} frequency requires strategy adjustment",
+                        bottleneck.frequency
+                    ),
                     expected_impact: bottleneck.severity.clone(),
                     implementation_steps: bottleneck.suggested_solutions.clone(),
                     success_metrics: vec![
@@ -61,7 +72,10 @@ impl StrategyAdjustmentGenerator {
                         "Improved efficiency".to_string(),
                         "Decreased bottleneck frequency".to_string(),
                     ],
-                    rollback_plan: Some("Revert to previous approach if no improvement within 3 iterations".to_string()),
+                    rollback_plan: Some(
+                        "Revert to previous approach if no improvement within 3 iterations"
+                            .to_string(),
+                    ),
                 });
             }
         }
@@ -83,8 +97,7 @@ impl StrategyAdjustmentGenerator {
                 description: "Optimize overall strategy due to poor performance".to_string(),
                 rationale: format!(
                     "Strategy score {:.2} below threshold {:.2}",
-                    strategy_effectiveness.current_strategy_score,
-                    performance_threshold
+                    strategy_effectiveness.current_strategy_score, performance_threshold
                 ),
                 expected_impact: ImpactLevel::High,
                 implementation_steps: vec![
@@ -108,7 +121,10 @@ impl StrategyAdjustmentGenerator {
                 adjustment_id: uuid::Uuid::new_v4().to_string(),
                 adjustment_type: AdjustmentType::ConsistencyImprovement,
                 description: "Improve strategy consistency".to_string(),
-                rationale: format!("Low consistency score: {:.2}", strategy_effectiveness.strategy_consistency),
+                rationale: format!(
+                    "Low consistency score: {:.2}",
+                    strategy_effectiveness.strategy_consistency
+                ),
                 expected_impact: ImpactLevel::Medium,
                 implementation_steps: vec![
                     "Establish clear decision criteria".to_string(),
@@ -124,15 +140,22 @@ impl StrategyAdjustmentGenerator {
     }
 
     /// Generate adjustments based on learning opportunities
-    async fn generate_learning_adjustments(opportunities: &[LearningOpportunity]) -> Result<Vec<StrategyAdjustment>> {
+    async fn generate_learning_adjustments(
+        opportunities: &[LearningOpportunity],
+    ) -> Result<Vec<StrategyAdjustment>> {
         let mut adjustments = Vec::new();
 
         for opportunity in opportunities {
-            if opportunity.potential_impact == ImpactLevel::High && opportunity.priority == Priority::High {
+            if opportunity.potential_impact == ImpactLevel::High
+                && opportunity.priority == Priority::High
+            {
                 adjustments.push(StrategyAdjustment {
                     adjustment_id: uuid::Uuid::new_v4().to_string(),
                     adjustment_type: AdjustmentType::CapabilityEnhancement,
-                    description: format!("Implement learning opportunity: {}", opportunity.description),
+                    description: format!(
+                        "Implement learning opportunity: {}",
+                        opportunity.description
+                    ),
                     rationale: "High-impact learning opportunity identified".to_string(),
                     expected_impact: opportunity.potential_impact.clone(),
                     implementation_steps: vec![
@@ -154,7 +177,9 @@ impl StrategyAdjustmentGenerator {
     }
 
     /// Generate adjustments based on resource utilization
-    async fn generate_resource_adjustments(resource_utilization: &ResourceUtilization) -> Result<Vec<StrategyAdjustment>> {
+    async fn generate_resource_adjustments(
+        resource_utilization: &ResourceUtilization,
+    ) -> Result<Vec<StrategyAdjustment>> {
         let mut adjustments = Vec::new();
 
         // Check for low efficiency
@@ -163,7 +188,10 @@ impl StrategyAdjustmentGenerator {
                 adjustment_id: uuid::Uuid::new_v4().to_string(),
                 adjustment_type: AdjustmentType::ResourceOptimization,
                 description: "Optimize resource utilization".to_string(),
-                rationale: format!("Low efficiency score: {:.2}", resource_utilization.efficiency_score),
+                rationale: format!(
+                    "Low efficiency score: {:.2}",
+                    resource_utilization.efficiency_score
+                ),
                 expected_impact: ImpactLevel::Medium,
                 implementation_steps: vec![
                     "Analyze resource usage patterns".to_string(),
@@ -189,7 +217,8 @@ impl StrategyOptimizer {
         _context: &ExecutionContext,
     ) -> Result<OptimizationPlan> {
         let prioritized_adjustments = Self::prioritize_adjustments(adjustments);
-        let implementation_timeline = Self::create_implementation_timeline(&prioritized_adjustments);
+        let implementation_timeline =
+            Self::create_implementation_timeline(&prioritized_adjustments);
         let resource_requirements = Self::calculate_resource_requirements(&prioritized_adjustments);
         let risk_assessment = Self::assess_implementation_risks(&prioritized_adjustments);
 
@@ -220,7 +249,8 @@ impl StrategyOptimizer {
 
         // Sort by priority score (highest first)
         prioritized.sort_by(|a, b| {
-            b.priority_score.partial_cmp(&a.priority_score)
+            b.priority_score
+                .partial_cmp(&a.priority_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -266,16 +296,20 @@ impl StrategyOptimizer {
         for (i, adj) in adjustments.iter().enumerate() {
             let phase_duration = match adj.adjustment.expected_impact {
                 ImpactLevel::Critical => Duration::from_secs(300), // 5 minutes
-                ImpactLevel::High => Duration::from_secs(900), // 15 minutes
-                ImpactLevel::Medium => Duration::from_secs(1800), // 30 minutes
-                ImpactLevel::Low => Duration::from_secs(3600), // 1 hour
+                ImpactLevel::High => Duration::from_secs(900),     // 15 minutes
+                ImpactLevel::Medium => Duration::from_secs(1800),  // 30 minutes
+                ImpactLevel::Low => Duration::from_secs(3600),     // 1 hour
             };
 
             phases.push(TimelinePhase {
                 phase_id: format!("phase_{}", i + 1),
                 description: format!("Implement: {}", adj.adjustment.description),
                 duration: phase_duration,
-                dependencies: if i > 0 { vec![format!("phase_{}", i)] } else { vec![] },
+                dependencies: if i > 0 {
+                    vec![format!("phase_{}", i)]
+                } else {
+                    vec![]
+                },
                 deliverables: adj.adjustment.implementation_steps.clone(),
             });
         }
@@ -284,7 +318,9 @@ impl StrategyOptimizer {
     }
 
     /// Calculate resource requirements
-    fn calculate_resource_requirements(adjustments: &[PrioritizedAdjustment]) -> ResourceRequirements {
+    fn calculate_resource_requirements(
+        adjustments: &[PrioritizedAdjustment],
+    ) -> ResourceRequirements {
         let total_steps: usize = adjustments
             .iter()
             .map(|adj| adj.adjustment.implementation_steps.len())
@@ -293,15 +329,17 @@ impl StrategyOptimizer {
         ResourceRequirements {
             computational_resources: total_steps as f64 * 0.1,
             time_investment: Duration::from_secs(total_steps as u64 * 300),
-            human_oversight_required: adjustments.iter().any(|adj| {
-                adj.adjustment.expected_impact == ImpactLevel::Critical
-            }),
+            human_oversight_required: adjustments
+                .iter()
+                .any(|adj| adj.adjustment.expected_impact == ImpactLevel::Critical),
             external_dependencies: vec![],
         }
     }
 
     /// Assess implementation risks
-    fn assess_implementation_risks(adjustments: &[PrioritizedAdjustment]) -> Vec<ImplementationRisk> {
+    fn assess_implementation_risks(
+        adjustments: &[PrioritizedAdjustment],
+    ) -> Vec<ImplementationRisk> {
         let mut risks = Vec::new();
 
         for adj in adjustments {
@@ -311,7 +349,10 @@ impl StrategyOptimizer {
                     description: format!("High-impact change: {}", adj.adjustment.description),
                     probability: 0.3,
                     impact: ImpactLevel::High,
-                    mitigation_strategy: adj.adjustment.rollback_plan.clone()
+                    mitigation_strategy: adj
+                        .adjustment
+                        .rollback_plan
+                        .clone()
                         .unwrap_or_else(|| "Monitor closely and revert if needed".to_string()),
                 });
             }
@@ -345,13 +386,11 @@ impl StrategyOptimizer {
                 "Task completion rate".to_string(),
                 "Error frequency".to_string(),
             ],
-            alert_thresholds: vec![
-                AlertThreshold {
-                    metric: "Error rate".to_string(),
-                    threshold: 0.2,
-                    action: "Immediate review".to_string(),
-                },
-            ],
+            alert_thresholds: vec![AlertThreshold {
+                metric: "Error rate".to_string(),
+                threshold: 0.2,
+                action: "Immediate review".to_string(),
+            }],
             review_schedule: Duration::from_secs(1800), // 30 minutes
         }
     }

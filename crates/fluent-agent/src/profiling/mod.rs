@@ -1,5 +1,5 @@
 //! Performance profiling utilities for the fluent agent system
-//! 
+//!
 //! This module provides comprehensive profiling capabilities for analyzing
 //! the performance characteristics of the reflection system and other
 //! agent components.
@@ -31,9 +31,10 @@ impl PerformanceMetrics {
         self.memory_usage += memory;
         self.execution_time += duration;
         self.operation_count += 1;
-        
+
         // Update success rate using running average
-        let current_successes = (self.success_rate * (self.operation_count - 1) as f64) + if success { 1.0 } else { 0.0 };
+        let current_successes = (self.success_rate * (self.operation_count - 1) as f64)
+            + if success { 1.0 } else { 0.0 };
         self.success_rate = current_successes / self.operation_count as f64;
     }
 }

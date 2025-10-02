@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use log::{debug, info, warn};
 use std::fs;
 use std::path::Path;
@@ -79,8 +79,10 @@ impl MemoryManager {
 
         match get_memory_info() {
             Ok(info) => {
-                debug!("{}: RSS: {} KB, Virtual: {} KB",
-                    context, info.rss_kb, info.virtual_kb);
+                debug!(
+                    "{}: RSS: {} KB, Virtual: {} KB",
+                    context, info.rss_kb, info.virtual_kb
+                );
             }
             Err(e) => {
                 debug!("{}: Failed to get memory info: {}", context, e);
@@ -147,11 +149,17 @@ impl MemoryManager {
                     debug!("No files found matching pattern: {}", pattern_str);
                 }
             } else {
-                warn!("Failed to convert temp pattern to string: {:?}", full_pattern);
+                warn!(
+                    "Failed to convert temp pattern to string: {:?}",
+                    full_pattern
+                );
             }
         }
 
-        info!("Temp file cleanup: {} cleaned, {} failed", cleaned_count, failed_count);
+        info!(
+            "Temp file cleanup: {} cleaned, {} failed",
+            cleaned_count, failed_count
+        );
         Ok(())
     }
 
@@ -165,7 +173,8 @@ impl MemoryManager {
             "checkpoints",
         ];
 
-        let cutoff_time = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600); // 7 days
+        let cutoff_time =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600); // 7 days
 
         for dir in &checkpoint_dirs {
             if let Ok(entries) = fs::read_dir(dir) {
@@ -174,7 +183,11 @@ impl MemoryManager {
                         if let Ok(modified) = metadata.modified() {
                             if modified < cutoff_time {
                                 if let Err(e) = fs::remove_file(entry.path()) {
-                                    warn!("Failed to remove old checkpoint {:?}: {}", entry.path(), e);
+                                    warn!(
+                                        "Failed to remove old checkpoint {:?}: {}",
+                                        entry.path(),
+                                        e
+                                    );
                                 } else {
                                     debug!("Removed old checkpoint: {:?}", entry.path());
                                 }
@@ -192,11 +205,7 @@ impl MemoryManager {
     fn cleanup_cache_files() -> Result<()> {
         debug!("Cleaning up cache files");
 
-        let cache_dirs = [
-            ".fluent/cache",
-            "/tmp/fluent_cache",
-            "cache",
-        ];
+        let cache_dirs = [".fluent/cache", "/tmp/fluent_cache", "cache"];
 
         let max_cache_size = 100 * 1024 * 1024; // 100MB
         let cutoff_time = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600); // 1 day
@@ -230,12 +239,7 @@ impl MemoryManager {
     fn cleanup_large_log_files() -> Result<()> {
         debug!("Cleaning up large log files");
 
-        let log_patterns = [
-            "*.log",
-            "logs/*.log",
-            "/tmp/*.log",
-            ".fluent/logs/*.log",
-        ];
+        let log_patterns = ["*.log", "logs/*.log", "/tmp/*.log", ".fluent/logs/*.log"];
 
         let max_log_size = 50 * 1024 * 1024; // 50MB
 
@@ -248,7 +252,11 @@ impl MemoryManager {
                             if let Err(e) = fs::write(&entry, "") {
                                 warn!("Failed to truncate large log file {:?}: {}", entry, e);
                             } else {
-                                info!("Truncated large log file: {:?} (was {} bytes)", entry, metadata.len());
+                                info!(
+                                    "Truncated large log file: {:?} (was {} bytes)",
+                                    entry,
+                                    metadata.len()
+                                );
                             }
                         }
                     }
@@ -284,7 +292,10 @@ impl MemoryManager {
 
         // Clean up temporary resources first
         if let Err(e) = Self::cleanup_temp_resources() {
-            warn!("Failed to cleanup temp resources during optimization: {}", e);
+            warn!(
+                "Failed to cleanup temp resources during optimization: {}",
+                e
+            );
         }
 
         // Force cleanup
@@ -358,7 +369,10 @@ impl MemoryManager {
                 let rss_mb = info.rss_kb / 1024;
                 let virtual_mb = info.virtual_kb / 1024;
 
-                info!("Post-cleanup memory: RSS: {} MB, Virtual: {} MB", rss_mb, virtual_mb);
+                info!(
+                    "Post-cleanup memory: RSS: {} MB, Virtual: {} MB",
+                    rss_mb, virtual_mb
+                );
 
                 // Warn if memory usage seems high
                 if rss_mb > 500 {
@@ -404,17 +418,20 @@ impl ResourceGuard {
 
     /// Add a file path to be cleaned up on drop
     pub fn add_cleanup_path<P: AsRef<Path>>(&mut self, path: P) {
-        self.cleanup_paths.push(path.as_ref().to_string_lossy().to_string());
+        self.cleanup_paths
+            .push(path.as_ref().to_string_lossy().to_string());
     }
 
     /// Add a directory to be cleaned up on drop (recursively)
     pub fn add_cleanup_dir<P: AsRef<Path>>(&mut self, path: P) {
-        self.cleanup_dirs.push(path.as_ref().to_string_lossy().to_string());
+        self.cleanup_dirs
+            .push(path.as_ref().to_string_lossy().to_string());
     }
 
     /// Add a temporary file that was created and should be cleaned up
     pub fn add_temp_file<P: AsRef<Path>>(&mut self, path: P) {
-        self.temp_files.push(path.as_ref().to_string_lossy().to_string());
+        self.temp_files
+            .push(path.as_ref().to_string_lossy().to_string());
     }
 
     /// Add a large memory allocation to be tracked and freed
@@ -425,7 +442,7 @@ impl ResourceGuard {
     /// Add a custom cleanup callback
     pub fn add_cleanup_callback<F>(&mut self, callback: F)
     where
-        F: FnOnce() + Send + 'static
+        F: FnOnce() + Send + 'static,
     {
         self.cleanup_callbacks.push(Box::new(callback));
     }
@@ -433,8 +450,10 @@ impl ResourceGuard {
     /// Create a temporary file and add it to cleanup list
     pub async fn create_temp_file(&mut self, prefix: &str) -> Result<tokio::fs::File> {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
-            .unwrap_or_default().as_nanos();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         let temp_path = format!("/tmp/{prefix}_{timestamp}");
         let file = tokio::fs::File::create(&temp_path).await?;
         self.add_temp_file(&temp_path);
@@ -518,8 +537,8 @@ impl Drop for ResourceGuard {
 /// Cross-platform memory information
 #[derive(Debug, Clone)]
 pub struct MemoryInfo {
-    pub rss_kb: u64,      // Resident Set Size in KB
-    pub virtual_kb: u64,  // Virtual memory size in KB
+    pub rss_kb: u64,     // Resident Set Size in KB
+    pub virtual_kb: u64, // Virtual memory size in KB
 }
 
 /// Cross-platform system memory information
@@ -572,7 +591,7 @@ fn get_system_memory_info() -> Result<SystemMemoryInfo> {
     {
         // Fallback for other platforms
         Ok(SystemMemoryInfo {
-            total_kb: 1024 * 1024, // 1GB default
+            total_kb: 1024 * 1024,    // 1GB default
             available_kb: 512 * 1024, // 512MB default
             used_kb: 512 * 1024,
         })
@@ -663,31 +682,38 @@ fn get_memory_info_macos() -> Result<MemoryInfo> {
         .map_err(|e| anyhow!("Failed to execute ps command on macOS: {}", e))?;
 
     if !output.status.success() {
-        return Err(anyhow!("ps command failed on macOS with exit code: {}",
-                          output.status.code().unwrap_or(-1)));
+        return Err(anyhow!(
+            "ps command failed on macOS with exit code: {}",
+            output.status.code().unwrap_or(-1)
+        ));
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = output_str.lines().collect();
 
     if lines.len() < 2 {
-        return Err(anyhow!("Unexpected ps output format on macOS: expected at least 2 lines, got {}", lines.len()));
+        return Err(anyhow!(
+            "Unexpected ps output format on macOS: expected at least 2 lines, got {}",
+            lines.len()
+        ));
     }
 
     let parts: Vec<&str> = lines[1].split_whitespace().collect();
     if parts.len() < 2 {
-        return Err(anyhow!("Failed to parse ps output on macOS: expected at least 2 columns, got {}", parts.len()));
+        return Err(anyhow!(
+            "Failed to parse ps output on macOS: expected at least 2 columns, got {}",
+            parts.len()
+        ));
     }
 
-    let rss_kb = parts[0].parse::<u64>()
+    let rss_kb = parts[0]
+        .parse::<u64>()
         .map_err(|e| anyhow!("Failed to parse RSS value '{}' on macOS: {}", parts[0], e))?;
-    let virtual_kb = parts[1].parse::<u64>()
+    let virtual_kb = parts[1]
+        .parse::<u64>()
         .map_err(|e| anyhow!("Failed to parse VSZ value '{}' on macOS: {}", parts[1], e))?;
 
-    Ok(MemoryInfo {
-        rss_kb,
-        virtual_kb
-    })
+    Ok(MemoryInfo { rss_kb, virtual_kb })
 }
 
 #[cfg(target_os = "macos")]
@@ -703,7 +729,7 @@ fn get_system_memory_info_macos() -> Result<SystemMemoryInfo> {
     // Parse vm_stat output (simplified)
     // This is a basic implementation - in production you'd use system APIs
     Ok(SystemMemoryInfo {
-        total_kb: 8 * 1024 * 1024, // 8GB default
+        total_kb: 8 * 1024 * 1024,     // 8GB default
         available_kb: 4 * 1024 * 1024, // 4GB default
         used_kb: 4 * 1024 * 1024,
     })
@@ -715,14 +741,19 @@ fn get_memory_info_windows() -> Result<MemoryInfo> {
 
     // Try to get memory info using tasklist command
     let output = Command::new("tasklist")
-        .args(&["/fi", &format!("PID eq {}", std::process::id()), "/fo", "csv"])
+        .args(&[
+            "/fi",
+            &format!("PID eq {}", std::process::id()),
+            "/fo",
+            "csv",
+        ])
         .output()
         .map_err(|e| anyhow!("Failed to execute tasklist command on Windows: {}", e))?;
 
     if !output.status.success() {
         warn!("tasklist command failed on Windows, using fallback values");
         return Ok(MemoryInfo {
-            rss_kb: 32 * 1024, // 32MB default
+            rss_kb: 32 * 1024,     // 32MB default
             virtual_kb: 64 * 1024, // 64MB default
         });
     }
@@ -737,7 +768,10 @@ fn get_memory_info_windows() -> Result<MemoryInfo> {
 
         // Memory usage is typically in the 5th field (index 4) in tasklist CSV output
         if fields.len() > 4 {
-            let memory_str = fields[4].trim_matches('"').replace(",", "").replace(" K", "");
+            let memory_str = fields[4]
+                .trim_matches('"')
+                .replace(",", "")
+                .replace(" K", "");
             if let Ok(memory_kb) = memory_str.parse::<u64>() {
                 return Ok(MemoryInfo {
                     rss_kb: memory_kb,
@@ -750,7 +784,7 @@ fn get_memory_info_windows() -> Result<MemoryInfo> {
     // Fallback if parsing fails
     warn!("Failed to parse tasklist output on Windows, using fallback values");
     Ok(MemoryInfo {
-        rss_kb: 32 * 1024, // 32MB default
+        rss_kb: 32 * 1024,     // 32MB default
         virtual_kb: 64 * 1024, // 64MB default
     })
 }
@@ -760,7 +794,7 @@ fn get_system_memory_info_windows() -> Result<SystemMemoryInfo> {
     // On Windows, we would use GlobalMemoryStatusEx()
     // For now, provide a simplified implementation
     Ok(SystemMemoryInfo {
-        total_kb: 8 * 1024 * 1024, // 8GB default
+        total_kb: 8 * 1024 * 1024,     // 8GB default
         available_kb: 4 * 1024 * 1024, // 4GB default
         used_kb: 4 * 1024 * 1024,
     })

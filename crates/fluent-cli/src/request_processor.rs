@@ -44,7 +44,7 @@ pub async fn read_file_content(file_path: &str) -> Result<String> {
     }
 
     let content = fs::read_to_string(file_path).await?;
-    
+
     if content.is_empty() {
         return Err(anyhow::anyhow!("File is empty: {}", file_path));
     }
@@ -62,7 +62,7 @@ pub async fn validate_file_for_upload(file_path: &str) -> Result<()> {
 
     let metadata = tokio::fs::metadata(path).await?;
     let file_size = metadata.len();
-    
+
     // Check file size (limit to 10MB)
     const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
     if file_size > MAX_FILE_SIZE {
@@ -77,16 +77,12 @@ pub async fn validate_file_for_upload(file_path: &str) -> Result<()> {
     if let Some(extension) = path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
         let allowed_extensions = vec![
-            "txt", "md", "json", "yaml", "yml", "toml", "csv",
-            "py", "rs", "js", "ts", "html", "css", "xml",
-            "png", "jpg", "jpeg", "gif", "pdf", "doc", "docx"
+            "txt", "md", "json", "yaml", "yml", "toml", "csv", "py", "rs", "js", "ts", "html",
+            "css", "xml", "png", "jpg", "jpeg", "gif", "pdf", "doc", "docx",
         ];
-        
+
         if !allowed_extensions.contains(&ext.as_str()) {
-            return Err(anyhow::anyhow!(
-                "Unsupported file type: .{}",
-                ext
-            ));
+            return Err(anyhow::anyhow!("Unsupported file type: .{}", ext));
         }
     }
 
@@ -120,17 +116,17 @@ pub fn extract_code_blocks(content: &str) -> Vec<(Option<String>, String)> {
 
     while i < lines.len() {
         let line = lines[i].trim();
-        
+
         if line.starts_with("```") {
             let language = if line.len() > 3 {
                 Some(line[3..].trim().to_string())
             } else {
                 None
             };
-            
+
             i += 1;
             let mut code_content = String::new();
-            
+
             while i < lines.len() && !lines[i].trim().starts_with("```") {
                 if !code_content.is_empty() {
                     code_content.push('\n');
@@ -138,12 +134,12 @@ pub fn extract_code_blocks(content: &str) -> Vec<(Option<String>, String)> {
                 code_content.push_str(lines[i]);
                 i += 1;
             }
-            
+
             if !code_content.trim().is_empty() {
                 code_blocks.push((language, code_content));
             }
         }
-        
+
         i += 1;
     }
 

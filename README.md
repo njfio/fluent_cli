@@ -93,6 +93,7 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Advanced Tool System**: File operations, shell commands, and code analysis (via agent interface)
 - **String Replace Editor**: Surgical file editing with precision targeting and validation
 - **Memory System**: SQLite-based persistent memory with performance optimization
+- **Terminal User Interface (TUI)**: Real-time monitoring with progress bars, status displays, and interactive controls
 - **Security Features**: Input validation and secure execution patterns (ongoing development)
 
 ### 🧠 **Self-Reflection & Learning System**
@@ -111,6 +112,54 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Command Sandboxing**: Isolated execution environment with timeouts
 - **Security Audit Tools**: Automated security scanning and vulnerability detection
 - **Code Quality Assessment**: Automated quality metrics and best practice validation
+
+### 🎨 **Terminal User Interface (TUI)**
+
+Fluent CLI includes an advanced Terminal User Interface for real-time monitoring of agent execution:
+
+#### Features
+- **Real-time Progress**: Live progress bars and status updates
+- **Interactive Controls**: Scroll through logs, pause/resume, and quit
+- **Rich Display**: Color-coded status, iteration tracking, and feature indicators
+- **Fallback Support**: Automatic fallback to ASCII mode for incompatible terminals
+
+#### Usage
+```bash
+# Enable TUI for agent execution
+fluent agent --goal "Analyze this codebase" --tui
+
+# TUI with custom settings
+fluent agent --goal "Refactor the API" --tui --max-iterations 10 --enable-tools
+```
+
+#### Terminal Compatibility
+
+**Full Graphical TUI** (Recommended):
+- ✅ iTerm2 (macOS)
+- ✅ Alacritty (Cross-platform)
+- ✅ Windows Terminal (Windows)
+- ✅ GNOME Terminal / Konsole (Linux)
+- ✅ Any terminal supporting raw mode and alternate screen buffers
+
+**ASCII Fallback TUI** (Automatic):
+- ✅ All terminals including macOS Terminal.app
+- ✅ Non-interactive environments
+- ✅ SSH sessions and CI/CD pipelines
+- ✅ Text-based interfaces
+
+#### Controls
+
+**Full TUI Mode:**
+- `↑/↓` - Scroll through logs
+- `PgUp/PgDn` - Page through logs
+- `Q` or `Esc` - Quit
+- `P` - Pause/Resume (planned)
+
+**ASCII TUI Mode:**
+- `Q` or `Esc` - Quit
+- `C` - Clear screen
+- `H` or `?` - Show help
+- Auto-updates every 200ms
 
 ## 📦 Installation
 
@@ -154,14 +203,10 @@ fluent anthropic-claude "Write a Python function to calculate fibonacci"
 #### Agent Commands
 
 ```bash
-# Interactive agent session (requires engine name and API keys)
-fluent openai-gpt4 agent
+# Interactive agent session (requires API keys)
+fluent agent
 
-# Agent with MCP capabilities (experimental - requires API keys)
-fluent openai-gpt4 agent-mcp -e openai -t "Analyze codebase" -s "filesystem:mcp-server-filesystem"
-
-# Note: Advanced agentic features like --agentic, --goal, --max-iterations are not yet implemented in the CLI
-# The agent command provides basic interactive functionality
+# For MCP integration, see the MCP commands below
 # Set appropriate API keys before running:
 # export OPENAI_API_KEY="your-api-key-here"
 # export ANTHROPIC_API_KEY="your-api-key-here"
@@ -170,8 +215,8 @@ fluent openai-gpt4 agent-mcp -e openai -t "Analyze codebase" -s "filesystem:mcp-
 #### Pipeline Commands
 
 ```bash
-# Execute a pipeline (requires engine name)
-fluent openai-gpt4 pipeline -f pipeline.yaml -i "process this data"
+# Execute a pipeline
+fluent pipeline -f pipeline.yaml -i "process this data"
 
 # Build a pipeline interactively
 fluent build-pipeline
@@ -183,14 +228,11 @@ fluent build-pipeline
 #### MCP (Model Context Protocol) Commands
 
 ```bash
-# Start MCP server (STDIO transport by default - requires engine name)
-fluent openai-gpt4 mcp
+# Start MCP server (STDIO transport)
+fluent mcp server --stdio
 
 # Start MCP server with specific port (HTTP transport)
-fluent openai-gpt4 mcp -p 8080
-
-# Run agent with MCP integration (experimental)
-fluent openai-gpt4 agent-mcp -e openai -t "analyze codebase" -s "server1,server2"
+fluent mcp server --port 8080
 ```
 
 #### Neo4j Integration Commands
@@ -203,40 +245,38 @@ fluent neo4j
 # See the configuration section for Neo4j setup details
 ```
 
-#### Direct Engine Commands
+#### Engine Commands
 
 ```bash
-# Direct engine queries (primary interface - use exact engine names from config)
-fluent openai-gpt4 "Explain quantum computing"
-fluent anthropic-claude "Write a Python function"
-fluent google-gemini "Analyze this code"
+# List configured engines
+fluent engine list
 
-# Note: Engine names must match those defined in config.yaml
-# Other commands (pipeline, agent, mcp, tools) are separate subcommands
+# Test connectivity for an engine
+fluent engine test <engine-name>
 ```
 
 #### Tool Access Commands ✅ **NEW**
 
 ```bash
 # List all available tools
-fluent openai-gpt4 tools list
+fluent tools list
 
 # List tools by category
-fluent openai-gpt4 tools list --category file
-fluent openai-gpt4 tools list --category compiler
+fluent tools list --category file
+fluent tools list --category compiler
 
 # Get tool description and usage
-fluent openai-gpt4 tools describe read_file
-fluent openai-gpt4 tools describe cargo_build
+fluent tools describe read_file
+fluent tools describe cargo_build
 
 # Execute tools directly
-fluent openai-gpt4 tools exec read_file --path "README.md"
-fluent openai-gpt4 tools exec cargo_check
-fluent openai-gpt4 tools exec string_replace --path "file.txt" --old "old text" --new "new text"
+fluent tools exec read_file --path "README.md"
+fluent tools exec cargo_check
+fluent tools exec string_replace --path "file.txt" --old "old text" --new "new text"
 
 # JSON output for automation
-fluent openai-gpt4 tools list --json
-fluent openai-gpt4 tools exec file_exists --path "Cargo.toml" --json-output
+fluent tools list --json
+fluent tools exec file_exists --path "Cargo.toml" --json-output
 
 # Available tool categories: file, compiler, shell, editor, system
 ```
@@ -447,6 +487,30 @@ export OPENAI_API_KEY="your-key"
 export ANTHROPIC_API_KEY="your-key"
 export GOOGLE_API_KEY="your-key"
 # ... etc
+```
+
+## Logging
+
+- Human logs (default): human-readable.
+- JSON logs: set FLUENT_LOG_FORMAT=json or pass --json-logs.
+
+```bash
+FLUENT_LOG_FORMAT=json fluent tools list
+# or
+fluent --json-logs tools list
+```
+
+## Shell Completions
+
+Generate completion scripts for your shell:
+
+```bash
+# Zsh
+fluent completions --shell zsh > _fluent
+# Bash
+fluent completions --shell bash > fluent.bash
+# Fish
+fluent completions --shell fish > fluent.fish
 ```
 
 ## 🔧 Development Status

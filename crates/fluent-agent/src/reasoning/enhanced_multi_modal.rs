@@ -13,11 +13,11 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::reasoning::{ReasoningEngine, ReasoningCapability};
-use crate::reasoning::tree_of_thought::{TreeOfThoughtEngine, ToTConfig};
-use crate::reasoning::chain_of_thought::{ChainOfThoughtEngine, CoTConfig};
-use crate::reasoning::meta_reasoning::{MetaReasoningEngine, MetaConfig};
 use crate::context::ExecutionContext;
+use crate::reasoning::chain_of_thought::{ChainOfThoughtEngine, CoTConfig};
+use crate::reasoning::meta_reasoning::{MetaConfig, MetaReasoningEngine};
+use crate::reasoning::tree_of_thought::{ToTConfig, TreeOfThoughtEngine};
+use crate::reasoning::{ReasoningCapability, ReasoningEngine};
 use fluent_core::traits::Engine;
 
 /// Enhanced multi-modal reasoning engine with advanced cognitive capabilities
@@ -26,15 +26,15 @@ pub struct EnhancedMultiModalEngine {
     tree_of_thought: Arc<TreeOfThoughtEngine>,
     chain_of_thought: Arc<ChainOfThoughtEngine>,
     meta_reasoning: Arc<MetaReasoningEngine>,
-    
+
     /// Advanced cognitive components
     working_memory: Arc<RwLock<WorkingMemory>>,
     attention_mechanism: Arc<RwLock<AttentionMechanism>>,
     cognitive_controller: Arc<RwLock<CognitiveController>>,
-    
+
     /// Configuration
     config: EnhancedReasoningConfig,
-    
+
     /// Performance tracking
     performance_monitor: Arc<RwLock<PerformanceMonitor>>,
 }
@@ -292,12 +292,12 @@ impl EnhancedMultiModalEngine {
             base_engine.clone(),
             ToTConfig::default(),
         ));
-        
+
         let chain_of_thought = Arc::new(ChainOfThoughtEngine::new(
             base_engine.clone(),
             CoTConfig::default(),
         ));
-        
+
         let meta_reasoning = Arc::new(MetaReasoningEngine::new(
             base_engine.clone(),
             MetaConfig::default(),
@@ -344,21 +344,29 @@ impl EnhancedMultiModalEngine {
         let strategy = self.select_reasoning_strategy(prompt, context).await?;
 
         // 3. Execute reasoning with selected strategy
-        let reasoning_result = self.execute_reasoning_strategy(strategy.clone(), prompt, context).await?;
+        let reasoning_result = self
+            .execute_reasoning_strategy(strategy.clone(), prompt, context)
+            .await?;
 
         // 4. Evaluate reasoning quality
-        let quality_score = self.evaluate_reasoning_quality(&reasoning_result, context).await?;
+        let quality_score = self
+            .evaluate_reasoning_quality(&reasoning_result, context)
+            .await?;
 
         // 5. Update performance metrics
-        let performance_snapshot = self.create_performance_snapshot(
-            strategy.clone(),
-            start_time,
-            reasoning_result.confidence_score,
-            quality_score,
-        ).await;
+        let performance_snapshot = self
+            .create_performance_snapshot(
+                strategy.clone(),
+                start_time,
+                reasoning_result.confidence_score,
+                quality_score,
+            )
+            .await;
 
         // 6. Generate meta-cognitive insights
-        let meta_insights = self.generate_meta_insights(&reasoning_result, &performance_snapshot).await?;
+        let meta_insights = self
+            .generate_meta_insights(&reasoning_result, &performance_snapshot)
+            .await?;
 
         // 7. Generate adaptation recommendations
         let adaptations = self.generate_adaptations(&performance_snapshot).await?;
@@ -382,12 +390,16 @@ impl EnhancedMultiModalEngine {
     }
 
     /// Analyze problem context and update working memory
-    async fn analyze_problem_context(&self, prompt: &str, context: &ExecutionContext) -> Result<()> {
+    async fn analyze_problem_context(
+        &self,
+        prompt: &str,
+        context: &ExecutionContext,
+    ) -> Result<()> {
         let mut memory = self.working_memory.write().await;
-        
+
         // Extract key concepts from the prompt
         let concepts = self.extract_concepts(prompt).await?;
-        
+
         // Add concepts to working memory
         for concept in concepts {
             let memory_item = MemoryItem {
@@ -399,7 +411,7 @@ impl EnhancedMultiModalEngine {
                 last_accessed: SystemTime::now(),
                 item_type: MemoryItemType::Concept,
             };
-            
+
             // Add to memory with capacity management
             if memory.active_concepts.len() >= memory.capacity {
                 memory.active_concepts.pop_front();
@@ -408,7 +420,8 @@ impl EnhancedMultiModalEngine {
         }
 
         // Update attention weights
-        self.update_attention_weights(&memory.active_concepts).await?;
+        self.update_attention_weights(&memory.active_concepts)
+            .await?;
 
         Ok(())
     }
@@ -441,7 +454,8 @@ impl EnhancedMultiModalEngine {
         }
 
         // Record strategic decision
-        self.record_strategic_decision(strategy.clone(), problem_complexity).await?;
+        self.record_strategic_decision(strategy.clone(), problem_complexity)
+            .await?;
 
         Ok(strategy)
     }
@@ -455,7 +469,10 @@ impl EnhancedMultiModalEngine {
     ) -> Result<IntermediateReasoningResult> {
         match strategy {
             ReasoningStrategy::TreeOfThought => {
-                let result = self.tree_of_thought.reason_with_tree(prompt, context).await?;
+                let result = self
+                    .tree_of_thought
+                    .reason_with_tree(prompt, context)
+                    .await?;
                 Ok(IntermediateReasoningResult {
                     reasoning_output: result.best_path.final_conclusion,
                     confidence_score: result.reasoning_confidence,
@@ -475,7 +492,10 @@ impl EnhancedMultiModalEngine {
                 Ok(IntermediateReasoningResult {
                     reasoning_output: result,
                     confidence_score: self.meta_reasoning.get_confidence().await,
-                    alternative_strategies: vec![ReasoningStrategy::TreeOfThought, ReasoningStrategy::ChainOfThought],
+                    alternative_strategies: vec![
+                        ReasoningStrategy::TreeOfThought,
+                        ReasoningStrategy::ChainOfThought,
+                    ],
                 })
             }
             ReasoningStrategy::ParallelExploration => {
@@ -483,7 +503,10 @@ impl EnhancedMultiModalEngine {
             }
             _ => {
                 // Fallback to Tree-of-Thought
-                let result = self.tree_of_thought.reason_with_tree(prompt, context).await?;
+                let result = self
+                    .tree_of_thought
+                    .reason_with_tree(prompt, context)
+                    .await?;
                 Ok(IntermediateReasoningResult {
                     reasoning_output: result.best_path.final_conclusion,
                     confidence_score: result.reasoning_confidence,
@@ -550,7 +573,7 @@ impl EnhancedMultiModalEngine {
 
     async fn update_attention_weights(&self, memory_items: &VecDeque<MemoryItem>) -> Result<()> {
         let mut attention = self.attention_mechanism.write().await;
-        
+
         for item in memory_items {
             attention.focus_areas.insert(
                 item.content.clone(),
@@ -570,11 +593,20 @@ impl EnhancedMultiModalEngine {
 
     fn count_complexity_keywords(&self, text: &str) -> usize {
         let complexity_keywords = [
-            "complex", "multiple", "analyze", "synthesize", "optimize",
-            "compare", "evaluate", "design", "implement", "integrate"
+            "complex",
+            "multiple",
+            "analyze",
+            "synthesize",
+            "optimize",
+            "compare",
+            "evaluate",
+            "design",
+            "implement",
+            "integrate",
         ];
-        
-        complexity_keywords.iter()
+
+        complexity_keywords
+            .iter()
             .map(|keyword| text.to_lowercase().matches(keyword).count())
             .sum()
     }
@@ -640,7 +672,9 @@ impl ReasoningEngine for EnhancedMultiModalEngine {
         if monitor.recent_metrics.is_empty() {
             0.5 // Default confidence
         } else {
-            let total: f64 = monitor.recent_metrics.iter()
+            let total: f64 = monitor
+                .recent_metrics
+                .iter()
                 .map(|m| m.confidence_achieved)
                 .sum();
             total / monitor.recent_metrics.len() as f64
@@ -666,15 +700,24 @@ impl EnhancedMultiModalEngine {
         context: &ExecutionContext,
     ) -> Result<f64> {
         // Multi-dimensional quality assessment
-        let coherence_score = self.assess_coherence(&reasoning_result.reasoning_output).await;
-        let relevance_score = self.assess_relevance_to_context(&reasoning_result.reasoning_output, context).await;
-        let completeness_score = self.assess_completeness(&reasoning_result.reasoning_output, context).await;
+        let coherence_score = self
+            .assess_coherence(&reasoning_result.reasoning_output)
+            .await;
+        let relevance_score = self
+            .assess_relevance_to_context(&reasoning_result.reasoning_output, context)
+            .await;
+        let completeness_score = self
+            .assess_completeness(&reasoning_result.reasoning_output, context)
+            .await;
         let confidence_alignment = self.assess_confidence_alignment(reasoning_result).await;
-        
+
         // Weighted quality score
-        let quality = (coherence_score * 0.3 + relevance_score * 0.3 + 
-                      completeness_score * 0.2 + confidence_alignment * 0.2).min(1.0);
-        
+        let quality = (coherence_score * 0.3
+            + relevance_score * 0.3
+            + completeness_score * 0.2
+            + confidence_alignment * 0.2)
+            .min(1.0);
+
         Ok(quality)
     }
 
@@ -690,7 +733,7 @@ impl EnhancedMultiModalEngine {
         let problem_complexity = self.estimate_last_problem_complexity().await;
         let memory_efficiency = self.calculate_memory_efficiency().await;
         let attention_stability = self.calculate_attention_stability().await;
-        
+
         PerformanceSnapshot {
             timestamp: SystemTime::now(),
             strategy_used: strategy,
@@ -710,7 +753,7 @@ impl EnhancedMultiModalEngine {
         performance: &PerformanceSnapshot,
     ) -> Result<Vec<String>> {
         let mut insights = Vec::new();
-        
+
         // Strategy effectiveness insight
         if performance.quality_score > 0.8 {
             insights.push(format!(
@@ -723,30 +766,36 @@ impl EnhancedMultiModalEngine {
                 performance.strategy_used, performance.quality_score
             ));
         }
-        
+
         // Confidence vs quality alignment
-        let confidence_quality_diff = (reasoning_result.confidence_score - performance.quality_score).abs();
+        let confidence_quality_diff =
+            (reasoning_result.confidence_score - performance.quality_score).abs();
         if confidence_quality_diff > 0.3 {
             insights.push(format!(
                 "Significant confidence-quality misalignment detected ({:.2} vs {:.2}) - calibration needed",
                 reasoning_result.confidence_score, performance.quality_score
             ));
         }
-        
+
         // Performance trends
         let monitor = self.performance_monitor.read().await;
         if monitor.recent_metrics.len() >= 3 {
-            let recent_quality: Vec<f64> = monitor.recent_metrics.iter()
+            let recent_quality: Vec<f64> = monitor
+                .recent_metrics
+                .iter()
                 .map(|m| m.quality_score)
                 .collect();
-            
+
             if recent_quality.windows(2).all(|w| w[1] > w[0]) {
-                insights.push("Positive quality trend detected - performance is improving".to_string());
+                insights
+                    .push("Positive quality trend detected - performance is improving".to_string());
             } else if recent_quality.windows(2).all(|w| w[1] < w[0]) {
-                insights.push("Declining quality trend detected - intervention may be needed".to_string());
+                insights.push(
+                    "Declining quality trend detected - intervention may be needed".to_string(),
+                );
             }
         }
-        
+
         Ok(insights)
     }
 
@@ -756,7 +805,7 @@ impl EnhancedMultiModalEngine {
         performance: &PerformanceSnapshot,
     ) -> Result<Vec<AdaptationSuggestion>> {
         let mut adaptations = Vec::new();
-        
+
         // Strategy adaptation
         if performance.quality_score < self.config.quality_threshold {
             adaptations.push(AdaptationSuggestion {
@@ -768,7 +817,7 @@ impl EnhancedMultiModalEngine {
                 rationale: "Quality below threshold - consider alternative strategy".to_string(),
             });
         }
-        
+
         // Memory optimization
         if performance.memory_efficiency < 0.6 {
             adaptations.push(AdaptationSuggestion {
@@ -780,7 +829,7 @@ impl EnhancedMultiModalEngine {
                 rationale: "Memory efficiency low - optimize concept management".to_string(),
             });
         }
-        
+
         // Attention optimization
         if performance.attention_stability < 0.5 {
             adaptations.push(AdaptationSuggestion {
@@ -792,7 +841,7 @@ impl EnhancedMultiModalEngine {
                 rationale: "Attention instability detected - improve focus mechanisms".to_string(),
             });
         }
-        
+
         Ok(adaptations)
     }
 
@@ -802,12 +851,14 @@ impl EnhancedMultiModalEngine {
         let total_items = memory.active_concepts.len();
         let capacity_utilization = total_items as f64 / memory.capacity as f64;
         let efficiency = self.calculate_memory_efficiency().await;
-        
-        let top_concepts: Vec<String> = memory.active_concepts.iter()
+
+        let top_concepts: Vec<String> = memory
+            .active_concepts
+            .iter()
             .take(5)
             .map(|item| item.content.clone())
             .collect();
-        
+
         MemoryUsageReport {
             total_items,
             capacity_utilization,
@@ -820,15 +871,17 @@ impl EnhancedMultiModalEngine {
     /// Create attention allocation report
     async fn create_attention_report(&self) -> AttentionReport {
         let attention = self.attention_mechanism.read().await;
-        
-        let primary_focus = attention.focus_areas.iter()
+
+        let primary_focus = attention
+            .focus_areas
+            .iter()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(k, _)| k.clone())
             .unwrap_or_else(|| "None".to_string());
-        
+
         let stability = self.calculate_attention_stability().await;
         let distraction_level = 1.0 - stability;
-        
+
         AttentionReport {
             primary_focus,
             focus_distribution: attention.focus_areas.clone(),
@@ -845,7 +898,7 @@ impl EnhancedMultiModalEngine {
         problem_complexity: f64,
     ) -> Result<()> {
         let mut controller = self.cognitive_controller.write().await;
-        
+
         let decision = StrategicDecision {
             decision_id: Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
@@ -858,12 +911,12 @@ impl EnhancedMultiModalEngine {
             outcome_confidence: None,
             outcome_quality: None,
         };
-        
+
         if controller.decision_history.len() >= 50 {
             controller.decision_history.pop_front();
         }
         controller.decision_history.push_back(decision);
-        
+
         Ok(())
     }
 
@@ -874,13 +927,20 @@ impl EnhancedMultiModalEngine {
         if sentences.len() < 2 {
             return 0.5;
         }
-        
+
         // Check for logical flow indicators
-        let flow_indicators = ["therefore", "however", "moreover", "consequently", "furthermore"];
-        let flow_count = flow_indicators.iter()
+        let flow_indicators = [
+            "therefore",
+            "however",
+            "moreover",
+            "consequently",
+            "furthermore",
+        ];
+        let flow_count = flow_indicators
+            .iter()
             .map(|indicator| text.to_lowercase().matches(indicator).count())
             .sum::<usize>();
-        
+
         (0.5 + (flow_count as f64 / sentences.len() as f64)).min(1.0)
     }
 
@@ -889,21 +949,23 @@ impl EnhancedMultiModalEngine {
         if context_summary.is_empty() {
             return 0.5;
         }
-        
+
         // Simple relevance based on keyword overlap
-        let text_words: std::collections::HashSet<String> = text.to_lowercase()
+        let text_words: std::collections::HashSet<String> = text
+            .to_lowercase()
             .split_whitespace()
             .map(|s| s.to_string())
             .collect();
-        
-        let context_words: std::collections::HashSet<String> = context_summary.to_lowercase()
+
+        let context_words: std::collections::HashSet<String> = context_summary
+            .to_lowercase()
             .split_whitespace()
             .map(|s| s.to_string())
             .collect();
-        
+
         let overlap = text_words.intersection(&context_words).count();
         let union = text_words.union(&context_words).count();
-        
+
         if union == 0 {
             0.5
         } else {
@@ -913,20 +975,23 @@ impl EnhancedMultiModalEngine {
 
     async fn assess_completeness(&self, text: &str, context: &ExecutionContext) -> f64 {
         // Assess if the reasoning addresses the key aspects of the problem
-        let goal_keywords = context.current_goal.as_ref()
+        let goal_keywords = context
+            .current_goal
+            .as_ref()
             .map(|g| g.description.to_lowercase())
             .unwrap_or_default();
-        
+
         if goal_keywords.is_empty() {
             return 0.5;
         }
-        
+
         let text_lower = text.to_lowercase();
         let goal_words: Vec<&str> = goal_keywords.split_whitespace().collect();
-        let addressed_words = goal_words.iter()
+        let addressed_words = goal_words
+            .iter()
             .filter(|word| text_lower.contains(*word))
             .count();
-        
+
         if goal_words.is_empty() {
             0.5
         } else {
@@ -954,12 +1019,14 @@ impl EnhancedMultiModalEngine {
         if memory.active_concepts.is_empty() {
             return 1.0;
         }
-        
+
         // Calculate efficiency based on relevance scores
-        let total_relevance: f64 = memory.active_concepts.iter()
+        let total_relevance: f64 = memory
+            .active_concepts
+            .iter()
             .map(|item| item.relevance_score)
             .sum();
-        
+
         total_relevance / memory.active_concepts.len() as f64
     }
 
@@ -968,14 +1035,16 @@ impl EnhancedMultiModalEngine {
         if attention.attention_history.len() < 2 {
             return 1.0;
         }
-        
+
         // Calculate stability based on focus consistency
         let history_vec: Vec<_> = attention.attention_history.iter().collect();
-        let focus_changes = history_vec.windows(2)
+        let focus_changes = history_vec
+            .windows(2)
             .filter(|window| window[0].primary_focus != window[1].primary_focus)
             .count();
-        
-        let stability: f64 = 1.0 - (focus_changes as f64 / attention.attention_history.len() as f64);
+
+        let stability: f64 =
+            1.0 - (focus_changes as f64 / attention.attention_history.len() as f64);
         stability.max(0.0_f64)
     }
 }

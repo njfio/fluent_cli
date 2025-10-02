@@ -16,8 +16,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::reasoning::{ReasoningEngine, ReasoningCapability};
 use crate::context::ExecutionContext;
+use crate::reasoning::{ReasoningCapability, ReasoningEngine};
 use fluent_core::traits::Engine;
 
 /// Chain-of-Thought reasoning engine with verification and backtracking
@@ -154,10 +154,12 @@ pub struct VerificationPrompts {
 impl Default for VerificationPrompts {
     fn default() -> Self {
         Self {
-            logical_consistency: "Evaluate the logical consistency of this reasoning step.".to_string(),
+            logical_consistency: "Evaluate the logical consistency of this reasoning step."
+                .to_string(),
             factual_accuracy: "Check the factual accuracy of the claims made.".to_string(),
             reasoning_validity: "Assess whether the reasoning process is valid.".to_string(),
-            conclusion_support: "Determine if the conclusion is well-supported by the premise.".to_string(),
+            conclusion_support: "Determine if the conclusion is well-supported by the premise."
+                .to_string(),
         }
     }
 }
@@ -202,74 +204,102 @@ impl ChainOfThoughtEngine {
     }
 
     /// Perform Chain-of-Thought reasoning on a problem
-    pub async fn reason_with_chain(&self, problem: &str, context: &ExecutionContext) -> Result<CoTReasoningResult> {
+    pub async fn reason_with_chain(
+        &self,
+        problem: &str,
+        context: &ExecutionContext,
+    ) -> Result<CoTReasoningResult> {
         let start_time = SystemTime::now();
-        
+
         // Initialize the reasoning chain
         self.initialize_chain(problem, context, start_time).await?;
-        
+
         // Execute the reasoning process
-        self.execute_reasoning_chain(problem, context, start_time).await?;
-        
+        self.execute_reasoning_chain(problem, context, start_time)
+            .await?;
+
         // Generate final result
         let result = self.generate_chain_result(start_time).await?;
-        
+
         Ok(result)
     }
 
     /// Initialize the reasoning chain with the initial problem
-    async fn initialize_chain(&self, problem: &str, context: &ExecutionContext, start_time: SystemTime) -> Result<()> {
+    async fn initialize_chain(
+        &self,
+        problem: &str,
+        context: &ExecutionContext,
+        start_time: SystemTime,
+    ) -> Result<()> {
         let mut chain = self.reasoning_chain.write().await;
-        
+
         chain.start_time = start_time;
         chain.current_step = 0;
         chain.steps.clear();
         chain.backtrack_history.clear();
-        
+
         Ok(())
     }
 
     /// Execute the main reasoning chain process
-    async fn execute_reasoning_chain(&self, problem: &str, context: &ExecutionContext, start_time: SystemTime) -> Result<()> {
+    async fn execute_reasoning_chain(
+        &self,
+        problem: &str,
+        context: &ExecutionContext,
+        start_time: SystemTime,
+    ) -> Result<()> {
         let mut current_premise = problem.to_string();
-        
+
         for step_num in 1..=self.config.max_chain_length {
             // Check timeout
-            if SystemTime::now().duration_since(start_time).unwrap_or_default() > self.config.reasoning_timeout {
+            if SystemTime::now()
+                .duration_since(start_time)
+                .unwrap_or_default()
+                > self.config.reasoning_timeout
+            {
                 break;
             }
 
             // Generate reasoning step
-            let step_result = self.generate_reasoning_step(step_num, &current_premise, context).await?;
-            
+            let step_result = self
+                .generate_reasoning_step(step_num, &current_premise, context)
+                .await?;
+
             match step_result {
                 StepResult::Success(step) => {
                     // Verify the step if verification is enabled
                     if self.config.enable_verification {
                         let verification = self.verify_step(&step).await?;
-                        
-                        if verification.is_valid && verification.confidence >= self.config.acceptance_threshold {
+
+                        if verification.is_valid
+                            && verification.confidence >= self.config.acceptance_threshold
+                        {
                             // Accept the step
                             current_premise = step.conclusion.clone();
                             self.add_step_to_chain(step, Some(verification)).await?;
                         } else {
                             // Step failed verification - try alternatives or backtrack
                             if self.config.enable_alternatives {
-                                if let Some(alternative) = self.generate_alternative_step(&step, &verification).await? {
+                                if let Some(alternative) =
+                                    self.generate_alternative_step(&step, &verification).await?
+                                {
                                     current_premise = alternative.conclusion.clone();
-                                    self.add_step_to_chain(alternative, Some(verification)).await?;
+                                    self.add_step_to_chain(alternative, Some(verification))
+                                        .await?;
                                     continue;
                                 }
                             }
-                            
+
                             // Try backtracking
                             if self.config.enable_backtracking {
-                                if let Some(backtrack_premise) = self.attempt_backtrack(step_num).await? {
+                                if let Some(backtrack_premise) =
+                                    self.attempt_backtrack(step_num).await?
+                                {
                                     current_premise = backtrack_premise;
                                     continue;
                                 }
                             }
-                            
+
                             // If we can't recover, accept the step with low confidence
                             self.add_step_to_chain(step, Some(verification)).await?;
                         }
@@ -279,7 +309,7 @@ impl ChainOfThoughtEngine {
                         self.add_step_to_chain(step, None).await?;
                     }
                 }
-                
+
                 StepResult::Failure(error) => {
                     // Failed to generate step - try backtracking
                     if self.config.enable_backtracking && step_num > 1 {
@@ -288,11 +318,11 @@ impl ChainOfThoughtEngine {
                             continue;
                         }
                     }
-                    
+
                     // Can't recover - break the chain
                     break;
                 }
-                
+
                 StepResult::Complete => {
                     // Chain is complete
                     break;
@@ -307,7 +337,12 @@ impl ChainOfThoughtEngine {
     }
 
     /// Generate a single reasoning step
-    async fn generate_reasoning_step(&self, step_num: u32, premise: &str, context: &ExecutionContext) -> Result<StepResult> {
+    async fn generate_reasoning_step(
+        &self,
+        step_num: u32,
+        premise: &str,
+        context: &ExecutionContext,
+    ) -> Result<StepResult> {
         let prompt = format!(
             r#"Chain-of-Thought Reasoning - Step {}
 
@@ -342,7 +377,12 @@ STATUS: [CONTINUE or COMPLETE]"#,
     }
 
     /// Parse the LLM response into a reasoning step
-    fn parse_step_response(&self, response: &str, step_num: u32, premise: &str) -> Result<StepResult> {
+    fn parse_step_response(
+        &self,
+        response: &str,
+        step_num: u32,
+        premise: &str,
+    ) -> Result<StepResult> {
         let mut reasoning = String::new();
         let mut conclusion = String::new();
         let mut confidence = 0.5;
@@ -351,9 +391,17 @@ STATUS: [CONTINUE or COMPLETE]"#,
         for line in response.lines() {
             let line = line.trim();
             if line.starts_with("REASONING:") {
-                reasoning = line.strip_prefix("REASONING:").unwrap_or("").trim().to_string();
+                reasoning = line
+                    .strip_prefix("REASONING:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             } else if line.starts_with("CONCLUSION:") {
-                conclusion = line.strip_prefix("CONCLUSION:").unwrap_or("").trim().to_string();
+                conclusion = line
+                    .strip_prefix("CONCLUSION:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             } else if line.starts_with("CONFIDENCE:") {
                 if let Some(conf_str) = line.strip_prefix("CONFIDENCE:") {
                     confidence = (conf_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
@@ -364,7 +412,9 @@ STATUS: [CONTINUE or COMPLETE]"#,
         }
 
         if reasoning.is_empty() || conclusion.is_empty() {
-            return Ok(StepResult::Failure("Failed to parse reasoning or conclusion".to_string()));
+            return Ok(StepResult::Failure(
+                "Failed to parse reasoning or conclusion".to_string(),
+            ));
         }
 
         if is_complete {
@@ -394,7 +444,11 @@ STATUS: [CONTINUE or COMPLETE]"#,
     }
 
     /// Generate an alternative step when verification fails
-    async fn generate_alternative_step(&self, failed_step: &ReasoningStep, verification: &VerificationResult) -> Result<Option<ReasoningStep>> {
+    async fn generate_alternative_step(
+        &self,
+        failed_step: &ReasoningStep,
+        verification: &VerificationResult,
+    ) -> Result<Option<ReasoningStep>> {
         if verification.suggestions.is_empty() {
             return Ok(None);
         }
@@ -428,7 +482,7 @@ RATIONALE: [Why this alternative is better]"#,
         };
 
         let response = std::pin::Pin::from(self.base_engine.execute(&request)).await?;
-        
+
         // Parse alternative response
         let mut alt_reasoning = String::new();
         let mut alt_conclusion = String::new();
@@ -438,15 +492,27 @@ RATIONALE: [Why this alternative is better]"#,
         for line in response.content.lines() {
             let line = line.trim();
             if line.starts_with("ALTERNATIVE_REASONING:") {
-                alt_reasoning = line.strip_prefix("ALTERNATIVE_REASONING:").unwrap_or("").trim().to_string();
+                alt_reasoning = line
+                    .strip_prefix("ALTERNATIVE_REASONING:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             } else if line.starts_with("ALTERNATIVE_CONCLUSION:") {
-                alt_conclusion = line.strip_prefix("ALTERNATIVE_CONCLUSION:").unwrap_or("").trim().to_string();
+                alt_conclusion = line
+                    .strip_prefix("ALTERNATIVE_CONCLUSION:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             } else if line.starts_with("CONFIDENCE:") {
                 if let Some(conf_str) = line.strip_prefix("CONFIDENCE:") {
                     confidence = (conf_str.trim().parse::<f64>().unwrap_or(0.5)).clamp(0.0, 1.0);
                 }
             } else if line.starts_with("RATIONALE:") {
-                rationale = line.strip_prefix("RATIONALE:").unwrap_or("").trim().to_string();
+                rationale = line
+                    .strip_prefix("RATIONALE:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             }
         }
 
@@ -479,10 +545,17 @@ RATIONALE: [Why this alternative is better]"#,
         // First, check backtrack history and find target
         let backtrack_target_data = {
             let chain = self.reasoning_chain.read().await;
-            
+
             // Check backtrack history to avoid cycles
-            let recent_backtracks = chain.backtrack_history.iter()
-                .filter(|bt| SystemTime::now().duration_since(bt.timestamp).unwrap_or_default() < Duration::from_secs(300))
+            let recent_backtracks = chain
+                .backtrack_history
+                .iter()
+                .filter(|bt| {
+                    SystemTime::now()
+                        .duration_since(bt.timestamp)
+                        .unwrap_or_default()
+                        < Duration::from_secs(300)
+                })
                 .count();
 
             if recent_backtracks >= self.config.max_backtrack_attempts as usize {
@@ -490,16 +563,22 @@ RATIONALE: [Why this alternative is better]"#,
             }
 
             // Find a good backtrack point (step with high confidence)
-            chain.steps.iter()
+            chain
+                .steps
+                .iter()
                 .filter(|step| step.step_number < current_step && step.confidence > 0.7)
-                .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                .max_by(|a, b| {
+                    a.confidence
+                        .partial_cmp(&b.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .map(|step| (step.step_number, step.conclusion.clone()))
         };
 
         if let Some((target_step_number, target_conclusion)) = backtrack_target_data {
             // Record backtrack event and update chain
             let mut chain = self.reasoning_chain.write().await;
-            
+
             let backtrack_event = BacktrackEvent {
                 event_id: Uuid::new_v4().to_string(),
                 from_step: current_step,
@@ -507,13 +586,13 @@ RATIONALE: [Why this alternative is better]"#,
                 reason: "Verification failure - seeking higher confidence path".to_string(),
                 timestamp: SystemTime::now(),
             };
-            
+
             chain.backtrack_history.push(backtrack_event);
-            
+
             // Truncate chain to backtrack point
             chain.steps.truncate(target_step_number as usize);
             chain.current_step = target_step_number;
-            
+
             Ok(Some(target_conclusion))
         } else {
             Ok(None)
@@ -521,20 +600,24 @@ RATIONALE: [Why this alternative is better]"#,
     }
 
     /// Add a step to the reasoning chain
-    async fn add_step_to_chain(&self, mut step: ReasoningStep, verification: Option<VerificationResult>) -> Result<()> {
+    async fn add_step_to_chain(
+        &self,
+        mut step: ReasoningStep,
+        verification: Option<VerificationResult>,
+    ) -> Result<()> {
         let mut chain = self.reasoning_chain.write().await;
-        
+
         step.verification_result = verification;
         chain.steps.push(step);
         chain.current_step += 1;
-        
+
         Ok(())
     }
 
     /// Update chain quality metrics
     async fn update_chain_metrics(&self) -> Result<()> {
         let mut chain = self.reasoning_chain.write().await;
-        
+
         if chain.steps.is_empty() {
             return Ok(());
         }
@@ -542,16 +625,19 @@ RATIONALE: [Why this alternative is better]"#,
         // Calculate average confidence
         let total_confidence: f64 = chain.steps.iter().map(|s| s.confidence).sum();
         chain.chain_confidence = total_confidence / chain.steps.len() as f64;
-        
+
         // Calculate coherence (simplified metric)
-        let coherence_scores: Vec<f64> = chain.steps.windows(2)
+        let coherence_scores: Vec<f64> = chain
+            .steps
+            .windows(2)
             .map(|pair| self.calculate_step_coherence(&pair[0], &pair[1]))
             .collect();
-            
+
         if !coherence_scores.is_empty() {
-            chain.chain_coherence = coherence_scores.iter().sum::<f64>() / coherence_scores.len() as f64;
+            chain.chain_coherence =
+                coherence_scores.iter().sum::<f64>() / coherence_scores.len() as f64;
         }
-        
+
         Ok(())
     }
 
@@ -568,19 +654,22 @@ RATIONALE: [Why this alternative is better]"#,
     /// Generate final reasoning result
     async fn generate_chain_result(&self, start_time: SystemTime) -> Result<CoTReasoningResult> {
         let chain = self.reasoning_chain.read().await;
-        
-        let final_conclusion = chain.steps.last()
+
+        let final_conclusion = chain
+            .steps
+            .last()
             .map(|step| step.conclusion.clone())
             .unwrap_or_else(|| "No conclusion reached".to_string());
 
         let verification_summary = self.generate_verification_summary(&chain).await;
-        
+
         let quality_metrics = ChainQualityMetrics {
             coherence_score: chain.chain_coherence,
             logical_consistency: self.calculate_logical_consistency(&chain).await,
             step_confidence_variance: self.calculate_confidence_variance(&chain),
             verification_pass_rate: self.calculate_verification_pass_rate(&chain),
-            backtrack_frequency: chain.backtrack_history.len() as f64 / chain.steps.len().max(1) as f64,
+            backtrack_frequency: chain.backtrack_history.len() as f64
+                / chain.steps.len().max(1) as f64,
         };
 
         Ok(CoTReasoningResult {
@@ -589,23 +678,36 @@ RATIONALE: [Why this alternative is better]"#,
             chain_confidence: chain.chain_confidence,
             verification_summary,
             backtrack_events: chain.backtrack_history.clone(),
-            alternatives_explored: chain.steps.iter()
+            alternatives_explored: chain
+                .steps
+                .iter()
                 .map(|s| s.alternatives.len() as u32)
                 .sum(),
-            reasoning_time: SystemTime::now().duration_since(start_time).unwrap_or_default(),
+            reasoning_time: SystemTime::now()
+                .duration_since(start_time)
+                .unwrap_or_default(),
             chain_quality_metrics: quality_metrics,
         })
     }
 
     // Helper methods
-    
+
     async fn generate_verification_summary(&self, chain: &ReasoningChain) -> String {
         let total_steps = chain.steps.len();
-        let verified_steps = chain.steps.iter()
+        let verified_steps = chain
+            .steps
+            .iter()
             .filter(|s| s.verification_result.is_some())
             .count();
-        let passed_steps = chain.steps.iter()
-            .filter(|s| s.verification_result.as_ref().map(|v| v.is_valid).unwrap_or(false))
+        let passed_steps = chain
+            .steps
+            .iter()
+            .filter(|s| {
+                s.verification_result
+                    .as_ref()
+                    .map(|v| v.is_valid)
+                    .unwrap_or(false)
+            })
             .count();
 
         format!(
@@ -616,10 +718,12 @@ RATIONALE: [Why this alternative is better]"#,
 
     async fn calculate_logical_consistency(&self, chain: &ReasoningChain) -> f64 {
         // Simplified consistency check
-        let consistent_steps = chain.steps.windows(2)
+        let consistent_steps = chain
+            .steps
+            .windows(2)
             .filter(|pair| self.calculate_step_coherence(&pair[0], &pair[1]) > 0.7)
             .count();
-        
+
         if chain.steps.len() <= 1 {
             1.0
         } else {
@@ -633,15 +737,20 @@ RATIONALE: [Why this alternative is better]"#,
         }
 
         let mean = chain.chain_confidence;
-        let variance: f64 = chain.steps.iter()
+        let variance: f64 = chain
+            .steps
+            .iter()
             .map(|step| (step.confidence - mean).powi(2))
-            .sum::<f64>() / chain.steps.len() as f64;
-        
+            .sum::<f64>()
+            / chain.steps.len() as f64;
+
         variance
     }
 
     fn calculate_verification_pass_rate(&self, chain: &ReasoningChain) -> f64 {
-        let verified_steps: Vec<_> = chain.steps.iter()
+        let verified_steps: Vec<_> = chain
+            .steps
+            .iter()
             .filter_map(|s| s.verification_result.as_ref())
             .collect();
 
@@ -649,9 +758,7 @@ RATIONALE: [Why this alternative is better]"#,
             return 0.0;
         }
 
-        let passed_steps = verified_steps.iter()
-            .filter(|v| v.is_valid)
-            .count();
+        let passed_steps = verified_steps.iter().filter(|v| v.is_valid).count();
 
         passed_steps as f64 / verified_steps.len() as f64
     }
@@ -659,7 +766,9 @@ RATIONALE: [Why this alternative is better]"#,
     fn format_context_summary(&self, context: &ExecutionContext) -> String {
         format!(
             "Goal: {}, Context items: {}, Iteration: {}",
-            context.current_goal.as_ref()
+            context
+                .current_goal
+                .as_ref()
                 .map(|g| g.description.clone())
                 .unwrap_or_else(|| "No goal set".to_string()),
             context.context_data.len(),
@@ -703,10 +812,7 @@ Provide:
 - CONFIDENCE: 0.0-1.0 (your confidence in the verification)
 - ISSUES: list any problems found
 - SUGGESTIONS: recommendations for improvement"#,
-            step.premise,
-            step.reasoning,
-            step.conclusion,
-            step.confidence
+            step.premise, step.reasoning, step.conclusion, step.confidence
         );
 
         let request = fluent_core::types::Request {
@@ -757,7 +863,7 @@ Provide:
 impl ReasoningEngine for ChainOfThoughtEngine {
     async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
         let result = self.reason_with_chain(prompt, context).await?;
-        
+
         let summary = format!(
             "Chain-of-Thought Reasoning Result:\n\nReasoning Chain ({} steps):\n{}\n\nFinal Conclusion: {}\n\nConfidence: {:.2}\nVerification: {}\nBacktracks: {}",
             result.reasoning_chain.len(),
@@ -770,7 +876,7 @@ impl ReasoningEngine for ChainOfThoughtEngine {
             result.verification_summary,
             result.backtrack_events.len()
         );
-        
+
         Ok(summary)
     }
 

@@ -1,0 +1,11 @@
+[package]
+name = "fluent-config"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+fluent-engines = { workspace = true }
+env_logger = { workspace = true }
+

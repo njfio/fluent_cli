@@ -154,7 +154,9 @@ impl Engine for CohereEngine {
 
             // Calculate cost securely
             let cost = {
-                let mut calculator = self.cost_calculator.lock()
+                let mut calculator = self
+                    .cost_calculator
+                    .lock()
                     .map_err(|e| anyhow::anyhow!("Cost calculator mutex poisoned: {}", e))?;
                 calculator
                     .calculate_cost("cohere", &model, &usage)
@@ -324,7 +326,9 @@ impl Engine for CohereEngine {
 
             // Calculate cost securely
             let cost = {
-                let mut calculator = self.cost_calculator.lock()
+                let mut calculator = self
+                    .cost_calculator
+                    .lock()
                     .map_err(|e| anyhow::anyhow!("Cost calculator mutex poisoned: {}", e))?;
                 calculator
                     .calculate_cost("cohere", &model, &usage)

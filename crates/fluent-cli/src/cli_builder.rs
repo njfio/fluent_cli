@@ -20,6 +20,36 @@ pub fn build_cli() -> Command {
                 .default_value("fluent_config.toml")
                 .global(true),
         )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .help("Increase output verbosity (overrides --quiet)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            Arg::new("quiet")
+                .short('q')
+                .long("quiet")
+                .help("Suppress non-error output")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            Arg::new("json-logs")
+                .long("json-logs")
+                .help("Emit JSON logs (same as FLUENT_LOG_FORMAT=json)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
+        .arg(
+            Arg::new("human-logs")
+                .long("human-logs")
+                .help("Emit human-readable logs (default if not set)")
+                .action(ArgAction::SetTrue)
+                .global(true),
+        )
         .subcommand(
             Command::new("pipeline")
                 .about("Execute a pipeline from a YAML file")
@@ -41,7 +71,6 @@ pub fn build_cli() -> Command {
                 )
                 .arg(
                     Arg::new("variables")
-                        .short('v')
                         .long("variables")
                         .value_name("KEY=VALUE")
                         .help("Pipeline variables")
@@ -158,14 +187,20 @@ pub fn build_cli() -> Command {
                         .value_parser(clap::value_parser!(u32))
                         .default_value("3"),
                 )
-                .arg(
-                    Arg::new("min-html-size")
-                        .long("min-html-size")
-                        .value_name("BYTES")
-                        .help("Minimum HTML size to accept as valid output")
-                        .value_parser(clap::value_parser!(u32))
-                        .default_value("2000"),
-                )
+                 .arg(
+                     Arg::new("min-html-size")
+                         .long("min-html-size")
+                         .value_name("BYTES")
+                         .help("Minimum HTML size to accept as valid output")
+                         .value_parser(clap::value_parser!(u32))
+                         .default_value("2000"),
+                 )
+                 .arg(
+                     Arg::new("tui")
+                         .long("tui")
+                         .help("Enable terminal user interface for better monitoring")
+                         .action(ArgAction::SetTrue),
+                 )
                 .arg(
                     Arg::new("task")
                         .short('t')
@@ -227,6 +262,25 @@ pub fn build_cli() -> Command {
                         .value_name("FILE")
                         .help("Input file for upsert operation")
                         .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("completions")
+                .about("Generate shell completion scripts")
+                .arg(
+                    Arg::new("shell")
+                        .short('s')
+                        .long("shell")
+                        .value_name("SHELL")
+                        .help("Shell type: bash, zsh, fish, powershell, elvish")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name("FILE")
+                        .help("Write completions to file (default: stdout)"),
                 ),
         )
         .subcommand(

@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Error, Result};
 use neo4rs::{
-    query, BoltFloat, BoltInteger, BoltList, BoltString, BoltType,
-    ConfigBuilder, Database, Graph,
+    query, BoltFloat, BoltInteger, BoltList, BoltString, BoltType, ConfigBuilder, Database, Graph,
 };
 
 use chrono::Duration as ChronoDuration;
@@ -121,7 +120,10 @@ impl Neo4jClient {
 
         // Log TLS configuration for debugging
         debug!("TLS Configuration:");
-        debug!("  - Verify certificates: {}", tls_config.verify_certificates);
+        debug!(
+            "  - Verify certificates: {}",
+            tls_config.verify_certificates
+        );
         debug!("  - Trust strategy: {:?}", tls_config.trust_strategy);
         debug!("  - CA cert path: {:?}", tls_config.ca_cert_path);
         debug!("  - Client cert path: {:?}", tls_config.client_cert_path);
@@ -526,12 +528,10 @@ impl Neo4jClient {
     pub async fn upsert_document(&self, file_path: &Path, metadata: &[String]) -> Result<String> {
         use crate::neo4j::document_processor::DocumentUpsertManager;
 
-        let upsert_manager = DocumentUpsertManager::new(&self.graph, self.voyage_ai_config.as_ref());
+        let upsert_manager =
+            DocumentUpsertManager::new(&self.graph, self.voyage_ai_config.as_ref());
         upsert_manager.upsert_document(file_path, metadata).await
     }
-
-
-
 
     pub async fn get_document_statistics(&self) -> Result<DocumentStatistics> {
         let query = query(
@@ -574,7 +574,7 @@ impl Neo4jClient {
         if let Some(voyage_config) = &self.voyage_ai_config {
             if status
                 .last_themes_keywords_update
-                .map_or(true, |last| now - last > config.themes_keywords_interval)
+                .is_none_or(|last| now - last > config.themes_keywords_interval)
             {
                 self.update_themes_and_keywords(node_id, node_type, voyage_config)
                     .await?;
@@ -582,14 +582,14 @@ impl Neo4jClient {
 
             if status
                 .last_clustering_update
-                .map_or(true, |last| now - last > config.clustering_interval)
+                .is_none_or(|last| now - last > config.clustering_interval)
             {
                 self.update_clustering(node_id, node_type).await?;
             }
 
             if status
                 .last_sentiment_update
-                .map_or(true, |last| now - last > config.sentiment_interval)
+                .is_none_or(|last| now - last > config.sentiment_interval)
             {
                 self.update_sentiment(node_id, node_type).await?;
             }
@@ -643,8 +643,7 @@ impl Neo4jClient {
     ) -> Result<()> {
         debug!("Updating themes and keywords for {} {}", node_type, node_id);
         let content = self.get_node_content(node_id, node_type).await?;
-        let (themes, keywords) = self
-            .extract_themes_and_keywords(&content, voyage_config)?;
+        let (themes, keywords) = self.extract_themes_and_keywords(&content, voyage_config)?;
         self.create_theme_and_keyword_nodes(node_id, node_type, &themes, &keywords)
             .await?;
         Ok(())
@@ -1220,7 +1219,9 @@ impl Neo4jClient {
         use crate::neo4j::interaction_manager::InteractionManager;
 
         let interaction_manager = InteractionManager::new(&self.graph);
-        interaction_manager.create_or_update_question(question, interaction_id).await
+        interaction_manager
+            .create_or_update_question(question, interaction_id)
+            .await
     }
 
     pub async fn create_response(
@@ -1232,7 +1233,9 @@ impl Neo4jClient {
         use crate::neo4j::interaction_manager::InteractionManager;
 
         let interaction_manager = InteractionManager::new(&self.graph);
-        interaction_manager.create_response(response, interaction_id, model_id).await
+        interaction_manager
+            .create_response(response, interaction_id, model_id)
+            .await
     }
 
     fn extract_themes_and_keywords(
@@ -1364,8 +1367,6 @@ impl Neo4jClient {
         let query_executor = QueryExecutor::new(&self.graph);
         query_executor.execute_cypher(cypher_query).await
     }
-
-
 
     pub async fn get_database_schema(&self) -> Result<String, Error> {
         use crate::neo4j::query_executor::QueryExecutor;

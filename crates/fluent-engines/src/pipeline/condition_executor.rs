@@ -1,12 +1,12 @@
 //! Condition execution module
-//! 
+//!
 //! This module handles the execution of conditional pipeline steps,
 //! evaluating conditions and executing appropriate branches.
 
 use anyhow::{anyhow, Error};
+use log::debug;
 use std::collections::HashMap;
 use tokio::process::Command as TokioCommand;
-use log::debug;
 
 /// Handles execution of conditional pipeline steps
 pub struct ConditionExecutor;
@@ -20,12 +20,15 @@ impl ConditionExecutor {
         if_false: &str,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing condition: {}", condition);
-        
+
         let condition_result = Self::evaluate_condition(condition).await?;
         let command_to_run = if condition_result { if_true } else { if_false };
-        
-        debug!("Condition result: {}, executing: {}", condition_result, command_to_run);
-        
+
+        debug!(
+            "Condition result: {}, executing: {}",
+            condition_result, command_to_run
+        );
+
         let output = TokioCommand::new("sh")
             .arg("-c")
             .arg(command_to_run)
@@ -33,21 +36,27 @@ impl ConditionExecutor {
             .await?;
 
         let stdout = String::from_utf8(output.stdout)?;
-        Ok(HashMap::from([(name.to_string(), stdout.trim().to_string())]))
+        Ok(HashMap::from([(
+            name.to_string(),
+            stdout.trim().to_string(),
+        )]))
     }
 
     /// Evaluate a condition and return boolean result
     pub async fn evaluate_condition(condition: &str) -> Result<bool, Error> {
         debug!("Evaluating condition: {}", condition);
-        
+
         let condition_result = TokioCommand::new("sh")
             .arg("-c")
             .arg(condition)
             .status()
             .await?
             .success();
-            
-        debug!("Condition '{}' evaluated to: {}", condition, condition_result);
+
+        debug!(
+            "Condition '{}' evaluated to: {}",
+            condition, condition_result
+        );
         Ok(condition_result)
     }
 
@@ -60,8 +69,8 @@ impl ConditionExecutor {
         debug!("Evaluating expanded condition: {}", expanded_condition);
 
         // Use absolute path to bash and clear environment for security
-        let bash_path = which::which("bash")
-            .map_err(|_| anyhow!("bash command not found in PATH"))?;
+        let bash_path =
+            which::which("bash").map_err(|_| anyhow!("bash command not found in PATH"))?;
 
         let output = TokioCommand::new(bash_path)
             .arg("-c")
@@ -87,13 +96,17 @@ impl ConditionExecutor {
         state_data: &HashMap<String, String>,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing condition with expansion: {}", condition);
-        
-        let condition_result = Self::evaluate_condition_with_expansion(condition, state_data).await?;
+
+        let condition_result =
+            Self::evaluate_condition_with_expansion(condition, state_data).await?;
         let command_to_run = if condition_result { if_true } else { if_false };
         let expanded_command = Self::expand_variables(command_to_run, state_data)?;
-        
-        debug!("Condition result: {}, executing: {}", condition_result, expanded_command);
-        
+
+        debug!(
+            "Condition result: {}, executing: {}",
+            condition_result, expanded_command
+        );
+
         let output = TokioCommand::new("sh")
             .arg("-c")
             .arg(&expanded_command)
@@ -101,7 +114,10 @@ impl ConditionExecutor {
             .await?;
 
         let stdout = String::from_utf8(output.stdout)?;
-        Ok(HashMap::from([(name.to_string(), stdout.trim().to_string())]))
+        Ok(HashMap::from([(
+            name.to_string(),
+            stdout.trim().to_string(),
+        )]))
     }
 
     /// Simple variable expansion helper

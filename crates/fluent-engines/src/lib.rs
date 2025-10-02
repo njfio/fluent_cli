@@ -76,8 +76,8 @@ pub mod leonardoai;
 pub mod mistral;
 pub mod openai;
 pub mod perplexity;
-pub mod pipeline_executor;
 pub mod pipeline;
+pub mod pipeline_executor;
 pub mod stabilityai;
 pub mod webhook;
 

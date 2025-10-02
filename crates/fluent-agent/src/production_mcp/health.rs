@@ -1,11 +1,11 @@
 // Comprehensive health monitoring for production MCP implementation
 
+use super::error::McpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use super::error::McpError;
 
 /// Health monitoring system
 pub struct HealthMonitor {
@@ -101,17 +101,19 @@ impl HealthMonitor {
             let mut interval = tokio::time::interval(check_interval);
             loop {
                 interval.tick().await;
-                
+
                 // Perform health checks
                 // Note: In a real implementation, we would iterate through self.checks
                 // For now, we'll simulate health check results
                 let mut overall = status.write().await;
                 overall.last_check = Instant::now();
                 overall.check_count += 1;
-                
+
                 // Simulate health status
                 overall.status = HealthStatus::Healthy;
-                overall.details.insert("system".to_string(), "All systems operational".to_string());
+                overall
+                    .details
+                    .insert("system".to_string(), "All systems operational".to_string());
             }
         });
     }
@@ -123,16 +125,23 @@ impl HealthMonitor {
         let transport_health = self.transport_health.read().await;
 
         let mut overall = self.status.write().await;
-        
+
         // Determine overall health based on component health
-        let all_statuses: Vec<&HealthStatus> = client_health.values()
+        let all_statuses: Vec<&HealthStatus> = client_health
+            .values()
             .chain(server_health.values())
             .chain(transport_health.values())
             .collect();
 
-        overall.status = if all_statuses.iter().any(|s| matches!(s, HealthStatus::Unhealthy)) {
+        overall.status = if all_statuses
+            .iter()
+            .any(|s| matches!(s, HealthStatus::Unhealthy))
+        {
             HealthStatus::Unhealthy
-        } else if all_statuses.iter().any(|s| matches!(s, HealthStatus::Degraded)) {
+        } else if all_statuses
+            .iter()
+            .any(|s| matches!(s, HealthStatus::Degraded))
+        {
             HealthStatus::Degraded
         } else {
             HealthStatus::Healthy
@@ -204,13 +213,13 @@ pub struct HealthReport {
 pub trait HealthCheck: Send + Sync {
     /// Perform the health check
     async fn check(&self) -> HealthCheckResult;
-    
+
     /// Get the name of this health check
     fn name(&self) -> &str;
-    
+
     /// Check if this is a critical health check
     fn critical(&self) -> bool;
-    
+
     /// Get the timeout for this health check
     fn timeout(&self) -> Duration {
         Duration::from_secs(10)
@@ -288,10 +297,10 @@ impl ConnectionHealthCheck {
 impl HealthCheck for ConnectionHealthCheck {
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
-        
+
         // Simulate connection check
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         HealthCheckResult::healthy("Connection is active")
             .with_duration(start.elapsed())
             .with_detail("connection_type", "mcp")
@@ -323,10 +332,10 @@ impl ToolRegistryHealthCheck {
 impl HealthCheck for ToolRegistryHealthCheck {
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
-        
+
         // Simulate tool registry check
         tokio::time::sleep(Duration::from_millis(5)).await;
-        
+
         HealthCheckResult::healthy("Tool registry is operational")
             .with_duration(start.elapsed())
             .with_detail("tools_count", "10")
@@ -358,10 +367,10 @@ impl MemorySystemHealthCheck {
 impl HealthCheck for MemorySystemHealthCheck {
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
-        
+
         // Simulate memory system check
         tokio::time::sleep(Duration::from_millis(15)).await;
-        
+
         HealthCheckResult::healthy("Memory system is operational")
             .with_duration(start.elapsed())
             .with_detail("memory_usage", "128MB")
@@ -395,10 +404,10 @@ impl TransportHealthCheck {
 impl HealthCheck for TransportHealthCheck {
     async fn check(&self) -> HealthCheckResult {
         let start = Instant::now();
-        
+
         // Simulate transport check
         tokio::time::sleep(Duration::from_millis(8)).await;
-        
+
         HealthCheckResult::healthy("Transport is operational")
             .with_duration(start.elapsed())
             .with_detail("transport_type", &self.transport_type)
@@ -454,24 +463,31 @@ mod tests {
     #[tokio::test]
     async fn test_health_monitor() {
         let mut monitor = HealthMonitor::new();
-        
+
         // Add health checks
-        monitor.add_health_check(Box::new(ConnectionHealthCheck::new("test_connection", true)));
+        monitor.add_health_check(Box::new(ConnectionHealthCheck::new(
+            "test_connection",
+            true,
+        )));
         monitor.add_health_check(Box::new(ToolRegistryHealthCheck::new()));
-        
+
         monitor.start().await.unwrap();
-        
+
         // Update component health
-        monitor.update_client_health("test_client", HealthStatus::Healthy).await;
-        monitor.update_server_health("test_server", HealthStatus::Healthy).await;
-        
+        monitor
+            .update_client_health("test_client", HealthStatus::Healthy)
+            .await;
+        monitor
+            .update_server_health("test_server", HealthStatus::Healthy)
+            .await;
+
         let health = monitor.get_overall_health().await;
         assert_eq!(health.status, HealthStatus::Healthy);
-        
+
         let report = monitor.get_health_report().await;
         assert!(report.clients.contains_key("test_client"));
         assert!(report.servers.contains_key("test_server"));
-        
+
         monitor.stop().await.unwrap();
     }
 
@@ -498,7 +514,7 @@ mod tests {
         let result = HealthCheckResult::healthy("Test message")
             .with_detail("key", "value")
             .with_duration(Duration::from_millis(100));
-        
+
         assert_eq!(result.status, HealthStatus::Healthy);
         assert_eq!(result.message, "Test message");
         assert_eq!(result.details.get("key"), Some(&"value".to_string()));

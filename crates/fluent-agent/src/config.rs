@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+// use std::time::Duration;
+
+use crate::autonomy::AutonomySupervisorConfig;
+use crate::performance::PerformanceConfig;
+use crate::state_manager::StateManagerConfig;
 
 /// Configuration for the agentic framework that integrates with fluent_cli's existing patterns
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +30,9 @@ pub struct AgentEngineConfig {
     pub config_path: Option<String>,
     pub max_iterations: Option<u32>,
     pub timeout_seconds: Option<u64>,
+    pub supervisor: Option<AutonomySupervisorConfig>,
+    pub performance: Option<PerformanceConfig>,
+    pub state_management: Option<StateManagerConfig>,
 }
 
 /// Tool configuration for the agent
@@ -39,12 +47,16 @@ pub struct ToolConfig {
 }
 
 /// Runtime configuration with loaded engines and credentials
+#[derive(Clone)]
 pub struct AgentRuntimeConfig {
     pub reasoning_engine: Arc<Box<dyn Engine>>,
     pub action_engine: Arc<Box<dyn Engine>>,
     pub reflection_engine: Arc<Box<dyn Engine>>,
     pub config: AgentEngineConfig,
     pub credentials: HashMap<String, String>,
+    pub supervisor: Option<AutonomySupervisorConfig>,
+    pub performance: PerformanceConfig,
+    pub state_overrides: Option<StateManagerConfig>,
 }
 
 impl AgentRuntimeConfig {
@@ -78,17 +90,32 @@ impl AgentEngineConfig {
 
         // Create reasoning engine
         let reasoning_engine = self
-            .create_engine(&fluent_config_content, &self.reasoning_engine, &credentials, model_override)
+            .create_engine(
+                &fluent_config_content,
+                &self.reasoning_engine,
+                &credentials,
+                model_override,
+            )
             .await?;
 
         // Create action engine (can be the same as reasoning)
         let action_engine = if self.action_engine == self.reasoning_engine {
             // Create a new instance of the same engine
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
-                .await?
+            self.create_engine(
+                &fluent_config_content,
+                &self.action_engine,
+                &credentials,
+                model_override,
+            )
+            .await?
         } else {
-            self.create_engine(&fluent_config_content, &self.action_engine, &credentials, model_override)
-                .await?
+            self.create_engine(
+                &fluent_config_content,
+                &self.action_engine,
+                &credentials,
+                model_override,
+            )
+            .await?
         };
 
         // Create reflection engine (can be the same as reasoning)
@@ -126,7 +153,22 @@ impl AgentEngineConfig {
             reflection_engine: Arc::new(reflection_engine),
             config: self.clone(),
             credentials,
+            supervisor: self.supervisor.clone(),
+            performance: self.performance.clone().unwrap_or_default(),
+            state_overrides: self.state_management.clone(),
         })
+    }
+
+    pub fn supervisor_config(&self) -> AutonomySupervisorConfig {
+        self.supervisor.clone().unwrap_or_default()
+    }
+
+    pub fn performance_config(&self) -> PerformanceConfig {
+        self.performance.clone().unwrap_or_default()
+    }
+
+    pub fn state_manager_overrides(&self) -> Option<StateManagerConfig> {
+        self.state_management.clone()
     }
 
     /// Create a specific engine using fluent_cli's configuration system with fallback
@@ -153,16 +195,15 @@ impl AgentEngineConfig {
                             "Failed to create engine '{}' with config: {}",
                             engine_name, e
                         );
-                        self.create_default_engine(engine_name, credentials, model_override).await
+                        self.create_default_engine(engine_name, credentials, model_override)
+                            .await
                     }
                 }
             }
             Err(e) => {
-                warn!(
-                    "Engine '{}' not found in config: {}",
-                    engine_name, e
-                );
-                self.create_default_engine(engine_name, credentials, model_override).await
+                warn!("Engine '{}' not found in config: {}", engine_name, e);
+                self.create_default_engine(engine_name, credentials, model_override)
+                    .await
             }
         }
     }
@@ -337,6 +378,9 @@ impl AgentEngineConfig {
             config_path: Some("./config.json".to_string()),
             max_iterations: Some(50),
             timeout_seconds: Some(1800), // 30 minutes
+            supervisor: None,
+            performance: None,
+            state_management: None,
         }
     }
 

@@ -1,16 +1,18 @@
 //! Agentic mode operations and autonomous execution
-//! 
+//!
 //! This module contains all the functionality for running the fluent_cli
 //! in agentic mode, including goal processing, autonomous execution,
 //! and MCP integration.
 
 use anyhow::{anyhow, Result};
-use log::{debug, info, warn, error};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
-use std::pin::Pin;
+use log::{debug, error, info, warn};
 use std::fs;
+use std::pin::Pin;
 use std::sync::Arc;
+
+use crate::tui::{AgentStatus, TuiManager};
 
 /// Configuration for agentic mode execution
 ///
@@ -40,6 +42,8 @@ pub struct AgenticConfig {
     pub max_iterations: u32,
     /// Whether to enable tool usage for autonomous operations
     pub enable_tools: bool,
+    /// Whether to enable reflection mode
+    pub enable_reflection: bool,
     /// Path to the main configuration file
     pub config_path: String,
     /// Optional model override for default engines (e.g., gpt-4o, claude-3-5-sonnet-20241022)
@@ -70,6 +74,7 @@ impl AgenticConfig {
         agent_config_path: String,
         max_iterations: u32,
         enable_tools: bool,
+        enable_reflection: bool,
         config_path: String,
         model_override: Option<String>,
         gen_retries: Option<u32>,
@@ -80,11 +85,15 @@ impl AgenticConfig {
             agent_config_path,
             max_iterations,
             enable_tools,
+            enable_reflection,
             config_path,
             model_override,
             gen_retries,
             min_html_size,
-            dry_run: std::env::var("FLUENT_AGENT_DRY_RUN").ok().map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false),
+            dry_run: std::env::var("FLUENT_AGENT_DRY_RUN")
+                .ok()
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         }
     }
 }
@@ -118,6 +127,7 @@ impl AgenticConfig {
 /// ```
 pub struct AgenticExecutor {
     config: AgenticConfig,
+    tui: TuiManager,
 }
 
 impl AgenticExecutor {
@@ -126,38 +136,74 @@ impl AgenticExecutor {
     /// # Arguments
     ///
     /// * `config` - The agentic configuration to use
+    /// * `enable_tui` - Whether to enable the TUI interface
     ///
     /// # Returns
     ///
     /// A new `AgenticExecutor` instance
-    pub fn new(config: AgenticConfig) -> Self {
-        Self { config }
+    pub fn new(config: AgenticConfig, enable_tui: bool) -> Self {
+        Self {
+            config,
+            tui: TuiManager::new(enable_tui),
+        }
     }
 
     /// Main entry point for agentic mode execution
-    pub async fn run(&self, _fluent_config: &Config) -> Result<()> {
-        self.print_startup_info();
+    pub async fn run(&mut self, _fluent_config: &Config) -> Result<()> {
+        println!("🚀 AgenticExecutor::run() called");
+        // Initialize TUI
+        println!("🔧 Initializing TUI...");
+        if let Err(e) = self.tui.init() {
+            println!("❌ TUI initialization failed: {}", e);
+            println!("💡 Falling back to non-TUI mode");
+            println!("💡 To use TUI, try:");
+            println!("   - Use a different terminal emulator (iTerm2, Alacritty, etc.)");
+            println!("   - Make sure you're in an interactive terminal session");
+            println!("   - Check that your terminal supports ANSI escape sequences");
+            // Fall back to non-TUI mode by disabling TUI
+            self.tui = TuiManager::new(false);
+        } else {
+            println!("✅ TUI initialized successfully");
+            self.tui.set_goal(self.config.goal_description.clone());
+            self.tui.set_features(self.config.enable_tools, self.config.enable_reflection);
+            self.tui.update_status(AgentStatus::Initializing);
+            self.tui.add_log("🤖 Starting Agentic Mode".to_string());
+        }
+
+        // Spawn SimpleTUI in background if it's available
+        let tui_handle = self.tui.spawn_simple_tui();
+        if tui_handle.is_some() {
+            println!("✅ SimpleTUI running in background - Press 'Q' to quit");
+        }
 
         let agent_config = self.load_agent_configuration().await?;
         let credentials = self.load_and_validate_credentials(&agent_config).await?;
-        let runtime_config = self.create_runtime_configuration(&agent_config, credentials).await?;
+        let runtime_config = self
+            .create_runtime_configuration(&agent_config, credentials)
+            .await?;
         let goal = self.create_goal()?;
 
         // Optional quick engine test
         let _ = self.test_engines(&runtime_config).await;
 
+        self.print_startup_info();
+
         // Build autonomous orchestrator with tools/memory
-        use fluent_agent::adapters::{
-            RegistryToolAdapter,
-            LlmCodeGenerator,
-            FsFileManager,
-            SimpleRiskAssessor,
+        use fluent_agent::action::{
+            ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
         };
-        use fluent_agent::{AgentOrchestrator, MemorySystem, ReflectionEngine, StateManager, StateManagerConfig};
-        use fluent_agent::action::{ComprehensiveActionExecutor, ActionPlanner, ActionExecutor, IntelligentActionPlanner};
-        use fluent_agent::observation::{ComprehensiveObservationProcessor, BasicResultAnalyzer, BasicPatternDetector, BasicImpactAssessor, BasicLearningExtractor};
         use fluent_agent::adapters::CompositePlanner;
+        use fluent_agent::adapters::{
+            FsFileManager, LlmCodeGenerator, RegistryToolAdapter, SimpleRiskAssessor,
+        };
+        use fluent_agent::observation::{
+            BasicImpactAssessor, BasicLearningExtractor, BasicPatternDetector, BasicResultAnalyzer,
+            ComprehensiveObservationProcessor,
+        };
         use fluent_agent::tools::ToolRegistry;
+        use fluent_agent::{
+            AgentOrchestrator, MemorySystem, ReflectionEngine, StateManager, StateManagerConfig,
+        };
 
         let mut tool_registry = if self.config.enable_tools {
             ToolRegistry::with_standard_tools(&runtime_config.config.tools)
@@ -171,7 +217,9 @@ impl AgenticExecutor {
                 runtime_config.reasoning_engine.clone(),
             ));
             tool_registry.register("workflow".to_string(), workflow_exec);
-            println!("🧰 Registered workflow macro-tools (outline/toc/assemble/research)");
+            self.tui.add_log(
+                "🧰 Registered workflow macro-tools (outline/toc/assemble/research)".to_string(),
+            );
         }
 
         // Optional MCP integration: initialize and register MCP tool executor
@@ -179,34 +227,52 @@ impl AgenticExecutor {
             use fluent_agent::production_mcp::initialize_production_mcp;
             if let Ok(manager) = initialize_production_mcp().await {
                 // Attempt auto-connect from config file (config_path)
-                if let Err(e) = Self::auto_connect_mcp_servers(&self.config.config_path, &manager).await {
-                    println!("⚠️ MCP auto-connect skipped: {}", e);
+                if let Err(e) =
+                    Self::auto_connect_mcp_servers(&self.config.config_path, &manager).await
+                {
+                    self.tui
+                        .add_log(format!("⚠️ MCP auto-connect skipped: {}", e));
                 }
 
-                let mcp_exec = std::sync::Arc::new(fluent_agent::adapters::McpRegistryExecutor::new(manager.clone()));
+                let mcp_exec = std::sync::Arc::new(
+                    fluent_agent::adapters::McpRegistryExecutor::new(manager.clone()),
+                );
                 tool_registry.register("mcp".to_string(), mcp_exec);
-                println!("🔌 MCP integrated: remote tools available via registry");
+                self.tui
+                    .add_log("🔌 MCP integrated: remote tools available via registry".to_string());
             } else {
-                println!("⚠️ MCP integration skipped (initialization failed)");
+                self.tui
+                    .add_log("⚠️ MCP integration skipped (initialization failed)".to_string());
             }
         }
 
         // Finalize registry, then create shared Arc for adapters/planners
         let arc_registry = Arc::new(tool_registry);
         let tool_adapter = Box::new(RegistryToolAdapter::new(arc_registry.clone()));
-        let codegen = Box::new(LlmCodeGenerator::new(runtime_config.reasoning_engine.clone()));
+        let codegen = Box::new(LlmCodeGenerator::new(
+            runtime_config.reasoning_engine.clone(),
+        ));
         let filemgr = Box::new(FsFileManager);
-        let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(tool_adapter, codegen, filemgr));
+        let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(
+            tool_adapter,
+            codegen,
+            filemgr,
+        ));
         let action_executor: Box<dyn ActionExecutor> = if self.config.dry_run {
-            println!("🧪 Dry-run mode: no side effects will be executed");
+            self.tui
+                .add_log("🧪 Dry-run mode: no side effects will be executed".to_string());
             Box::new(fluent_agent::adapters::DryRunActionExecutor)
         } else {
             base_executor
         };
 
         // Planner and observation (adaptive + reflective)
-        let base_planner: Box<dyn ActionPlanner> = Box::new(IntelligentActionPlanner::new(Box::new(SimpleRiskAssessor)));
-        let planner: Box<dyn ActionPlanner> = Box::new(CompositePlanner::new_with_registry(base_planner, arc_registry.clone()));
+        let base_planner: Box<dyn ActionPlanner> =
+            Box::new(IntelligentActionPlanner::new(Box::new(SimpleRiskAssessor)));
+        let planner: Box<dyn ActionPlanner> = Box::new(CompositePlanner::new_with_registry(
+            base_planner,
+            arc_registry.clone(),
+        ));
         let obs = Box::new(ComprehensiveObservationProcessor::new(
             Box::new(BasicResultAnalyzer),
             Box::new(BasicPatternDetector),
@@ -217,61 +283,80 @@ impl AgenticExecutor {
         // Memory and state
         use fluent_agent::memory::MemoryConfig;
         // TODO: Implement proper memory system once dependencies are resolved
-        let memory = fluent_agent::memory::MemorySystem::new(MemoryConfig::default()).await?;
+        let memory = MemorySystem::new(MemoryConfig::default()).await?;
         let state_mgr = StateManager::new(StateManagerConfig::default()).await?;
         let reflection = ReflectionEngine::new();
 
         // Orchestrate
         // Build orchestrator without moving runtime_config so we can run explicit loop
-        let orchestrator = AgentOrchestrator::from_config(
-            fluent_agent::config::AgentRuntimeConfig {
-                reasoning_engine: runtime_config.reasoning_engine.clone(),
-                action_engine: runtime_config.action_engine.clone(),
-                reflection_engine: runtime_config.reflection_engine.clone(),
-                config: runtime_config.config.clone(),
-                credentials: runtime_config.credentials.clone(),
-            },
+        let _orchestrator = AgentOrchestrator::from_config(
+            runtime_config.clone(),
             planner,
             action_executor,
             obs,
             Arc::new(memory),
             Arc::new(state_mgr),
             reflection,
+            None, // supervisor: Option<Arc<AutonomySupervisor>>
+            None, // dynamic_replanner: Option<Arc<DynamicReplanner>>
+            None, // adaptive_strategy: Option<Arc<AdaptiveStrategySystem>>
         )
         .await?;
 
-        println!("🔁 Orchestrator constructed. Entering autonomous loop…");
+        self.tui
+            .add_log("🔁 Orchestrator constructed. Entering autonomous loop…".to_string());
         let timeout_secs: u64 = std::env::var("FLUENT_AGENT_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(180);
-        println!(
+            .unwrap_or(600); // Increased from 180s to 600s (10 minutes) for research tasks
+        self.tui.add_log(format!(
             "🕒 Watchdog active ({}s). Running ReAct pipeline…",
             timeout_secs
+        ));
+
+        info!(
+            "agent.react.start goal='{}' timeout_secs={}",
+            self.config.goal_description, timeout_secs
         );
 
-        info!("agent.react.start goal='{}' timeout_secs={}", self.config.goal_description, timeout_secs);
-        // Explicit autonomous loop for visibility
-        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), self.run_autonomous_execution(&goal, &runtime_config)).await {
-            Ok(Ok(())) => {
-                info!("agent.react.done success=true explicit_autonomous_loop=true");
-                println!("✅ Goal execution finished. Success: true");
-                Ok(())
+        self.tui.update_status(AgentStatus::Running);
+
+        // If TUI is enabled, run agent execution and TUI concurrently
+        let result = if self.tui.enabled() {
+            self.run_with_tui(&goal, &runtime_config, timeout_secs).await
+        } else {
+            // Run without TUI
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                self.run_autonomous_execution(&goal, &runtime_config),
+            )
+            .await
+            {
+                Ok(Ok(())) => {
+                    info!("agent.react.done success=true explicit_autonomous_loop=true");
+                    Ok(())
+                }
+                Ok(Err(e)) => {
+                    error!("agent.react.error err={}", e);
+                    Err(e)
+                }
+                Err(_) => {
+                    error!(
+                        "agent.react.timeout secs={} goal='{}'",
+                        timeout_secs, self.config.goal_description
+                    );
+                    Err(anyhow::anyhow!(format!(
+                        "Agent timed out after {}s while executing the goal",
+                        timeout_secs
+                    )))
+                }
             }
-            Ok(Err(e)) => {
-                error!("agent.react.error err={}", e);
-                eprintln!("❌ Orchestrator error: {}", e);
-                Err(e)
-            }
-            Err(_) => {
-                error!("agent.react.timeout secs={} goal='{}'", timeout_secs, self.config.goal_description);
-                eprintln!("⏳ Agent timed out after {}s. Aborting.", timeout_secs);
-                Err(anyhow::anyhow!(format!(
-                    "Agent timed out after {}s while executing the goal",
-                    timeout_secs
-                )))
-            }
-        }
+        };
+
+        // Cleanup TUI
+        self.tui.cleanup()?;
+
+        result
     }
 
     /// Attempt to auto-connect MCP servers based on entries in the main config file.
@@ -310,26 +395,59 @@ impl AgenticExecutor {
                             let mut parts = s.splitn(2, ':');
                             let name = parts.next().unwrap_or("");
                             let cmd_and_args = parts.next().unwrap_or("").trim();
-                            if name.is_empty() || cmd_and_args.is_empty() { continue; }
+                            if name.is_empty() || cmd_and_args.is_empty() {
+                                continue;
+                            }
                             let mut split = cmd_and_args.split_whitespace();
                             if let Some(command) = split.next() {
                                 let args: Vec<String> = split.map(|x| x.to_string()).collect();
-                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                let _ = manager
+                                    .client_manager()
+                                    .connect_server(name.to_string(), command.to_string(), args)
+                                    .await;
                             }
                         }
                         Value::Object(map) => {
                             let name = map.get("name").and_then(|v| v.as_str()).unwrap_or("");
                             let command = map.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                            let args: Vec<String> = map.get("args")
+                            let args: Vec<String> = map
+                                .get("args")
                                 .and_then(|v| v.as_array())
-                                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                                .map(|a| {
+                                    a.iter()
+                                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                                        .collect()
+                                })
                                 .unwrap_or_default();
                             if !name.is_empty() && !command.is_empty() {
-                                info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 info!("agent.mcp.server.connect name='{}' command='{}' args={}", name, command, args.len());
-                                 let _ = manager.client_manager().connect_server(name.to_string(), command.to_string(), args).await;
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                info!(
+                                    "agent.mcp.server.connect name='{}' command='{}' args={}",
+                                    name,
+                                    command,
+                                    args.len()
+                                );
+                                let _ = manager
+                                    .client_manager()
+                                    .connect_server(name.to_string(), command.to_string(), args)
+                                    .await;
                             }
                         }
                         _ => {}
@@ -342,39 +460,46 @@ impl AgenticExecutor {
     }
 
     /// Print startup information
-    fn print_startup_info(&self) {
-        println!("🤖 Starting Agentic Mode");
-        println!("Goal: {}", self.config.goal_description);
-        println!("Max iterations: {}", self.config.max_iterations);
-        println!("Tools enabled: {}", self.config.enable_tools);
+    fn print_startup_info(&mut self) {
+        // TUI handles the display, just log to TUI
+        self.tui
+            .add_log(format!("Max iterations: {}", self.config.max_iterations));
+        self.tui
+            .add_log(format!("Tools enabled: {}", self.config.enable_tools));
+        self.tui.add_log(format!(
+            "Reflection enabled: {}",
+            self.config.enable_reflection
+        ));
     }
 
     /// Load agent configuration from file
-    async fn load_agent_configuration(&self) -> Result<fluent_agent::config::AgentEngineConfig> {
+    async fn load_agent_configuration(
+        &mut self,
+    ) -> Result<fluent_agent::config::AgentEngineConfig> {
         use fluent_agent::config::AgentEngineConfig;
-        
+
         let agent_config = AgentEngineConfig::load_from_file(&self.config.agent_config_path)
             .await
             .map_err(|e| anyhow!("Failed to load agent config: {}", e))?;
 
-        println!("✅ Agent configuration loaded:");
-        println!("   - Reasoning engine: {}", agent_config.reasoning_engine);
-        println!("   - Action engine: {}", agent_config.action_engine);
-        println!("   - Reflection engine: {}", agent_config.reflection_engine);
-        println!("   - Memory database: {}", agent_config.memory_database);
+        self.tui
+            .add_log("✅ Agent configuration loaded".to_string());
 
         Ok(agent_config)
     }
 
     /// Load and validate credentials
     async fn load_and_validate_credentials(
-        &self,
+        &mut self,
         agent_config: &fluent_agent::config::AgentEngineConfig,
     ) -> Result<std::collections::HashMap<String, String>> {
         use fluent_agent::config::credentials;
-        
+
         let credentials = credentials::load_from_environment();
-        println!("🔑 Loaded {} credential(s) from environment", credentials.len());
+        self.tui.add_log(format!(
+            "🔑 Loaded {} credential(s) from environment",
+            credentials.len()
+        ));
 
         // Validate required credentials
         let required_engines = vec![
@@ -389,26 +514,34 @@ impl AgenticExecutor {
 
     /// Create runtime configuration with engines
     async fn create_runtime_configuration(
-        &self,
+        &mut self,
         agent_config: &fluent_agent::config::AgentEngineConfig,
         credentials: std::collections::HashMap<String, String>,
     ) -> Result<fluent_agent::config::AgentRuntimeConfig> {
-        println!("🔧 Creating LLM engines...");
-        
+        self.tui.add_log("🔧 Creating LLM engines...".to_string());
+
         let runtime_config = agent_config
-            .create_runtime_config(&self.config.config_path, credentials, self.config.model_override.as_deref())
+            .create_runtime_config(
+                &self.config.config_path,
+                credentials,
+                self.config.model_override.as_deref(),
+            )
             .await?;
 
-        println!("✅ LLM engines created successfully!");
+        self.tui
+            .add_log("✅ LLM engines created successfully!".to_string());
         Ok(runtime_config)
     }
 
     /// Create goal from description
-    fn create_goal(&self) -> Result<fluent_agent::goal::Goal> {
+    fn create_goal(&mut self) -> Result<fluent_agent::goal::Goal> {
         use fluent_agent::goal::{Goal, GoalType};
-        
-        let mut builder = Goal::builder(self.config.goal_description.clone(), GoalType::CodeGeneration)
-            .max_iterations(self.config.max_iterations);
+
+        let mut builder = Goal::builder(
+            self.config.goal_description.clone(),
+            GoalType::CodeGeneration,
+        )
+        .max_iterations(self.config.max_iterations);
 
         // Load success criteria from env if provided by --goal-file path
         if let Ok(sc) = std::env::var("FLUENT_AGENT_SUCCESS_CRITERIA") {
@@ -425,16 +558,21 @@ impl AgenticExecutor {
 
         let goal = builder.build()?;
 
-        println!("🎯 Goal: {}", goal.description);
-        println!("🔄 Max iterations: {:?}", goal.max_iterations);
+        self.tui.add_log(format!("🎯 Goal: {}", goal.description));
+        self.tui
+            .add_log(format!("🔄 Max iterations: {:?}", goal.max_iterations));
 
         Ok(goal)
     }
 
     /// Test engines to ensure they're working
-    async fn test_engines(&self, runtime_config: &fluent_agent::config::AgentRuntimeConfig) -> Result<()> {
-        println!("\n🧠 Testing reasoning engine...");
-        
+    async fn test_engines(
+        &mut self,
+        runtime_config: &fluent_agent::config::AgentRuntimeConfig,
+    ) -> Result<()> {
+        self.tui
+            .add_log("🧠 Testing reasoning engine...".to_string());
+
         let test_request = Request {
             flowname: "agentic_test".to_string(),
             payload: "Hello! Please respond with 'Agentic mode is working!' to confirm the engine is operational.".to_string(),
@@ -442,50 +580,163 @@ impl AgenticExecutor {
 
         match Pin::from(runtime_config.reasoning_engine.execute(&test_request)).await {
             Ok(response) => {
-                println!("✅ Reasoning engine response: {}", response.content);
+                self.tui.add_log(format!(
+                    "✅ Reasoning engine response: {}",
+                    response.content
+                ));
                 self.print_operational_status();
                 Ok(())
             }
             Err(e) => {
-                println!("❌ Engine test failed: {e}");
-                println!("🔧 Please check your API keys and configuration");
+                self.tui.add_log(format!("❌ Engine test failed: {}", e));
+                self.tui
+                    .add_log("🔧 Please check your API keys and configuration".to_string());
                 Err(anyhow!("Engine test failed: {}", e))
             }
         }
     }
 
     /// Print operational status
-    fn print_operational_status(&self) {
-        println!("\n🚀 AGENTIC MODE IS FULLY OPERATIONAL!");
-        println!("🎯 Goal: {}", self.config.goal_description);
-        println!("🔧 All systems ready:");
-        println!("   ✅ LLM engines connected and tested");
-        println!("   ✅ Configuration system integrated");
-        println!("   ✅ Credential management working");
-        println!("   ✅ Goal system operational");
+    fn print_operational_status(&mut self) {
+        self.tui
+            .add_log("🚀 AGENTIC MODE IS FULLY OPERATIONAL!".to_string());
+        self.tui.add_log("🔧 All systems ready:".to_string());
+        self.tui
+            .add_log("   ✅ LLM engines connected and tested".to_string());
+        self.tui
+            .add_log("   ✅ Configuration system integrated".to_string());
+        self.tui
+            .add_log("   ✅ Credential management working".to_string());
+        self.tui
+            .add_log("   ✅ Goal system operational".to_string());
 
         if self.config.enable_tools {
-            println!("   ✅ Tool execution enabled");
+            self.tui.add_log("   ✅ Tool execution enabled".to_string());
         } else {
-            println!("   ⚠️  Tool execution disabled (use --enable-tools to enable)");
+            self.tui.add_log(
+                "   ⚠️  Tool execution disabled (use --enable-tools to enable)".to_string(),
+            );
         }
 
-        println!("\n🎉 The agentic coding platform is ready for autonomous operation!");
+        self.tui.add_log(
+            "🎉 The agentic coding platform is ready for autonomous operation!".to_string(),
+        );
     }
+
+    /// Show a mock TUI for demonstration when real TUI is not available
+    fn show_mock_tui(&self) {
+        println!("\n╔══════════════════════════════════════════════════════════════════════════════╗");
+        println!("║                              🤖 FLUENT AGENTIC MODE                              ║");
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Goal: {:<68} ║", self.config.goal_description);
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Status: 🔄 Initializing                  │ Iter: 0/{} │ Elapsed: 00:00:00    ║", self.config.max_iterations);
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Progress: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ║");
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Current Action: Initializing agentic framework...                          ║");
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Logs:                                                                       ║");
+        println!("║ 🤖 Starting Agentic Mode                                                   ║");
+        println!("║ 🔧 Initializing LLM engines...                                             ║");
+        println!("║ ✅ Configuration loaded                                                     ║");
+        println!("║ 🔑 Credentials validated                                                    ║");
+        println!("║ 🎯 Goal processing started                                                  ║");
+        println!("║                                                                             ║");
+        println!("║                                                                             ║");
+        println!("║                                                                             ║");
+        println!("║                                                                             ║");
+        println!("║                                                                             ║");
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Features: Tools: {} │ Reflection: {} │ Model: Default                        ║", if self.config.enable_tools { "✅" } else { "❌" }, if self.config.enable_reflection { "✅" } else { "❌" });
+        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!("║ Press 'q' to quit │ ↑/↓ scroll logs │ PgUp/PgDn for faster scrolling        ║");
+        println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
+    }
+
+    /// Run agent execution with TUI concurrently
+    async fn run_with_tui(
+        &mut self,
+        goal: &fluent_agent::goal::Goal,
+        runtime_config: &fluent_agent::config::AgentRuntimeConfig,
+        timeout_secs: u64,
+    ) -> Result<()> {
+        // Update TUI to show we're starting execution
+        self.tui.update_status(AgentStatus::Running);
+        self.tui.add_log("🚀 Starting agent execution...".to_string());
+
+        // For ASCII TUI, display current state immediately
+        if self.tui.is_fallback_mode() {
+            let _ = self.tui.force_display();
+        }
+
+        // Run agent execution
+        let result = match tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            self.run_autonomous_execution(goal, runtime_config),
+        )
+        .await
+        {
+            Ok(Ok(())) => {
+                info!("agent.react.done success=true explicit_autonomous_loop=true");
+                self.tui.update_status(AgentStatus::Completed);
+                self.tui.add_log("✅ Goal execution finished. Success: true".to_string());
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                error!("agent.react.error err={}", e);
+                self.tui.update_status(AgentStatus::Failed(e.to_string()));
+                self.tui.add_log(format!("❌ Orchestrator error: {}", e));
+                Err(e)
+            }
+            Err(_) => {
+                error!(
+                    "agent.react.timeout secs={} goal='{}'",
+                    timeout_secs, self.config.goal_description
+                );
+                self.tui.update_status(AgentStatus::Timeout);
+                self.tui.add_log(format!(
+                    "⏳ Agent timed out after {}s. Aborting.",
+                    timeout_secs
+                ));
+                Err(anyhow::anyhow!(format!(
+                    "Agent timed out after {}s while executing the goal",
+                    timeout_secs
+                )))
+            }
+        };
+
+        // Show completion and allow user interaction
+        self.tui.add_log("🎯 Agent execution completed. Press 'q' to exit.".to_string());
+
+        // For ASCII TUI, display final state immediately
+        if self.tui.is_fallback_mode() {
+            let _ = self.tui.run_event_loop().await;
+        } else {
+            // For full TUI, run event loop
+            let _ = self.tui.run_event_loop().await;
+        }
+
+        result
+    }
+
+
 
     /// Run autonomous execution loop
     async fn run_autonomous_execution(
-        &self,
+        &mut self,
         goal: &fluent_agent::goal::Goal,
         runtime_config: &fluent_agent::config::AgentRuntimeConfig,
     ) -> Result<()> {
-        println!("\n🚀 Starting autonomous execution...");
-        
-        let executor = AutonomousExecutor::new(
+        self.tui
+            .add_log("🚀 Starting autonomous execution...".to_string());
+
+        let mut executor = AutonomousExecutor::new(
             goal.clone(),
             runtime_config,
             self.config.gen_retries.unwrap_or(3),
             self.config.min_html_size.unwrap_or(2000) as usize,
+            &mut self.tui,
         );
         executor.execute(self.config.max_iterations).await
     }
@@ -497,6 +748,7 @@ pub struct AutonomousExecutor<'a> {
     runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
     gen_retries: u32,
     min_html_size: usize,
+    tui: &'a mut TuiManager,
 }
 
 impl<'a> AutonomousExecutor<'a> {
@@ -505,34 +757,59 @@ impl<'a> AutonomousExecutor<'a> {
         runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
         gen_retries: u32,
         min_html_size: usize,
+        tui: &'a mut TuiManager,
     ) -> Self {
-        Self { goal, runtime_config, gen_retries, min_html_size }
+        Self {
+            goal,
+            runtime_config,
+            gen_retries,
+            min_html_size,
+            tui,
+        }
     }
 
     /// Execute autonomous loop
-    pub async fn execute(&self, max_iterations: u32) -> Result<()> {
+    pub async fn execute(&mut self, max_iterations: u32) -> Result<()> {
         use fluent_agent::context::ExecutionContext;
-        
-        println!("🎯 Starting autonomous execution for goal: {}", self.goal.description);
-        info!("agent.loop.begin goal='{}' max_iterations={}", self.goal.description, max_iterations);
+
+        self.tui.add_log(format!(
+            "🎯 Starting autonomous execution for goal: {}",
+            self.goal.description
+        ));
+        info!(
+            "agent.loop.begin goal='{}' max_iterations={}",
+            self.goal.description, max_iterations
+        );
 
         let mut context = ExecutionContext::new(self.goal.clone());
 
         for iteration in 1..=max_iterations {
-            println!("\n🔄 Iteration {iteration}/{max_iterations}");
+            self.tui.update_iteration(iteration, max_iterations);
+            self.tui
+                .add_log(format!("🔄 Iteration {}/{}", iteration, max_iterations));
             debug!("agent.loop.iteration start iter={}", iteration);
 
             let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
-            debug!("agent.loop.reasoning.done len={} preview='{}'", reasoning_response.len(), &reasoning_response.chars().take(160).collect::<String>());
-            
+            debug!(
+                "agent.loop.reasoning.done len={} preview='{}'",
+                reasoning_response.len(),
+                &reasoning_response.chars().take(160).collect::<String>()
+            );
+
             if self.is_game_goal() {
                 info!("agent.loop.path game=true");
                 self.handle_game_creation(&mut context).await?;
                 return Ok(());
             } else {
                 info!("agent.loop.path game=false");
-                self.handle_general_goal(&mut context, &reasoning_response, iteration, max_iterations).await?;
-                
+                self.handle_general_goal(
+                    &mut context,
+                    &reasoning_response,
+                    iteration,
+                    max_iterations,
+                )
+                .await?;
+
                 if self.should_complete_goal(iteration, max_iterations) {
                     info!("agent.loop.complete iter={}", iteration);
                     return Ok(());
@@ -540,13 +817,17 @@ impl<'a> AutonomousExecutor<'a> {
             }
         }
 
-        println!("⚠️ Reached maximum iterations without completing goal");
+        self.tui
+            .add_log("⚠️ Reached maximum iterations without completing goal".to_string());
         Ok(())
     }
 
     /// Perform reasoning for current iteration
-    async fn perform_reasoning(&self, iteration: u32, max_iterations: u32) -> Result<String> {
-        println!("🧠 Analyzing goal and determining next action...");
+    async fn perform_reasoning(&mut self, iteration: u32, max_iterations: u32) -> Result<String> {
+        self.tui
+            .set_current_action("Analyzing goal and determining next action...".to_string());
+        self.tui
+            .add_log("🧠 Analyzing goal and determining next action...".to_string());
 
         let tools_available = "file operations, shell commands, code analysis";
         let reasoning_request = Request {
@@ -568,15 +849,30 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
-        debug!("agent.reasoning.request flow='{}' len={}", reasoning_request.flowname, reasoning_request.payload.len());
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&reasoning_request)).await {
+        debug!(
+            "agent.reasoning.request flow='{}' len={}",
+            reasoning_request.flowname,
+            reasoning_request.payload.len()
+        );
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&reasoning_request),
+        )
+        .await
+        {
             Ok(response) => {
-                println!("🤖 Agent reasoning: {}", response.content);
-                debug!("agent.reasoning.response len={} preview='{}'", response.content.len(), &response.content.chars().take(200).collect::<String>());
+                self.tui
+                    .add_log(format!("🤖 Agent reasoning: {}", response.content));
+                debug!(
+                    "agent.reasoning.response len={} preview='{}'",
+                    response.content.len(),
+                    &response.content.chars().take(200).collect::<String>()
+                );
                 Ok(response.content)
             }
             Err(e) => {
-                println!("❌ Reasoning failed: {e}");
+                self.tui.add_log(format!("❌ Reasoning failed: {}", e));
                 error!("agent.reasoning.error {}", e);
                 Err(anyhow!("Reasoning failed: {}", e))
             }
@@ -587,44 +883,71 @@ impl<'a> AutonomousExecutor<'a> {
     fn is_game_goal(&self) -> bool {
         let description = self.goal.description.to_lowercase();
         description.contains("game")
-
             || description.contains("tetris")
             || description.contains("javascript")
             || description.contains("html")
     }
 
     /// Handle game creation goals
-    async fn handle_game_creation(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
-        println!("🎮 Agent decision: Create the game now!");
+    async fn handle_game_creation(
+        &mut self,
+        context: &mut fluent_agent::context::ExecutionContext,
+    ) -> Result<()> {
+        self.tui
+            .add_log("🎮 Agent decision: Create the game now!".to_string());
 
-        let game_creator = GameCreator::new(&self.goal, self.runtime_config, self.gen_retries, self.min_html_size);
+        let mut game_creator = GameCreator::new(
+            &self.goal,
+            self.runtime_config,
+            self.gen_retries,
+            self.min_html_size,
+            self.tui,
+        );
         game_creator.create_game(context).await
     }
 
     /// Handle general (non-game) goals
     async fn handle_general_goal(
-        &self,
+        &mut self,
         context: &mut fluent_agent::context::ExecutionContext,
         reasoning_response: &str,
         iteration: u32,
         max_iterations: u32,
     ) -> Result<()> {
-        println!("🔍 Processing complex analytical goal...");
+        self.tui
+            .set_current_action("Processing complex analytical goal...".to_string());
+        self.tui
+            .add_log("🔍 Processing complex analytical goal...".to_string());
 
-        let action_response = self.plan_action(reasoning_response, iteration, max_iterations).await?;
-        
+        let action_response = self
+            .plan_action(reasoning_response, iteration, max_iterations)
+            .await?;
+
         if self.goal.description.to_lowercase().contains("reflection") {
-            self.handle_reflection_analysis(context, &action_response, iteration, max_iterations).await?;
+            self.handle_reflection_analysis(context, &action_response, iteration, max_iterations)
+                .await?;
         } else {
-            println!("🔧 Processing general goal: {}", self.goal.description);
-            context.increment_iteration();
+            self.tui.add_log(format!(
+                "🔧 Processing general goal: {}",
+                self.goal.description
+            ));
+            self.execute_planned_action(context, &action_response, iteration, max_iterations)
+                .await?;
         }
 
         Ok(())
     }
 
     /// Plan specific action based on reasoning
-    async fn plan_action(&self, reasoning_response: &str, iteration: u32, max_iterations: u32) -> Result<String> {
+    async fn plan_action(
+        &mut self,
+        reasoning_response: &str,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<String> {
+        self.tui
+            .set_current_action("Planning specific action...".to_string());
+
         let action_request = Request {
             flowname: "action_planning".to_string(),
             payload: format!(
@@ -634,22 +957,34 @@ impl<'a> AutonomousExecutor<'a> {
                 Iteration: {}/{}\n\n\
                 What specific file should be analyzed, created, or modified? \
                 Respond with just the file path and a brief description of what to do with it.",
-                self.goal.description,
-                reasoning_response,
-                iteration,
-                max_iterations
+                self.goal.description, reasoning_response, iteration, max_iterations
             ),
         };
 
-        debug!("agent.action.request flow='{}' len={}", action_request.flowname, action_request.payload.len());
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&action_request)).await {
+        debug!(
+            "agent.action.request flow='{}' len={}",
+            action_request.flowname,
+            action_request.payload.len()
+        );
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&action_request),
+        )
+        .await
+        {
             Ok(response) => {
-                println!("📋 Planned action: {}", response.content);
-                info!("agent.action.planned first_line='{}'", response.content.lines().next().unwrap_or(""));
+                self.tui
+                    .add_log(format!("📋 Planned action: {}", response.content));
+                info!(
+                    "agent.action.planned first_line='{}'",
+                    response.content.lines().next().unwrap_or("")
+                );
                 Ok(response.content)
             }
             Err(e) => {
-                println!("❌ Action planning failed: {e}");
+                self.tui
+                    .add_log(format!("❌ Action planning failed: {}", e));
                 error!("agent.action.error {}", e);
                 Err(anyhow!("Action planning failed: {}", e))
             }
@@ -658,7 +993,7 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Handle reflection system analysis
     async fn handle_reflection_analysis(
-        &self,
+        &mut self,
         context: &mut fluent_agent::context::ExecutionContext,
         action_response: &str,
         iteration: u32,
@@ -668,12 +1003,21 @@ impl<'a> AutonomousExecutor<'a> {
 
         // Create analysis directory
         if let Err(e) = fs::create_dir_all("analysis") {
-            println!("⚠️ Could not create analysis directory: {e}");
+            self.tui
+                .add_log(format!("⚠️ Could not create analysis directory: {}", e));
         }
 
-        let analysis_response = self.perform_reflection_analysis(iteration, max_iterations).await?;
-        self.write_analysis_file(analysis_file, &analysis_response, action_response, iteration).await?;
-        
+        let analysis_response = self
+            .perform_reflection_analysis(iteration, max_iterations)
+            .await?;
+        self.write_analysis_file(
+            analysis_file,
+            &analysis_response,
+            action_response,
+            iteration,
+        )
+        .await?;
+
         // Update context with progress
         context.set_variable("analysis_iteration".to_string(), iteration.to_string());
         context.set_variable("analysis_file".to_string(), analysis_file.to_string());
@@ -683,7 +1027,11 @@ impl<'a> AutonomousExecutor<'a> {
     }
 
     /// Perform reflection system analysis
-    async fn perform_reflection_analysis(&self, iteration: u32, max_iterations: u32) -> Result<String> {
+    async fn perform_reflection_analysis(
+        &mut self,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<String> {
         let analysis_request = Request {
             flowname: "reflection_analysis".to_string(),
             payload: format!(
@@ -699,10 +1047,16 @@ impl<'a> AutonomousExecutor<'a> {
             ),
         };
 
-        match Pin::from(self.runtime_config.reasoning_engine.execute(&analysis_request)).await {
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&analysis_request),
+        )
+        .await
+        {
             Ok(response) => Ok(response.content),
             Err(e) => {
-                println!("❌ Analysis failed: {e}");
+                self.tui.add_log(format!("❌ Analysis failed: {}", e));
                 Err(anyhow!("Analysis failed: {}", e))
             }
         }
@@ -710,7 +1064,7 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Write analysis to file
     async fn write_analysis_file(
-        &self,
+        &mut self,
         analysis_file: &str,
         analysis_response: &str,
         action_response: &str,
@@ -733,22 +1087,239 @@ impl<'a> AutonomousExecutor<'a> {
         );
 
         if let Err(e) = fs::write(analysis_file, &analysis_content) {
-            println!("❌ Failed to write analysis: {e}");
+            self.tui
+                .add_log(format!("❌ Failed to write analysis: {}", e));
             Err(anyhow!("Failed to write analysis: {}", e))
         } else {
-            println!("✅ Analysis written to: {analysis_file}");
-            println!("📝 Analysis length: {} characters", analysis_content.len());
+            self.tui
+                .add_log(format!("✅ Analysis written to: {}", analysis_file));
+            self.tui.add_log(format!(
+                "📝 Analysis length: {} characters",
+                analysis_content.len()
+            ));
             Ok(())
         }
     }
 
-    /// Check if goal should be completed
-    fn should_complete_goal(&self, iteration: u32, max_iterations: u32) -> bool {
-        if self.goal.description.to_lowercase().contains("reflection")
-            && iteration >= max_iterations / 2 {
-                println!("🎯 Comprehensive analysis completed across {iteration} iterations!");
-                return true;
+    /// Execute the planned action
+    async fn execute_planned_action(
+        &mut self,
+        context: &mut fluent_agent::context::ExecutionContext,
+        action_response: &str,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<()> {
+        // Parse action response to extract file path and action type
+        let (file_path, action_description) = self.parse_action_response(action_response);
+
+        self.tui
+            .set_current_action(format!("Executing: {}", action_description));
+
+        if action_description.to_lowercase().contains("create")
+            || action_description.to_lowercase().contains("write")
+        {
+            // Create or write a file
+            self.create_research_file(&file_path, &action_description, iteration, max_iterations)
+                .await?;
+        } else if action_description.to_lowercase().contains("analyze")
+            || action_description.to_lowercase().contains("read")
+        {
+            // Analyze an existing file
+            self.analyze_file(&file_path, &action_description).await?;
+        } else {
+            // For other actions, just log them
+            self.tui.add_log(format!(
+                "ℹ️ Action type not implemented: {}",
+                action_description
+            ));
+        }
+
+        // Update context
+        context.set_variable("last_action".to_string(), action_response.to_string());
+        context.set_variable("iteration".to_string(), iteration.to_string());
+        context.increment_iteration();
+
+        Ok(())
+    }
+
+    /// Parse action response to extract file path and description
+    fn parse_action_response(&self, action_response: &str) -> (String, String) {
+        // Expected format: "filename.ext - Description of action"
+        if let Some(dash_pos) = action_response.find(" - ") {
+            let file_path = action_response[..dash_pos].trim().to_string();
+            let description = action_response[dash_pos + 3..].trim().to_string();
+            (file_path, description)
+        } else {
+            // Fallback: assume the whole response is the description
+            (
+                "research_output.md".to_string(),
+                action_response.to_string(),
+            )
+        }
+    }
+
+    /// Create a research file with generated content
+    async fn create_research_file(
+        &mut self,
+        file_path: &str,
+        description: &str,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<()> {
+        self.tui
+            .add_log(format!("📝 Creating research file: {}", file_path));
+
+        // Generate content based on the goal and description
+        let content = self
+            .generate_research_content(description, iteration, max_iterations)
+            .await?;
+
+        // Write to file
+        if let Err(e) = fs::write(file_path, &content) {
+            self.tui
+                .add_log(format!("❌ Failed to write file {}: {}", file_path, e));
+            return Err(anyhow!("Failed to write research file: {}", e));
+        }
+
+        self.tui.add_log(format!(
+            "✅ Created {} ({} characters)",
+            file_path,
+            content.len()
+        ));
+        Ok(())
+    }
+
+    /// Generate research content using LLM
+    async fn generate_research_content(
+        &mut self,
+        description: &str,
+        iteration: u32,
+        max_iterations: u32,
+    ) -> Result<String> {
+        let research_request = Request {
+            flowname: "research_generation".to_string(),
+            payload: format!(
+                "You are conducting research on: {}\n\n\
+                Goal: {}\n\n\
+                Current iteration: {}/{}\n\n\
+                Task: {}\n\n\
+                Provide comprehensive, well-structured content for this research file. \
+                Include relevant facts, analysis, and insights. Be thorough but concise. \
+                Format with proper markdown structure including headers, lists, and sections as appropriate.",
+                self.goal.description, self.goal.description, iteration, max_iterations, description
+            ),
+        };
+
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&research_request),
+        )
+        .await
+        {
+            Ok(response) => Ok(response.content),
+            Err(e) => {
+                self.tui
+                    .add_log(format!("❌ Research content generation failed: {}", e));
+                Err(anyhow!("Research content generation failed: {}", e))
             }
+        }
+    }
+
+    /// Analyze an existing file
+    async fn analyze_file(&mut self, file_path: &str, description: &str) -> Result<()> {
+        self.tui
+            .add_log(format!("🔍 Analyzing file: {}", file_path));
+
+        // Try to read the file
+        match fs::read_to_string(file_path) {
+            Ok(content) => {
+                self.tui.add_log(format!(
+                    "📖 Read {} characters from {}",
+                    content.len(),
+                    file_path
+                ));
+
+                // Generate analysis
+                let analysis = self.analyze_content(&content, description).await?;
+                self.tui.add_log(format!("📊 Analysis: {}", analysis));
+            }
+            Err(e) => {
+                self.tui
+                    .add_log(format!("⚠️ Could not read file {}: {}", file_path, e));
+                // Create the file if it doesn't exist
+                self.create_research_file(
+                    file_path,
+                    &format!("Create analysis file: {}", description),
+                    1,
+                    1,
+                )
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Analyze content using LLM
+    async fn analyze_content(&mut self, content: &str, description: &str) -> Result<String> {
+        let analysis_request = Request {
+            flowname: "content_analysis".to_string(),
+            payload: format!(
+                "Analyze the following content in the context of the goal: {}\n\n\
+                Analysis task: {}\n\n\
+                Content to analyze:\n{}\n\n\
+                Provide a brief analysis focusing on relevance, completeness, and next steps.",
+                self.goal.description, description, content
+            ),
+        };
+
+        match Pin::from(
+            self.runtime_config
+                .reasoning_engine
+                .execute(&analysis_request),
+        )
+        .await
+        {
+            Ok(response) => Ok(response.content),
+            Err(e) => {
+                self.tui
+                    .add_log(format!("❌ Content analysis failed: {}", e));
+                Err(anyhow!("Content analysis failed: {}", e))
+            }
+        }
+    }
+
+    /// Check if goal should be completed
+    fn should_complete_goal(&mut self, iteration: u32, max_iterations: u32) -> bool {
+        if self.goal.description.to_lowercase().contains("reflection")
+            && iteration >= max_iterations / 2
+        {
+            self.tui.add_log(format!(
+                "🎯 Comprehensive analysis completed across {} iterations!",
+                iteration
+            ));
+            return true;
+        }
+
+        // For research goals, check if we've created substantial content
+        if iteration >= 3 {
+            // Check if research files exist and have content
+            let research_files = ["grilled_cheese_research.md", "research_output.md"];
+            for file in &research_files {
+                if let Ok(metadata) = fs::metadata(file) {
+                    if metadata.len() > 1000 {
+                        // At least 1KB of content
+                        self.tui.add_log(format!(
+                            "🎯 Research goal appears complete - substantial content created in {}",
+                            file
+                        ));
+                        return true;
+                    }
+                }
+            }
+        }
+
         false
     }
 }
@@ -759,6 +1330,7 @@ pub struct GameCreator<'a> {
     runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
     gen_retries: u32,
     min_html_size: usize,
+    tui: &'a mut TuiManager,
 }
 
 impl<'a> GameCreator<'a> {
@@ -767,27 +1339,64 @@ impl<'a> GameCreator<'a> {
         runtime_config: &'a fluent_agent::config::AgentRuntimeConfig,
         gen_retries: u32,
         min_html_size: usize,
+        tui: &'a mut TuiManager,
     ) -> Self {
-        Self { goal, runtime_config, gen_retries, min_html_size }
+        Self {
+            goal,
+            runtime_config,
+            gen_retries,
+            min_html_size,
+            tui,
+        }
     }
 
     /// Create game based on goal description
-    pub async fn create_game(&self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
-        let (file_extension, code_prompt, file_path) = self.determine_game_type();
-        info!("agent.codegen.select type='{}' path='{}'", file_extension, file_path);
-        let game_code = self.generate_game_code(&code_prompt, file_extension).await?;
-        debug!("agent.codegen.generated len={} ext='{}'", game_code.len(), file_extension);
+    pub async fn create_game(
+        &mut self,
+        context: &mut fluent_agent::context::ExecutionContext,
+    ) -> Result<()> {
+        let (file_extension, code_prompt, file_path) =
+            Self::determine_game_type(&self.goal.description);
+        if !self.goal.description.to_lowercase().contains("tetris")
+            && !self.goal.description.to_lowercase().contains("snake")
+        {
+            self.tui.add_log("⚠️ Unrecognized game type requested. Defaulting to Tetris as it's the most complex option.".to_string());
+        }
+        info!(
+            "agent.codegen.select type='{}' path='{}'",
+            file_extension, file_path
+        );
+
+        // Generate game code
+        let game_code = self
+            .generate_game_code(&code_prompt, file_extension)
+            .await?;
+        debug!(
+            "agent.codegen.generated len={} ext='{}'",
+            game_code.len(),
+            file_extension
+        );
+
+        // Write game file
         self.write_game_file(file_path, &game_code)?;
+
+        // Update context
         self.update_context(context, file_path, file_extension);
-        
-        println!("🎉 Goal achieved! {} game created successfully!", file_extension.to_uppercase());
+
+        // Log success
+        self.tui.add_log(format!(
+            "🎉 Goal achieved! {} game created successfully!",
+            file_extension.to_uppercase()
+        ));
         Ok(())
     }
 
     /// Determine what type of game to create
-    fn determine_game_type(&self) -> (&str, String, &str) {
-        let description = self.goal.description.to_lowercase();
-        let wants_web = description.contains("javascript") || description.contains("html") || description.contains("web");
+    fn determine_game_type(goal_description: &str) -> (&str, String, &str) {
+        let description = goal_description.to_lowercase();
+        let wants_web = description.contains("javascript")
+            || description.contains("html")
+            || description.contains("web");
 
         // Check for specific game types in order of preference
         if description.contains("tetris") {
@@ -861,7 +1470,6 @@ impl<'a> GameCreator<'a> {
             }
         } else {
             // For unrecognized game requests, default to Tetris as it's the most complex and requested
-            println!("⚠️ Unrecognized game type requested. Defaulting to Tetris as it's the most complex option.");
             if wants_web {
                 (
                     "html",
@@ -901,17 +1509,32 @@ impl<'a> GameCreator<'a> {
     }
 
     /// Generate game code using LLM
-    async fn generate_game_code(&self, code_prompt: &str, file_extension: &str) -> Result<String> {
-        info!("agent.codegen.start ext='{}' retries={}", file_extension, self.gen_retries);
+    async fn generate_game_code(
+        &mut self,
+        code_prompt: &str,
+        file_extension: &str,
+    ) -> Result<String> {
+        info!(
+            "agent.codegen.start ext='{}' retries={}",
+            file_extension, self.gen_retries
+        );
         let code_request = Request {
             flowname: "code_generation".to_string(),
             payload: code_prompt.to_string(),
         };
 
-        println!("🧠 Generating {} game code with selected LLM...", file_extension.to_uppercase());
+        self.tui.add_log(format!(
+            "🧠 Generating {} game code with selected LLM...",
+            file_extension.to_uppercase()
+        ));
 
         // Helper: try execute with retry/backoff
-        async fn try_execute_with_retry(engine: &Box<dyn fluent_core::traits::Engine>, req: &Request, attempts: u32) -> Result<fluent_core::types::Response> {
+        async fn try_execute_with_retry(
+            engine: &Box<dyn fluent_core::traits::Engine>,
+            req: &Request,
+            attempts: u32,
+            tui: &mut TuiManager,
+        ) -> Result<fluent_core::types::Response> {
             let mut delay = 500u64;
             let max_attempts = attempts.max(1);
             let mut last_err: Option<anyhow::Error> = None;
@@ -922,21 +1545,40 @@ impl<'a> GameCreator<'a> {
                     Err(e) => {
                         last_err = Some(e);
                         if attempt < max_attempts {
-                            println!("⚠️ LLM request failed (attempt {attempt}/{max_attempts}). Retrying in {}ms...", delay);
-                            warn!("agent.codegen.retry attempt={}/{} delay_ms={}", attempt, max_attempts, delay);
+                            tui.add_log(format!(
+                                "⚠️ LLM request failed (attempt {}/{}). Retrying in {}ms...",
+                                attempt, max_attempts, delay
+                            ));
+                            warn!(
+                                "agent.codegen.retry attempt={}/{} delay_ms={}",
+                                attempt, max_attempts, delay
+                            );
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             delay *= 2;
-                        }
-                    }
+    }
+}
                 }
             }
-            Err(anyhow::anyhow!(format!("LLM request failed after retries: {}", last_err.unwrap_or_else(|| anyhow::anyhow!("unknown error")))))
+            Err(anyhow::anyhow!(format!(
+                "LLM request failed after retries: {}",
+                last_err.unwrap_or_else(|| anyhow::anyhow!("unknown error"))
+            )))
         }
 
         // First attempt with retry
-        let mut code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &code_request, self.gen_retries).await?;
+        let mut code_response = try_execute_with_retry(
+            self.runtime_config.reasoning_engine.as_ref(),
+            &code_request,
+            self.gen_retries,
+            self.tui,
+        )
+        .await?;
         let mut game_code = crate::utils::extract_code(&code_response.content, file_extension);
-        debug!("agent.codegen.extracted len={} ext='{}'", game_code.len(), file_extension);
+        debug!(
+            "agent.codegen.extracted len={} ext='{}'",
+            game_code.len(),
+            file_extension
+        );
 
         // Lightweight validation for Tetris deliverables
         let desc = self.goal.description.to_lowercase();
@@ -944,16 +1586,30 @@ impl<'a> GameCreator<'a> {
         let mut valid = true;
         if needs_tetris && file_extension == "html" {
             let lc = game_code.to_lowercase();
-            let has_canvas = lc.contains("<canvas") || lc.contains("getelementbyid('tetriscanvas'") || lc.contains("getelementbyid(\"tetriscanvas\"");
-            let has_controls = lc.contains("keydown") || lc.contains("addEventListener('keydown'") || lc.contains("addEventListener(\"keydown\"");
-            let has_logic = lc.contains("tetromino") || lc.contains("rotation") || lc.contains("rotate(") || lc.contains("lines") || lc.contains("score");
+            let has_canvas = lc.contains("<canvas")
+                || lc.contains("getelementbyid('tetriscanvas'")
+                || lc.contains("getelementbyid(\"tetriscanvas\"");
+            let has_controls = lc.contains("keydown")
+                || lc.contains("addEventListener('keydown'")
+                || lc.contains("addEventListener(\"keydown\"");
+            let has_logic = lc.contains("tetromino")
+                || lc.contains("rotation")
+                || lc.contains("rotate(")
+                || lc.contains("lines")
+                || lc.contains("score");
             let long_enough = game_code.len() > self.min_html_size; // require non-trivial output
-            debug!("agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}", has_canvas, has_controls, has_logic, long_enough);
+            debug!(
+                "agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}",
+                has_canvas, has_controls, has_logic, long_enough
+            );
             valid = has_canvas && has_controls && has_logic && long_enough;
         }
 
         if !valid {
-            println!("⚠️ Output seems incomplete. Requesting refined Tetris implementation...");
+            self.tui.add_log(
+                "⚠️ Output seems incomplete. Requesting refined Tetris implementation..."
+                    .to_string(),
+            );
             info!("agent.codegen.refine ext='{}'", file_extension);
             let refine_prompt = format!(
                 "Your previous output was incomplete or generic. Regenerate the deliverable as a single, complete {} Tetris implementation with the following minimum features: \n\
@@ -967,16 +1623,25 @@ impl<'a> GameCreator<'a> {
                 if file_extension == "html" { "HTML (embedded JS/CSS)" } else { "Rust" }
             );
 
-            let refine_request = Request { flowname: "code_generation_refine".to_string(), payload: refine_prompt };
-            code_response = try_execute_with_retry(self.runtime_config.reasoning_engine.as_ref(), &refine_request, self.gen_retries).await?;
+            let refine_request = Request {
+                flowname: "code_generation_refine".to_string(),
+                payload: refine_prompt,
+            };
+            code_response = try_execute_with_retry(
+                self.runtime_config.reasoning_engine.as_ref(),
+                &refine_request,
+                self.gen_retries,
+                self.tui,
+            )
+            .await?;
             game_code = crate::utils::extract_code(&code_response.content, file_extension);
 
             // Re-validate refined output; if still clearly a placeholder, keep the raw content to aid debugging
             if needs_tetris && file_extension == "html" {
-                let lc2 = game_code.to_lowercase();
+                let _lc2 = game_code.to_lowercase();
                 let still_placeholder = game_code.len() < self.min_html_size;
                 if still_placeholder {
-                    println!("⚠️ Refined output still looks insufficient. Writing raw response for inspection.");
+                    self.tui.add_log("⚠️ Refined output still looks insufficient. Writing raw response for inspection.".to_string());
                     game_code = code_response.content;
                 }
             }
@@ -986,16 +1651,29 @@ impl<'a> GameCreator<'a> {
     }
 
     /// Write game code to file
-    fn write_game_file(&self, file_path: &str, game_code: &str) -> Result<()> {
+    fn write_game_file(&mut self, file_path: &str, game_code: &str) -> Result<()> {
         fs::write(file_path, game_code)?;
-        info!("agent.codegen.file_written path='{}' bytes={}", file_path, game_code.len());
-        println!("✅ Created game at: {file_path}");
-        println!("📝 Game code length: {} characters", game_code.len());
+        info!(
+            "agent.codegen.file_written path='{}' bytes={}",
+            file_path,
+            game_code.len()
+        );
+        self.tui
+            .add_log(format!("✅ Created game at: {}", file_path));
+        self.tui.add_log(format!(
+            "📝 Game code length: {} characters",
+            game_code.len()
+        ));
         Ok(())
     }
 
     /// Update execution context with game creation info
-    fn update_context(&self, context: &mut fluent_agent::context::ExecutionContext, file_path: &str, file_extension: &str) {
+    fn update_context(
+        &self,
+        context: &mut fluent_agent::context::ExecutionContext,
+        file_path: &str,
+        file_extension: &str,
+    ) {
         context.set_variable("game_created".to_string(), "true".to_string());
         context.set_variable("game_path".to_string(), file_path.to_string());
         context.set_variable("game_type".to_string(), file_extension.to_string());

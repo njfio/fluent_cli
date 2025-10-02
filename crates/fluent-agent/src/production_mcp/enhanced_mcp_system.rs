@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
 /// Enhanced MCP system with advanced capabilities
@@ -359,22 +359,22 @@ impl EnhancedMcpSystem {
     pub async fn initialize(&self) -> Result<()> {
         // Initialize transport manager
         self.initialize_transports().await?;
-        
+
         // Initialize streaming engine
         if self.config.enable_streaming {
             self.initialize_streaming().await?;
         }
-        
+
         // Initialize batch processor
         if self.config.enable_batch_operations {
             self.initialize_batch_processing().await?;
         }
-        
+
         // Initialize event bus
         if self.config.enable_event_bus {
             self.initialize_event_bus().await?;
         }
-        
+
         Ok(())
     }
 
@@ -390,10 +390,10 @@ impl EnhancedMcpSystem {
         if !self.config.enable_streaming {
             return Err(anyhow::anyhow!("Streaming not enabled"));
         }
-        
+
         let mut streaming_engine = self.streaming_engine.write().await;
         let stream_id = Uuid::new_v4().to_string();
-        
+
         let (sender, receiver) = mpsc::unbounded_channel();
         let handler = StreamHandler {
             stream_id: stream_id.clone(),
@@ -403,17 +403,23 @@ impl EnhancedMcpSystem {
             created_at: SystemTime::now(),
             last_activity: SystemTime::now(),
         };
-        
-        streaming_engine.active_streams.insert(stream_id.clone(), handler);
+
+        streaming_engine
+            .active_streams
+            .insert(stream_id.clone(), handler);
         Ok(stream_id)
     }
 
     /// Submit a batch request
-    pub async fn submit_batch(&self, requests: Vec<McpMessage>, config: BatchConfig) -> Result<String> {
+    pub async fn submit_batch(
+        &self,
+        requests: Vec<McpMessage>,
+        config: BatchConfig,
+    ) -> Result<String> {
         if !self.config.enable_batch_operations {
             return Err(anyhow::anyhow!("Batch operations not enabled"));
         }
-        
+
         let batch_id = Uuid::new_v4().to_string();
         let batch_request = BatchRequest {
             batch_id: batch_id.clone(),
@@ -422,10 +428,12 @@ impl EnhancedMcpSystem {
             created_at: SystemTime::now(),
             priority: MessagePriority::Normal,
         };
-        
+
         let mut batch_processor = self.batch_processor.write().await;
-        batch_processor.pending_batches.insert(batch_id.clone(), batch_request);
-        
+        batch_processor
+            .pending_batches
+            .insert(batch_id.clone(), batch_request);
+
         Ok(batch_id)
     }
 
@@ -434,10 +442,10 @@ impl EnhancedMcpSystem {
         if !self.config.enable_event_bus {
             return Err(anyhow::anyhow!("Event bus not enabled"));
         }
-        
+
         let mut event_bus = self.event_bus.write().await;
         event_bus.event_queue.push(event);
-        
+
         Ok(())
     }
 
@@ -470,7 +478,7 @@ pub struct WebSocketTransport {
 
 #[async_trait::async_trait]
 impl McpTransport for WebSocketTransport {
-    async fn connect(&mut self, endpoint: &str) -> Result<String> {
+    async fn connect(&mut self, _endpoint: &str) -> Result<String> {
         let connection_id = Uuid::new_v4().to_string();
         // WebSocket connection implementation
         Ok(connection_id)
@@ -532,7 +540,8 @@ pub struct HttpTransport {
 impl McpTransport for HttpTransport {
     async fn connect(&mut self, endpoint: &str) -> Result<String> {
         let connection_id = Uuid::new_v4().to_string();
-        self.endpoints.insert(connection_id.clone(), endpoint.to_string());
+        self.endpoints
+            .insert(connection_id.clone(), endpoint.to_string());
         Ok(connection_id)
     }
 
@@ -543,10 +552,7 @@ impl McpTransport for HttpTransport {
 
     async fn send(&mut self, connection_id: &str, message: McpMessage) -> Result<()> {
         if let Some(endpoint) = self.endpoints.get(connection_id) {
-            let _response = self.client.post(endpoint)
-                .json(&message)
-                .send()
-                .await?;
+            let _response = self.client.post(endpoint).json(&message).send().await?;
         }
         Ok(())
     }

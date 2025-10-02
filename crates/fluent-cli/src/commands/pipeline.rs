@@ -1,3 +1,4 @@
+use crate::error::CliError;
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
@@ -5,7 +6,6 @@ use fluent_core::error::FluentResult;
 use fluent_engines::pipeline_executor::{FileStateStore, Pipeline, PipelineExecutor, StateStore};
 use std::env;
 use std::path::PathBuf;
-use crate::error::CliError;
 
 use super::{CommandHandler, CommandResult};
 
@@ -65,7 +65,12 @@ impl PipelineCommand {
         // Read and validate pipeline file
         let yaml_str = tokio::fs::read_to_string(pipeline_file)
             .await
-            .map_err(|e| CliError::Config(format!("Failed to read pipeline file '{}': {}", pipeline_file, e)))?;
+            .map_err(|e| {
+                CliError::Config(format!(
+                    "Failed to read pipeline file '{}': {}",
+                    pipeline_file, e
+                ))
+            })?;
 
         Self::validate_pipeline_yaml(&yaml_str)
             .map_err(|e| CliError::Validation(format!("Pipeline validation failed: {}", e)))?;
@@ -77,7 +82,9 @@ impl PipelineCommand {
         let state_store_dir = Self::get_state_store_dir()?;
         tokio::fs::create_dir_all(&state_store_dir)
             .await
-            .map_err(|e| CliError::Config(format!("Failed to create state store directory: {}", e)))?;
+            .map_err(|e| {
+                CliError::Config(format!("Failed to create state store directory: {}", e))
+            })?;
 
         let state_store = FileStateStore {
             directory: state_store_dir.clone(),
@@ -140,6 +147,74 @@ impl CommandHandler for PipelineCommand {
         let force_fresh = matches.get_flag("force_fresh");
         let run_id = matches.get_one::<String>("run_id").cloned();
         let json_output = matches.get_flag("json");
+        let dry_run = matches.get_flag("dry-run");
+
+        // In dry-run mode, perform lightweight validation instead of full execution
+        if dry_run {
+            match tokio::fs::read_to_string(pipeline_file).await {
+                Ok(yaml_content) => {
+                    match serde_yaml::from_str::<serde_yaml::Value>(&yaml_content) {
+                        Ok(_) => {
+                            if json_output {
+                                println!(
+                                    "{}",
+                                    serde_json::json!({
+                                        "success": true,
+                                        "pipeline_file": pipeline_file,
+                                        "dry_run": true,
+                                        "message": "Dry-run validation successful: pipeline file is present and syntactically valid."
+                                    }).to_string()
+                                );
+                            } else {
+                                println!(
+                                    "✅ Dry-run: Pipeline file is present and syntactically valid."
+                                );
+                            }
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            let error_message = format!("Failed to parse pipeline YAML: {}", e);
+                            if json_output {
+                                println!(
+                                    "{}",
+                                    serde_json::json!({
+                                        "success": false,
+                                        "error": &error_message,
+                                        "pipeline_file": pipeline_file,
+                                        "dry_run": true,
+                                    })
+                                    .to_string()
+                                );
+                            } else {
+                                eprintln!("❌ Dry-run validation failed: {}", error_message);
+                            }
+                            // Return an error to indicate failure
+                            return Err(CliError::Validation(error_message).into());
+                        }
+                    }
+                }
+                Err(e) => {
+                    let error_message =
+                        format!("Failed to read pipeline file '{}': {}", pipeline_file, e);
+                    if json_output {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "success": false,
+                                "error": &error_message,
+                                "pipeline_file": pipeline_file,
+                                "dry_run": true,
+                            })
+                            .to_string()
+                        );
+                    } else {
+                        eprintln!("❌ Dry-run validation failed: {}", error_message);
+                    }
+                    // Return an error to indicate failure
+                    return Err(CliError::Config(error_message).into());
+                }
+            }
+        }
 
         // Execute pipeline
         let result =
@@ -147,7 +222,9 @@ impl CommandHandler for PipelineCommand {
 
         if !result.success {
             if let Some(message) = result.message {
-                return Err(CliError::Engine(format!("Pipeline execution failed: {}", message)).into());
+                return Err(
+                    CliError::Engine(format!("Pipeline execution failed: {}", message)).into(),
+                );
             } else {
                 return Err(CliError::Engine("Pipeline execution failed".to_string()).into());
             }

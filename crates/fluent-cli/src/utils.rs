@@ -7,7 +7,7 @@ pub fn extract_cypher_query(content: &str) -> Result<String, Error> {
     // First, try to extract content between triple backticks
     let backtick_re = Regex::new(r"```(?:cypher)?\s*([\s\S]*?)\s*```")
         .map_err(|e| anyhow!("Failed to compile regex: {}", e))?;
-    
+
     if let Some(captures) = backtick_re.captures(content) {
         if let Some(query) = captures.get(1) {
             let extracted = query.as_str().trim();
@@ -25,9 +25,9 @@ pub fn extract_cypher_query(content: &str) -> Result<String, Error> {
     ];
 
     for pattern in &cypher_patterns {
-        let re = Regex::new(pattern)
-            .map_err(|e| anyhow!("Failed to compile pattern regex: {}", e))?;
-        
+        let re =
+            Regex::new(pattern).map_err(|e| anyhow!("Failed to compile pattern regex: {}", e))?;
+
         if let Some(captures) = re.captures(content) {
             if let Some(query) = captures.get(1) {
                 let extracted = query.as_str().trim();
@@ -45,12 +45,14 @@ pub fn extract_cypher_query(content: &str) -> Result<String, Error> {
 pub fn is_valid_cypher(query: &str) -> bool {
     // Basic validation: check if the query contains common Cypher clauses
     let valid_clauses = [
-        "MATCH", "CREATE", "MERGE", "DELETE", "SET", "REMOVE", 
-        "RETURN", "WHERE", "WITH", "UNWIND", "CALL", "YIELD"
+        "MATCH", "CREATE", "MERGE", "DELETE", "SET", "REMOVE", "RETURN", "WHERE", "WITH", "UNWIND",
+        "CALL", "YIELD",
     ];
-    
+
     let query_upper = query.to_uppercase();
-    valid_clauses.iter().any(|clause| query_upper.contains(clause))
+    valid_clauses
+        .iter()
+        .any(|clause| query_upper.contains(clause))
 }
 
 /// Format query result as CSV
@@ -62,40 +64,34 @@ pub fn format_as_csv(result: &Value) -> String {
             }
 
             let mut csv_lines = Vec::new();
-            
+
             // Extract headers from first record
             if let Some(Value::Object(first_record)) = records.first() {
                 let headers: Vec<String> = first_record.keys().cloned().collect();
                 csv_lines.push(headers.join(","));
-                
+
                 // Process each record
                 for record in records {
                     if let Value::Object(obj) = record {
-                        let values: Vec<String> = headers.iter()
-                            .map(|header| {
-                                obj.get(header)
-                                    .map(format_csv_value)
-                                    .unwrap_or_default()
-                            })
+                        let values: Vec<String> = headers
+                            .iter()
+                            .map(|header| obj.get(header).map(format_csv_value).unwrap_or_default())
                             .collect();
                         csv_lines.push(values.join(","));
                     }
                 }
             }
-            
+
             csv_lines.join("\n")
         }
         Value::Object(obj) => {
             // Single object - convert to single row CSV
             let headers: Vec<String> = obj.keys().cloned().collect();
-            let values: Vec<String> = headers.iter()
-                .map(|header| {
-                    obj.get(header)
-                        .map(format_csv_value)
-                        .unwrap_or_default()
-                })
+            let values: Vec<String> = headers
+                .iter()
+                .map(|header| obj.get(header).map(format_csv_value).unwrap_or_default())
                 .collect();
-            
+
             format!("{}\n{}", headers.join(","), values.join(","))
         }
         _ => {
@@ -221,26 +217,26 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
 fn matches_file_type(code: &str, file_type: &str) -> bool {
     match file_type {
         "rust" | "rs" => {
-            code.contains("fn ") || code.contains("struct ") ||
-            code.contains("impl ") || code.contains("use ")
+            code.contains("fn ")
+                || code.contains("struct ")
+                || code.contains("impl ")
+                || code.contains("use ")
         }
         "python" | "py" => {
-            code.contains("def ") || code.contains("import ") ||
-            code.contains("from ") || code.contains("class ")
+            code.contains("def ")
+                || code.contains("import ")
+                || code.contains("from ")
+                || code.contains("class ")
         }
         "javascript" | "js" => {
-            code.contains("function ") || code.contains("const ") ||
-            code.contains("let ") || code.contains("var ")
+            code.contains("function ")
+                || code.contains("const ")
+                || code.contains("let ")
+                || code.contains("var ")
         }
-        "html" => {
-            code.contains("<html") || code.contains("<!DOCTYPE") || code.contains("<body")
-        }
-        "json" => {
-            code.trim_start().starts_with('{') || code.trim_start().starts_with('[')
-        }
-        "yaml" | "yml" => {
-            code.contains(':') && !code.contains(';')
-        }
+        "html" => code.contains("<html") || code.contains("<!DOCTYPE") || code.contains("<body"),
+        "json" => code.trim_start().starts_with('{') || code.trim_start().starts_with('['),
+        "yaml" | "yml" => code.contains(':') && !code.contains(';'),
         _ => true, // Default to true for unknown types
     }
 }
@@ -306,7 +302,8 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
-}"#.to_string()
+}"#
+    .to_string()
 }
 
 #[cfg(test)]
@@ -336,15 +333,22 @@ mod tests {
     #[test]
     fn test_format_csv_value() {
         assert_eq!(format_csv_value(&Value::String("test".to_string())), "test");
-        assert_eq!(format_csv_value(&Value::String("test,with,comma".to_string())), "\"test,with,comma\"");
-        assert_eq!(format_csv_value(&Value::Number(serde_json::Number::from(42))), "42");
+        assert_eq!(
+            format_csv_value(&Value::String("test,with,comma".to_string())),
+            "\"test,with,comma\""
+        );
+        assert_eq!(
+            format_csv_value(&Value::Number(serde_json::Number::from(42))),
+            "42"
+        );
         assert_eq!(format_csv_value(&Value::Bool(true)), "true");
         assert_eq!(format_csv_value(&Value::Null), "");
     }
 
     #[test]
     fn test_extract_code() {
-        let response = "Here's some Rust code:\n``rust\nfn main() {\n    println!(\"Hello\");\n}\n```";
+        let response =
+            "Here's some Rust code:\n```rust\nfn main() {\n    println!(\"Hello\");\n}\n```";
         let result = extract_code(response, "rust");
         assert!(result.contains("fn main()"));
         assert!(result.contains("println!"));

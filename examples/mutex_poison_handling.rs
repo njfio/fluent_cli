@@ -1,9 +1,11 @@
 // Comprehensive mutex poison handling example
 use fluent_core::error::{FluentError, PoisonHandlingConfig};
-use fluent_core::{safe_lock, safe_lock_with_config, safe_lock_with_default, safe_lock_with_retry, poison_resistant_operation};
+use fluent_core::{
+    poison_resistant_operation, safe_lock, safe_lock_with_config, safe_lock_with_default,
+    safe_lock_with_retry,
+};
 use std::sync::{Arc, Mutex};
 use std::thread;
-
 
 fn main() -> Result<(), FluentError> {
     println!("🧪 Comprehensive Mutex Poison Handling Demo");
@@ -73,8 +75,14 @@ fn demonstrate_data_recovery() -> Result<(), FluentError> {
     let config = PoisonHandlingConfig::recover_data();
     match safe_lock_with_config!(shared_data, "data_recovery_example", &config) {
         Ok(guard) => {
-            println!("✅ Successfully recovered data from poisoned mutex: {:?}", *guard);
-            println!("   Data includes the value added before panic: {}", guard.contains(&6));
+            println!(
+                "✅ Successfully recovered data from poisoned mutex: {:?}",
+                *guard
+            );
+            println!(
+                "   Data includes the value added before panic: {}",
+                guard.contains(&6)
+            );
         }
         Err(e) => println!("❌ Failed to recover data: {}", e),
     }
@@ -90,16 +98,11 @@ fn demonstrate_retry_strategy() -> Result<(), FluentError> {
     let config = PoisonHandlingConfig::retry_with_delay(3, 50);
 
     // Simulate a retry operation
-    let result = safe_lock_with_retry!(
-        &shared_counter,
-        "retry_example",
-        &config,
-        |counter| {
-            *counter += 1;
-            println!("✅ Successfully incremented counter to: {}", *counter);
-            Ok(())
-        }
-    );
+    let result = safe_lock_with_retry!(&shared_counter, "retry_example", &config, |counter| {
+        *counter += 1;
+        println!("✅ Successfully incremented counter to: {}", *counter);
+        Ok(())
+    });
 
     match result {
         Ok(()) => println!("✅ Retry operation completed successfully"),
@@ -158,16 +161,12 @@ fn demonstrate_poison_resistant_operations() -> Result<(), FluentError> {
     let _ = handle.join();
 
     // Use poison-resistant operation to modify the data
-    let result = poison_resistant_operation!(
-        &shared_data,
-        "poison_resistant_example",
-        |data| {
-            data.push(42);
-            println!("✅ Successfully added 42 to poisoned mutex data");
-            println!("   Current data: {:?}", *data);
-            Ok(())
-        }
-    );
+    let result = poison_resistant_operation!(&shared_data, "poison_resistant_example", |data| {
+        data.push(42);
+        println!("✅ Successfully added 42 to poisoned mutex data");
+        println!("   Current data: {:?}", *data);
+        Ok(())
+    });
 
     match result {
         Ok(()) => println!("✅ Poison-resistant operation completed successfully"),
@@ -184,24 +183,36 @@ mod tests {
     #[test]
     fn test_poison_handling_config_creation() {
         let config = PoisonHandlingConfig::fail_fast();
-        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::FailFast);
+        assert_eq!(
+            config.strategy,
+            fluent_core::error::PoisonRecoveryStrategy::FailFast
+        );
 
         let config = PoisonHandlingConfig::recover_data();
-        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::RecoverData);
+        assert_eq!(
+            config.strategy,
+            fluent_core::error::PoisonRecoveryStrategy::RecoverData
+        );
 
         let config = PoisonHandlingConfig::retry_with_delay(5, 200);
-        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::RetryWithDelay);
+        assert_eq!(
+            config.strategy,
+            fluent_core::error::PoisonRecoveryStrategy::RetryWithDelay
+        );
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.retry_delay_ms, 200);
 
         let config = PoisonHandlingConfig::use_default();
-        assert_eq!(config.strategy, fluent_core::error::PoisonRecoveryStrategy::UseDefault);
+        assert_eq!(
+            config.strategy,
+            fluent_core::error::PoisonRecoveryStrategy::UseDefault
+        );
     }
 
     #[test]
     fn test_data_recovery_from_poison() {
         use fluent_core::error::ThreadSafeErrorHandler;
-        
+
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
         let mutex_clone = mutex.clone();
 
@@ -229,7 +240,7 @@ mod tests {
     #[test]
     fn test_default_value_fallback() {
         use fluent_core::error::ThreadSafeErrorHandler;
-        
+
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
         let mutex_clone = mutex.clone();
 
@@ -242,11 +253,8 @@ mod tests {
 
         // Try to get default value
         let config = PoisonHandlingConfig::use_default();
-        let result = ThreadSafeErrorHandler::handle_mutex_lock_with_default(
-            &mutex,
-            "test_default",
-            &config,
-        );
+        let result =
+            ThreadSafeErrorHandler::handle_mutex_lock_with_default(&mutex, "test_default", &config);
 
         // Should get empty vector as default
         assert!(result.is_ok());
@@ -257,9 +265,9 @@ mod tests {
     #[test]
     fn test_normal_mutex_operations() {
         use fluent_core::error::ThreadSafeErrorHandler;
-        
+
         let mutex = Arc::new(Mutex::new(vec![1, 2, 3]));
-        
+
         // Normal operation should work fine
         let config = PoisonHandlingConfig::fail_fast();
         let result = ThreadSafeErrorHandler::handle_mutex_lock_with_config(

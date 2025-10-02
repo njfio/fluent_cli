@@ -159,14 +159,14 @@ impl Engine for OpenAIEngine {
                     .post(&url)
                     .header("Content-Type", "application/json")
                     .json(&payload)
-                    .send()
+                    .send(),
             )
             .await
             .map_err(|_| anyhow!("OpenAI API request timed out after 5 minutes"))??;
 
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
-                res.json::<serde_json::Value>()
+                res.json::<serde_json::Value>(),
             )
             .await
             .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
@@ -250,14 +250,14 @@ impl Engine for OpenAIEngine {
             // Use the pre-authenticated client with timeout
             let response = timeout(
                 Duration::from_secs(600), // 10 minute timeout for file uploads
-                self.auth_client.post(url).multipart(form).send()
+                self.auth_client.post(url).multipart(form).send(),
             )
             .await
             .map_err(|_| anyhow!("File upload timed out after 10 minutes"))??;
 
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
-                response.json::<serde_json::Value>()
+                response.json::<serde_json::Value>(),
             )
             .await
             .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;
@@ -284,7 +284,7 @@ impl Engine for OpenAIEngine {
             // Read and encode the file with timeout
             let mut file = timeout(
                 Duration::from_secs(30), // 30 second timeout for file opening
-                File::open(file_path)
+                File::open(file_path),
             )
             .await
             .map_err(|_| anyhow!("File open timed out after 30 seconds"))?
@@ -293,7 +293,7 @@ impl Engine for OpenAIEngine {
             let mut buffer = Vec::new();
             timeout(
                 Duration::from_secs(60), // 1 minute timeout for file reading
-                file.read_to_end(&mut buffer)
+                file.read_to_end(&mut buffer),
             )
             .await
             .map_err(|_| anyhow!("File read timed out after 1 minute"))?
@@ -337,14 +337,14 @@ impl Engine for OpenAIEngine {
                     .post(&url)
                     .header("Content-Type", "application/json")
                     .json(&payload)
-                    .send()
+                    .send(),
             )
             .await
             .map_err(|_| anyhow!("Vision API request timed out after 5 minutes"))??;
 
             let response_body = timeout(
                 Duration::from_secs(30), // 30 second timeout for response parsing
-                response.json::<serde_json::Value>()
+                response.json::<serde_json::Value>(),
             )
             .await
             .map_err(|_| anyhow!("Response parsing timed out after 30 seconds"))??;

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use std::env;
+use std::time::Duration;
 
 pub mod security_framework;
 
@@ -349,13 +349,13 @@ impl Default for SecurityPolicy {
                 conditions: None,
             }],
             restrictions: SecurityRestrictions {
-                max_file_size: 100 * 1024 * 1024,             // 100MB
-                max_memory_usage: 1024 * 1024 * 1024,         // 1GB
+                max_file_size: 100 * 1024 * 1024,     // 100MB
+                max_memory_usage: 1024 * 1024 * 1024, // 1GB
                 max_execution_time: Duration::from_secs(
                     env::var("FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS")
                         .ok()
                         .and_then(|s| s.parse().ok())
-                        .unwrap_or(300)
+                        .unwrap_or(300),
                 ), // Default: 5 minutes, configurable via FLUENT_SECURITY_MAX_EXECUTION_TIME_SECONDS
                 allowed_file_extensions: ["txt", "json", "yaml", "md"]
                     .iter()
@@ -494,13 +494,19 @@ impl SecurityPolicy {
         // Alert thresholds from environment
         if let Ok(failed_attempts) = env::var("FLUENT_SECURITY_ALERT_FAILED_ATTEMPTS") {
             if let Ok(attempts) = failed_attempts.parse::<u32>() {
-                config.audit_config.alert_thresholds.failed_attempts_per_minute = attempts;
+                config
+                    .audit_config
+                    .alert_thresholds
+                    .failed_attempts_per_minute = attempts;
             }
         }
 
         if let Ok(suspicious_score) = env::var("FLUENT_SECURITY_ALERT_SUSPICIOUS_SCORE") {
             if let Ok(score) = suspicious_score.parse::<u32>() {
-                config.audit_config.alert_thresholds.suspicious_activity_score = score;
+                config
+                    .audit_config
+                    .alert_thresholds
+                    .suspicious_activity_score = score;
             }
         }
 

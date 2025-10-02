@@ -42,14 +42,20 @@ impl LockOrderRegistry {
     }
 
     /// Validate that locks are being acquired in the correct order
-    pub fn validate_lock_order(&self, current_locks: &[String], new_lock: &str) -> Result<(), FluentError> {
-        let new_priority = self.get_priority(new_lock)
+    pub fn validate_lock_order(
+        &self,
+        current_locks: &[String],
+        new_lock: &str,
+    ) -> Result<(), FluentError> {
+        let new_priority = self
+            .get_priority(new_lock)
             .ok_or_else(|| FluentError::Internal(format!("Unregistered lock: {}", new_lock)))?;
 
         for current_lock in current_locks {
-            let current_priority = self.get_priority(current_lock)
-                .ok_or_else(|| FluentError::Internal(format!("Unregistered lock: {}", current_lock)))?;
-            
+            let current_priority = self.get_priority(current_lock).ok_or_else(|| {
+                FluentError::Internal(format!("Unregistered lock: {}", current_lock))
+            })?;
+
             if new_priority <= current_priority {
                 return Err(FluentError::Internal(format!(
                     "Lock ordering violation: attempting to acquire '{}' (priority {}) while holding '{}' (priority {}). Locks must be acquired in ascending priority order.",
@@ -100,16 +106,22 @@ impl DeadlockSafeLockManager {
         // Sort locks by priority to ensure consistent ordering
         let registry = self.registry.read().await;
         let mut lock_info: Vec<_> = locks.into_iter().collect();
-        
-        lock_info.sort_by_key(|(name, _)| {
-            registry.get_priority(name).unwrap_or(u64::MAX)
-        });
 
+        for &(lock_name, _) in &lock_info {
+            if registry.get_priority(lock_name).is_none() {
+                return Err(FluentError::Internal(format!(
+                    "Unregistered lock: {}",
+                    lock_name
+                )));
+            }
+        }
+
+        lock_info.sort_by_key(|(name, _)| registry.get_priority(name).unwrap());
         // Acquire locks in order
         let mut guards = Vec::new();
         for (lock_name, mutex) in lock_info {
             let start_time = Instant::now();
-            
+
             match tokio::time::timeout(self.timeout_config.timeout, mutex.lock()).await {
                 Ok(guard) => {
                     if self.timeout_config.log_timeout_events {
@@ -144,16 +156,24 @@ impl DeadlockSafeLockManager {
         // Sort locks by priority
         let registry = self.registry.read().await;
         let mut lock_info: Vec<_> = locks.into_iter().collect();
-        
-        lock_info.sort_by_key(|(name, _)| {
-            registry.get_priority(name).unwrap_or(u64::MAX)
-        });
 
+        // Reject any lock names not present in the registry
+        for &(lock_name, _) in &lock_info {
+            if registry.get_priority(lock_name).is_none() {
+                return Err(FluentError::Internal(format!(
+                    "Unregistered lock: {}",
+                    lock_name
+                )));
+            }
+        }
+
+        // Now safe to unwrap, since every name was validated above
+        lock_info.sort_by_key(|(name, _)| registry.get_priority(name).unwrap());
         // Acquire read locks in order
         let mut guards = Vec::new();
         for (lock_name, rwlock) in lock_info {
             let start_time = Instant::now();
-            
+
             match tokio::time::timeout(self.timeout_config.timeout, rwlock.read()).await {
                 Ok(guard) => {
                     if self.timeout_config.log_timeout_events {
@@ -186,69 +206,69 @@ pub struct DeadlockPreventionUtils;
 
 impl DeadlockPreventionUtils {
     /// Execute an operation that requires multiple locks in a deadlock-safe manner
-    pub async fn execute_with_ordered_locks<'a, T, R, F>(
+    pub async fn execute_with_ordered_locks<T, R, F>(
         lock_manager: &DeadlockSafeLockManager,
-        locks: Vec<(&str, &'a Arc<Mutex<T>>)>,
+        locks: Vec<(&str, &Arc<Mutex<T>>)>,
         operation: F,
     ) -> Result<R, FluentError>
     where
         F: FnOnce(&mut [&mut T]) -> Result<R, FluentError>,
     {
         let mut guards = lock_manager.acquire_locks_ordered(locks).await?;
-        
+
         // Convert guards to mutable references
         let mut refs: Vec<&mut T> = guards.iter_mut().map(|g| &mut **g).collect();
-        
+
         operation(&mut refs)
     }
 
     /// Execute a read operation that requires multiple RwLocks in a deadlock-safe manner
-    pub async fn execute_with_ordered_read_locks<'a, T, R, F>(
+    pub async fn execute_with_ordered_read_locks<T, R, F>(
         lock_manager: &DeadlockSafeLockManager,
-        locks: Vec<(&str, &'a Arc<RwLock<T>>)>,
+        locks: Vec<(&str, &Arc<RwLock<T>>)>,
         operation: F,
     ) -> Result<R, FluentError>
     where
         F: FnOnce(&[&T]) -> Result<R, FluentError>,
     {
         let guards = lock_manager.acquire_read_locks_ordered(locks).await?;
-        
+
         // Convert guards to references
         let refs: Vec<&T> = guards.iter().map(|g| &**g).collect();
-        
+
         operation(&refs)
     }
 
     /// Create a standard lock ordering for common patterns
     pub fn create_standard_lock_ordering() -> HashMap<String, u64> {
         let mut ordering = HashMap::new();
-        
+
         // Security-related locks (highest priority - acquired first)
         ordering.insert("security_policies".to_string(), 10);
         ordering.insert("active_sessions".to_string(), 20);
         ordering.insert("rate_limiters".to_string(), 30);
-        
+
         // State management locks
         ordering.insert("agent_state".to_string(), 100);
         ordering.insert("execution_context".to_string(), 110);
         ordering.insert("state_history".to_string(), 120);
-        
+
         // Engine and processing locks
         ordering.insert("reflection_engine".to_string(), 200);
         ordering.insert("reasoning_engine".to_string(), 210);
         ordering.insert("action_planner".to_string(), 220);
-        
+
         // Metrics and monitoring locks (lowest priority - acquired last)
         ordering.insert("orchestration_metrics".to_string(), 900);
         ordering.insert("performance_metrics".to_string(), 910);
         ordering.insert("cache_metrics".to_string(), 920);
-        
+
         // MCP client locks
         ordering.insert("mcp_response_handlers".to_string(), 300);
         ordering.insert("mcp_tools".to_string(), 310);
         ordering.insert("mcp_resources".to_string(), 320);
         ordering.insert("mcp_stdin".to_string(), 330);
-        
+
         ordering
     }
 }
@@ -266,10 +286,14 @@ mod tests {
         registry.register_lock("lock_b", 20);
 
         // Valid order: acquiring lock_b while holding lock_a
-        assert!(registry.validate_lock_order(&["lock_a".to_string()], "lock_b").is_ok());
+        assert!(registry
+            .validate_lock_order(&["lock_a".to_string()], "lock_b")
+            .is_ok());
 
         // Invalid order: acquiring lock_a while holding lock_b
-        assert!(registry.validate_lock_order(&["lock_b".to_string()], "lock_a").is_err());
+        assert!(registry
+            .validate_lock_order(&["lock_b".to_string()], "lock_a")
+            .is_err());
     }
 
     #[tokio::test]
@@ -278,19 +302,22 @@ mod tests {
         let manager = DeadlockSafeLockManager::new(config);
 
         // Register locks
-        manager.register_locks(vec![
-            ("lock_a", 10),
-            ("lock_b", 20),
-        ]).await.unwrap();
+        manager
+            .register_locks(vec![("lock_a", 10), ("lock_b", 20)])
+            .await
+            .unwrap();
 
         // Test ordered acquisition
         let mutex_a = Arc::new(Mutex::new(1));
         let mutex_b = Arc::new(Mutex::new(2));
 
-        let guards = manager.acquire_locks_ordered(vec![
-            ("lock_b", &mutex_b), // Higher priority, but should be reordered
-            ("lock_a", &mutex_a), // Lower priority
-        ]).await.unwrap();
+        let guards = manager
+            .acquire_locks_ordered(vec![
+                ("lock_b", &mutex_b), // Higher priority, but should be reordered
+                ("lock_a", &mutex_a), // Lower priority
+            ])
+            .await
+            .unwrap();
 
         assert_eq!(guards.len(), 2);
         // Verify the locks were acquired in the correct order

@@ -1,8 +1,11 @@
 use anyhow::{anyhow, Result};
 use rmcp::{
-    model::{CallToolResult, Content, ServerInfo, Tool, ErrorData, PaginatedRequestParam, CallToolRequestParam},
+    model::{
+        CallToolRequestParam, CallToolResult, Content, ErrorData, PaginatedRequestParam,
+        ServerInfo, Tool,
+    },
     service::RequestContext,
-    ServerHandler, RoleServer,
+    RoleServer, ServerHandler,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -10,7 +13,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::agent_with_mcp::{LongTermMemory, MemoryQuery, MemoryType};
-use crate::memory::{MemoryItem, MemoryContent};
+use crate::memory::{MemoryContent, MemoryItem};
 use crate::tools::ToolRegistry;
 
 /// MCP adapter that exposes fluent_cli tools as MCP server capabilities
@@ -203,7 +206,8 @@ impl FluentMcpAdapter {
                 let memory_item = MemoryItem {
                     item_id: uuid::Uuid::new_v4().to_string(),
                     content: MemoryContent {
-                        content_type: crate::memory::working_memory::ContentType::ContextInformation,
+                        content_type:
+                            crate::memory::working_memory::ContentType::ContextInformation,
                         data: content.as_bytes().to_vec(),
                         text_summary: content.to_string(),
                         key_concepts: vec![],
@@ -215,7 +219,8 @@ impl FluentMcpAdapter {
                         source: "mcp_adapter".to_string(),
                         size_bytes: content.len(),
                         compression_ratio: 1.0,
-                        retention_policy: crate::memory::working_memory::RetentionPolicy::ContextBased,
+                        retention_policy:
+                            crate::memory::working_memory::RetentionPolicy::ContextBased,
                     },
                     relevance_score: importance,
                     attention_weight: 1.0,
@@ -277,8 +282,9 @@ impl FluentMcpAdapter {
                     })
                     .collect::<Vec<_>>();
 
-                let serialized_result = serde_json::to_string_pretty(&result)
-                    .map_err(|e| rmcp::Error::internal_error(format!("Failed to serialize result: {}", e), None))?;
+                let serialized_result = serde_json::to_string_pretty(&result).map_err(|e| {
+                    rmcp::Error::internal_error(format!("Failed to serialize result: {}", e), None)
+                })?;
 
                 Ok(CallToolResult {
                     content: vec![Content::text(serialized_result)],
@@ -319,13 +325,19 @@ impl ServerHandler for FluentMcpAdapter {
                 name: "read_file".into(),
                 description: Some("Read the contents of a file".into()),
                 input_schema: Arc::new(serde_json::Map::from_iter([
-                    ("type".to_string(), serde_json::Value::String("object".to_string())),
-                    ("properties".to_string(), serde_json::json!({
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file to read"
-                        }
-                    })),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("object".to_string()),
+                    ),
+                    (
+                        "properties".to_string(),
+                        serde_json::json!({
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to read"
+                            }
+                        }),
+                    ),
                     ("required".to_string(), serde_json::json!(["path"])),
                 ])),
                 annotations: None,
@@ -334,18 +346,27 @@ impl ServerHandler for FluentMcpAdapter {
                 name: "write_file".into(),
                 description: Some("Write content to a file".into()),
                 input_schema: Arc::new(serde_json::Map::from_iter([
-                    ("type".to_string(), serde_json::Value::String("object".to_string())),
-                    ("properties".to_string(), serde_json::json!({
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file to write"
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "Content to write"
-                        }
-                    })),
-                    ("required".to_string(), serde_json::json!(["path", "content"])),
+                    (
+                        "type".to_string(),
+                        serde_json::Value::String("object".to_string()),
+                    ),
+                    (
+                        "properties".to_string(),
+                        serde_json::json!({
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to write"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Content to write"
+                            }
+                        }),
+                    ),
+                    (
+                        "required".to_string(),
+                        serde_json::json!(["path", "content"]),
+                    ),
                 ])),
                 annotations: None,
             },
@@ -386,7 +407,12 @@ impl ServerHandler for FluentMcpAdapter {
             "write_file" => {
                 if let Some(path) = tool_args.get("path") {
                     if let Some(content) = tool_args.get("content") {
-                        match tokio::fs::write(path.as_str().unwrap_or(""), content.as_str().unwrap_or("")).await {
+                        match tokio::fs::write(
+                            path.as_str().unwrap_or(""),
+                            content.as_str().unwrap_or(""),
+                        )
+                        .await
+                        {
                             Ok(_) => "File written successfully".to_string(),
                             Err(e) => format!("Error writing file: {}", e),
                         }
@@ -516,16 +542,16 @@ mod tests {
     use crate::agent_with_mcp::{LongTermMemory, MemoryQuery};
     use crate::memory::working_memory::MemoryItem;
     use std::time::SystemTime;
-    
+
     // Mock memory store for testing
     struct MockMemoryStore;
-    
+
     #[async_trait::async_trait]
     impl LongTermMemory for MockMemoryStore {
         async fn store(&self, _item: MemoryItem) -> Result<String> {
             Ok("mock_id".to_string())
         }
-        
+
         async fn query(&self, _query: &MemoryQuery) -> Result<Vec<MemoryItem>> {
             Ok(vec![])
         }
@@ -553,6 +579,9 @@ mod tests {
         let tool = adapter.convert_tool_to_mcp("test_tool", "Test tool description");
 
         assert_eq!(tool.name, "test_tool");
-        assert_eq!(tool.description.as_ref().map(|s| s.as_ref()), Some("Test tool description"));
+        assert_eq!(
+            tool.description.as_ref().map(|s| s.as_ref()),
+            Some("Test tool description")
+        );
     }
 }

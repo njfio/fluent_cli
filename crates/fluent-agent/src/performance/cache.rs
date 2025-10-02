@@ -10,12 +10,12 @@
 
 use super::{utils::PerformanceCounter, CacheConfig};
 use anyhow::Result;
+use log::{debug, warn};
 use moka::future::Cache as MokaCache;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{warn, debug};
 
 /// Multi-level cache system with L1 (memory), L2 (Redis), and L3 (database) levels
 ///
@@ -57,10 +57,8 @@ where
         // Create L3 cache (Database) if enabled
         let l3_cache = if config.l3_enabled {
             if let Some(ref url) = config.l3_database_url {
-                Some(
-                    Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl)?)
-                        as Arc<dyn L3Cache<K, V>>,
-                )
+                Some(Arc::new(DatabaseCache::new(url.clone(), config.l3_ttl)?)
+                    as Arc<dyn L3Cache<K, V>>)
             } else {
                 None
             }
@@ -217,7 +215,9 @@ impl<K, V> RedisCache<K, V> {
         let available = !url.is_empty() && url != "redis://localhost:6379";
 
         if !available {
-            warn!("Redis cache initialized in fallback mode - Redis not available or not configured");
+            warn!(
+                "Redis cache initialized in fallback mode - Redis not available or not configured"
+            );
             warn!("To enable Redis caching, add redis dependency and implement actual Redis connectivity");
         } else {
             debug!("Redis cache configured for URL: {} (fallback mode)", url);
@@ -320,18 +320,22 @@ where
 {
     async fn get(&self, _key: &K) -> Result<Option<V>> {
         if !self.available {
-            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
+            // Return Ok(None) to allow graceful fallback to other cache tiers
+            return Ok(None);
         }
 
         // Database implementation would go here when sqlx integration is added
         // For now, return None to indicate cache miss
-        debug!("Database get operation not implemented - add sqlx integration for full functionality");
+        debug!(
+            "Database get operation not implemented - add sqlx integration for full functionality"
+        );
         Ok(None)
     }
 
     async fn set(&self, _key: &K, _value: &V, ttl: Duration) -> Result<()> {
         if !self.available {
-            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
+            // Return Ok(()) to allow graceful fallback to other cache tiers
+            return Ok(());
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -341,7 +345,8 @@ where
 
     async fn remove(&self, _key: &K) -> Result<()> {
         if !self.available {
-            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
+            // Return Ok(()) to allow graceful fallback to other cache tiers
+            return Ok(());
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -351,7 +356,8 @@ where
 
     async fn clear(&self) -> Result<()> {
         if !self.available {
-            return Err(anyhow::anyhow!("Database cache not available: {}", self.url));
+            // Return Ok(()) to allow graceful fallback to other cache tiers
+            return Ok(());
         }
 
         // Database implementation would go here when sqlx integration is added
@@ -533,11 +539,13 @@ mod tests {
         assert!(result.unwrap().is_none());
 
         // Test set operation - should succeed gracefully
-        let result = redis_cache.set(
-            &"test_key".to_string(),
-            &"test_value".to_string(),
-            Duration::from_secs(60)
-        ).await;
+        let result = redis_cache
+            .set(
+                &"test_key".to_string(),
+                &"test_value".to_string(),
+                Duration::from_secs(60),
+            )
+            .await;
         assert!(result.is_ok());
 
         // Test remove operation - should succeed gracefully
@@ -565,11 +573,13 @@ mod tests {
         assert!(result.unwrap().is_none());
 
         // Test set operation - should succeed gracefully
-        let result = db_cache.set(
-            &"test_key".to_string(),
-            &"test_value".to_string(),
-            Duration::from_secs(60)
-        ).await;
+        let result = db_cache
+            .set(
+                &"test_key".to_string(),
+                &"test_value".to_string(),
+                Duration::from_secs(60),
+            )
+            .await;
         assert!(result.is_ok());
 
         // Test remove operation - should succeed gracefully
@@ -626,13 +636,22 @@ mod tests {
         let cache: MultiLevelCache<String, String> = MultiLevelCache::new(config).await.unwrap();
 
         // Test operations - should work with L1 cache even if L2/L3 are unavailable
-        cache.set("key1".to_string(), "value1".to_string(), Duration::from_secs(60)).await;
+        cache
+            .set(
+                "key1".to_string(),
+                "value1".to_string(),
+                Duration::from_secs(60),
+            )
+            .await;
         let result = cache.get(&"key1".to_string()).await;
         assert_eq!(result, Some("value1".to_string()));
 
         // Test cache statistics - verify that the cache is working
         let _stats = cache.get_stats();
         // The main test is that we can retrieve the value, stats may vary based on implementation
-        assert!(result.is_some(), "Cache should store and retrieve values even with unavailable backends");
+        assert!(
+            result.is_some(),
+            "Cache should store and retrieve values even with unavailable backends"
+        );
     }
 }

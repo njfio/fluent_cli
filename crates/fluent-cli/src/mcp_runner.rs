@@ -20,20 +20,25 @@ pub async fn run_agentic_mode(
     goal_description: &str,
     agent_config_path: &str,
     max_iterations: u32,
+    enable_tools: bool,
     enable_reflection: bool,
     config_path: &str,
     model_override: Option<&str>,
     gen_retries: Option<u32>,
     min_html_size: Option<u32>,
+    enable_tui: bool,
 ) -> Result<()> {
+    println!("🎯 mcp_runner::run_agentic_mode called with TUI: {}", enable_tui);
+    println!("🎯 Goal: {}", goal_description);
     use crate::agentic::{AgenticConfig, AgenticExecutor};
     // The agent builds its own engines; avoid strict global config loading
     let config = fluent_core::config::Config::new(vec![]);
-    
+
     let agentic_config = AgenticConfig::new(
         goal_description.to_string(),
         agent_config_path.to_string(),
         max_iterations,
+        enable_tools,
         enable_reflection,
         config_path.to_string(),
         model_override.map(|s| s.to_string()),
@@ -41,8 +46,11 @@ pub async fn run_agentic_mode(
         min_html_size,
     );
 
-    let executor = AgenticExecutor::new(agentic_config);
+    println!("🔧 Creating AgenticExecutor with TUI enabled: {}", enable_tui);
+    let mut executor = AgenticExecutor::new(agentic_config, enable_tui);
+    println!("✅ AgenticExecutor created, calling run()...");
     executor.run(&config).await?;
+    println!("✅ AgenticExecutor run() completed");
 
     Ok(())
 }

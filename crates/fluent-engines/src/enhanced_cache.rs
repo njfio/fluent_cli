@@ -214,8 +214,12 @@ pub struct EnhancedCache {
 impl EnhancedCache {
     /// Create a new enhanced cache
     pub fn new(config: CacheConfig) -> Result<Self> {
-        let cache_size = NonZeroUsize::new(config.memory_cache_size)
-            .ok_or_else(|| anyhow::anyhow!("Memory cache size must be greater than 0, got: {}", config.memory_cache_size))?;
+        let cache_size = NonZeroUsize::new(config.memory_cache_size).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Memory cache size must be greater than 0, got: {}",
+                config.memory_cache_size
+            )
+        })?;
         let memory_cache = Arc::new(RwLock::new(LruCache::new(cache_size)));
 
         let disk_cache = if config.enable_disk_cache {
@@ -405,7 +409,8 @@ impl EnhancedCache {
 
     /// Get cache statistics
     pub fn get_stats(&self) -> CacheStats {
-        self.stats.lock()
+        self.stats
+            .lock()
             .map(|stats| stats.clone())
             .unwrap_or_default()
     }

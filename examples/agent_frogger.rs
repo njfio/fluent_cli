@@ -1,10 +1,10 @@
+use anyhow::Result;
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{poll, read, Event, KeyCode},
     execute,
     style::{Color, Print, SetForegroundColor},
     terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
-    Result,
 };
 use std::{
     io::stdout,

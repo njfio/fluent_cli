@@ -1,11 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use fluent_agent::{
-    ExecutionContext, ReflectionEngine, ReflectionConfig,
-    Goal, GoalType, GoalPriority, Task, TaskType, TaskPriority,
-    ReasoningEngine,
-};
 use fluent_agent::reflection::ReflectionTrigger;
+use fluent_agent::{
+    ExecutionContext, Goal, GoalPriority, GoalType, ReasoningEngine, ReflectionConfig,
+    ReflectionEngine, Task, TaskPriority, TaskType,
+};
 use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio;
@@ -16,7 +15,10 @@ struct MockReasoningEngine;
 #[async_trait]
 impl ReasoningEngine for MockReasoningEngine {
     async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
-        Ok(format!("Mock reasoning analysis of current situation for prompt: {}", prompt))
+        Ok(format!(
+            "Mock reasoning analysis of current situation for prompt: {}",
+            prompt
+        ))
     }
 
     async fn get_capabilities(&self) -> Vec<fluent_agent::reasoning::ReasoningCapability> {
@@ -78,14 +80,14 @@ async fn main() -> Result<()> {
 
     // Simulate agent execution with reflection
     println!("\n🔄 Simulating Agent Execution with Reflection:");
-    
+
     for iteration in 1..=12 {
         println!("\n--- Iteration {} ---", iteration);
-        
+
         // Simulate some work
         context.increment_iteration();
         context.set_variable("current_iteration".to_string(), iteration.to_string());
-        
+
         // Add some tasks and complete them with varying success
         let task = Task {
             task_id: format!("task-{}", iteration),
@@ -106,13 +108,13 @@ async fn main() -> Result<()> {
             error_message: None,
             metadata: HashMap::new(),
         };
-        
+
         context.start_task(task.clone());
-        
+
         // Simulate task completion with some failures for demonstration
         let success = iteration % 4 != 0; // Fail every 4th iteration
         context.complete_task(&task.task_id, success);
-        
+
         if success {
             println!("   ✅ Task completed successfully");
         } else {
@@ -122,56 +124,73 @@ async fn main() -> Result<()> {
         // Check if reflection should be triggered
         if let Some(trigger) = reflection_engine.should_reflect(&context) {
             println!("   🧠 Reflection triggered: {:?}", trigger);
-            
+
             // Perform reflection
-            let reflection_result = reflection_engine.reflect(
-                &context,
-                &reasoning_engine,
-                trigger
-            ).await?;
-            
+            let reflection_result = reflection_engine
+                .reflect(&context, &reasoning_engine, trigger)
+                .await?;
+
             println!("   📊 Reflection Results:");
             println!("      Type: {:?}", reflection_result.reflection_type);
-            println!("      Confidence: {:.2}", reflection_result.confidence_assessment);
-            println!("      Performance: {:.2}", reflection_result.performance_assessment);
-            println!("      Learning Insights: {}", reflection_result.learning_insights.len());
-            println!("      Strategy Adjustments: {}", reflection_result.strategy_adjustments.len());
-            println!("      Recommendations: {}", reflection_result.recommendations.len());
-            
+            println!(
+                "      Confidence: {:.2}",
+                reflection_result.confidence_assessment
+            );
+            println!(
+                "      Performance: {:.2}",
+                reflection_result.performance_assessment
+            );
+            println!(
+                "      Learning Insights: {}",
+                reflection_result.learning_insights.len()
+            );
+            println!(
+                "      Strategy Adjustments: {}",
+                reflection_result.strategy_adjustments.len()
+            );
+            println!(
+                "      Recommendations: {}",
+                reflection_result.recommendations.len()
+            );
+
             // Display strategy adjustments
             if !reflection_result.strategy_adjustments.is_empty() {
                 println!("   🔧 Strategy Adjustments:");
                 for adjustment in &reflection_result.strategy_adjustments {
-                    println!("      - {}: {}", 
-                            adjustment.adjustment_type, 
-                            adjustment.description);
+                    println!(
+                        "      - {}: {}",
+                        adjustment.adjustment_type, adjustment.description
+                    );
                     println!("        Expected Impact: {:?}", adjustment.expected_impact);
                     println!("        Steps: {:?}", adjustment.implementation_steps);
                 }
             }
-            
+
             // Display learning insights
             if !reflection_result.learning_insights.is_empty() {
                 println!("   💡 Learning Insights:");
                 for insight in &reflection_result.learning_insights {
-                    println!("      - {:?}: {}",
-                            insight.insight_type,
-                            insight.description);
+                    println!(
+                        "      - {:?}: {}",
+                        insight.insight_type, insight.description
+                    );
                     println!("        Confidence: {:.2}", insight.confidence);
                     println!("        Retention Value: {:.2}", insight.retention_value);
                 }
             }
-            
+
             // Display recommendations
             if !reflection_result.recommendations.is_empty() {
                 println!("   📋 Recommendations:");
                 for recommendation in &reflection_result.recommendations {
-                    println!("      - {:?}: {}",
-                            recommendation.recommendation_type,
-                            recommendation.description);
-                    println!("        Priority: {:?}, Urgency: {:?}", 
-                            recommendation.priority, 
-                            recommendation.urgency);
+                    println!(
+                        "      - {:?}: {}",
+                        recommendation.recommendation_type, recommendation.description
+                    );
+                    println!(
+                        "        Priority: {:?}, Urgency: {:?}",
+                        recommendation.priority, recommendation.urgency
+                    );
                 }
             }
         } else {
@@ -181,18 +200,28 @@ async fn main() -> Result<()> {
 
     // Demonstrate manual reflection trigger
     println!("\n🎯 Manual Reflection Trigger:");
-    let manual_reflection = reflection_engine.reflect(
-        &context,
-        &reasoning_engine,
-        ReflectionTrigger::UserRequest
-    ).await?;
-    
+    let manual_reflection = reflection_engine
+        .reflect(&context, &reasoning_engine, ReflectionTrigger::UserRequest)
+        .await?;
+
     println!("📊 Manual Reflection Results:");
     println!("   Type: {:?}", manual_reflection.reflection_type);
-    println!("   Confidence: {:.2}", manual_reflection.confidence_assessment);
-    println!("   Performance: {:.2}", manual_reflection.performance_assessment);
-    println!("   Learning Insights: {}", manual_reflection.learning_insights.len());
-    println!("   Strategy Adjustments: {}", manual_reflection.strategy_adjustments.len());
+    println!(
+        "   Confidence: {:.2}",
+        manual_reflection.confidence_assessment
+    );
+    println!(
+        "   Performance: {:.2}",
+        manual_reflection.performance_assessment
+    );
+    println!(
+        "   Learning Insights: {}",
+        manual_reflection.learning_insights.len()
+    );
+    println!(
+        "   Strategy Adjustments: {}",
+        manual_reflection.strategy_adjustments.len()
+    );
 
     println!("\n✅ Demo completed successfully!");
     println!("💡 Key takeaways:");

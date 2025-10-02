@@ -5,7 +5,9 @@ use fluent_core::config::EngineConfig;
 use fluent_core::cost_calculator::CostCalculator;
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
-use fluent_core::types::{Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage};
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use log::debug;
 use reqwest::Client;
 use serde_json::Value;
@@ -147,13 +149,16 @@ impl OpenAIStreamingEngine {
 
     /// Calculate cost for the given usage
     fn calculate_cost(&self, usage: &Usage) -> Result<Cost> {
-        let model = self.config
+        let model = self
+            .config
             .parameters
             .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("gpt-3.5-turbo");
 
-        let mut calculator = self.cost_calculator.lock()
+        let mut calculator = self
+            .cost_calculator
+            .lock()
             .map_err(|e| anyhow!("Cost calculator mutex poisoned: {}", e))?;
 
         calculator.calculate_cost("openai", model, usage)

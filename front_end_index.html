@@ -68,8 +68,16 @@
             overflow-x: auto;
         }
     </style>
-    <script>
-        function executeCommand() {
+     <script>
+         // Global error handler to suppress Google Analytics errors
+         window.addEventListener('error', function(event) {
+             if (event.message && event.message.includes('google-analytics.com')) {
+                 event.preventDefault();
+                 console.warn('Google Analytics error suppressed:', event.message);
+             }
+         });
+         
+         function executeCommand() {
             const formData = new FormData(document.getElementById('fluent-form'));
             const commandData = {
                 engine: formData.get('engine'),

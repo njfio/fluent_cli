@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub mod cache;
 pub mod connection_pool;
 
 /// Performance configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     pub connection_pool: ConnectionPoolConfig,
     pub cache: CacheConfig,
@@ -13,7 +14,7 @@ pub struct PerformanceConfig {
 }
 
 /// Connection pool configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionPoolConfig {
     pub max_connections: usize,
     pub min_connections: usize,
@@ -35,7 +36,7 @@ impl Default for ConnectionPoolConfig {
 }
 
 /// Cache configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheConfig {
     pub l1_max_capacity: u64,
     pub l1_ttl: Duration,
@@ -63,7 +64,7 @@ impl Default for CacheConfig {
 }
 
 /// Batch processing configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchConfig {
     pub max_batch_size: usize,
     pub batch_timeout: Duration,
@@ -81,7 +82,7 @@ impl Default for BatchConfig {
 }
 
 /// Metrics configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsConfig {
     pub enabled: bool,
     pub collection_interval: Duration,

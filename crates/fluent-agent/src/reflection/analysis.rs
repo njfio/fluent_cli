@@ -1,10 +1,9 @@
 //! Reflection analysis components
-//! 
+//!
 //! This module handles the analysis phase of reflection, including progress assessment,
 //! strategy evaluation, and pattern recognition.
 
 use anyhow::Result;
-
 
 use crate::context::ExecutionContext;
 use crate::reflection::types::*;
@@ -40,7 +39,8 @@ impl ProgressAnalyzer {
 
     /// Calculate velocity trend over recent iterations
     fn calculate_velocity_trend(context: &ExecutionContext) -> VelocityTrend {
-        let recent_completions = context.completed_tasks
+        let recent_completions = context
+            .completed_tasks
             .iter()
             .filter(|task| task.completed_at.is_some())
             .count();
@@ -56,7 +56,8 @@ impl ProgressAnalyzer {
 
     /// Assess milestone achievements
     fn assess_milestone_achievements(context: &ExecutionContext) -> Vec<MilestoneAchievement> {
-        context.completed_tasks
+        context
+            .completed_tasks
             .iter()
             .filter_map(|task| {
                 if task.success == Some(true) {
@@ -75,7 +76,8 @@ impl ProgressAnalyzer {
 
     /// Calculate time efficiency
     fn calculate_time_efficiency(context: &ExecutionContext) -> f64 {
-        let completed_with_time: Vec<_> = context.completed_tasks
+        let completed_with_time: Vec<_> = context
+            .completed_tasks
             .iter()
             .filter(|task| task.completed_at.is_some())
             .collect();
@@ -92,7 +94,8 @@ impl ProgressAnalyzer {
     /// Assess quality metrics
     fn assess_quality_metrics(context: &ExecutionContext) -> QualityMetrics {
         let total_tasks = context.completed_tasks.len();
-        let successful_tasks = context.completed_tasks
+        let successful_tasks = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(true))
             .count();
@@ -119,10 +122,13 @@ pub struct StrategyEvaluator;
 
 impl StrategyEvaluator {
     /// Evaluate the effectiveness of current strategy
-    pub fn evaluate_strategy_effectiveness(context: &ExecutionContext) -> Result<StrategyEffectiveness> {
+    pub fn evaluate_strategy_effectiveness(
+        context: &ExecutionContext,
+    ) -> Result<StrategyEffectiveness> {
         let current_strategy_score = Self::calculate_strategy_score(context);
         let strategy_consistency = Self::calculate_strategy_consistency(context);
-        let adaptation_frequency = context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
+        let adaptation_frequency =
+            context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
         let strategy_alignment = Self::calculate_strategy_alignment(context);
         let execution_quality = Self::calculate_execution_quality(context);
 
@@ -138,10 +144,12 @@ impl StrategyEvaluator {
     /// Calculate overall strategy score
     fn calculate_strategy_score(context: &ExecutionContext) -> f64 {
         let success_rate = if !context.completed_tasks.is_empty() {
-            context.completed_tasks
+            context
+                .completed_tasks
                 .iter()
                 .filter(|task| task.success == Some(true))
-                .count() as f64 / context.completed_tasks.len() as f64
+                .count() as f64
+                / context.completed_tasks.len() as f64
         } else {
             0.5
         };
@@ -153,7 +161,8 @@ impl StrategyEvaluator {
     /// Calculate strategy consistency
     fn calculate_strategy_consistency(context: &ExecutionContext) -> f64 {
         // Simple heuristic: fewer strategy adjustments = more consistency
-        let adjustment_rate = context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
+        let adjustment_rate =
+            context.strategy_adjustments.len() as f64 / context.iteration_count() as f64;
         (1.0 - adjustment_rate).max(0.0)
     }
 
@@ -178,7 +187,9 @@ pub struct LearningAnalyzer;
 
 impl LearningAnalyzer {
     /// Identify learning opportunities from current context
-    pub fn identify_learning_opportunities(context: &ExecutionContext) -> Result<Vec<LearningOpportunity>> {
+    pub fn identify_learning_opportunities(
+        context: &ExecutionContext,
+    ) -> Result<Vec<LearningOpportunity>> {
         let mut opportunities = Vec::new();
 
         // Analyze failed tasks for learning opportunities
@@ -239,7 +250,8 @@ impl BottleneckDetector {
         let mut bottlenecks = Vec::new();
 
         // Check for repeated failures
-        let failure_count = context.completed_tasks
+        let failure_count = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(false))
             .count();
@@ -282,7 +294,9 @@ pub struct ResourceAnalyzer;
 
 impl ResourceAnalyzer {
     /// Assess resource utilization
-    pub async fn assess_resource_utilization(context: &ExecutionContext) -> Result<ResourceUtilization> {
+    pub async fn assess_resource_utilization(
+        context: &ExecutionContext,
+    ) -> Result<ResourceUtilization> {
         Ok(ResourceUtilization {
             time_efficiency: Self::calculate_time_utilization(context),
             tool_effectiveness: std::collections::HashMap::new(),

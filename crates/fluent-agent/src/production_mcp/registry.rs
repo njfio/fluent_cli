@@ -3,8 +3,6 @@
 // ⚠️  DEVELOPMENT STATUS: This registry implementation is functional but under active development.
 // Consider thorough testing before production deployment.
 
-
-
 /// Production tool registry
 pub struct ProductionToolRegistry;
 

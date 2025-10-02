@@ -15,14 +15,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install latest stable
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
           override: true
       - name: Cargo cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -51,15 +51,15 @@ jobs:
       TARGET: ${{ matrix.TARGET }}
       OS: ${{ matrix.OS }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install latest stable
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
           target: ${{ matrix.TARGET }}
           override: true
       - name: Cargo cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -101,7 +101,7 @@ jobs:
           mv ./target/$TARGET/release/$EXEC $EXEC
           tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC default_config_test.json amber.yaml amber-x86_64-apple-darwin amber-x86_64-pc-windows-gnu.exe amber-x86_64-unknown-linux-musl fluent_autocomplete.ps1 fluent_autocomplete.sh
       - name: Archive artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: result
           path: ./artifacts
@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: result
           path: ./artifacts
@@ -124,9 +124,9 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install latest stable
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
           override: true
@@ -137,12 +137,29 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install latest stable
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
           override: true
           components: clippy
-      - name: cargo clippy
-        run: cargo clippy --all-targets --all-features
+      - name: cargo clippy (deny warnings)
+        run: cargo clippy --all-targets --all-features -D warnings
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install latest stable
+        uses: actions-rs/toolchain@v2
+        with:
+          toolchain: stable
+          override: true
+      - name: Install cargo-audit
+        run: |
+          if ! command -v cargo-audit >/dev/null 2>&1; then
+            cargo install cargo-audit
+          fi
+      - name: cargo audit
+        run: cargo audit

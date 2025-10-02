@@ -317,27 +317,27 @@ pub mod validation {
         }
 
         // Check for null bytes and dangerous control characters
-        if command.contains('\0') || command.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
-            return Err(anyhow::anyhow!("Command contains invalid control characters"));
+        if command.contains('\0')
+            || command
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+        {
+            return Err(anyhow::anyhow!(
+                "Command contains invalid control characters"
+            ));
         }
 
         // Enhanced dangerous pattern detection
         let dangerous_patterns = [
             // Command injection patterns
-            "$(", "`", ";", "&&", "||", "|", ">", ">>", "<", "<<",
-            // Path traversal
+            "$(", "`", ";", "&&", "||", "|", ">", ">>", "<", "<<", // Path traversal
             "../", "./", "~", "/etc/", "/proc/", "/sys/", "/dev/",
             // Privilege escalation
-            "sudo", "su ", "doas", "pkexec",
-            // Network operations
-            "curl", "wget", "nc ", "netcat", "telnet", "ssh", "scp",
-            // File operations
-            "rm ", "rmdir", "del ", "format", "mkfs", "dd ",
-            // Process control
-            "kill", "killall", "pkill", "&", "nohup",
-            // Script execution
-            "bash", "sh ", "zsh", "python", "perl", "ruby", "node",
-            "eval", "exec", "source", ".",
+            "sudo", "su ", "doas", "pkexec", // Network operations
+            "curl", "wget", "nc ", "netcat", "telnet", "ssh", "scp", // File operations
+            "rm ", "rmdir", "del ", "format", "mkfs", "dd ", // Process control
+            "kill", "killall", "pkill", "&", "nohup", // Script execution
+            "bash", "sh ", "zsh", "python", "perl", "ruby", "node", "eval", "exec", "source", ".",
         ];
 
         let command_lower = command.to_lowercase();
@@ -345,7 +345,8 @@ pub mod validation {
             if command_lower.contains(pattern) {
                 return Err(anyhow::anyhow!(
                     "Command contains dangerous pattern '{}': {}",
-                    pattern, command
+                    pattern,
+                    command
                 ));
             }
         }
@@ -359,7 +360,8 @@ pub mod validation {
 
         Err(anyhow::anyhow!(
             "Command '{}' is not in the allowed commands list: {:?}",
-            command, allowed_commands
+            command,
+            allowed_commands
         ))
     }
 

@@ -5,26 +5,30 @@
 //! - Dependency analysis for task ordering and parallel execution
 //! - Dynamic replanning for adaptive execution
 
-pub mod hierarchical_task_networks;
 pub mod dependency_analyzer;
 pub mod dynamic_replanner;
 pub mod enhanced_htn;
+pub mod hierarchical_task_networks;
 
-pub use hierarchical_task_networks::{HTNPlanner, HTNConfig, HTNResult, ExecutionPlan, NetworkTask};
-pub use enhanced_htn::{EnhancedHTNPlanner, EnhancedHTNConfig, EnhancedHTNResult, EnhancedExecutionPlan};
 pub use dependency_analyzer::{
-    DependencyAnalyzer, AnalyzerConfig, DependencyAnalysis, ParallelGroup, 
-    ScheduledTask, Bottleneck, OptimizationSuggestion
+    AnalyzerConfig, Bottleneck, DependencyAnalysis, DependencyAnalyzer, OptimizationSuggestion,
+    ParallelGroup, ScheduledTask,
 };
-pub use dynamic_replanner::{DynamicReplanner, ReplannerConfig, ReplanningResult, PlanStatus};
+pub use dynamic_replanner::{DynamicReplanner, PlanStatus, ReplannerConfig, ReplanningResult};
+pub use enhanced_htn::{
+    EnhancedExecutionPlan, EnhancedHTNConfig, EnhancedHTNPlanner, EnhancedHTNResult,
+};
+pub use hierarchical_task_networks::{
+    ExecutionPlan, HTNConfig, HTNPlanner, HTNResult, NetworkTask,
+};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::context::ExecutionContext;
 use crate::goal::Goal;
 use crate::task::Task;
-use crate::context::ExecutionContext;
 
 /// Composite planning system that combines HTN and dependency analysis
 pub struct CompositePlanner {
@@ -95,13 +99,10 @@ pub struct PlanningSummary {
 
 impl CompositePlanner {
     /// Create a new composite planner
-    pub fn new(
-        engine: Arc<dyn fluent_core::traits::Engine>, 
-        config: PlannerConfig
-    ) -> Self {
+    pub fn new(engine: Arc<dyn fluent_core::traits::Engine>, config: PlannerConfig) -> Self {
         let htn_config = HTNConfig::default();
         let analyzer_config = AnalyzerConfig::default();
-        
+
         Self {
             htn_planner: HTNPlanner::new(engine.clone(), htn_config),
             dependency_analyzer: DependencyAnalyzer::new(analyzer_config),
@@ -134,15 +135,21 @@ impl CompositePlanner {
             };
 
             dependency_analysis = Some(
-                self.dependency_analyzer.analyze_dependencies(&tasks, context).await?
+                self.dependency_analyzer
+                    .analyze_dependencies(&tasks, context)
+                    .await?,
             );
         }
 
         // Phase 3: Integration
-        let integrated_plan = self.integrate_plans(&htn_result, &dependency_analysis).await?;
-        
+        let integrated_plan = self
+            .integrate_plans(&htn_result, &dependency_analysis)
+            .await?;
+
         // Phase 4: Summary
-        let summary = self.generate_planning_summary(&htn_result, &dependency_analysis).await?;
+        let summary = self
+            .generate_planning_summary(&htn_result, &dependency_analysis)
+            .await?;
 
         Ok(CompletePlanningResult {
             htn_result,
@@ -155,14 +162,18 @@ impl CompositePlanner {
     /// Convert HTN network tasks to task objects
     async fn convert_htn_to_tasks(&self, htn_tasks: &[NetworkTask]) -> Result<Vec<Task>> {
         let mut tasks = Vec::new();
-        
+
         for htn_task in htn_tasks {
             let task = Task {
                 task_id: htn_task.id.clone(),
                 description: htn_task.description.clone(),
                 task_type: match htn_task.task_type {
-                    hierarchical_task_networks::TaskType::Primitive => crate::task::TaskType::CodeGeneration,
-                    hierarchical_task_networks::TaskType::Compound => crate::task::TaskType::Planning,
+                    hierarchical_task_networks::TaskType::Primitive => {
+                        crate::task::TaskType::CodeGeneration
+                    }
+                    hierarchical_task_networks::TaskType::Compound => {
+                        crate::task::TaskType::Planning
+                    }
                 },
                 priority: crate::task::TaskPriority::Medium,
                 dependencies: Vec::new(),
@@ -181,7 +192,7 @@ impl CompositePlanner {
             };
             tasks.push(task);
         }
-        
+
         Ok(tasks)
     }
 
@@ -237,7 +248,7 @@ impl CompositePlanner {
                 });
                 total_time += htn_phase.duration;
             }
-            
+
             // Add HTN parallel groups
             for group in &htn.plan.parallel_groups {
                 parallel_opportunities.push(ParallelGroup {
@@ -257,7 +268,7 @@ impl CompositePlanner {
             for opportunity in &dep.parallel_opportunities {
                 parallel_opportunities.push(opportunity.clone());
             }
-            
+
             critical_path = dep.critical_path.clone();
         }
 

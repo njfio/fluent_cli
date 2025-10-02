@@ -456,58 +456,72 @@ impl PerformanceMonitor {
             // Start background monitoring task
             let collector = self.metrics_collector.clone();
             let interval = self.config.collection_interval;
-            
+
             tokio::spawn(async move {
                 let mut interval_timer = tokio::time::interval(Duration::from_secs(interval));
-                
+
                 loop {
                     interval_timer.tick().await;
-                    
+
                     if let Err(e) = Self::collect_metrics_background(&collector).await {
                         eprintln!("Error collecting metrics: {}", e);
                     }
                 }
             });
         }
-        
+
         Ok(())
     }
 
     /// Record task execution metrics
     pub async fn record_task_execution(&self, _task: &Task, result: &TaskResult) -> Result<()> {
         let mut collector = self.metrics_collector.write().await;
-        
+
         // Update execution metrics
         if result.success {
             collector.current_metrics.execution_metrics.tasks_completed += 1;
         } else {
             collector.current_metrics.execution_metrics.tasks_failed += 1;
         }
-        
+
         // Update timing metrics
-        collector.current_metrics.execution_metrics.total_execution_time += result.execution_time;
-        let total_tasks = collector.current_metrics.execution_metrics.tasks_completed + 
-                          collector.current_metrics.execution_metrics.tasks_failed;
-        
+        collector
+            .current_metrics
+            .execution_metrics
+            .total_execution_time += result.execution_time;
+        let total_tasks = collector.current_metrics.execution_metrics.tasks_completed
+            + collector.current_metrics.execution_metrics.tasks_failed;
+
         if total_tasks > 0 {
-            collector.current_metrics.execution_metrics.average_execution_time = 
-                collector.current_metrics.execution_metrics.total_execution_time / total_tasks;
-            
-            collector.current_metrics.execution_metrics.success_rate = 
-                collector.current_metrics.execution_metrics.tasks_completed as f64 / total_tasks as f64;
+            collector
+                .current_metrics
+                .execution_metrics
+                .average_execution_time = collector
+                .current_metrics
+                .execution_metrics
+                .total_execution_time
+                / total_tasks;
+
+            collector.current_metrics.execution_metrics.success_rate =
+                collector.current_metrics.execution_metrics.tasks_completed as f64
+                    / total_tasks as f64;
         }
-        
+
         // Check for performance alerts
         drop(collector);
         self.check_performance_alerts().await?;
-        
+
         Ok(())
     }
 
     /// Assess output quality
-    pub async fn assess_quality(&self, output: &str, context: &ExecutionContext) -> Result<QualityAssessment> {
+    pub async fn assess_quality(
+        &self,
+        output: &str,
+        context: &ExecutionContext,
+    ) -> Result<QualityAssessment> {
         let analyzer = self.quality_analyzer.read().await;
-        
+
         let assessment = QualityAssessment {
             assessment_id: Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
@@ -516,11 +530,11 @@ impl PerformanceMonitor {
             quality_issues: self.identify_quality_issues(output).await?,
             improvement_areas: self.identify_improvement_areas(output).await?,
         };
-        
+
         // Update quality metrics
         drop(analyzer);
         self.update_quality_metrics(&assessment).await?;
-        
+
         Ok(assessment)
     }
 
@@ -530,21 +544,27 @@ impl PerformanceMonitor {
         let quality = self.quality_analyzer.read().await;
         let efficiency = self.efficiency_tracker.read().await;
         let alerts = self.alert_system.read().await;
-        
+
         Ok(PerformanceReport {
             timestamp: SystemTime::now(),
             current_metrics: collector.current_metrics.clone(),
-            recent_quality_assessments: quality.assessment_history.iter()
+            recent_quality_assessments: quality
+                .assessment_history
+                .iter()
                 .take(5)
                 .cloned()
                 .collect(),
-            efficiency_trends: efficiency.efficiency_history.iter()
+            efficiency_trends: efficiency
+                .efficiency_history
+                .iter()
                 .take(10)
                 .cloned()
                 .collect(),
             active_alerts: alerts.active_alerts.clone(),
             optimization_opportunities: efficiency.optimization_opportunities.clone(),
-            performance_summary: self.generate_performance_summary(&collector.current_metrics).await?,
+            performance_summary: self
+                .generate_performance_summary(&collector.current_metrics)
+                .await?,
         })
     }
 
@@ -552,35 +572,47 @@ impl PerformanceMonitor {
     pub async fn identify_optimizations(&self) -> Result<Vec<OptimizationOpportunity>> {
         let mut tracker = self.efficiency_tracker.write().await;
         let collector = self.metrics_collector.read().await;
-        
+
         let mut opportunities = Vec::new();
-        
+
         // Check for resource optimization opportunities
-        if collector.current_metrics.resource_metrics.memory_usage_percent > 0.8 {
+        if collector
+            .current_metrics
+            .resource_metrics
+            .memory_usage_percent
+            > 0.8
+        {
             opportunities.push(OptimizationOpportunity {
                 opportunity_id: Uuid::new_v4().to_string(),
                 optimization_type: OptimizationType::MemoryOptimization,
-                description: "High memory usage detected - consider memory optimization".to_string(),
+                description: "High memory usage detected - consider memory optimization"
+                    .to_string(),
                 potential_improvement: 0.3,
                 implementation_cost: 0.6,
                 risk_level: 0.2,
             });
         }
-        
+
         // Check for efficiency improvements
-        if collector.current_metrics.efficiency_metrics.overall_efficiency < 0.7 {
+        if collector
+            .current_metrics
+            .efficiency_metrics
+            .overall_efficiency
+            < 0.7
+        {
             opportunities.push(OptimizationOpportunity {
                 opportunity_id: Uuid::new_v4().to_string(),
                 optimization_type: OptimizationType::AlgorithmOptimization,
-                description: "Low efficiency detected - algorithm optimization recommended".to_string(),
+                description: "Low efficiency detected - algorithm optimization recommended"
+                    .to_string(),
                 potential_improvement: 0.4,
                 implementation_cost: 0.8,
                 risk_level: 0.3,
             });
         }
-        
+
         tracker.optimization_opportunities = opportunities.clone();
-        
+
         Ok(opportunities)
     }
 
@@ -588,21 +620,22 @@ impl PerformanceMonitor {
 
     async fn collect_metrics_background(collector: &Arc<RwLock<MetricsCollector>>) -> Result<()> {
         let mut c = collector.write().await;
-        
+
         // Collect system metrics
         c.current_metrics.resource_metrics.memory_usage_mb = Self::get_memory_usage();
         c.current_metrics.resource_metrics.memory_usage_percent = Self::get_memory_percentage();
         c.current_metrics.resource_metrics.cpu_usage_percent = Self::get_cpu_usage();
-        
+
         // Update throughput calculation
         let now = SystemTime::now();
         c.collection_timestamps.push_back(now);
-        
+
         // Keep only recent timestamps (last hour)
-        while c.collection_timestamps.len() > 120 { // 2 minutes * 60
+        while c.collection_timestamps.len() > 120 {
+            // 2 minutes * 60
             c.collection_timestamps.pop_front();
         }
-        
+
         Ok(())
     }
 
@@ -611,18 +644,22 @@ impl PerformanceMonitor {
             let collector = self.metrics_collector.read().await;
             collector.current_metrics.clone()
         };
-        
+
         let mut alerts = self.alert_system.write().await;
-        
+
         // Check success rate
-        if metrics.execution_metrics.success_rate < self.config.performance_thresholds.min_success_rate {
+        if metrics.execution_metrics.success_rate
+            < self.config.performance_thresholds.min_success_rate
+        {
             let alert = PerformanceAlert {
                 alert_id: Uuid::new_v4().to_string(),
                 timestamp: SystemTime::now(),
                 alert_type: AlertType::PerformanceDegradation,
                 severity: AlertSeverity::Warning,
-                message: format!("Success rate below threshold: {:.2}%", 
-                    metrics.execution_metrics.success_rate * 100.0),
+                message: format!(
+                    "Success rate below threshold: {:.2}%",
+                    metrics.execution_metrics.success_rate * 100.0
+                ),
                 metric_values: HashMap::new(),
                 suggested_actions: vec![
                     "Review recent failed tasks".to_string(),
@@ -631,12 +668,14 @@ impl PerformanceMonitor {
                 ],
                 acknowledged: false,
             };
-            
+
             alerts.active_alerts.push(alert);
         }
-        
+
         // Check efficiency
-        if metrics.efficiency_metrics.overall_efficiency < self.config.performance_thresholds.min_efficiency_score {
+        if metrics.efficiency_metrics.overall_efficiency
+            < self.config.performance_thresholds.min_efficiency_score
+        {
             let alert = PerformanceAlert {
                 alert_id: Uuid::new_v4().to_string(),
                 timestamp: SystemTime::now(),
@@ -650,41 +689,47 @@ impl PerformanceMonitor {
                 ],
                 acknowledged: false,
             };
-            
+
             alerts.active_alerts.push(alert);
         }
-        
+
         Ok(())
     }
 
-    async fn calculate_quality_score(&self, output: &str, _context: &ExecutionContext) -> Result<f64> {
+    async fn calculate_quality_score(
+        &self,
+        output: &str,
+        _context: &ExecutionContext,
+    ) -> Result<f64> {
         // Simplified quality scoring based on output characteristics
         let mut score: f64 = 0.5; // Base score
-        
+
         // Check output length (reasonable content)
         if output.len() > 100 && output.len() < 10000 {
             score += 0.2;
         }
-        
+
         // Check for structured content
         if output.contains('\n') && (output.contains(':') || output.contains('-')) {
             score += 0.1;
         }
-        
+
         // Check for completeness indicators
-        if output.to_lowercase().contains("complete") || 
-           output.to_lowercase().contains("finished") ||
-           output.to_lowercase().contains("done") {
+        if output.to_lowercase().contains("complete")
+            || output.to_lowercase().contains("finished")
+            || output.to_lowercase().contains("done")
+        {
             score += 0.1;
         }
-        
+
         // Check for error indicators (negative)
-        if output.to_lowercase().contains("error") || 
-           output.to_lowercase().contains("failed") ||
-           output.to_lowercase().contains("unable") {
+        if output.to_lowercase().contains("error")
+            || output.to_lowercase().contains("failed")
+            || output.to_lowercase().contains("unable")
+        {
             score -= 0.2;
         }
-        
+
         Ok(score.clamp(0.0, 1.0))
     }
 
@@ -703,21 +748,27 @@ impl PerformanceMonitor {
     }
 
     async fn identify_improvement_areas(&self, _output: &str) -> Result<Vec<String>> {
-        Ok(vec!["Enhanced detail level".to_string(), "Better structure".to_string()])
+        Ok(vec![
+            "Enhanced detail level".to_string(),
+            "Better structure".to_string(),
+        ])
     }
 
     async fn update_quality_metrics(&self, assessment: &QualityAssessment) -> Result<()> {
         let mut collector = self.metrics_collector.write().await;
-        collector.current_metrics.quality_metrics.output_quality_score = assessment.overall_score;
-        
+        collector
+            .current_metrics
+            .quality_metrics
+            .output_quality_score = assessment.overall_score;
+
         let mut analyzer = self.quality_analyzer.write().await;
         analyzer.assessment_history.push_back(assessment.clone());
-        
+
         // Keep only recent assessments
         if analyzer.assessment_history.len() > 100 {
             analyzer.assessment_history.pop_front();
         }
-        
+
         Ok(())
     }
 

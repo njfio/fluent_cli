@@ -204,7 +204,8 @@ impl McpClient {
             match self.try_connect_to_server(command, args).await {
                 Ok(()) => {
                     self.connection_time = Some(Instant::now());
-                    self.is_connected.store(true, std::sync::atomic::Ordering::Relaxed);
+                    self.is_connected
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                     return Ok(());
                 }
                 Err(e) => {
@@ -220,7 +221,12 @@ impl McpClient {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| anyhow!("Failed to connect after {} attempts", self.config.retry_attempts)))
+        Err(last_error.unwrap_or_else(|| {
+            anyhow!(
+                "Failed to connect after {} attempts",
+                self.config.retry_attempts
+            )
+        }))
     }
 
     /// Internal method to attempt connection
@@ -334,11 +340,17 @@ impl McpClient {
 
         if let Some(stdin) = &self.stdin {
             let mut stdin_guard = stdin.lock().await;
-            stdin_guard.write_all(request_json.as_bytes()).await
+            stdin_guard
+                .write_all(request_json.as_bytes())
+                .await
                 .map_err(|e| anyhow!("Failed to write request: {}", e))?;
-            stdin_guard.write_all(b"\n").await
+            stdin_guard
+                .write_all(b"\n")
+                .await
                 .map_err(|e| anyhow!("Failed to write newline: {}", e))?;
-            stdin_guard.flush().await
+            stdin_guard
+                .flush()
+                .await
                 .map_err(|e| anyhow!("Failed to flush request: {}", e))?;
         } else {
             return Err(anyhow!("Not connected to server"));
@@ -513,7 +525,8 @@ impl McpClient {
 
     /// Disconnect from the server with proper cleanup
     pub async fn disconnect(&mut self) -> Result<()> {
-        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.is_connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
 
         // Clear response handlers
         {
@@ -567,7 +580,8 @@ impl McpClient {
 impl Drop for McpClient {
     fn drop(&mut self) {
         // Mark as disconnected
-        self.is_connected.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.is_connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
 
         // Kill server process if still running
         if let Some(mut process) = self.server_process.take() {
@@ -607,7 +621,9 @@ impl McpClientManager {
         }
 
         let mut client = McpClient::with_config(self.default_config.clone());
-        client.connect_to_server(command, args).await
+        client
+            .connect_to_server(command, args)
+            .await
             .map_err(|e| anyhow!("Failed to connect to server '{}': {}", name, e))?;
 
         self.clients.insert(name, client);
@@ -627,7 +643,9 @@ impl McpClientManager {
         }
 
         let mut client = McpClient::with_config(config);
-        client.connect_to_server(command, args).await
+        client
+            .connect_to_server(command, args)
+            .await
             .map_err(|e| anyhow!("Failed to connect to server '{}': {}", name, e))?;
 
         self.clients.insert(name, client);
@@ -646,14 +664,16 @@ impl McpClientManager {
 
     /// Check if a server is connected
     pub fn is_server_connected(&self, name: &str) -> bool {
-        self.clients.get(name)
+        self.clients
+            .get(name)
             .map(|client| client.is_connected())
             .unwrap_or(false)
     }
 
     /// Get connection status for all servers
     pub fn get_connection_status(&self) -> HashMap<String, bool> {
-        self.clients.iter()
+        self.clients
+            .iter()
             .map(|(name, client)| (name.clone(), client.is_connected()))
             .collect()
     }

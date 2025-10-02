@@ -6,14 +6,16 @@ use std::sync::Arc;
 use crate::action::{self as act, ActionResult};
 use crate::context::ExecutionContext;
 use crate::observation::{ObservationProcessor, ProcessingCapability};
+use crate::orchestrator::ActionType;
 use crate::orchestrator::{Observation, ObservationType};
+use crate::production_mcp::{
+    ExecutionPreferences, ProductionMcpClientManager, ProductionMcpManager,
+};
 use crate::tools::ToolRegistry;
-use crate::production_mcp::{ProductionMcpManager, ProductionMcpClientManager, ExecutionPreferences};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
-use std::pin::Pin;
 use std::collections::HashMap as StdHashMap;
-use crate::orchestrator::ActionType;
+use std::pin::Pin;
 
 // -----------------------------------------------------------------------------
 // Composite planner that routes to specialized planners or a base planner
@@ -29,18 +31,40 @@ pub struct CompositePlanner {
 impl CompositePlanner {
     pub fn new(base: Box<dyn act::ActionPlanner>) -> Self {
         // Backward-compatible constructor without registry; use empty registry
-        Self { base, research: ResearchPlanner, longform: LongFormWriterPlanner, tool_registry: std::sync::Arc::new(ToolRegistry::new()) }
+        Self {
+            base,
+            research: ResearchPlanner,
+            longform: LongFormWriterPlanner,
+            tool_registry: std::sync::Arc::new(ToolRegistry::new()),
+        }
     }
 
-    pub fn new_with_registry(base: Box<dyn act::ActionPlanner>, tool_registry: std::sync::Arc<ToolRegistry>) -> Self {
-        Self { base, research: ResearchPlanner, longform: LongFormWriterPlanner, tool_registry }
+    pub fn new_with_registry(
+        base: Box<dyn act::ActionPlanner>,
+        tool_registry: std::sync::Arc<ToolRegistry>,
+    ) -> Self {
+        Self {
+            base,
+            research: ResearchPlanner,
+            longform: LongFormWriterPlanner,
+            tool_registry,
+        }
     }
 
     fn choose(&self, context: &ExecutionContext) -> PlannerKind {
-        let goal = context.get_current_goal().map(|g| g.description.to_lowercase()).unwrap_or_default();
+        let goal = context
+            .get_current_goal()
+            .map(|g| g.description.to_lowercase())
+            .unwrap_or_default();
         if goal.contains("research") || goal.contains("study") || goal.contains("investigate") {
             PlannerKind::Research
-        } else if goal.contains("100k") || goal.contains("long-form") || goal.contains("long form") || goal.contains("book") || goal.contains("novel") || goal.contains("write a 100k") {
+        } else if goal.contains("100k")
+            || goal.contains("long-form")
+            || goal.contains("long form")
+            || goal.contains("book")
+            || goal.contains("novel")
+            || goal.contains("write a 100k")
+        {
             PlannerKind::LongForm
         } else {
             PlannerKind::Base
@@ -56,31 +80,39 @@ impl CompositePlanner {
     }
 
     fn has_recent_search(&self, context: &ExecutionContext) -> bool {
-        context
-            .observations
-            .iter()
-            .rev()
-            .take(10)
-            .any(|o| {
-                let c = o.content.to_lowercase();
-                c.contains("search") || c.contains("results") || c.contains("browse")
-            })
+        context.observations.iter().rev().take(10).any(|o| {
+            let c = o.content.to_lowercase();
+            c.contains("search") || c.contains("results") || c.contains("browse")
+        })
     }
 }
 
-enum PlannerKind { Base, Research, LongForm }
+enum PlannerKind {
+    Base,
+    Research,
+    LongForm,
+}
 
 #[async_trait]
 impl act::ActionPlanner for CompositePlanner {
-    async fn plan_action(&self, reasoning: crate::orchestrator::ReasoningResult, context: &ExecutionContext) -> anyhow::Result<act::ActionPlan> {
+    async fn plan_action(
+        &self,
+        reasoning: crate::orchestrator::ReasoningResult,
+        context: &ExecutionContext,
+    ) -> anyhow::Result<act::ActionPlan> {
         match self.choose(context) {
             PlannerKind::Research => {
                 // Prefer MCP/registry tools that look like search/browse for first step
                 let names = self.available_tool_names();
-                let maybe_search = names.into_iter().find(|n| n.contains("search") || n.contains("browse") || n.contains("web"));
+                let maybe_search = names
+                    .into_iter()
+                    .find(|n| n.contains("search") || n.contains("browse") || n.contains("web"));
                 if let Some(tool_name) = maybe_search {
                     if !self.has_recent_search(context) {
-                        let goal = context.get_current_goal().map(|g| g.description.clone()).unwrap_or_default();
+                        let goal = context
+                            .get_current_goal()
+                            .map(|g| g.description.clone())
+                            .unwrap_or_default();
                         let mut params = StdHashMap::new();
                         params.insert("tool_name".to_string(), serde_json::json!(tool_name));
                         params.insert("query".to_string(), serde_json::json!(goal));
@@ -100,7 +132,7 @@ impl act::ActionPlanner for CompositePlanner {
                     }
                 }
                 self.research.plan_action(reasoning, context).await
-            },
+            }
             PlannerKind::LongForm => self.longform.plan_action(reasoning, context).await,
             PlannerKind::Base => self.base.plan_action(reasoning, context).await,
         }
@@ -113,7 +145,9 @@ impl act::ActionPlanner for CompositePlanner {
         caps
     }
 
-    fn can_plan(&self, _action_type: &ActionType) -> bool { true }
+    fn can_plan(&self, _action_type: &ActionType) -> bool {
+        true
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -135,41 +169,125 @@ impl ResearchPlanner {
     }
 
     fn latest_output(&self, context: &ExecutionContext) -> String {
-        context.get_latest_observation().map(|o| o.content).unwrap_or_default()
+        context
+            .get_latest_observation()
+            .map(|o| o.content)
+            .unwrap_or_default()
     }
 }
 
 #[async_trait]
 impl act::ActionPlanner for ResearchPlanner {
-    async fn plan_action(&self, _reasoning: crate::orchestrator::ReasoningResult, context: &ExecutionContext) -> anyhow::Result<act::ActionPlan> {
-        let goal = context.get_current_goal().map(|g| g.description.clone()).unwrap_or_default();
+    async fn plan_action(
+        &self,
+        _reasoning: crate::orchestrator::ReasoningResult,
+        context: &ExecutionContext,
+    ) -> anyhow::Result<act::ActionPlan> {
+        let goal = context
+            .get_current_goal()
+            .map(|g| g.description.clone())
+            .unwrap_or_default();
         let base = self.research_dir();
 
         if self.count_writes(context, &format!("{}/outline.md", base)) == 0 {
             let mut params = StdHashMap::new();
-            params.insert("tool_name".to_string(), serde_json::json!("research_generate_outline"));
+            params.insert(
+                "tool_name".to_string(),
+                serde_json::json!("research_generate_outline"),
+            );
             params.insert("goal".to_string(), serde_json::json!(goal));
-            params.insert("out_path".to_string(), serde_json::json!(format!("{}/outline.md", base)));
-            return Ok(act::ActionPlan { action_id: uuid::Uuid::new_v4().to_string(), action_type: ActionType::ToolExecution, description: "Research: generate and save outline".to_string(), parameters: params, expected_outcome: "Outline saved".to_string(), confidence_score: 0.75, estimated_duration: None, risk_level: act::RiskLevel::Low, alternatives: Vec::new(), prerequisites: Vec::new(), success_criteria: vec![format!("file_exists:{}/outline.md", base)], });
+            params.insert(
+                "out_path".to_string(),
+                serde_json::json!(format!("{}/outline.md", base)),
+            );
+            return Ok(act::ActionPlan {
+                action_id: uuid::Uuid::new_v4().to_string(),
+                action_type: ActionType::ToolExecution,
+                description: "Research: generate and save outline".to_string(),
+                parameters: params,
+                expected_outcome: "Outline saved".to_string(),
+                confidence_score: 0.75,
+                estimated_duration: None,
+                risk_level: act::RiskLevel::Low,
+                alternatives: Vec::new(),
+                prerequisites: Vec::new(),
+                success_criteria: vec![format!("file_exists:{}/outline.md", base)],
+            });
         }
         if self.count_writes(context, &format!("{}/notes.md", base)) == 0 {
             let mut params = StdHashMap::new();
-            params.insert("tool_name".to_string(), serde_json::json!("research_generate_notes"));
+            params.insert(
+                "tool_name".to_string(),
+                serde_json::json!("research_generate_notes"),
+            );
             params.insert("goal".to_string(), serde_json::json!(goal));
-            params.insert("out_path".to_string(), serde_json::json!(format!("{}/notes.md", base)));
-            return Ok(act::ActionPlan { action_id: uuid::Uuid::new_v4().to_string(), action_type: ActionType::ToolExecution, description: "Research: generate and save notes".to_string(), parameters: params, expected_outcome: "Notes saved".to_string(), confidence_score: 0.7, estimated_duration: None, risk_level: act::RiskLevel::Low, alternatives: Vec::new(), prerequisites: Vec::new(), success_criteria: vec![format!("file_exists:{}/notes.md", base)], });
+            params.insert(
+                "out_path".to_string(),
+                serde_json::json!(format!("{}/notes.md", base)),
+            );
+            return Ok(act::ActionPlan {
+                action_id: uuid::Uuid::new_v4().to_string(),
+                action_type: ActionType::ToolExecution,
+                description: "Research: generate and save notes".to_string(),
+                parameters: params,
+                expected_outcome: "Notes saved".to_string(),
+                confidence_score: 0.7,
+                estimated_duration: None,
+                risk_level: act::RiskLevel::Low,
+                alternatives: Vec::new(),
+                prerequisites: Vec::new(),
+                success_criteria: vec![format!("file_exists:{}/notes.md", base)],
+            });
         }
         if self.count_writes(context, &format!("{}/summary.md", base)) == 0 {
             let mut params = StdHashMap::new();
-            params.insert("tool_name".to_string(), serde_json::json!("research_generate_summary"));
+            params.insert(
+                "tool_name".to_string(),
+                serde_json::json!("research_generate_summary"),
+            );
             params.insert("goal".to_string(), serde_json::json!(goal));
-            params.insert("out_path".to_string(), serde_json::json!(format!("{}/summary.md", base)));
-            return Ok(act::ActionPlan { action_id: uuid::Uuid::new_v4().to_string(), action_type: ActionType::ToolExecution, description: "Research: generate and save summary".to_string(), parameters: params, expected_outcome: "Summary saved".to_string(), confidence_score: 0.7, estimated_duration: None, risk_level: act::RiskLevel::Low, alternatives: Vec::new(), prerequisites: Vec::new(), success_criteria: vec![format!("file_exists:{}/summary.md", base)], });
+            params.insert(
+                "out_path".to_string(),
+                serde_json::json!(format!("{}/summary.md", base)),
+            );
+            return Ok(act::ActionPlan {
+                action_id: uuid::Uuid::new_v4().to_string(),
+                action_type: ActionType::ToolExecution,
+                description: "Research: generate and save summary".to_string(),
+                parameters: params,
+                expected_outcome: "Summary saved".to_string(),
+                confidence_score: 0.7,
+                estimated_duration: None,
+                risk_level: act::RiskLevel::Low,
+                alternatives: Vec::new(),
+                prerequisites: Vec::new(),
+                success_criteria: vec![format!("file_exists:{}/summary.md", base)],
+            });
         }
-        Ok(act::ActionPlan { action_id: uuid::Uuid::new_v4().to_string(), action_type: ActionType::Planning, description: "Research plan completed; awaiting success checks".to_string(), parameters: StdHashMap::new(), expected_outcome: "No-op".to_string(), confidence_score: 0.9, estimated_duration: None, risk_level: act::RiskLevel::Low, alternatives: Vec::new(), prerequisites: Vec::new(), success_criteria: vec![ format!("file_exists:{}/outline.md", base), format!("file_exists:{}/notes.md", base), format!("file_exists:{}/summary.md", base), ], })
+        Ok(act::ActionPlan {
+            action_id: uuid::Uuid::new_v4().to_string(),
+            action_type: ActionType::Planning,
+            description: "Research plan completed; awaiting success checks".to_string(),
+            parameters: StdHashMap::new(),
+            expected_outcome: "No-op".to_string(),
+            confidence_score: 0.9,
+            estimated_duration: None,
+            risk_level: act::RiskLevel::Low,
+            alternatives: Vec::new(),
+            prerequisites: Vec::new(),
+            success_criteria: vec![
+                format!("file_exists:{}/outline.md", base),
+                format!("file_exists:{}/notes.md", base),
+                format!("file_exists:{}/summary.md", base),
+            ],
+        })
     }
-    fn get_capabilities(&self) -> Vec<act::PlanningCapability> { vec![act::PlanningCapability::ToolSelection] }
-    fn can_plan(&self, _action_type: &ActionType) -> bool { true }
+    fn get_capabilities(&self) -> Vec<act::PlanningCapability> {
+        vec![act::PlanningCapability::ToolSelection]
+    }
+    fn can_plan(&self, _action_type: &ActionType) -> bool {
+        true
+    }
 }
 pub struct LongFormWriterPlanner;
 
@@ -178,7 +296,10 @@ impl LongFormWriterPlanner {
         std::env::var("FLUENT_BOOK_OUTPUT_DIR").unwrap_or_else(|_| "docs/book".to_string())
     }
     fn target_chapters(&self) -> usize {
-        std::env::var("FLUENT_BOOK_CHAPTERS").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(10)
+        std::env::var("FLUENT_BOOK_CHAPTERS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(10)
     }
     fn count_written_chapters(&self, context: &ExecutionContext) -> usize {
         context
@@ -189,26 +310,42 @@ impl LongFormWriterPlanner {
     }
 
     fn latest_output(&self, context: &ExecutionContext) -> String {
-        context.get_latest_observation().map(|o| o.content).unwrap_or_default()
+        context
+            .get_latest_observation()
+            .map(|o| o.content)
+            .unwrap_or_default()
     }
 }
 
 #[async_trait]
 impl act::ActionPlanner for LongFormWriterPlanner {
-    async fn plan_action(&self, _reasoning: crate::orchestrator::ReasoningResult, context: &ExecutionContext) -> anyhow::Result<act::ActionPlan> {
-        let goal = context.get_current_goal().map(|g| g.description.clone()).unwrap_or_default();
+    async fn plan_action(
+        &self,
+        _reasoning: crate::orchestrator::ReasoningResult,
+        context: &ExecutionContext,
+    ) -> anyhow::Result<act::ActionPlan> {
+        let goal = context
+            .get_current_goal()
+            .map(|g| g.description.clone())
+            .unwrap_or_default();
 
         // Stage 1: produce outline
         let base = self.book_dir();
-        let outline_written = context
-            .observations
-            .iter()
-            .any(|o| o.content.contains(&format!("Successfully wrote to {}/outline.md", base)));
+        let outline_written = context.observations.iter().any(|o| {
+            o.content
+                .contains(&format!("Successfully wrote to {}/outline.md", base))
+        });
         if !outline_written {
             let mut params = StdHashMap::new();
-            params.insert("tool_name".to_string(), serde_json::json!("generate_book_outline"));
+            params.insert(
+                "tool_name".to_string(),
+                serde_json::json!("generate_book_outline"),
+            );
             params.insert("goal".to_string(), serde_json::json!(goal));
-            params.insert("out_path".to_string(), serde_json::json!(format!("{}/outline.md", base)));
+            params.insert(
+                "out_path".to_string(),
+                serde_json::json!(format!("{}/outline.md", base)),
+            );
             return Ok(act::ActionPlan {
                 action_id: uuid::Uuid::new_v4().to_string(),
                 action_type: ActionType::ToolExecution,
@@ -229,7 +366,11 @@ impl act::ActionPlanner for LongFormWriterPlanner {
         let target_chapters = self.target_chapters();
         if written < target_chapters {
             // Alternate: generate chapter content or write it depending on last step
-            if self.latest_output(context).to_lowercase().contains("successfully wrote to docs/book/ch_") {
+            if self
+                .latest_output(context)
+                .to_lowercase()
+                .contains("successfully wrote to docs/book/ch_")
+            {
                 // Generate next chapter
                 let chapter_num = written + 1;
                 let mut params = StdHashMap::new();
@@ -258,7 +399,10 @@ impl act::ActionPlanner for LongFormWriterPlanner {
                 let mut params = StdHashMap::new();
                 params.insert("operation".to_string(), serde_json::json!("write"));
                 params.insert("path".to_string(), serde_json::json!(path));
-                params.insert("content".to_string(), serde_json::json!(self.latest_output(context)));
+                params.insert(
+                    "content".to_string(),
+                    serde_json::json!(self.latest_output(context)),
+                );
                 return Ok(act::ActionPlan {
                     action_id: uuid::Uuid::new_v4().to_string(),
                     action_type: ActionType::FileOperation,
@@ -278,8 +422,14 @@ impl act::ActionPlanner for LongFormWriterPlanner {
         // Stage 3: ensure index exists
         let mut params = StdHashMap::new();
         params.insert("operation".to_string(), serde_json::json!("write"));
-        params.insert("path".to_string(), serde_json::json!(format!("{}/index.md", base)));
-        params.insert("content".to_string(), serde_json::json!("# Book Index\n\nSee outline.md and ch_01.md ... ch_10.md"));
+        params.insert(
+            "path".to_string(),
+            serde_json::json!(format!("{}/index.md", base)),
+        );
+        params.insert(
+            "content".to_string(),
+            serde_json::json!("# Book Index\n\nSee outline.md and ch_01.md ... ch_10.md"),
+        );
         let _index_plan = act::ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::FileOperation,
@@ -298,19 +448,28 @@ impl act::ActionPlanner for LongFormWriterPlanner {
         };
 
         // Stage 4: ensure TOC is generated and written
-        let toc_written = context
-            .observations
-            .iter()
-            .any(|o| o.content.contains(&format!("Successfully wrote to {}/toc.md", base)));
+        let toc_written = context.observations.iter().any(|o| {
+            o.content
+                .contains(&format!("Successfully wrote to {}/toc.md", base))
+        });
         if !toc_written {
             // If the latest output doesn't look like a TOC, generate one; otherwise write it
             let latest = self.latest_output(context);
             if !latest.to_lowercase().contains("table of contents") && !latest.contains("[TOC]") {
                 let mut params = StdHashMap::new();
                 params.insert("tool_name".to_string(), serde_json::json!("generate_toc"));
-                params.insert("outline_path".to_string(), serde_json::json!(format!("{}/outline.md", base)));
-                params.insert("chapters".to_string(), serde_json::json!(target_chapters as u64));
-                params.insert("out_path".to_string(), serde_json::json!(format!("{}/toc.md", base)));
+                params.insert(
+                    "outline_path".to_string(),
+                    serde_json::json!(format!("{}/outline.md", base)),
+                );
+                params.insert(
+                    "chapters".to_string(),
+                    serde_json::json!(target_chapters as u64),
+                );
+                params.insert(
+                    "out_path".to_string(),
+                    serde_json::json!(format!("{}/toc.md", base)),
+                );
                 return Ok(act::ActionPlan {
                     action_id: uuid::Uuid::new_v4().to_string(),
                     action_type: ActionType::ToolExecution,
@@ -327,7 +486,10 @@ impl act::ActionPlanner for LongFormWriterPlanner {
             } else {
                 let mut params = StdHashMap::new();
                 params.insert("operation".to_string(), serde_json::json!("write"));
-                params.insert("path".to_string(), serde_json::json!(format!("{}/toc.md", base)));
+                params.insert(
+                    "path".to_string(),
+                    serde_json::json!(format!("{}/toc.md", base)),
+                );
                 params.insert("content".to_string(), serde_json::json!(latest));
                 return Ok(act::ActionPlan {
                     action_id: uuid::Uuid::new_v4().to_string(),
@@ -349,9 +511,14 @@ impl act::ActionPlanner for LongFormWriterPlanner {
         let mut concat_params = StdHashMap::new();
         let mut paths: Vec<String> = Vec::new();
         paths.push(format!("{}/toc.md", base));
-        for i in 1..=target_chapters { paths.push(format!("{}/ch_{:02}.md", base, i)); }
+        for i in 1..=target_chapters {
+            paths.push(format!("{}/ch_{:02}.md", base, i));
+        }
         concat_params.insert("paths".to_string(), serde_json::json!(paths));
-        concat_params.insert("dest".to_string(), serde_json::json!(format!("{}/book.md", base)));
+        concat_params.insert(
+            "dest".to_string(),
+            serde_json::json!(format!("{}/book.md", base)),
+        );
         concat_params.insert("separator".to_string(), serde_json::json!("\n\n---\n\n"));
 
         Ok(act::ActionPlan {
@@ -361,9 +528,18 @@ impl act::ActionPlanner for LongFormWriterPlanner {
             parameters: {
                 let mut m = StdHashMap::new();
                 m.insert("tool_name".to_string(), serde_json::json!("concat_files"));
-                m.insert("paths".to_string(), concat_params.get("paths").unwrap().clone());
-                m.insert("dest".to_string(), concat_params.get("dest").unwrap().clone());
-                m.insert("separator".to_string(), concat_params.get("separator").unwrap().clone());
+                m.insert(
+                    "paths".to_string(),
+                    concat_params.get("paths").unwrap().clone(),
+                );
+                m.insert(
+                    "dest".to_string(),
+                    concat_params.get("dest").unwrap().clone(),
+                );
+                m.insert(
+                    "separator".to_string(),
+                    concat_params.get("separator").unwrap().clone(),
+                );
                 m
             },
             expected_outcome: "book.md assembled".to_string(),
@@ -372,12 +548,22 @@ impl act::ActionPlanner for LongFormWriterPlanner {
             risk_level: act::RiskLevel::Low,
             alternatives: Vec::new(),
             prerequisites: vec![format!("file_exists:{}/index.md", base)],
-            success_criteria: vec![format!("file_exists:{}/book.md", base), format!("non_empty_file:{}/book.md", base)],
+            success_criteria: vec![
+                format!("file_exists:{}/book.md", base),
+                format!("non_empty_file:{}/book.md", base),
+            ],
         })
     }
 
-    fn get_capabilities(&self) -> Vec<act::PlanningCapability> { vec![act::PlanningCapability::ResourceAllocation, act::PlanningCapability::AlternativePlanning] }
-    fn can_plan(&self, _action_type: &ActionType) -> bool { true }
+    fn get_capabilities(&self) -> Vec<act::PlanningCapability> {
+        vec![
+            act::PlanningCapability::ResourceAllocation,
+            act::PlanningCapability::AlternativePlanning,
+        ]
+    }
+    fn can_plan(&self, _action_type: &ActionType) -> bool {
+        true
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -390,7 +576,9 @@ pub struct McpRegistryExecutor {
 
 impl McpRegistryExecutor {
     pub fn new(manager: std::sync::Arc<ProductionMcpManager>) -> Self {
-        Self { client_mgr: manager.client_manager() }
+        Self {
+            client_mgr: manager.client_manager(),
+        }
     }
 }
 
@@ -430,7 +618,11 @@ impl crate::tools::ToolExecutor for McpRegistryExecutor {
         futures::executor::block_on(async {
             let all = self.client_mgr.get_all_tools().await;
             let mut set = std::collections::BTreeSet::new();
-            for (_server, tools) in all { for t in tools { set.insert(t.name.to_string()); } }
+            for (_server, tools) in all {
+                for t in tools {
+                    set.insert(t.name.to_string());
+                }
+            }
             set.into_iter().collect()
         })
     }
@@ -440,7 +632,15 @@ impl crate::tools::ToolExecutor for McpRegistryExecutor {
         let name = tool_name.to_string();
         let desc = futures::executor::block_on(async {
             let all = self.client_mgr.get_all_tools().await;
-            for (_server, tools) in all { for t in tools { if t.name == name { if let Some(d) = t.description { return Some(d.to_string()); } } } }
+            for (_server, tools) in all {
+                for t in tools {
+                    if t.name == name {
+                        if let Some(d) = t.description {
+                            return Some(d.to_string());
+                        }
+                    }
+                }
+            }
             None
         });
         desc.or_else(|| Some("MCP tool".to_string()))
@@ -462,7 +662,9 @@ pub struct RegistryToolAdapter {
 }
 
 impl RegistryToolAdapter {
-    pub fn new(registry: Arc<ToolRegistry>) -> Self { Self { registry } }
+    pub fn new(registry: Arc<ToolRegistry>) -> Self {
+        Self { registry }
+    }
 }
 
 #[async_trait]
@@ -490,23 +692,36 @@ pub struct LlmCodeGenerator {
 }
 
 impl LlmCodeGenerator {
-    pub fn new(engine: Arc<Box<dyn Engine>>) -> Self { Self { engine } }
+    pub fn new(engine: Arc<Box<dyn Engine>>) -> Self {
+        Self { engine }
+    }
 }
 
 #[async_trait]
 impl act::CodeGenerator for LlmCodeGenerator {
-    async fn generate_code(&self, specification: &str, _context: &ExecutionContext) -> Result<String> {
+    async fn generate_code(
+        &self,
+        specification: &str,
+        _context: &ExecutionContext,
+    ) -> Result<String> {
         let prompt = format!(
             "You are a senior engineer. Generate code meeting this specification.\n\nSpecification:\n{}\n\nReturn only the complete code in a single fenced block.",
             specification
         );
-        let req = Request { flowname: "codegen".to_string(), payload: prompt };
+        let req = Request {
+            flowname: "codegen".to_string(),
+            payload: prompt,
+        };
         let resp = Pin::from(self.engine.execute(&req)).await?;
         Ok(resp.content)
     }
 
     fn get_supported_languages(&self) -> Vec<String> {
-        vec!["rust".to_string(), "javascript".to_string(), "html".to_string()]
+        vec![
+            "rust".to_string(),
+            "javascript".to_string(),
+            "html".to_string(),
+        ]
     }
 }
 
@@ -520,7 +735,9 @@ impl act::FileManager for FsFileManager {
     }
     async fn write_file(&self, path: &str, content: &str) -> Result<()> {
         if let Some(parent) = std::path::Path::new(path).parent() {
-            if !parent.exists() { tokio::fs::create_dir_all(parent).await?; }
+            if !parent.exists() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
         }
         tokio::fs::write(path, content).await.map_err(Into::into)
     }
@@ -540,7 +757,11 @@ pub struct SimpleRiskAssessor;
 
 #[async_trait]
 impl act::RiskAssessor for SimpleRiskAssessor {
-    async fn assess_risk(&self, plan: &act::ActionPlan, _ctx: &ExecutionContext) -> Result<act::RiskLevel> {
+    async fn assess_risk(
+        &self,
+        plan: &act::ActionPlan,
+        _ctx: &ExecutionContext,
+    ) -> Result<act::RiskLevel> {
         use crate::orchestrator::ActionType::*;
         let level = match plan.action_type {
             FileOperation => act::RiskLevel::Low,
@@ -558,8 +779,16 @@ pub struct SimpleObservationProcessor;
 
 #[async_trait]
 impl ObservationProcessor for SimpleObservationProcessor {
-    async fn process(&self, action_result: ActionResult, _context: &ExecutionContext) -> Result<Observation> {
-        let content = if let Some(out) = &action_result.output { out.clone() } else { action_result.error.clone().unwrap_or_default() };
+    async fn process(
+        &self,
+        action_result: ActionResult,
+        _context: &ExecutionContext,
+    ) -> Result<Observation> {
+        let content = if let Some(out) = &action_result.output {
+            out.clone()
+        } else {
+            action_result.error.clone().unwrap_or_default()
+        };
         Ok(Observation {
             observation_id: uuid::Uuid::new_v4().to_string(),
             timestamp: std::time::SystemTime::now(),
@@ -571,7 +800,11 @@ impl ObservationProcessor for SimpleObservationProcessor {
         })
     }
 
-    async fn process_environment_change(&self, change: crate::observation::EnvironmentChange, _context: &ExecutionContext) -> Result<Observation> {
+    async fn process_environment_change(
+        &self,
+        change: crate::observation::EnvironmentChange,
+        _context: &ExecutionContext,
+    ) -> Result<Observation> {
         Ok(Observation {
             observation_id: uuid::Uuid::new_v4().to_string(),
             timestamp: std::time::SystemTime::now(),
@@ -597,10 +830,17 @@ pub struct SimpleHeuristicPlanner;
 
 #[async_trait]
 impl act::ActionPlanner for SimpleHeuristicPlanner {
-    async fn plan_action(&self, _reasoning: crate::orchestrator::ReasoningResult, context: &ExecutionContext) -> Result<act::ActionPlan> {
+    async fn plan_action(
+        &self,
+        _reasoning: crate::orchestrator::ReasoningResult,
+        context: &ExecutionContext,
+    ) -> Result<act::ActionPlan> {
         use crate::orchestrator::ActionType;
 
-        let goal_desc = context.get_current_goal().map(|g| g.description.clone()).unwrap_or_default();
+        let goal_desc = context
+            .get_current_goal()
+            .map(|g| g.description.clone())
+            .unwrap_or_default();
         let iteration = context.iteration_count();
 
         if iteration == 0 || context.get_latest_observation().is_none() {
@@ -624,14 +864,24 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
             })
         } else {
             // Next: persist the generated code to a file
-            let output = context.get_latest_observation().map(|o| o.content).unwrap_or_default();
-            let mut path = if goal_desc.to_lowercase().contains("html") || goal_desc.to_lowercase().contains("javascript") || goal_desc.to_lowercase().contains("web") {
+            let output = context
+                .get_latest_observation()
+                .map(|o| o.content)
+                .unwrap_or_default();
+            let mut path = if goal_desc.to_lowercase().contains("html")
+                || goal_desc.to_lowercase().contains("javascript")
+                || goal_desc.to_lowercase().contains("web")
+            {
                 "examples/agent_output.html".to_string()
             } else {
                 "examples/agent_output.txt".to_string()
             };
-            if goal_desc.to_lowercase().contains("tetris") { path = "examples/web_tetris.html".to_string(); }
-            if goal_desc.to_lowercase().contains("snake") { path = "examples/web_snake.html".to_string(); }
+            if goal_desc.to_lowercase().contains("tetris") {
+                path = "examples/web_tetris.html".to_string();
+            }
+            if goal_desc.to_lowercase().contains("snake") {
+                path = "examples/web_snake.html".to_string();
+            }
 
             let mut params = HashMap::new();
             params.insert("operation".to_string(), serde_json::json!("write"));
@@ -655,30 +905,35 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
     }
 
     fn get_capabilities(&self) -> Vec<act::PlanningCapability> {
-        vec![act::PlanningCapability::ToolSelection, act::PlanningCapability::AlternativePlanning]
+        vec![
+            act::PlanningCapability::ToolSelection,
+            act::PlanningCapability::AlternativePlanning,
+        ]
     }
 
-    fn can_plan(&self, _action_type: &crate::orchestrator::ActionType) -> bool { true }
+    fn can_plan(&self, _action_type: &crate::orchestrator::ActionType) -> bool {
+        true
+    }
 }
 
 /// In-memory episodic memory stub (placeholder for legacy compatibility)
 pub struct EpisodicMemoryStub {
-    items: tokio::sync::RwLock<Vec<String>>
+    items: tokio::sync::RwLock<Vec<String>>,
 }
 
 impl EpisodicMemoryStub {
     pub fn new() -> Self {
         Self {
-            items: tokio::sync::RwLock::new(Vec::new())
+            items: tokio::sync::RwLock::new(Vec::new()),
         }
     }
-    
+
     pub async fn store_item(&self, item: String) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
         self.items.write().await.push(item);
         Ok(id)
     }
-    
+
     pub async fn get_items(&self) -> Result<Vec<String>> {
         Ok(self.items.read().await.clone())
     }
@@ -686,22 +941,22 @@ impl EpisodicMemoryStub {
 
 /// In-memory semantic memory stub (placeholder for legacy compatibility)
 pub struct SemanticMemoryStub {
-    items: tokio::sync::RwLock<Vec<String>>
+    items: tokio::sync::RwLock<Vec<String>>,
 }
 
 impl SemanticMemoryStub {
     pub fn new() -> Self {
         Self {
-            items: tokio::sync::RwLock::new(Vec::new())
+            items: tokio::sync::RwLock::new(Vec::new()),
         }
     }
-    
+
     pub async fn store_knowledge(&self, knowledge: String) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
         self.items.write().await.push(knowledge);
         Ok(id)
     }
-    
+
     pub async fn get_knowledge(&self) -> Result<Vec<String>> {
         Ok(self.items.read().await.clone())
     }
@@ -724,18 +979,13 @@ impl act::ActionExecutor for DryRunActionExecutor {
             plan.action_type, plan.parameters
         );
         Ok(act::ActionResult {
-            action_id: plan.action_id,
-            action_type: plan.action_type,
-            parameters: plan.parameters,
-            result: crate::orchestrator::ActionResult {
-                success: true,
-                output: Some(msg.clone()),
-                error: None,
-                metadata: std::collections::HashMap::new(),
-            },
-            execution_time: std::time::Duration::from_millis(1),
+            action_id: plan.action_id.clone(),
+            action_type: plan.action_type.clone(),
+            parameters: plan.parameters.clone(),
+            result: serde_json::Value::Null,
+            execution_time: std::time::Duration::from_secs(1),
             success: true,
-            output: Some(msg),
+            output: Some(msg.clone()),
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),
@@ -754,5 +1004,7 @@ impl act::ActionExecutor for DryRunActionExecutor {
         ]
     }
 
-    fn can_execute(&self, _action_type: &crate::orchestrator::ActionType) -> bool { true }
+    fn can_execute(&self, _action_type: &crate::orchestrator::ActionType) -> bool {
+        true
+    }
 }

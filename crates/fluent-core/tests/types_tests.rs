@@ -1,5 +1,7 @@
-use fluent_core::types::{Request, Response, Usage, Cost, ExtractedContent, UpsertRequest, UpsertResponse};
 use anyhow::Result;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 
 /// Unit tests for core types
 /// Tests type creation, serialization, and validation
@@ -32,7 +34,10 @@ fn test_request_serialization() -> Result<()> {
     // Test JSON deserialization
     let deserialized: Request = serde_json::from_str(&json_str)?;
     assert_eq!(deserialized.flowname, "completion");
-    assert_eq!(deserialized.payload, "Complete this sentence: The weather today is");
+    assert_eq!(
+        deserialized.payload,
+        "Complete this sentence: The weather today is"
+    );
 
     Ok(())
 }
@@ -59,7 +64,10 @@ fn test_response_creation() -> Result<()> {
         finish_reason: Some("stop".to_string()),
     };
 
-    assert_eq!(response.content, "Hello! I'm doing well, thank you for asking.");
+    assert_eq!(
+        response.content,
+        "Hello! I'm doing well, thank you for asking."
+    );
     assert_eq!(response.usage.prompt_tokens, 10);
     assert_eq!(response.usage.completion_tokens, 20);
     assert_eq!(response.usage.total_tokens, 30);
@@ -120,7 +128,10 @@ fn test_usage_calculations() -> Result<()> {
     };
 
     // Verify that total_tokens matches the sum
-    assert_eq!(usage.total_tokens, usage.prompt_tokens + usage.completion_tokens);
+    assert_eq!(
+        usage.total_tokens,
+        usage.prompt_tokens + usage.completion_tokens
+    );
 
     // Test edge cases
     let zero_usage = Usage {
@@ -164,7 +175,12 @@ fn test_cost_calculations() -> Result<()> {
         completion_cost: 0.000456,
         total_cost: 0.000579,
     };
-    assert!((high_precision_cost.total_cost - (high_precision_cost.prompt_cost + high_precision_cost.completion_cost)).abs() < 0.000001);
+    assert!(
+        (high_precision_cost.total_cost
+            - (high_precision_cost.prompt_cost + high_precision_cost.completion_cost))
+            .abs()
+            < 0.000001
+    );
 
     Ok(())
 }
@@ -219,13 +235,20 @@ fn test_upsert_request() -> Result<()> {
 #[test]
 fn test_upsert_response() -> Result<()> {
     let upsert_response = UpsertResponse {
-        processed_files: vec!["conversation_1.json".to_string(), "conversation_2.json".to_string()],
+        processed_files: vec![
+            "conversation_1.json".to_string(),
+            "conversation_2.json".to_string(),
+        ],
         errors: vec![],
     };
 
     assert_eq!(upsert_response.processed_files.len(), 2);
-    assert!(upsert_response.processed_files.contains(&"conversation_1.json".to_string()));
-    assert!(upsert_response.processed_files.contains(&"conversation_2.json".to_string()));
+    assert!(upsert_response
+        .processed_files
+        .contains(&"conversation_1.json".to_string()));
+    assert!(upsert_response
+        .processed_files
+        .contains(&"conversation_2.json".to_string()));
     assert!(upsert_response.errors.is_empty());
 
     // Test failure case
@@ -235,7 +258,9 @@ fn test_upsert_response() -> Result<()> {
     };
     assert_eq!(failure_response.processed_files.len(), 1);
     assert_eq!(failure_response.errors.len(), 1);
-    assert!(failure_response.errors.contains(&"Failed to process conversation_2.json".to_string()));
+    assert!(failure_response
+        .errors
+        .contains(&"Failed to process conversation_2.json".to_string()));
 
     Ok(())
 }

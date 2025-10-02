@@ -246,13 +246,15 @@ impl WorkflowContext {
     }
 
     pub fn start_step_timing(&mut self, step_id: &str) {
-        self.step_start_times.insert(step_id.to_string(), std::time::SystemTime::now());
+        self.step_start_times
+            .insert(step_id.to_string(), std::time::SystemTime::now());
         // Initialize attempt counter if not exists
         self.step_attempts.entry(step_id.to_string()).or_insert(0);
     }
 
     pub fn end_step_timing(&mut self, step_id: &str) {
-        self.step_end_times.insert(step_id.to_string(), std::time::SystemTime::now());
+        self.step_end_times
+            .insert(step_id.to_string(), std::time::SystemTime::now());
     }
 
     pub fn increment_step_attempts(&mut self, step_id: &str) {

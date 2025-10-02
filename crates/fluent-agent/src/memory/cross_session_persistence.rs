@@ -343,7 +343,7 @@ impl CrossSessionPersistence {
         goal: Option<Goal>,
     ) -> Result<String> {
         let session_id = Uuid::new_v4().to_string();
-        
+
         let session_state = SessionState {
             session_id: session_id.clone(),
             started_at: SystemTime::now(),
@@ -382,7 +382,9 @@ impl CrossSessionPersistence {
 
         let mut manager = self.session_manager.write().await;
         manager.current_session = Some(session_state.clone());
-        manager.active_sessions.insert(session_id.clone(), session_state);
+        manager
+            .active_sessions
+            .insert(session_id.clone(), session_state);
 
         Ok(session_id)
     }
@@ -390,12 +392,12 @@ impl CrossSessionPersistence {
     /// Save current session state
     pub async fn save_session_state(&self, context: &ExecutionContext) -> Result<()> {
         let mut manager = self.session_manager.write().await;
-        
+
         if let Some(ref mut session) = manager.current_session {
             // Update session with current context
             session.execution_context = self.serialize_context(context).await?;
             session.last_updated = SystemTime::now();
-            
+
             // Save to disk if auto-save is enabled
             if self.config.enable_automatic_save {
                 drop(manager);
@@ -413,10 +415,10 @@ impl CrossSessionPersistence {
         context: &ExecutionContext,
     ) -> Result<String> {
         let checkpoint_id = Uuid::new_v4().to_string();
-        
+
         // Serialize current state
         let state_data = self.serialize_execution_state(context).await?;
-        
+
         let checkpoint = CheckpointData {
             checkpoint_id: checkpoint_id.clone(),
             created_at: SystemTime::now(),
@@ -429,10 +431,12 @@ impl CrossSessionPersistence {
         let mut manager = self.session_manager.write().await;
         if let Some(ref mut session) = manager.current_session {
             session.checkpoint_data.push(checkpoint);
-            
+
             // Keep only recent checkpoints
             if session.checkpoint_data.len() > 20 {
-                session.checkpoint_data.drain(0..session.checkpoint_data.len() - 20);
+                session
+                    .checkpoint_data
+                    .drain(0..session.checkpoint_data.len() - 20);
             }
         }
 
@@ -442,10 +446,16 @@ impl CrossSessionPersistence {
     /// Restore from checkpoint
     pub async fn restore_from_checkpoint(&self, checkpoint_id: &str) -> Result<ExecutionContext> {
         let manager = self.session_manager.read().await;
-        
+
         if let Some(session) = &manager.current_session {
-            if let Some(checkpoint) = session.checkpoint_data.iter().find(|c| c.checkpoint_id == checkpoint_id) {
-                return self.deserialize_execution_state(&checkpoint.state_snapshot).await;
+            if let Some(checkpoint) = session
+                .checkpoint_data
+                .iter()
+                .find(|c| c.checkpoint_id == checkpoint_id)
+            {
+                return self
+                    .deserialize_execution_state(&checkpoint.state_snapshot)
+                    .await;
             }
         }
 
@@ -455,7 +465,7 @@ impl CrossSessionPersistence {
     /// End current session and archive
     pub async fn end_session(&self, outcome: SessionOutcome) -> Result<()> {
         let mut manager = self.session_manager.write().await;
-        
+
         if let Some(session) = manager.current_session.take() {
             // Create session record
             let record = SessionRecord {
@@ -468,7 +478,7 @@ impl CrossSessionPersistence {
 
             // Add to history
             manager.session_history.push(record);
-            
+
             // Keep only recent sessions
             if manager.session_history.len() > self.config.max_session_history as usize {
                 let current_len = manager.session_history.len();
@@ -487,14 +497,14 @@ impl CrossSessionPersistence {
     /// Store learned insight for future use
     pub async fn store_learned_insight(&self, insight: SessionInsight) -> Result<()> {
         let mut manager = self.session_manager.write().await;
-        
+
         if let Some(ref mut session) = manager.current_session {
             session.learned_insights.push(insight.clone());
         }
 
         // Also add to learning repository
         let mut learning = self.learning_repository.write().await;
-        
+
         // Convert insight to learned pattern if applicable
         if matches!(insight.insight_type, InsightType::PatternRecognition) {
             let pattern = LearnedPattern {
@@ -514,27 +524,33 @@ impl CrossSessionPersistence {
     }
 
     /// Retrieve learned patterns for current context
-    pub async fn get_relevant_patterns(&self, context: &ExecutionContext) -> Result<Vec<LearnedPattern>> {
+    pub async fn get_relevant_patterns(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<Vec<LearnedPattern>> {
         let learning = self.learning_repository.read().await;
         let context_summary = self.serialize_context(context).await?.context_summary;
-        
+
         let mut relevant_patterns = Vec::new();
-        
+
         for pattern in &learning.learned_patterns {
             // Simple relevance check based on context conditions
             let mut relevance_score = 0.0;
-            
+
             for condition in &pattern.context_conditions {
-                if context_summary.to_lowercase().contains(&condition.to_lowercase()) {
+                if context_summary
+                    .to_lowercase()
+                    .contains(&condition.to_lowercase())
+                {
                     relevance_score += 0.2;
                 }
             }
-            
+
             if relevance_score > 0.4 {
                 relevant_patterns.push(pattern.clone());
             }
         }
-        
+
         // Sort by confidence and success rate
         relevant_patterns.sort_by(|a, b| {
             (b.confidence_level * b.success_rate)
@@ -546,7 +562,7 @@ impl CrossSessionPersistence {
     }
 
     // Helper methods (simplified implementations)
-    
+
     async fn load_persistent_state(&self) -> Result<()> {
         let state_path = self.config.storage_path.join("persistent_state.json");
         if state_path.exists() {
@@ -582,19 +598,22 @@ impl CrossSessionPersistence {
 
     async fn persist_session_to_disk(&self) -> Result<()> {
         let manager = self.session_manager.read().await;
-        
+
         // Save current session
         if let Some(session) = &manager.current_session {
-            let session_path = self.config.storage_path.join(format!("session_{}.json", session.session_id));
+            let session_path = self
+                .config
+                .storage_path
+                .join(format!("session_{}.json", session.session_id));
             let content = serde_json::to_string_pretty(session)?;
             tokio::fs::write(session_path, content).await?;
         }
-        
+
         // Save session history
         let history_path = self.config.storage_path.join("session_history.json");
         let history_content = serde_json::to_string_pretty(&manager.session_history)?;
         tokio::fs::write(history_path, history_content).await?;
-        
+
         Ok(())
     }
 
@@ -603,8 +622,11 @@ impl CrossSessionPersistence {
             context_data: context.context_data.clone(),
             iteration_count: context.iteration_count,
             goal_description: context.current_goal.as_ref().map(|g| g.description.clone()),
-            context_summary: format!("Iteration {}, {} context items", 
-                context.iteration_count, context.context_data.len()),
+            context_summary: format!(
+                "Iteration {}, {} context items",
+                context.iteration_count,
+                context.context_data.len()
+            ),
             key_decisions: Vec::new(), // Would extract from context
             performance_indicators: HashMap::new(), // Would calculate metrics
         })
@@ -617,29 +639,41 @@ impl CrossSessionPersistence {
 
     async fn deserialize_execution_state(&self, data: &[u8]) -> Result<ExecutionContext> {
         let serializable: SerializableContext = serde_json::from_slice(data)?;
-        
+
         let mut context = ExecutionContext::new(crate::goal::Goal::new(
             "Cross session persistence context".to_string(),
-            crate::goal::GoalType::Analysis
+            crate::goal::GoalType::Analysis,
         ));
         context.context_data = serializable.context_data;
         context.iteration_count = serializable.iteration_count;
-        
+
         Ok(context)
     }
 
-    async fn generate_recovery_metadata(&self, context: &ExecutionContext) -> Result<HashMap<String, String>> {
+    async fn generate_recovery_metadata(
+        &self,
+        context: &ExecutionContext,
+    ) -> Result<HashMap<String, String>> {
         let mut metadata = HashMap::new();
         metadata.insert("iteration".to_string(), context.iteration_count.to_string());
-        metadata.insert("context_size".to_string(), context.context_data.len().to_string());
-        metadata.insert("timestamp".to_string(), 
-            SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs().to_string());
+        metadata.insert(
+            "context_size".to_string(),
+            context.context_data.len().to_string(),
+        );
+        metadata.insert(
+            "timestamp".to_string(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs()
+                .to_string(),
+        );
         Ok(metadata)
     }
 
     async fn get_current_session_id(&self) -> Result<String> {
         let manager = self.session_manager.read().await;
-        manager.current_session
+        manager
+            .current_session
             .as_ref()
             .map(|s| s.session_id.clone())
             .ok_or_else(|| anyhow::anyhow!("No active session"))

@@ -3,8 +3,8 @@
 // ⚠️  DEVELOPMENT STATUS: This transport implementation provides basic MCP connectivity
 // but should be thoroughly tested and potentially hardened before production use.
 
-use super::error::McpError;
 use super::config::TransportConfig;
+use super::error::McpError;
 use anyhow::Result;
 
 /// Production transport factory

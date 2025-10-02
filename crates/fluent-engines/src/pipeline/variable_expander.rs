@@ -1,12 +1,12 @@
 //! Variable expansion module
-//! 
+//!
 //! This module handles variable expansion in pipeline steps,
 //! supporting various variable formats and expansion strategies.
 
 use crate::pipeline_executor::PipelineStep;
 use anyhow::Error;
-use std::collections::HashMap;
 use log::debug;
+use std::collections::HashMap;
 
 /// Handles variable expansion in pipeline steps
 pub struct VariableExpander;
@@ -18,7 +18,12 @@ impl VariableExpander {
         state_data: &HashMap<String, String>,
     ) -> Result<PipelineStep, Error> {
         match step {
-            PipelineStep::Command { name, command, save_output, retry } => {
+            PipelineStep::Command {
+                name,
+                command,
+                save_output,
+                retry,
+            } => {
                 let expanded_command = Self::expand_variables(command, state_data).await?;
                 Ok(PipelineStep::Command {
                     name: name.clone(),
@@ -27,7 +32,12 @@ impl VariableExpander {
                     retry: retry.clone(),
                 })
             }
-            PipelineStep::ShellCommand { name, command, save_output, retry } => {
+            PipelineStep::ShellCommand {
+                name,
+                command,
+                save_output,
+                retry,
+            } => {
                 let expanded_command = Self::expand_variables(command, state_data).await?;
                 Ok(PipelineStep::ShellCommand {
                     name: name.clone(),
@@ -36,7 +46,12 @@ impl VariableExpander {
                     retry: retry.clone(),
                 })
             }
-            PipelineStep::Condition { name, condition, if_true, if_false } => {
+            PipelineStep::Condition {
+                name,
+                condition,
+                if_true,
+                if_false,
+            } => {
                 let expanded_condition = Self::expand_variables(condition, state_data).await?;
                 let expanded_if_true = Self::expand_variables(if_true, state_data).await?;
                 let expanded_if_false = Self::expand_variables(if_false, state_data).await?;
@@ -66,12 +81,12 @@ impl VariableExpander {
     ) -> Result<String, Error> {
         debug!("Expanding variables in input: {}", input);
         let mut result = input.to_string();
-        
+
         // Expand ${VAR} format
         for (key, value) in state_data {
             result = result.replace(&format!("${{{}}}", key), value);
         }
-        
+
         Ok(result)
     }
 
@@ -82,16 +97,16 @@ impl VariableExpander {
     ) -> Result<String, Error> {
         debug!("Expanding variables (advanced) in input: {}", input);
         let mut result = input.to_string();
-        
+
         // Expand ${VAR} format
         for (key, value) in state_data {
             result = result.replace(&format!("${{{}}}", key), value);
             result = result.replace(&format!("${}", key), value); // Also support $VAR format
         }
-        
+
         // Handle environment variables
         result = Self::expand_environment_variables(&result)?;
-        
+
         Ok(result)
     }
 
@@ -122,27 +137,27 @@ impl VariableExpander {
         debug!("Expanding variables (nested) in input: {}", input);
         let mut result = input.to_string();
         let mut depth = 0;
-        
+
         while depth < max_depth {
             let previous_result = result.clone();
-            
+
             // Perform one round of expansion
             for (key, value) in state_data {
                 result = result.replace(&format!("${{{}}}", key), value);
             }
-            
+
             // If no changes were made, we're done
             if result == previous_result {
                 break;
             }
-            
+
             depth += 1;
         }
-        
+
         if depth >= max_depth {
             debug!("Variable expansion reached maximum depth: {}", max_depth);
         }
-        
+
         Ok(result)
     }
 

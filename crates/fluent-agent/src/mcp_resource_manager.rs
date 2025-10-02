@@ -60,7 +60,7 @@ impl Default for CachePolicy {
     fn default() -> Self {
         Self {
             cacheable: true,
-            ttl_seconds: Some(3600), // 1 hour
+            ttl_seconds: Some(3600),                // 1 hour
             max_size_bytes: Some(10 * 1024 * 1024), // 10MB
             invalidate_on_change: true,
         }
@@ -114,7 +114,7 @@ impl Default for ResourceManagerConfig {
     fn default() -> Self {
         Self {
             max_cache_size_bytes: 100 * 1024 * 1024, // 100MB
-            default_ttl_seconds: 3600, // 1 hour
+            default_ttl_seconds: 3600,               // 1 hour
             max_cached_resources: 1000,
             enable_compression: true,
             enable_statistics: true,
@@ -129,7 +129,10 @@ impl McpResourceManager {
     }
 
     /// Create a new resource manager with custom configuration
-    pub fn with_config(memory_system: Arc<dyn LongTermMemory>, config: ResourceManagerConfig) -> Self {
+    pub fn with_config(
+        memory_system: Arc<dyn LongTermMemory>,
+        config: ResourceManagerConfig,
+    ) -> Self {
         Self {
             resources: Arc::new(RwLock::new(HashMap::new())),
             cache: Arc::new(RwLock::new(HashMap::new())),
@@ -143,14 +146,17 @@ impl McpResourceManager {
     pub async fn initialize_standard_resources(&self) -> Result<()> {
         // Register memory-based resources
         self.register_memory_resources().await?;
-        
+
         // Register file system resources
         self.register_filesystem_resources().await?;
-        
+
         // Register configuration resources
         self.register_config_resources().await?;
 
-        println!("✅ Initialized {} MCP resources", self.resources.read().await.len());
+        println!(
+            "✅ Initialized {} MCP resources",
+            self.resources.read().await.len()
+        );
         Ok(())
     }
 
@@ -238,7 +244,7 @@ impl McpResourceManager {
             },
             cache_policy: CachePolicy {
                 cacheable: true,
-                ttl_seconds: Some(300), // 5 minutes
+                ttl_seconds: Some(300),            // 5 minutes
                 max_size_bytes: Some(1024 * 1024), // 1MB
                 invalidate_on_change: true,
             },
@@ -252,32 +258,34 @@ impl McpResourceManager {
     pub async fn register_resource(&self, resource: McpResource) -> Result<()> {
         // Validate URI
         self.validate_resource_uri(&resource.uri)?;
-        
+
         let mut resources = self.resources.write().await;
-        
+
         if resources.contains_key(&resource.uri) {
             return Err(anyhow!("Resource '{}' already registered", resource.uri));
         }
-        
+
         resources.insert(resource.uri.clone(), resource.clone());
-        
+
         // Initialize stats
         if self.config.enable_statistics {
             let mut stats = self.stats.write().await;
             stats.insert(resource.uri.clone(), ResourceStats::default());
         }
-        
-        println!("✅ Registered MCP resource: {} ({})", 
-                 resource.uri, 
-                 resource.name.as_deref().unwrap_or("unnamed"));
+
+        println!(
+            "✅ Registered MCP resource: {} ({})",
+            resource.uri,
+            resource.name.as_deref().unwrap_or("unnamed")
+        );
         Ok(())
     }
 
     /// Validate resource URI
     fn validate_resource_uri(&self, uri: &str) -> Result<()> {
-        let parsed_uri = Url::parse(uri)
-            .map_err(|e| anyhow!("Invalid resource URI '{}': {}", uri, e))?;
-        
+        let parsed_uri =
+            Url::parse(uri).map_err(|e| anyhow!("Invalid resource URI '{}': {}", uri, e))?;
+
         // Check supported schemes
         match parsed_uri.scheme() {
             "memory" | "file" | "config" | "http" | "https" => Ok(()),
@@ -298,36 +306,46 @@ impl McpResourceManager {
     /// Read resource content with caching
     pub async fn read_resource(&self, uri: &str) -> Result<Value> {
         let start_time = std::time::Instant::now();
-        
+
         // Get resource definition
-        let resource = self.get_resource(uri).await
+        let resource = self
+            .get_resource(uri)
+            .await
             .ok_or_else(|| anyhow!("Resource '{}' not found", uri))?;
-        
+
         // Check permissions
         if !resource.access_permissions.readable {
             return Err(anyhow!("Resource '{}' is not readable", uri));
         }
-        
+
         // Try cache first
         if resource.cache_policy.cacheable {
             if let Some(cached_content) = self.get_from_cache(uri).await? {
-                self.update_stats(uri, true, start_time.elapsed().as_millis() as u64, 0).await;
+                self.update_stats(uri, true, start_time.elapsed().as_millis() as u64, 0)
+                    .await;
                 return Ok(cached_content);
             }
         }
-        
+
         // Read from source
         let content = self.read_resource_from_source(&resource).await?;
         let content_size = self.estimate_content_size(&content);
-        
+
         // Cache if policy allows
         if resource.cache_policy.cacheable {
-            self.store_in_cache(uri, &content, &resource.cache_policy).await?;
+            self.store_in_cache(uri, &content, &resource.cache_policy)
+                .await?;
         }
-        
+
         // Update stats
-        self.update_stats(uri, false, start_time.elapsed().as_millis() as u64, content_size).await;
-        
+        self.update_stats(
+            uri,
+            false,
+            start_time.elapsed().as_millis() as u64,
+            content_size,
+        )
+        .await;
+
         Ok(content)
     }
 
@@ -419,7 +437,10 @@ impl McpResourceManager {
         let response = client.get(uri.as_str()).send().await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("HTTP request failed with status: {}", response.status()));
+            return Err(anyhow!(
+                "HTTP request failed with status: {}",
+                response.status()
+            ));
         }
 
         let content = response.text().await?;
@@ -434,14 +455,13 @@ impl McpResourceManager {
     /// Check if file path is allowed
     fn is_path_allowed(&self, path: &str) -> bool {
         // Basic security check - prevent path traversal
-        !path.contains("..") && (
-            path.starts_with("./") ||
-            path.starts_with("src/") ||
-            path.starts_with("crates/") ||
-            path.starts_with("examples/") ||
-            path == "README.md" ||
-            path == "Cargo.toml"
-        )
+        !path.contains("..")
+            && (path.starts_with("./")
+                || path.starts_with("src/")
+                || path.starts_with("crates/")
+                || path.starts_with("examples/")
+                || path == "README.md"
+                || path == "Cargo.toml")
     }
 
     /// Get content from cache
@@ -504,7 +524,11 @@ impl McpResourceManager {
     }
 
     /// Evict cache entries to make space
-    async fn evict_cache_entries(&self, cache: &mut HashMap<String, CachedResource>, needed_space: u64) {
+    async fn evict_cache_entries(
+        &self,
+        cache: &mut HashMap<String, CachedResource>,
+        needed_space: u64,
+    ) {
         let mut entries: Vec<_> = cache.iter().collect();
         entries.sort_by_key(|(_, cached)| cached.last_accessed);
 
@@ -542,7 +566,13 @@ impl McpResourceManager {
     }
 
     /// Update resource statistics
-    async fn update_stats(&self, uri: &str, cache_hit: bool, response_time_ms: u64, bytes_served: u64) {
+    async fn update_stats(
+        &self,
+        uri: &str,
+        cache_hit: bool,
+        response_time_ms: u64,
+        bytes_served: u64,
+    ) {
         if !self.config.enable_statistics {
             return;
         }
@@ -560,8 +590,11 @@ impl McpResourceManager {
             }
 
             // Update average response time
-            let total_time = resource_stats.average_response_time_ms * (resource_stats.total_accesses - 1) as f64 + response_time_ms as f64;
-            resource_stats.average_response_time_ms = total_time / resource_stats.total_accesses as f64;
+            let total_time = resource_stats.average_response_time_ms
+                * (resource_stats.total_accesses - 1) as f64
+                + response_time_ms as f64;
+            resource_stats.average_response_time_ms =
+                total_time / resource_stats.total_accesses as f64;
         }
     }
 
@@ -594,9 +627,15 @@ impl McpResourceManager {
         stats.insert("total_entries".to_string(), json!(total_entries));
         stats.insert("total_size_bytes".to_string(), json!(total_size));
         stats.insert("total_accesses".to_string(), json!(total_accesses));
-        stats.insert("max_size_bytes".to_string(), json!(self.config.max_cache_size_bytes));
-        stats.insert("utilization_percent".to_string(),
-                     json!((total_size as f64 / self.config.max_cache_size_bytes as f64) * 100.0));
+        stats.insert(
+            "max_size_bytes".to_string(),
+            json!(self.config.max_cache_size_bytes),
+        );
+        let utilization = if self.config.max_cache_size_bytes == 0 {
+            0.0
+        } else {
+            (total_size as f64 / self.config.max_cache_size_bytes as f64) * 100.0
+        };
 
         stats
     }

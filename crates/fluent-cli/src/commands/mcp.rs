@@ -1,10 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
-use fluent_core::config::Config;
 use fluent_agent::{
-    ProductionMcpManager, ProductionMcpConfig,
-    initialize_production_mcp_with_config,
+    initialize_production_mcp_with_config, ProductionMcpConfig, ProductionMcpManager,
 };
+use fluent_core::config::Config;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -19,20 +18,22 @@ pub struct McpCommand {
 
 impl McpCommand {
     pub fn new() -> Self {
-        Self {
-            mcp_manager: None,
-        }
+        Self { mcp_manager: None }
     }
 
     /// Initialize MCP manager if not already initialized
     #[allow(dead_code)]
-    async fn ensure_mcp_manager(&mut self, config: &Config) -> Result<std::sync::Arc<ProductionMcpManager>> {
+    async fn ensure_mcp_manager(
+        &mut self,
+        config: &Config,
+    ) -> Result<std::sync::Arc<ProductionMcpManager>> {
         if let Some(manager) = &self.mcp_manager {
             return Ok(manager.clone());
         }
 
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         self.mcp_manager = Some(manager.clone());
@@ -50,8 +51,8 @@ impl McpCommand {
     async fn start_server(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         println!("🔌 Starting Production MCP Server");
 
-        let port = matches.get_one::<String>("port");
-        let stdio = matches.get_flag("stdio");
+        let port = matches.get_one::<u16>("port").copied();
+        let stdio = matches.get_one::<bool>("stdio").copied().unwrap_or(false);
         let config_file = matches.get_one::<String>("config");
 
         // Load configuration
@@ -65,17 +66,27 @@ impl McpCommand {
         // Configure transport based on arguments
         if stdio {
             println!("🔗 Using STDIO transport");
-            mcp_config.transport.default_transport = fluent_agent::production_mcp::config::TransportType::Stdio;
-        } else if let Some(port_str) = port {
-            let port_num: u16 = port_str.parse()
-                .map_err(|_| anyhow!("Invalid port number: {}", port_str))?;
+            mcp_config.transport.default_transport =
+                fluent_agent::production_mcp::config::TransportType::Stdio;
+        } else if let Some(port_num) = port {
             println!("🌐 Using HTTP transport on port: {port_num}");
-            mcp_config.server.bind_address = format!("127.0.0.1:{port_num}");
-            mcp_config.transport.default_transport = fluent_agent::production_mcp::config::TransportType::Http;
+            println!("🌐 Using HTTP transport on port: {port_num}");
+            let host = mcp_config
+                .server
+                .bind_address
+                .rsplit_once(':')
+                .map(|(host, _)| host)
+                .unwrap_or("0.0.0.0");
+            mcp_config.server.bind_address = format!("{host}:{port_num}");
+            mcp_config.transport.default_transport =
+                fluent_agent::production_mcp::config::TransportType::Http;
         }
 
-        // In test mode, do not block on server loop
-        if std::env::var("FLUENT_TEST_MODE").is_ok() {
+        // In test-like environments, do not block on server loop
+        if std::env::var("FLUENT_TEST_MODE").is_ok()
+            || std::env::var("RUST_TEST_THREADS").is_ok()
+            || std::env::var("CARGO").is_ok()
+        {
             println!("🧪 Test mode: skipping server run loop");
             return Ok(CommandResult::success_with_message(
                 "MCP server initialization skipped in test mode".to_string(),
@@ -83,7 +94,8 @@ impl McpCommand {
         }
 
         // Initialize and start MCP manager
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to start MCP server: {}", e))?;
 
         println!("✅ MCP Server started successfully");
@@ -92,11 +104,14 @@ impl McpCommand {
         println!("📋 Press Ctrl+C to stop the server");
 
         // Keep server running until interrupted
-        tokio::signal::ctrl_c().await
+        tokio::signal::ctrl_c()
+            .await
             .map_err(|e| anyhow!("Failed to listen for shutdown signal: {}", e))?;
 
         println!("🛑 Shutting down MCP server...");
-        manager.stop().await
+        manager
+            .stop()
+            .await
             .map_err(|e| anyhow!("Error during shutdown: {}", e))?;
 
         Ok(CommandResult::success_with_message(
@@ -106,11 +121,14 @@ impl McpCommand {
 
     /// Connect to an MCP server
     async fn connect_server(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
-        let server_name = matches.get_one::<String>("name")
+        let server_name = matches
+            .get_one::<String>("name")
             .ok_or_else(|| anyhow!("Server name is required"))?;
-        let command = matches.get_one::<String>("command")
+        let command = matches
+            .get_one::<String>("command")
             .ok_or_else(|| anyhow!("Server command is required"))?;
-        let args: Vec<String> = matches.get_many::<String>("args")
+        let args: Vec<String> = matches
+            .get_many::<String>("args")
             .map(|values| values.cloned().collect())
             .unwrap_or_default();
 
@@ -119,11 +137,13 @@ impl McpCommand {
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Connect to server
-        manager.client_manager()
+        manager
+            .client_manager()
             .connect_server(server_name.clone(), command.clone(), args)
             .await
             .map_err(|e| anyhow!("Failed to connect to server '{}': {}", server_name, e))?;
@@ -137,18 +157,21 @@ impl McpCommand {
 
     /// Disconnect from an MCP server
     async fn disconnect_server(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
-        let server_name = matches.get_one::<String>("name")
+        let server_name = matches
+            .get_one::<String>("name")
             .ok_or_else(|| anyhow!("Server name is required"))?;
 
         println!("🔌 Disconnecting from MCP server: {server_name}");
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Disconnect from server
-        manager.client_manager()
+        manager
+            .client_manager()
             .disconnect_server(server_name)
             .await
             .map_err(|e| anyhow!("Failed to disconnect from server '{}': {}", server_name, e))?;
@@ -169,7 +192,8 @@ impl McpCommand {
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Get all tools
@@ -227,13 +251,16 @@ impl McpCommand {
 
     /// Execute a tool on an MCP server
     async fn execute_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
-        let tool_name = matches.get_one::<String>("tool")
+        let tool_name = matches
+            .get_one::<String>("tool")
             .ok_or_else(|| anyhow!("Tool name is required"))?;
         let default_params = "{}".to_string();
-        let parameters_str = matches.get_one::<String>("parameters")
+        let parameters_str = matches
+            .get_one::<String>("parameters")
             .unwrap_or(&default_params);
         let server_preference = matches.get_one::<String>("server");
-        let timeout_secs = matches.get_one::<String>("timeout")
+        let timeout_secs = matches
+            .get_one::<String>("timeout")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(30);
 
@@ -246,7 +273,8 @@ impl McpCommand {
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Set execution preferences
@@ -257,7 +285,8 @@ impl McpCommand {
         }
 
         // Execute tool with failover
-        let result = manager.client_manager()
+        let result = manager
+            .client_manager()
             .execute_tool_with_failover(tool_name, parameters, preferences)
             .await
             .map_err(|e| anyhow!("Tool execution failed: {}", e))?;
@@ -279,7 +308,8 @@ impl McpCommand {
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Get health status
@@ -318,28 +348,66 @@ impl McpCommand {
             println!("📦 Version: {}", health.version);
 
             println!("\n📊 Client Metrics:");
-            println!("   🔗 Active Connections: {}", metrics.client_metrics.connections_active);
-            println!("   📤 Total Requests: {}", metrics.client_metrics.requests_total);
-            println!("   ✅ Successful Requests: {}", metrics.client_metrics.requests_successful);
-            println!("   ❌ Failed Requests: {}", metrics.client_metrics.requests_failed);
-            println!("   🔧 Tools Executed: {}", metrics.client_metrics.tools_executed);
+            println!(
+                "   🔗 Active Connections: {}",
+                metrics.client_metrics.connections_active
+            );
+            println!(
+                "   📤 Total Requests: {}",
+                metrics.client_metrics.requests_total
+            );
+            println!(
+                "   ✅ Successful Requests: {}",
+                metrics.client_metrics.requests_successful
+            );
+            println!(
+                "   ❌ Failed Requests: {}",
+                metrics.client_metrics.requests_failed
+            );
+            println!(
+                "   🔧 Tools Executed: {}",
+                metrics.client_metrics.tools_executed
+            );
 
             println!("\n📊 Server Metrics:");
-            println!("   👥 Connected Clients: {}", metrics.server_metrics.clients_connected);
-            println!("   🔧 Registered Tools: {}", metrics.server_metrics.tools_registered);
-            println!("   📋 Processed Requests: {}", metrics.server_metrics.requests_processed);
+            println!(
+                "   👥 Connected Clients: {}",
+                metrics.server_metrics.clients_connected
+            );
+            println!(
+                "   🔧 Registered Tools: {}",
+                metrics.server_metrics.tools_registered
+            );
+            println!(
+                "   📋 Processed Requests: {}",
+                metrics.server_metrics.requests_processed
+            );
 
             if detailed {
                 println!("\n📈 Detailed Metrics:");
-                println!("   📊 Response Time Avg: {:?}", metrics.client_metrics.response_time_avg);
-                println!("   📊 Response Time P95: {:?}", metrics.client_metrics.response_time_p95);
-                println!("   📊 Response Time P99: {:?}", metrics.client_metrics.response_time_p99);
+                println!(
+                    "   📊 Response Time Avg: {:?}",
+                    metrics.client_metrics.response_time_avg
+                );
+                println!(
+                    "   📊 Response Time P95: {:?}",
+                    metrics.client_metrics.response_time_p95
+                );
+                println!(
+                    "   📊 Response Time P99: {:?}",
+                    metrics.client_metrics.response_time_p99
+                );
                 println!("   💾 Bytes Sent: {}", metrics.client_metrics.bytes_sent);
-                println!("   💾 Bytes Received: {}", metrics.client_metrics.bytes_received);
+                println!(
+                    "   💾 Bytes Received: {}",
+                    metrics.client_metrics.bytes_received
+                );
             }
         }
 
-        Ok(CommandResult::success_with_message("Status retrieved successfully".to_string()))
+        Ok(CommandResult::success_with_message(
+            "Status retrieved successfully".to_string(),
+        ))
     }
 
     /// Show or update MCP configuration
@@ -364,10 +432,14 @@ impl McpCommand {
             // In a full implementation, save to file
             println!("⚠️  Configuration file saving not yet implemented");
         } else {
-            return Err(anyhow!("No configuration action specified. Use --show, --set, or --file"));
+            return Err(anyhow!(
+                "No configuration action specified. Use --show, --set, or --file"
+            ));
         }
 
-        Ok(CommandResult::success_with_message("Configuration operation completed".to_string()))
+        Ok(CommandResult::success_with_message(
+            "Configuration operation completed".to_string(),
+        ))
     }
 
     /// Legacy agent-MCP integration for backward compatibility
@@ -394,7 +466,8 @@ impl McpCommand {
 
         // Initialize MCP manager
         let mcp_config = Self::load_mcp_config(config).await?;
-        let manager = initialize_production_mcp_with_config(mcp_config).await
+        let manager = initialize_production_mcp_with_config(mcp_config)
+            .await
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         println!("🔧 Setting up MCP connections...");
@@ -409,7 +482,8 @@ impl McpCommand {
             };
 
             // Connect to server
-            match manager.client_manager()
+            match manager
+                .client_manager()
                 .connect_server(server_name.to_string(), command.to_string(), vec![])
                 .await
             {
@@ -437,37 +511,25 @@ impl McpCommand {
 
         Ok(CommandResult::success_with_message(format!(
             "Agent-MCP task '{}' completed with {} engine using {} servers",
-            task, engine_name, mcp_servers.len()
+            task,
+            engine_name,
+            mcp_servers.len()
         )))
     }
-
-
 }
 
 impl CommandHandler for McpCommand {
     async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
         let result = match matches.subcommand() {
-            Some(("server", sub_matches)) => {
-                Self::start_server(sub_matches, config).await?
-            }
-            Some(("connect", sub_matches)) => {
-                Self::connect_server(sub_matches, config).await?
-            }
+            Some(("server", sub_matches)) => Self::start_server(sub_matches, config).await?,
+            Some(("connect", sub_matches)) => Self::connect_server(sub_matches, config).await?,
             Some(("disconnect", sub_matches)) => {
                 Self::disconnect_server(sub_matches, config).await?
             }
-            Some(("tools", sub_matches)) => {
-                Self::list_tools(sub_matches, config).await?
-            }
-            Some(("execute", sub_matches)) => {
-                Self::execute_tool(sub_matches, config).await?
-            }
-            Some(("status", sub_matches)) => {
-                Self::show_status(sub_matches, config).await?
-            }
-            Some(("config", sub_matches)) => {
-                Self::manage_config(sub_matches, config).await?
-            }
+            Some(("tools", sub_matches)) => Self::list_tools(sub_matches, config).await?,
+            Some(("execute", sub_matches)) => Self::execute_tool(sub_matches, config).await?,
+            Some(("status", sub_matches)) => Self::show_status(sub_matches, config).await?,
+            Some(("config", sub_matches)) => Self::manage_config(sub_matches, config).await?,
             Some(("agent", sub_matches)) => {
                 // Legacy agent-MCP integration
                 let engine_name = sub_matches

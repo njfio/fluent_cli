@@ -8,8 +8,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::goal::Goal;
 use crate::context::ExecutionContext;
+use crate::goal::Goal;
 use fluent_core::traits::Engine;
 
 /// HTN Planner for sophisticated goal decomposition
@@ -28,7 +28,11 @@ pub struct HTNConfig {
 
 impl Default for HTNConfig {
     fn default() -> Self {
-        Self { max_depth: 6, max_parallel: 8, timeout_secs: 300 }
+        Self {
+            max_depth: 6,
+            max_parallel: 8,
+            timeout_secs: 300,
+        }
     }
 }
 
@@ -51,10 +55,19 @@ pub struct NetworkTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TaskType { Compound, Primitive }
+pub enum TaskType {
+    Compound,
+    Primitive,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TaskStatus { Pending, Ready, InProgress, Complete, Failed }
+pub enum TaskStatus {
+    Pending,
+    Ready,
+    InProgress,
+    Complete,
+    Failed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPlan {
@@ -96,22 +109,26 @@ impl HTNPlanner {
     }
 
     /// Plan goal decomposition using HTN
-    pub async fn plan_decomposition(&self, goal: &Goal, context: &ExecutionContext) -> Result<HTNResult> {
+    pub async fn plan_decomposition(
+        &self,
+        goal: &Goal,
+        context: &ExecutionContext,
+    ) -> Result<HTNResult> {
         let start = SystemTime::now();
-        
+
         // Create root task
         let root = self.create_root_task(goal).await?;
         self.init_network(root).await?;
-        
+
         // Decompose recursively
         self.decompose_tasks(context).await?;
-        
+
         // Generate execution plan
         let plan = self.create_plan().await?;
-        
+
         let network = self.task_network.read().await;
         let tasks: Vec<NetworkTask> = network.tasks.values().cloned().collect();
-        
+
         Ok(HTNResult {
             plan,
             tasks: tasks.clone(),
@@ -147,32 +164,34 @@ impl HTNPlanner {
 
     async fn decompose_tasks(&self, context: &ExecutionContext) -> Result<()> {
         let mut to_process = Vec::new();
-        
+
         if let Some(root_id) = &self.task_network.read().await.root_id {
             to_process.push(root_id.clone());
         }
 
         while let Some(task_id) = to_process.pop() {
             let task = self.task_network.read().await.tasks.get(&task_id).cloned();
-            
+
             if let Some(task) = task {
-                if matches!(task.task_type, TaskType::Compound) && task.depth < self.config.max_depth {
+                if matches!(task.task_type, TaskType::Compound)
+                    && task.depth < self.config.max_depth
+                {
                     let subtasks = self.decompose_task(&task, context).await?;
-                    
+
                     let mut network = self.task_network.write().await;
                     for subtask in subtasks {
                         let subtask_id = subtask.id.clone();
-                        
+
                         // Update parent
                         if let Some(parent) = network.tasks.get_mut(&task_id) {
                             parent.children.push(subtask_id.clone());
                         }
-                        
+
                         // Queue compound tasks for further decomposition
                         if matches!(subtask.task_type, TaskType::Compound) {
                             to_process.push(subtask_id.clone());
                         }
-                        
+
                         network.tasks.insert(subtask_id, subtask);
                     }
                 }
@@ -181,7 +200,11 @@ impl HTNPlanner {
         Ok(())
     }
 
-    async fn decompose_task(&self, task: &NetworkTask, _context: &ExecutionContext) -> Result<Vec<NetworkTask>> {
+    async fn decompose_task(
+        &self,
+        task: &NetworkTask,
+        _context: &ExecutionContext,
+    ) -> Result<Vec<NetworkTask>> {
         let prompt = format!(
             "Break down this task into 3-5 concrete subtasks:\n\nTask: {}\nDepth: {}\n\nFormat each as:\nSUBTASK: [description]\nTYPE: [primitive/compound]",
             task.description, task.depth
@@ -199,15 +222,15 @@ impl HTNPlanner {
     fn parse_subtasks(&self, response: &str, parent: &NetworkTask) -> Result<Vec<NetworkTask>> {
         let mut subtasks = Vec::new();
         let mut current: Option<NetworkTask> = None;
-        
+
         for line in response.lines() {
             let line = line.trim();
-            
+
             if line.starts_with("SUBTASK:") {
                 if let Some(task) = current.take() {
                     subtasks.push(task);
                 }
-                
+
                 if let Some(desc) = line.strip_prefix("SUBTASK:") {
                     current = Some(NetworkTask {
                         id: Uuid::new_v4().to_string(),
@@ -226,19 +249,21 @@ impl HTNPlanner {
                 }
             }
         }
-        
+
         if let Some(task) = current {
             subtasks.push(task);
         }
-        
+
         Ok(subtasks)
     }
 
     async fn create_plan(&self) -> Result<ExecutionPlan> {
         let network = self.task_network.read().await;
-        
+
         // Find primitive (executable) tasks
-        let primitives: Vec<_> = network.tasks.values()
+        let primitives: Vec<_> = network
+            .tasks
+            .values()
             .filter(|t| matches!(t.task_type, TaskType::Primitive) && t.children.is_empty())
             .cloned()
             .collect();
@@ -254,7 +279,8 @@ impl HTNPlanner {
         }
 
         // Identify parallel opportunities (independent tasks)
-        let independent: Vec<String> = primitives.iter()
+        let independent: Vec<String> = primitives
+            .iter()
             .filter(|t| t.parent_id != network.root_id) // Not direct children of root
             .map(|t| t.id.clone())
             .collect();

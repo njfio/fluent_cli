@@ -159,9 +159,12 @@ impl OpenAIStreaming {
 
     /// Calculate cost for OpenAI usage using the instance cost calculator
     pub fn calculate_cost(&self, usage: &Usage, model: &str) -> Cost {
-        let mut calculator = self.cost_calculator.lock()
+        let mut calculator = self
+            .cost_calculator
+            .lock()
             .expect("Failed to acquire cost calculator lock");
-        calculator.calculate_cost("openai", model, usage)
+        calculator
+            .calculate_cost("openai", model, usage)
             .unwrap_or_else(|_| Cost {
                 prompt_cost: 0.0,
                 completion_cost: 0.0,
@@ -489,7 +492,8 @@ impl StreamingUtils {
     /// Calculate cost for OpenAI usage using a default cost calculator
     pub fn calculate_openai_cost(usage: &Usage, model: &str) -> Cost {
         let mut calculator = CostCalculator::new();
-        calculator.calculate_cost("openai", model, usage)
+        calculator
+            .calculate_cost("openai", model, usage)
             .unwrap_or_else(|_| Cost {
                 prompt_cost: 0.0,
                 completion_cost: 0.0,
@@ -549,8 +553,6 @@ impl StreamingUtils {
             cost,
         })
     }
-
-
 
     /// Create a progress callback for streaming
     pub fn create_progress_callback<F>(mut callback: F) -> impl FnMut(StreamChunk) -> Result<()>

@@ -140,7 +140,8 @@ impl WorkflowEngine {
             // Execute steps one by one for now (simplified implementation)
             if let Some(node_index) = ready_queue.pop_front() {
                 let step_id = &graph[node_index];
-                let step = step_map.get(step_id)
+                let step = step_map
+                    .get(step_id)
                     .ok_or_else(|| anyhow::anyhow!("Step not found in step map: {}", step_id))?;
 
                 // Execute single step
@@ -376,7 +377,7 @@ impl WorkflowEngine {
 
         // Handle variable references like ${variable_name}
         if condition.starts_with("${") && condition.ends_with("}") {
-            let var_name = &condition[2..condition.len()-1];
+            let var_name = &condition[2..condition.len() - 1];
             if let Some(value) = context.variables.get(var_name) {
                 return match value {
                     serde_json::Value::Bool(b) => Ok(*b),
@@ -419,14 +420,21 @@ impl WorkflowEngine {
 
         // Handle variable references
         if value.starts_with("${") && value.ends_with("}") {
-            let var_name = &value[2..value.len()-1];
-            return Ok(context.variables.get(var_name).cloned().unwrap_or(serde_json::Value::Null));
+            let var_name = &value[2..value.len() - 1];
+            return Ok(context
+                .variables
+                .get(var_name)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null));
         }
 
         // Handle string literals
-        if (value.starts_with('"') && value.ends_with('"')) ||
-           (value.starts_with('\'') && value.ends_with('\'')) {
-            return Ok(serde_json::Value::String(value[1..value.len()-1].to_string()));
+        if (value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\''))
+        {
+            return Ok(serde_json::Value::String(
+                value[1..value.len() - 1].to_string(),
+            ));
         }
 
         // Handle number literals
@@ -489,7 +497,10 @@ impl WorkflowEngine {
     }
 
     /// Extract value using dot notation
-    fn extract_by_dot_notation(mut current: &serde_json::Value, path: &str) -> Result<serde_json::Value> {
+    fn extract_by_dot_notation(
+        mut current: &serde_json::Value,
+        path: &str,
+    ) -> Result<serde_json::Value> {
         if path.is_empty() {
             return Ok(current.clone());
         }
@@ -503,10 +514,11 @@ impl WorkflowEngine {
 
             // Handle array access in part like "field[0]"
             if part.contains('[') && part.ends_with(']') {
-                let bracket_pos = part.find('[')
+                let bracket_pos = part
+                    .find('[')
                     .ok_or_else(|| anyhow::anyhow!("Invalid array access syntax: {}", part))?;
                 let field_name = &part[..bracket_pos];
-                let index_str = &part[bracket_pos+1..part.len()-1];
+                let index_str = &part[bracket_pos + 1..part.len() - 1];
 
                 // First access the field
                 if !field_name.is_empty() {
@@ -553,11 +565,14 @@ impl WorkflowEngine {
     }
 
     /// Extract value with array access
-    fn extract_with_array_access(output: &serde_json::Value, path: &str) -> Result<serde_json::Value> {
+    fn extract_with_array_access(
+        output: &serde_json::Value,
+        path: &str,
+    ) -> Result<serde_json::Value> {
         // Simple implementation for paths like [0] or field[0]
         if path.starts_with('[') && path.ends_with(']') {
             // Direct array access like [0]
-            let index_str = &path[1..path.len()-1];
+            let index_str = &path[1..path.len() - 1];
             if let Ok(index) = index_str.parse::<usize>() {
                 if let serde_json::Value::Array(arr) = output {
                     if index < arr.len() {
@@ -569,7 +584,8 @@ impl WorkflowEngine {
         }
 
         // Field with array access like field[0]
-        let bracket_pos = path.find('[')
+        let bracket_pos = path
+            .find('[')
             .ok_or_else(|| anyhow::anyhow!("Invalid array access syntax in path: {}", path))?;
         let field_name = &path[..bracket_pos];
         let index_part = &path[bracket_pos..];
@@ -642,7 +658,11 @@ impl WorkflowEngine {
                     .get(step_id)
                     .cloned()
                     .unwrap_or_default(),
-                start_time: context.step_start_times.get(step_id).copied().unwrap_or(context.start_time),
+                start_time: context
+                    .step_start_times
+                    .get(step_id)
+                    .copied()
+                    .unwrap_or(context.start_time),
                 end_time: context.step_end_times.get(step_id).copied(),
                 duration: context.get_step_duration(step_id),
                 error: match status {

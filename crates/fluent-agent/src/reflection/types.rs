@@ -1,5 +1,5 @@
 //! Type definitions for the reflection system
-//! 
+//!
 //! This module contains all the data structures and enums used throughout
 //! the reflection system for analysis, strategy adjustments, and learning.
 
@@ -8,14 +8,12 @@ use std::time::Duration;
 
 // Re-export types from the main reflection engine module
 pub use crate::reflection_engine::{
-    ReflectionConfig, ReflectionResult, ReflectionType, ReflectionTrigger,
-    ReflectionAnalysis, ProgressAssessment, StrategyEffectiveness,
-    LearningOpportunity, Bottleneck, SuccessPattern, FailurePattern,
-    ResourceUtilization, VelocityTrend, MilestoneAchievement, QualityMetrics,
-    StrategyAdjustment, AdjustmentType, LearningInsight, InsightType,
-    Applicability, Recommendation, RecommendationType, Priority, Urgency,
-    ImpactLevel, DifficultyLevel, LearningType, LearningExperience,
-    StrategyPattern, PerformanceMetrics,
+    AdjustmentType, Applicability, Bottleneck, DifficultyLevel, FailurePattern, ImpactLevel,
+    InsightType, LearningExperience, LearningInsight, LearningOpportunity, LearningType,
+    MilestoneAchievement, PerformanceMetrics, Priority, ProgressAssessment, QualityMetrics,
+    Recommendation, RecommendationType, ReflectionAnalysis, ReflectionConfig, ReflectionResult,
+    ReflectionTrigger, ReflectionType, ResourceUtilization, StrategyAdjustment,
+    StrategyEffectiveness, StrategyPattern, SuccessPattern, Urgency, VelocityTrend,
 };
 
 /// Optimization plan for strategy improvements
@@ -249,8 +247,6 @@ pub struct ReflectionSessionSummary {
     pub confidence_change: f64,
     pub performance_change: f64,
 }
-
-
 
 impl Default for ContextConstraints {
     fn default() -> Self {

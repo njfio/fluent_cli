@@ -94,11 +94,11 @@ pub enum ErrorType {
 /// Severity levels for errors
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ErrorSeverity {
-    Critical,   // System cannot continue
-    High,       // Major functionality affected
-    Medium,     // Some features impacted
-    Low,        // Minor issues
-    Warning,    // Potential problems
+    Critical, // System cannot continue
+    High,     // Major functionality affected
+    Medium,   // Some features impacted
+    Low,      // Minor issues
+    Warning,  // Potential problems
 }
 
 /// Pattern of recurring errors
@@ -403,51 +403,57 @@ impl ErrorRecoverySystem {
     /// Initialize with default recovery strategies
     pub async fn initialize_strategies(&self) -> Result<()> {
         let mut manager = self.recovery_strategies.write().await;
-        
-        // Add default strategies
-        manager.strategies.insert("restart".to_string(), RecoveryStrategy {
-            strategy_id: "restart".to_string(),
-            strategy_name: "System Restart".to_string(),
-            applicable_errors: vec![ErrorType::SystemFailure, ErrorType::UnexpectedState],
-            recovery_actions: vec![RecoveryAction {
-                action_id: Uuid::new_v4().to_string(),
-                action_type: ActionType::Restart,
-                description: "Restart failed component".to_string(),
-                parameters: HashMap::new(),
-                timeout: Duration::from_secs(60),
-                retry_policy: RetryPolicy {
-                    max_retries: 2,
-                    retry_delay: Duration::from_secs(10),
-                    backoff_multiplier: 2.0,
-                },
-            }],
-            success_criteria: vec!["Component responds normally".to_string()],
-            rollback_actions: Vec::new(),
-            estimated_time: Duration::from_secs(120),
-            confidence_score: 0.8,
-        });
 
-        manager.strategies.insert("rollback".to_string(), RecoveryStrategy {
-            strategy_id: "rollback".to_string(),
-            strategy_name: "State Rollback".to_string(),
-            applicable_errors: vec![ErrorType::ValidationError, ErrorType::LogicalError],
-            recovery_actions: vec![RecoveryAction {
-                action_id: Uuid::new_v4().to_string(),
-                action_type: ActionType::Rollback,
-                description: "Rollback to previous stable state".to_string(),
-                parameters: HashMap::new(),
-                timeout: Duration::from_secs(30),
-                retry_policy: RetryPolicy {
-                    max_retries: 1,
-                    retry_delay: Duration::from_secs(5),
-                    backoff_multiplier: 1.0,
-                },
-            }],
-            success_criteria: vec!["System in stable state".to_string()],
-            rollback_actions: Vec::new(),
-            estimated_time: Duration::from_secs(60),
-            confidence_score: 0.9,
-        });
+        // Add default strategies
+        manager.strategies.insert(
+            "restart".to_string(),
+            RecoveryStrategy {
+                strategy_id: "restart".to_string(),
+                strategy_name: "System Restart".to_string(),
+                applicable_errors: vec![ErrorType::SystemFailure, ErrorType::UnexpectedState],
+                recovery_actions: vec![RecoveryAction {
+                    action_id: Uuid::new_v4().to_string(),
+                    action_type: ActionType::Restart,
+                    description: "Restart failed component".to_string(),
+                    parameters: HashMap::new(),
+                    timeout: Duration::from_secs(60),
+                    retry_policy: RetryPolicy {
+                        max_retries: 2,
+                        retry_delay: Duration::from_secs(10),
+                        backoff_multiplier: 2.0,
+                    },
+                }],
+                success_criteria: vec!["Component responds normally".to_string()],
+                rollback_actions: Vec::new(),
+                estimated_time: Duration::from_secs(120),
+                confidence_score: 0.8,
+            },
+        );
+
+        manager.strategies.insert(
+            "rollback".to_string(),
+            RecoveryStrategy {
+                strategy_id: "rollback".to_string(),
+                strategy_name: "State Rollback".to_string(),
+                applicable_errors: vec![ErrorType::ValidationError, ErrorType::LogicalError],
+                recovery_actions: vec![RecoveryAction {
+                    action_id: Uuid::new_v4().to_string(),
+                    action_type: ActionType::Rollback,
+                    description: "Rollback to previous stable state".to_string(),
+                    parameters: HashMap::new(),
+                    timeout: Duration::from_secs(30),
+                    retry_policy: RetryPolicy {
+                        max_retries: 1,
+                        retry_delay: Duration::from_secs(5),
+                        backoff_multiplier: 1.0,
+                    },
+                }],
+                success_criteria: vec!["System in stable state".to_string()],
+                rollback_actions: Vec::new(),
+                estimated_time: Duration::from_secs(60),
+                confidence_score: 0.9,
+            },
+        );
 
         Ok(())
     }
@@ -459,48 +465,55 @@ impl ErrorRecoverySystem {
         context: &ExecutionContext,
     ) -> Result<RecoveryResult> {
         let recovery_id = Uuid::new_v4().to_string();
-        
+
         // Analyze the error
         self.analyze_error(&error).await?;
-        
+
         // Select recovery strategy
         let strategy = self.select_recovery_strategy(&error).await?;
-        
+
         // Execute recovery
-        let result = self.execute_recovery(&recovery_id, &error, &strategy, context).await?;
-        
+        let result = self
+            .execute_recovery(&recovery_id, &error, &strategy, context)
+            .await?;
+
         // Record the incident
         self.record_incident(&error, &result).await?;
-        
+
         // Update resilience metrics
         self.update_resilience_metrics(&result).await?;
-        
+
         Ok(result)
     }
 
     /// Analyze an error to understand its nature and impact
     async fn analyze_error(&self, error: &ErrorInstance) -> Result<()> {
         let mut analyzer = self.error_analyzer.write().await;
-        
+
         // Store the error instance
         analyzer.detected_errors.push(error.clone());
-        
+
         // Look for patterns
         let pattern_key = format!("{:?}", error.error_type);
-        analyzer.error_patterns.entry(pattern_key.clone())
+        analyzer
+            .error_patterns
+            .entry(pattern_key.clone())
             .and_modify(|pattern| pattern.frequency += 1)
             .or_insert(ErrorPattern {
                 pattern_id: Uuid::new_v4().to_string(),
                 pattern_type: error.error_type.clone(),
                 frequency: 1,
                 typical_context: error.context.clone(),
-                common_causes: vec![error.root_cause.clone().unwrap_or_else(|| "Unknown".to_string())],
+                common_causes: vec![error
+                    .root_cause
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string())],
                 effective_recoveries: Vec::new(),
                 prevention_strategies: Vec::new(),
             });
 
         let patterns_count = analyzer.error_patterns.len();
-        
+
         // Record analysis
         analyzer.analysis_history.push_back(AnalysisResult {
             analysis_id: Uuid::new_v4().to_string(),
@@ -522,9 +535,11 @@ impl ErrorRecoverySystem {
     /// Select the best recovery strategy for an error
     async fn select_recovery_strategy(&self, error: &ErrorInstance) -> Result<RecoveryStrategy> {
         let manager = self.recovery_strategies.read().await;
-        
+
         // Find applicable strategies
-        let mut candidates: Vec<&RecoveryStrategy> = manager.strategies.values()
+        let mut candidates: Vec<&RecoveryStrategy> = manager
+            .strategies
+            .values()
             .filter(|s| s.applicable_errors.contains(&error.error_type))
             .collect();
 
@@ -534,12 +549,20 @@ impl ErrorRecoverySystem {
 
         // Sort by confidence score and effectiveness
         candidates.sort_by(|a, b| {
-            let eff_a = manager.strategy_effectiveness.get(&a.strategy_id)
-                .map(|e| e.success_rate).unwrap_or(0.5);
-            let eff_b = manager.strategy_effectiveness.get(&b.strategy_id)
-                .map(|e| e.success_rate).unwrap_or(0.5);
-            
-            (b.confidence_score * eff_b).partial_cmp(&(a.confidence_score * eff_a)).unwrap()
+            let eff_a = manager
+                .strategy_effectiveness
+                .get(&a.strategy_id)
+                .map(|e| e.success_rate)
+                .unwrap_or(0.5);
+            let eff_b = manager
+                .strategy_effectiveness
+                .get(&b.strategy_id)
+                .map(|e| e.success_rate)
+                .unwrap_or(0.5);
+
+            (b.confidence_score * eff_b)
+                .partial_cmp(&(a.confidence_score * eff_a))
+                .unwrap()
         });
 
         Ok(candidates[0].clone())
@@ -595,7 +618,9 @@ impl ErrorRecoverySystem {
             }
         }
 
-        let recovery_time = SystemTime::now().duration_since(start_time).unwrap_or_default();
+        let recovery_time = SystemTime::now()
+            .duration_since(start_time)
+            .unwrap_or_default();
 
         Ok(RecoveryResult {
             recovery_id: recovery_id.to_string(),
@@ -622,9 +647,7 @@ impl ErrorRecoverySystem {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok("State rolled back successfully".to_string())
             }
-            ActionType::GracefulDegradation => {
-                Ok("Graceful degradation applied".to_string())
-            }
+            ActionType::GracefulDegradation => Ok("Graceful degradation applied".to_string()),
             _ => Ok(format!("Executed {:?} action", action.action_type)),
         }
     }
@@ -675,16 +698,16 @@ impl ErrorRecoverySystem {
 
         // Update recovery time metrics
         let current_mttr = monitor.resilience_metrics.mean_time_to_recovery;
-        monitor.resilience_metrics.mean_time_to_recovery = 
-            if current_mttr == Duration::from_secs(0) {
-                result.recovery_time
-            } else {
-                Duration::from_secs((current_mttr.as_secs() + result.recovery_time.as_secs()) / 2)
-            };
+        monitor.resilience_metrics.mean_time_to_recovery = if current_mttr == Duration::from_secs(0)
+        {
+            result.recovery_time
+        } else {
+            Duration::from_secs((current_mttr.as_secs() + result.recovery_time.as_secs()) / 2)
+        };
 
         // Update availability if recovery was successful
         if result.success {
-            monitor.resilience_metrics.availability_percentage = 
+            monitor.resilience_metrics.availability_percentage =
                 (monitor.resilience_metrics.availability_percentage + 0.99) / 2.0;
         }
 

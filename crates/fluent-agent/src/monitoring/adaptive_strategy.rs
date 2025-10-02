@@ -239,16 +239,17 @@ impl AdaptiveStrategySystem {
             adaptation_engine: Arc::new(RwLock::new(AdaptationEngine::default())),
             learning_system: Arc::new(RwLock::new(LearningSystem::default())),
         };
-        
+
         // Initialize with default strategies asynchronously
         let manager_clone = Arc::clone(&system.strategy_manager);
         tokio::spawn(async move {
             let mut manager = manager_clone.write().await;
-            if let Err(e) = AdaptiveStrategySystem::populate_default_strategies(&mut *manager).await {
+            if let Err(e) = AdaptiveStrategySystem::populate_default_strategies(&mut *manager).await
+            {
                 eprintln!("Error initializing strategies: {}", e);
             }
         });
-        
+
         system
     }
 
@@ -264,46 +265,47 @@ impl AdaptiveStrategySystem {
 
         // Check if adaptation is needed
         let adaptation_needed = self.should_adapt(performance).await?;
-        
+
         if !adaptation_needed {
             return Ok(None);
         }
 
         // Determine best adaptation strategy
         let adaptation = self.plan_adaptation(performance, context).await?;
-        
+
         // Execute adaptation
         self.execute_adaptation(&adaptation).await?;
-        
+
         Ok(Some(adaptation))
     }
 
     /// Check if strategy adaptation is needed
     async fn should_adapt(&self, performance: &PerformanceMetrics) -> Result<bool> {
         let engine = self.adaptation_engine.read().await;
-        
+
         // Check trigger conditions
         for condition in &engine.trigger_conditions {
             let metric_value = self.get_metric_value(performance, &condition.metric_name);
-            
+
             let triggered = match condition.comparison {
                 ComparisonType::LessThan => metric_value < condition.threshold,
                 ComparisonType::GreaterThan => metric_value > condition.threshold,
                 ComparisonType::Equals => (metric_value - condition.threshold).abs() < 0.01,
                 ComparisonType::Trend => false, // Would implement trend analysis
             };
-            
+
             if triggered {
                 return Ok(true);
             }
         }
-        
+
         // Check performance degradation
-        if performance.execution_metrics.success_rate < 0.7 || 
-           performance.efficiency_metrics.overall_efficiency < 0.6 {
+        if performance.execution_metrics.success_rate < 0.7
+            || performance.efficiency_metrics.overall_efficiency < 0.6
+        {
             return Ok(true);
         }
-        
+
         Ok(false)
     }
 
@@ -314,18 +316,22 @@ impl AdaptiveStrategySystem {
         _context: &ExecutionContext,
     ) -> Result<StrategyAdaptation> {
         let manager = self.strategy_manager.read().await;
-        
+
         // Select best alternative strategy
-        let current_strategy_id = manager.current_strategy
+        let current_strategy_id = manager
+            .current_strategy
             .as_ref()
             .map(|s| s.strategy_id.clone())
             .unwrap_or_else(|| "default".to_string());
-        
+
         // Find strategy with best expected performance
-        let best_strategy = manager.available_strategies.iter()
+        let best_strategy = manager
+            .available_strategies
+            .iter()
             .filter(|s| s.strategy_id != current_strategy_id)
             .max_by(|a, b| {
-                a.expected_performance.success_rate
+                a.expected_performance
+                    .success_rate
                     .partial_cmp(&b.expected_performance.success_rate)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
@@ -333,14 +339,16 @@ impl AdaptiveStrategySystem {
         let new_strategy_id = best_strategy
             .map(|s| s.strategy_id.clone())
             .unwrap_or_else(|| "balanced".to_string());
-        
+
         Ok(StrategyAdaptation {
             adaptation_id: Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
             from_strategy: current_strategy_id,
             to_strategy: new_strategy_id,
-            trigger_reason: format!("Performance below threshold: {:.2}", 
-                performance.execution_metrics.success_rate),
+            trigger_reason: format!(
+                "Performance below threshold: {:.2}",
+                performance.execution_metrics.success_rate
+            ),
             performance_before: performance.execution_metrics.success_rate,
             performance_after: None,
             adaptation_success: None,
@@ -350,21 +358,25 @@ impl AdaptiveStrategySystem {
     /// Execute the planned adaptation
     async fn execute_adaptation(&self, adaptation: &StrategyAdaptation) -> Result<()> {
         let mut manager = self.strategy_manager.write().await;
-        
+
         // Find and switch to new strategy
-        if let Some(new_strategy) = manager.available_strategies.iter()
-            .find(|s| s.strategy_id == adaptation.to_strategy).cloned() {
+        if let Some(new_strategy) = manager
+            .available_strategies
+            .iter()
+            .find(|s| s.strategy_id == adaptation.to_strategy)
+            .cloned()
+        {
             manager.current_strategy = Some(new_strategy);
         }
-        
+
         // Record adaptation
         manager.adaptation_history.push(adaptation.clone());
-        
+
         // Limit history size
         if manager.adaptation_history.len() > 100 {
             manager.adaptation_history.drain(0..50);
         }
-        
+
         Ok(())
     }
 
@@ -383,8 +395,9 @@ impl AdaptiveStrategySystem {
         quality: f64,
     ) -> Result<()> {
         let mut manager = self.strategy_manager.write().await;
-        
-        let performance = manager.strategy_performance
+
+        let performance = manager
+            .strategy_performance
             .entry(strategy_id.to_string())
             .or_insert_with(|| StrategyPerformance {
                 strategy_id: strategy_id.to_string(),
@@ -395,24 +408,23 @@ impl AdaptiveStrategySystem {
                 adaptation_frequency: 0,
                 last_used: SystemTime::now(),
             });
-        
+
         // Update metrics using exponential moving average
         performance.usage_count += 1;
         let alpha = 0.1; // Smoothing factor
-        
-        performance.success_rate = performance.success_rate * (1.0 - alpha) + 
-            (if success { 1.0 } else { 0.0 }) * alpha;
-        performance.average_efficiency = performance.average_efficiency * (1.0 - alpha) + 
-            efficiency * alpha;
-        performance.quality_average = performance.quality_average * (1.0 - alpha) + 
-            quality * alpha;
+
+        performance.success_rate =
+            performance.success_rate * (1.0 - alpha) + (if success { 1.0 } else { 0.0 }) * alpha;
+        performance.average_efficiency =
+            performance.average_efficiency * (1.0 - alpha) + efficiency * alpha;
+        performance.quality_average = performance.quality_average * (1.0 - alpha) + quality * alpha;
         performance.last_used = SystemTime::now();
-        
+
         Ok(())
     }
 
     // Helper methods
-    
+
     async fn populate_default_strategies(manager: &mut StrategyManager) -> Result<()> {
         // Conservative strategy
         manager.available_strategies.push(ExecutionStrategy {
@@ -493,19 +505,23 @@ impl AdaptiveStrategySystem {
         });
 
         // Set balanced as default
-        if let Some(balanced_strategy) = manager.available_strategies.iter()
-            .find(|s| s.strategy_id == "balanced").cloned() {
+        if let Some(balanced_strategy) = manager
+            .available_strategies
+            .iter()
+            .find(|s| s.strategy_id == "balanced")
+            .cloned()
+        {
             manager.current_strategy = Some(balanced_strategy);
         }
-        
+
         Ok(())
     }
-    
+
     async fn initialize_default_strategies(&self) -> Result<()> {
         let mut manager = self.strategy_manager.write().await;
         Self::populate_default_strategies(&mut *manager).await
     }
-    
+
     fn get_metric_value(&self, performance: &PerformanceMetrics, metric_name: &str) -> f64 {
         match metric_name {
             "success_rate" => performance.execution_metrics.success_rate,

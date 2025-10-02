@@ -1,14 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use fluent_agent::{
-    ExecutionContext, ReflectionEngine, ReflectionConfig,
-    Goal, GoalType, GoalPriority, Task, TaskType, TaskPriority,
-    ReasoningEngine,
+    ExecutionContext, Goal, GoalPriority, GoalType, ReasoningEngine, ReflectionConfig,
+    ReflectionEngine, Task, TaskPriority, TaskType,
 };
 
 use fluent_agent::profiling::ReflectionMemoryProfiler;
 use std::collections::HashMap;
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 use tokio;
 
 /// Enhanced reasoning engine with memory profiling
@@ -32,18 +31,27 @@ impl ProfiledReasoningEngine {
 impl ReasoningEngine for ProfiledReasoningEngine {
     async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
         // Profile the reasoning operation
-        let (result, profile) = self.profiler.profile_async_operation("reasoning_operation", || async {
-            // Simulate complex reasoning with memory allocation
-            let analysis_data = vec![0u8; 1024 * 100]; // 100KB of analysis data
-            
-            // Simulate processing time
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            
-            format!("Enhanced reasoning analysis with {} bytes of data for prompt: {}", analysis_data.len(), prompt)
-        }).await?;
+        let (result, profile) = self
+            .profiler
+            .profile_async_operation("reasoning_operation", || async {
+                // Simulate complex reasoning with memory allocation
+                let analysis_data = vec![0u8; 1024 * 100]; // 100KB of analysis data
 
-        println!("   🔍 Reasoning Memory Profile: {} bytes, {:?}", 
-                 profile.peak_bytes, profile.duration);
+                // Simulate processing time
+                tokio::time::sleep(Duration::from_millis(50)).await;
+
+                format!(
+                    "Enhanced reasoning analysis with {} bytes of data for prompt: {}",
+                    analysis_data.len(),
+                    prompt
+                )
+            })
+            .await?;
+
+        println!(
+            "   🔍 Reasoning Memory Profile: {} bytes, {:?}",
+            profile.peak_bytes, profile.duration
+        );
 
         Ok(result)
     }
@@ -112,23 +120,25 @@ async fn main() -> Result<()> {
 
     // Simulate enhanced agent execution with memory profiling
     println!("\n🔄 Enhanced Agent Execution with Memory Profiling:");
-    
+
     for iteration in 1..=10 {
         println!("\n--- Iteration {} ---", iteration);
-        
+
         // Profile the entire iteration
-        let (_, iteration_profile) = demo_profiler.profile_operation(
-            &format!("iteration_{}", iteration),
-            || {
+        let (_, iteration_profile) =
+            demo_profiler.profile_operation(&format!("iteration_{}", iteration), || {
                 // Simulate iteration work
                 context.increment_iteration();
                 context.set_variable("current_iteration".to_string(), iteration.to_string());
-                
+
                 // Create and execute tasks with varying complexity
                 let task_complexity = if iteration % 3 == 0 { "high" } else { "medium" };
                 let task = Task {
                     task_id: format!("enhanced-task-{}", iteration),
-                    description: format!("Enhanced task for iteration {} (complexity: {})", iteration, task_complexity),
+                    description: format!(
+                        "Enhanced task for iteration {} (complexity: {})",
+                        iteration, task_complexity
+                    ),
                     task_type: TaskType::CodeAnalysis,
                     priority: TaskPriority::Medium,
                     dependencies: Vec::new(),
@@ -145,56 +155,73 @@ async fn main() -> Result<()> {
                     error_message: None,
                     metadata: HashMap::new(),
                 };
-                
+
                 context.start_task(task.clone());
-                
+
                 // Simulate task execution with memory allocation
                 let _work_data = vec![0u8; 1024 * iteration]; // Increasing memory usage
-                
+
                 // Task success rate improves over time (learning effect)
                 let success = iteration <= 2 || iteration % 4 != 0 || iteration > 7;
                 context.complete_task(&task.task_id, success);
-                
+
                 if success {
                     println!("   ✅ Enhanced task completed successfully");
                 } else {
                     println!("   ❌ Enhanced task failed");
                 }
-            }
-        )?;
+            })?;
 
-        println!("   📊 Iteration Memory: {} bytes, Duration: {:?}", 
-                 iteration_profile.peak_bytes, iteration_profile.duration);
+        println!(
+            "   📊 Iteration Memory: {} bytes, Duration: {:?}",
+            iteration_profile.peak_bytes, iteration_profile.duration
+        );
 
         // Check for reflection triggers
         if let Some(trigger) = reflection_engine.should_reflect(&context) {
             println!("   🧠 Enhanced reflection triggered: {:?}", trigger);
-            
+
             // Profile the reflection operation
-            let (reflection_result, reflection_profile) = demo_profiler.profile_async_operation(
-                "reflection_operation",
-                || reflection_engine.reflect(&context, &reasoning_engine, trigger)
-            ).await?;
+            let (reflection_result, reflection_profile) = demo_profiler
+                .profile_async_operation("reflection_operation", || {
+                    reflection_engine.reflect(&context, &reasoning_engine, trigger)
+                })
+                .await?;
 
             let reflection_result = reflection_result?;
 
-            println!("   🔍 Reflection Memory: {} bytes, Duration: {:?}", 
-                     reflection_profile.peak_bytes, reflection_profile.duration);
-            
+            println!(
+                "   🔍 Reflection Memory: {} bytes, Duration: {:?}",
+                reflection_profile.peak_bytes, reflection_profile.duration
+            );
+
             println!("   📊 Enhanced Reflection Results:");
             println!("      Type: {:?}", reflection_result.reflection_type);
-            println!("      Confidence: {:.2}", reflection_result.confidence_assessment);
-            println!("      Performance: {:.2}", reflection_result.performance_assessment);
-            println!("      Learning Insights: {}", reflection_result.learning_insights.len());
-            println!("      Strategy Adjustments: {}", reflection_result.strategy_adjustments.len());
-            
+            println!(
+                "      Confidence: {:.2}",
+                reflection_result.confidence_assessment
+            );
+            println!(
+                "      Performance: {:.2}",
+                reflection_result.performance_assessment
+            );
+            println!(
+                "      Learning Insights: {}",
+                reflection_result.learning_insights.len()
+            );
+            println!(
+                "      Strategy Adjustments: {}",
+                reflection_result.strategy_adjustments.len()
+            );
+
             // Display strategy adjustments
             if !reflection_result.strategy_adjustments.is_empty() {
                 println!("   🔧 Strategy Adjustments:");
                 for adjustment in &reflection_result.strategy_adjustments {
-                    println!("      - {}: {}", 
-                            adjustment.adjustment_type, 
-                            adjustment.description);
+                    println!(
+                        "      - {}: {}",
+                        adjustment.adjustment_type, adjustment.description
+                    );
                     println!("        Expected Impact: {:?}", adjustment.expected_impact);
                     println!("        Steps: {:?}", adjustment.implementation_steps);
                 }
@@ -206,9 +233,16 @@ async fn main() -> Result<()> {
     println!("\n📈 Comprehensive Memory Profiling Report:");
     let profiling_data = demo_profiler.get_profiles();
     println!("   Total Operations Profiled: {}", profiling_data.len());
-    
-    let total_memory = profiling_data.iter().map(|profile| profile.peak_bytes).sum::<usize>();
-    let avg_memory = if profiling_data.is_empty() { 0 } else { total_memory / profiling_data.len() };
+
+    let total_memory = profiling_data
+        .iter()
+        .map(|profile| profile.peak_bytes)
+        .sum::<usize>();
+    let avg_memory = if profiling_data.is_empty() {
+        0
+    } else {
+        total_memory / profiling_data.len()
+    };
     println!("   Total Memory Allocated: {} bytes", total_memory);
     println!("   Average Memory per Operation: {} bytes", avg_memory);
 

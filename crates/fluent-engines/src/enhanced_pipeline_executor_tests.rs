@@ -5,7 +5,6 @@ mod enhanced_pipeline_executor_tests {
     use crate::pipeline_infrastructure::MemoryStateStore;
     use std::time::Duration;
 
-
     fn create_test_config() -> ExecutorConfig {
         ExecutorConfig {
             max_concurrency: 4,

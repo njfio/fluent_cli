@@ -828,10 +828,10 @@ impl SecurityFramework {
         context: HashMap<String, String>,
     ) -> Result<AccessDecision> {
         let access_controller = self.access_controller.read().await;
-        
+
         // Evaluate access policies
         let decision = PolicyEffect::Permit; // Simplified for demo
-        
+
         let access_decision = AccessDecision {
             decision_id: Uuid::new_v4().to_string(),
             timestamp: SystemTime::now(),
@@ -853,7 +853,11 @@ impl SecurityFramework {
     }
 
     /// Create a secure sandbox
-    pub async fn create_sandbox(&self, sandbox_type: SandboxType, security_level: SecurityLevel) -> Result<String> {
+    pub async fn create_sandbox(
+        &self,
+        sandbox_type: SandboxType,
+        security_level: SecurityLevel,
+    ) -> Result<String> {
         if !self.config.enable_sandboxing {
             return Err(anyhow::anyhow!("Sandboxing is disabled"));
         }
@@ -895,7 +899,9 @@ impl SecurityFramework {
         };
 
         let mut sandbox_manager = self.sandbox_manager.write().await;
-        sandbox_manager.active_sandboxes.insert(sandbox_id.clone(), sandbox);
+        sandbox_manager
+            .active_sandboxes
+            .insert(sandbox_id.clone(), sandbox);
 
         Ok(sandbox_id)
     }

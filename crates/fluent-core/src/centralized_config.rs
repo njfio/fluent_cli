@@ -9,19 +9,19 @@ use std::sync::OnceLock;
 pub struct FluentConfig {
     /// Application-wide settings
     pub app: AppConfig,
-    
+
     /// Pipeline-specific configuration
     pub pipeline: PipelineConfig,
-    
+
     /// Engine default configurations
     pub engines: EngineDefaults,
-    
+
     /// Directory and path configurations
     pub paths: PathConfig,
-    
+
     /// Network and timeout configurations
     pub network: NetworkConfig,
-    
+
     /// Security and validation settings
     pub security: SecurityConfig,
 }
@@ -221,21 +221,22 @@ impl ConfigManager {
     /// Initialize the global configuration from file or environment
     pub fn initialize() -> Result<()> {
         let config = Self::load_config()?;
-        GLOBAL_CONFIG.set(config)
+        GLOBAL_CONFIG
+            .set(config)
             .map_err(|_| anyhow!("Global configuration already initialized"))?;
         Ok(())
     }
 
     /// Get the global configuration instance
     pub fn get() -> &'static FluentConfig {
-        GLOBAL_CONFIG.get_or_init(|| FluentConfig::default())
+        GLOBAL_CONFIG.get_or_init(FluentConfig::default)
     }
 
     /// Load configuration from file with environment variable overrides
     fn load_config() -> Result<FluentConfig> {
         // Try to load from config file first
         let config_path = Self::get_config_path();
-        
+
         let mut config = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
             if config_path.extension().and_then(|s| s.to_str()) == Some("toml") {
@@ -266,7 +267,7 @@ impl ConfigManager {
         if let Ok(timeout) = env::var("FLUENT_PIPELINE_TIMEOUT") {
             config.pipeline.default_timeout_seconds = timeout.parse()?;
         }
-        
+
         if let Ok(max_parallel) = env::var("FLUENT_PIPELINE_MAX_PARALLEL") {
             config.pipeline.max_parallel_steps = max_parallel.parse()?;
         }
@@ -275,7 +276,7 @@ impl ConfigManager {
         if let Ok(pipeline_dir) = env::var("FLUENT_PIPELINE_DIR") {
             config.paths.pipeline_directory = PathBuf::from(pipeline_dir);
         }
-        
+
         if let Ok(state_dir) = env::var("FLUENT_PIPELINE_STATE_DIR") {
             config.paths.pipeline_state_directory = PathBuf::from(state_dir);
         }
@@ -289,7 +290,7 @@ impl ConfigManager {
         if let Ok(model) = env::var("FLUENT_OPENAI_DEFAULT_MODEL") {
             config.engines.openai.model = model;
         }
-        
+
         if let Ok(temp) = env::var("FLUENT_DEFAULT_TEMPERATURE") {
             config.engines.temperature = temp.parse()?;
         }
@@ -300,7 +301,7 @@ impl ConfigManager {
     /// Save current configuration to file
     pub fn save_config(config: &FluentConfig) -> Result<()> {
         let config_path = Self::get_config_path();
-        
+
         // Create config directory if it doesn't exist
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;

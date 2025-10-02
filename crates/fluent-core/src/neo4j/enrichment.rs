@@ -15,11 +15,11 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use log::{debug, error, warn};
 use neo4rs::{query, BoltString, BoltType, Graph};
-use log::{debug, warn, error};
 
-use crate::neo4j_client::VoyageAIConfig;
 use crate::neo4j::query_executor::QueryExecutor;
+use crate::neo4j_client::VoyageAIConfig;
 
 /// Configuration for document enrichment intervals
 #[derive(Debug, Clone)]
@@ -75,11 +75,34 @@ impl<'a> DocumentEnrichmentManager<'a> {
         let now = Utc::now();
 
         if let Some(voyage_config) = self.voyage_config {
-            self.update_themes_keywords_if_needed(&status, node_id, node_type, &now, config, voyage_config).await?;
-            self.update_clustering_if_needed(&status, node_id, node_type, &now, config).await?;
-            self.update_sentiment_if_needed(&status, node_id, node_type, &now, config).await?;
-            
-            self.update_enrichment_status(node_id, node_type, &now).await?;
+            let themes_updated = self
+                .update_themes_keywords_if_needed(
+                    &status,
+                    node_id,
+                    node_type,
+                    &now,
+                    config,
+                    voyage_config,
+                )
+                .await?;
+            let clustering_updated = self
+                .update_clustering_if_needed(&status, node_id, node_type, &now, config)
+                .await?;
+            let sentiment_updated = self
+                .update_sentiment_if_needed(&status, node_id, node_type, &now, config)
+                .await?;
+
+            if themes_updated || clustering_updated || sentiment_updated {
+                self.update_enrichment_status(
+                    node_id,
+                    node_type,
+                    &now,
+                    themes_updated,
+                    clustering_updated,
+                    sentiment_updated,
+                )
+                .await?;
+            }
             Ok(())
         } else {
             Err(anyhow!("VoyageAI configuration not found"))
@@ -95,14 +118,16 @@ impl<'a> DocumentEnrichmentManager<'a> {
         now: &DateTime<Utc>,
         config: &EnrichmentConfig,
         voyage_config: &VoyageAIConfig,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if status
             .last_themes_keywords_update
-            .map_or(true, |last| *now - last > config.themes_keywords_interval)
+            .is_none_or(|last| *now - last > config.themes_keywords_interval)
         {
-            self.update_themes_and_keywords(node_id, node_type, voyage_config).await?;
+            self.update_themes_and_keywords(node_id, node_type, voyage_config)
+                .await?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Update clustering if needed
@@ -113,14 +138,15 @@ impl<'a> DocumentEnrichmentManager<'a> {
         node_type: &str,
         now: &DateTime<Utc>,
         config: &EnrichmentConfig,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if status
             .last_clustering_update
-            .map_or(true, |last| *now - last > config.clustering_interval)
+            .is_none_or(|last| *now - last > config.clustering_interval)
         {
             self.update_clustering(node_id, node_type).await?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Update sentiment if needed
@@ -131,14 +157,15 @@ impl<'a> DocumentEnrichmentManager<'a> {
         node_type: &str,
         now: &DateTime<Utc>,
         config: &EnrichmentConfig,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if status
             .last_sentiment_update
-            .map_or(true, |last| *now - last > config.sentiment_interval)
+            .is_none_or(|last| *now - last > config.sentiment_interval)
         {
             self.update_sentiment(node_id, node_type).await?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     /// Update themes and keywords for a node
@@ -149,13 +176,18 @@ impl<'a> DocumentEnrichmentManager<'a> {
         voyage_config: &VoyageAIConfig,
     ) -> Result<()> {
         debug!("Updating themes and keywords for {} {}", node_type, node_id);
-        
-        let content = self.query_executor.get_node_content(node_id, node_type).await?;
+
+        let content = self
+            .query_executor
+            .get_node_content(node_id, node_type)
+            .await?;
         let (themes, keywords) = self.extract_themes_and_keywords(&content, voyage_config)?;
-        
-        self.create_theme_and_keyword_nodes(node_id, &themes, &keywords).await?;
-        self.verify_themes_and_keywords(node_id, &themes, &keywords).await?;
-        
+
+        self.create_theme_and_keyword_nodes(node_id, &themes, &keywords)
+            .await?;
+        self.verify_themes_and_keywords(node_id, &themes, &keywords)
+            .await?;
+
         Ok(())
     }
 
@@ -163,7 +195,10 @@ impl<'a> DocumentEnrichmentManager<'a> {
     async fn update_clustering(&self, node_id: &str, node_type: &str) -> Result<()> {
         debug!("Updating clustering for {} {}", node_type, node_id);
 
-        let content = self.query_executor.get_node_content(node_id, node_type).await?;
+        let content = self
+            .query_executor
+            .get_node_content(node_id, node_type)
+            .await?;
         let all_documents = self.query_executor.get_all_documents().await?;
         let clusters = self.extract_clusters(&content, &all_documents).await?;
 
@@ -176,12 +211,15 @@ impl<'a> DocumentEnrichmentManager<'a> {
     /// Update sentiment for a node
     async fn update_sentiment(&self, node_id: &str, node_type: &str) -> Result<()> {
         debug!("Updating sentiment for {} {}", node_type, node_id);
-        
-        let content = self.query_executor.get_node_content(node_id, node_type).await?;
+
+        let content = self
+            .query_executor
+            .get_node_content(node_id, node_type)
+            .await?;
         let sentiment = self.analyze_sentiment(&content).await?;
-        
+
         self.create_sentiment_node(node_id, &sentiment).await?;
-        
+
         Ok(())
     }
 
@@ -193,7 +231,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
         keywords: &[String],
     ) -> Result<()> {
         debug!("Creating theme and keyword nodes for node {}", node_id);
-        
+
         let query = query(
             "
             MATCH (n)
@@ -215,10 +253,13 @@ impl<'a> DocumentEnrichmentManager<'a> {
         .param("keywords", keywords);
 
         let rows = self.query_executor.execute_query_with_params(query).await?;
-        
+
         if let Some(row) = rows.first() {
             let total_count: i64 = row.get("total_count")?;
-            debug!("Created {} theme/keyword relationships for node {}", total_count, node_id);
+            debug!(
+                "Created {} theme/keyword relationships for node {}",
+                total_count, node_id
+            );
         }
 
         Ok(())
@@ -227,7 +268,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
     /// Create and assign clusters
     async fn create_and_assign_clusters(&self, node_id: &str, clusters: &[String]) -> Result<()> {
         debug!("Creating and assigning cluster nodes for node {}", node_id);
-        
+
         let query = query(
             "
             MATCH (n)
@@ -248,18 +289,30 @@ impl<'a> DocumentEnrichmentManager<'a> {
             Ok(mut stream) => {
                 if let Some(row) = stream.next().await? {
                     let total_count: i64 = row.get("total_count")?;
-                    debug!("Created and assigned {} cluster nodes for node {}", total_count, node_id);
-                    
+                    debug!(
+                        "Created and assigned {} cluster nodes for node {}",
+                        total_count, node_id
+                    );
+
                     if total_count == 0 {
                         warn!("No clusters were created or assigned for node {}", node_id);
                     }
                 } else {
-                    warn!("No result returned from cluster creation query for node {}", node_id);
+                    warn!(
+                        "No result returned from cluster creation query for node {}",
+                        node_id
+                    );
                 }
             }
             Err(e) => {
-                error!("Error executing cluster creation query for node {}: {:?}", node_id, e);
-                return Err(anyhow!("Failed to create and assign cluster nodes: {:?}", e));
+                error!(
+                    "Error executing cluster creation query for node {}: {:?}",
+                    node_id, e
+                );
+                return Err(anyhow!(
+                    "Failed to create and assign cluster nodes: {:?}",
+                    e
+                ));
             }
         }
 
@@ -267,9 +320,13 @@ impl<'a> DocumentEnrichmentManager<'a> {
     }
 
     /// Create sentiment node
-    async fn create_sentiment_node(&self, node_id: &str, sentiment: &SentimentAnalysis) -> Result<()> {
+    async fn create_sentiment_node(
+        &self,
+        node_id: &str,
+        sentiment: &SentimentAnalysis,
+    ) -> Result<()> {
         debug!("Creating sentiment node for node {}", node_id);
-        
+
         let query = query(
             "
             MATCH (n)
@@ -289,7 +346,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
         .param("confidence", sentiment.confidence);
 
         let rows = self.query_executor.execute_query_with_params(query).await?;
-        
+
         if rows.is_empty() {
             return Err(anyhow!("Failed to create sentiment node"));
         }
@@ -318,12 +375,18 @@ impl<'a> DocumentEnrichmentManager<'a> {
         .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let rows = self.query_executor.execute_query_with_params(query).await?;
-        
+
         if let Some(row) = rows.first() {
             let db_themes: Vec<String> = row.get("themes")?;
             let db_keywords: Vec<String> = row.get("keywords")?;
-            
-            self.validate_themes_keywords(&db_themes, &db_keywords, expected_themes, expected_keywords, node_id)?;
+
+            self.validate_themes_keywords(
+                &db_themes,
+                &db_keywords,
+                expected_themes,
+                expected_keywords,
+                node_id,
+            )?;
         }
 
         Ok(())
@@ -343,7 +406,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
         .param("node_id", BoltType::String(BoltString::from(node_id)));
 
         let rows = self.query_executor.execute_query_with_params(query).await?;
-        
+
         if let Some(row) = rows.first() {
             let db_clusters: Vec<String> = row.get("clusters")?;
             self.validate_clusters(&db_clusters, expected_clusters, node_id)?;
@@ -366,7 +429,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
             .filter(|t| !db_themes.contains(t))
             .cloned()
             .collect();
-        
+
         let missing_keywords: Vec<_> = expected_keywords
             .iter()
             .filter(|k| !db_keywords.contains(k))
@@ -382,14 +445,22 @@ impl<'a> DocumentEnrichmentManager<'a> {
                 warn!("Missing keywords: {:?}", missing_keywords);
             }
         } else {
-            debug!("All themes and keywords verified successfully for node {}", node_id);
+            debug!(
+                "All themes and keywords verified successfully for node {}",
+                node_id
+            );
         }
 
         Ok(())
     }
 
     /// Validate clusters
-    fn validate_clusters(&self, db_clusters: &[String], expected_clusters: &[String], node_id: &str) -> Result<()> {
+    fn validate_clusters(
+        &self,
+        db_clusters: &[String],
+        expected_clusters: &[String],
+        node_id: &str,
+    ) -> Result<()> {
         let missing_clusters: Vec<_> = expected_clusters
             .iter()
             .filter(|c| !db_clusters.contains(c))
@@ -397,7 +468,10 @@ impl<'a> DocumentEnrichmentManager<'a> {
             .collect();
 
         if !missing_clusters.is_empty() {
-            warn!("Missing clusters for node {}: {:?}", node_id, missing_clusters);
+            warn!(
+                "Missing clusters for node {}: {:?}",
+                node_id, missing_clusters
+            );
         } else {
             debug!("All clusters verified successfully for node {}", node_id);
         }
@@ -406,7 +480,11 @@ impl<'a> DocumentEnrichmentManager<'a> {
     }
 
     // Placeholder methods for actual AI operations
-    fn extract_themes_and_keywords(&self, content: &str, _voyage_config: &VoyageAIConfig) -> Result<(Vec<String>, Vec<String>)> {
+    fn extract_themes_and_keywords(
+        &self,
+        content: &str,
+        _voyage_config: &VoyageAIConfig,
+    ) -> Result<(Vec<String>, Vec<String>)> {
         // Basic theme and keyword extraction using simple text analysis
         // In production, this would integrate with VoyageAI or other NLP services
 
@@ -418,7 +496,8 @@ impl<'a> DocumentEnrichmentManager<'a> {
         // Extract potential keywords (words that appear frequently)
         let mut word_counts = std::collections::HashMap::new();
         for word in &words {
-            let clean_word = word.to_lowercase()
+            let clean_word = word
+                .to_lowercase()
                 .chars()
                 .filter(|c| c.is_alphabetic())
                 .collect::<String>();
@@ -439,19 +518,34 @@ impl<'a> DocumentEnrichmentManager<'a> {
         let mut themes = Vec::new();
         let content_lower = content.to_lowercase();
 
-        if content_lower.contains("error") || content_lower.contains("fail") || content_lower.contains("exception") {
+        if content_lower.contains("error")
+            || content_lower.contains("fail")
+            || content_lower.contains("exception")
+        {
             themes.push("error_handling".to_string());
         }
-        if content_lower.contains("config") || content_lower.contains("setting") || content_lower.contains("parameter") {
+        if content_lower.contains("config")
+            || content_lower.contains("setting")
+            || content_lower.contains("parameter")
+        {
             themes.push("configuration".to_string());
         }
-        if content_lower.contains("test") || content_lower.contains("spec") || content_lower.contains("assert") {
+        if content_lower.contains("test")
+            || content_lower.contains("spec")
+            || content_lower.contains("assert")
+        {
             themes.push("testing".to_string());
         }
-        if content_lower.contains("security") || content_lower.contains("auth") || content_lower.contains("permission") {
+        if content_lower.contains("security")
+            || content_lower.contains("auth")
+            || content_lower.contains("permission")
+        {
             themes.push("security".to_string());
         }
-        if content_lower.contains("performance") || content_lower.contains("optimize") || content_lower.contains("cache") {
+        if content_lower.contains("performance")
+            || content_lower.contains("optimize")
+            || content_lower.contains("cache")
+        {
             themes.push("performance".to_string());
         }
 
@@ -459,18 +553,31 @@ impl<'a> DocumentEnrichmentManager<'a> {
             themes.push("general".to_string());
         }
 
-        debug!("Extracted {} themes and {} keywords from content", themes.len(), keywords.len());
+        debug!(
+            "Extracted {} themes and {} keywords from content",
+            themes.len(),
+            keywords.len()
+        );
         Ok((themes, keywords))
     }
 
-    async fn extract_clusters(&self, content: &str, all_documents: &[String]) -> Result<Vec<String>> {
+    async fn extract_clusters(
+        &self,
+        content: &str,
+        all_documents: &[String],
+    ) -> Result<Vec<String>> {
         // Basic clustering using simple similarity analysis
         // In production, this would use proper clustering algorithms like K-means or DBSCAN
 
         let mut clusters = Vec::new();
         let content_words: std::collections::HashSet<String> = content
             .split_whitespace()
-            .map(|w| w.to_lowercase().chars().filter(|c| c.is_alphabetic()).collect())
+            .map(|w| {
+                w.to_lowercase()
+                    .chars()
+                    .filter(|c| c.is_alphabetic())
+                    .collect()
+            })
             .filter(|w: &String| w.len() > 3)
             .collect();
 
@@ -478,11 +585,17 @@ impl<'a> DocumentEnrichmentManager<'a> {
         for (i, doc) in all_documents.iter().enumerate() {
             let doc_words: std::collections::HashSet<String> = doc
                 .split_whitespace()
-                .map(|w| w.to_lowercase().chars().filter(|c| c.is_alphabetic()).collect())
+                .map(|w| {
+                    w.to_lowercase()
+                        .chars()
+                        .filter(|c| c.is_alphabetic())
+                        .collect()
+                })
                 .filter(|w: &String| w.len() > 3)
                 .collect();
 
-            let intersection: std::collections::HashSet<_> = content_words.intersection(&doc_words).collect();
+            let intersection: std::collections::HashSet<_> =
+                content_words.intersection(&doc_words).collect();
             let union: std::collections::HashSet<_> = content_words.union(&doc_words).collect();
 
             if !union.is_empty() {
@@ -509,28 +622,66 @@ impl<'a> DocumentEnrichmentManager<'a> {
         // In production, this would use proper sentiment analysis models
 
         let positive_words = [
-            "good", "great", "excellent", "amazing", "wonderful", "fantastic", "awesome",
-            "perfect", "success", "successful", "working", "fixed", "solved", "improved",
-            "better", "best", "love", "like", "happy", "pleased", "satisfied", "efficient"
+            "good",
+            "great",
+            "excellent",
+            "amazing",
+            "wonderful",
+            "fantastic",
+            "awesome",
+            "perfect",
+            "success",
+            "successful",
+            "working",
+            "fixed",
+            "solved",
+            "improved",
+            "better",
+            "best",
+            "love",
+            "like",
+            "happy",
+            "pleased",
+            "satisfied",
+            "efficient",
         ];
 
         let negative_words = [
-            "bad", "terrible", "awful", "horrible", "worst", "hate", "dislike", "angry",
-            "frustrated", "broken", "failed", "error", "problem", "issue", "bug", "crash",
-            "slow", "inefficient", "difficult", "hard", "impossible", "wrong", "incorrect"
+            "bad",
+            "terrible",
+            "awful",
+            "horrible",
+            "worst",
+            "hate",
+            "dislike",
+            "angry",
+            "frustrated",
+            "broken",
+            "failed",
+            "error",
+            "problem",
+            "issue",
+            "bug",
+            "crash",
+            "slow",
+            "inefficient",
+            "difficult",
+            "hard",
+            "impossible",
+            "wrong",
+            "incorrect",
         ];
 
         let content_lower = content.to_lowercase();
-        let words: Vec<&str> = content_lower
-            .split_whitespace()
-            .collect();
+        let words: Vec<&str> = content_lower.split_whitespace().collect();
 
         let mut positive_score = 0;
         let mut negative_score = 0;
         let mut total_words = 0;
 
         for word in words {
-            let clean_word = word.chars()
+            let clean_word = word
+                .chars()
                 .filter(|c| c.is_alphabetic())
                 .collect::<String>();
 
@@ -556,7 +707,7 @@ impl<'a> DocumentEnrichmentManager<'a> {
             0.5 + (net_sentiment / max_possible) * 0.5
         };
 
-        let score = score.max(0.0).min(1.0);
+        let score = score.clamp(0.0, 1.0);
 
         // Determine label and confidence
         let (label, confidence) = if score > 0.7 {
@@ -567,8 +718,10 @@ impl<'a> DocumentEnrichmentManager<'a> {
             ("neutral".to_string(), 0.6)
         };
 
-        debug!("Analyzed sentiment: {} (score: {}, positive: {}, negative: {}, total: {})",
-               label, score, positive_score, negative_score, total_words);
+        debug!(
+            "Analyzed sentiment: {} (score: {}, positive: {}, negative: {}, total: {})",
+            label, score, positive_score, negative_score, total_words
+        );
 
         Ok(SentimentAnalysis {
             score,
@@ -577,7 +730,11 @@ impl<'a> DocumentEnrichmentManager<'a> {
         })
     }
 
-    async fn get_enrichment_status(&self, node_id: &str, node_type: &str) -> Result<EnrichmentStatus> {
+    async fn get_enrichment_status(
+        &self,
+        node_id: &str,
+        node_type: &str,
+    ) -> Result<EnrichmentStatus> {
         // Query Neo4j for enrichment status metadata
         let query_str = "
             MATCH (n) WHERE elementId(n) = $node_id
@@ -588,21 +745,23 @@ impl<'a> DocumentEnrichmentManager<'a> {
                 status.last_sentiment_update as sentiment_update
         ";
 
-        let query = query(query_str)
-            .param("node_id", node_id);
+        let query = query(query_str).param("node_id", node_id);
 
         let mut result = self.graph.execute(query).await?;
 
         if let Some(row) = result.next().await? {
-            let themes_update = row.get::<Option<String>>("themes_update")?
+            let themes_update = row
+                .get::<Option<String>>("themes_update")?
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc));
 
-            let clustering_update = row.get::<Option<String>>("clustering_update")?
+            let clustering_update = row
+                .get::<Option<String>>("clustering_update")?
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc));
 
-            let sentiment_update = row.get::<Option<String>>("sentiment_update")?
+            let sentiment_update = row
+                .get::<Option<String>>("sentiment_update")?
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc));
 
@@ -613,7 +772,10 @@ impl<'a> DocumentEnrichmentManager<'a> {
             })
         } else {
             // No status found, return default (all None)
-            debug!("No enrichment status found for node {} ({}), returning default", node_id, node_type);
+            debug!(
+                "No enrichment status found for node {} ({}), returning default",
+                node_id, node_type
+            );
             Ok(EnrichmentStatus {
                 last_themes_keywords_update: None,
                 last_clustering_update: None,
@@ -622,15 +784,32 @@ impl<'a> DocumentEnrichmentManager<'a> {
         }
     }
 
-    async fn update_enrichment_status(&self, node_id: &str, node_type: &str, now: &DateTime<Utc>) -> Result<()> {
+    async fn update_enrichment_status(
+        &self,
+        node_id: &str,
+        node_type: &str,
+        now: &DateTime<Utc>,
+        themes_updated: bool,
+        clustering_updated: bool,
+        sentiment_updated: bool,
+    ) -> Result<()> {
         // Create or update enrichment status node in Neo4j
         let query_str = "
             MATCH (n) WHERE elementId(n) = $node_id
             MERGE (n)-[:HAS_ENRICHMENT_STATUS]->(status:EnrichmentStatus)
             SET
-                status.last_themes_keywords_update = $themes_update,
-                status.last_clustering_update = $clustering_update,
-                status.last_sentiment_update = $sentiment_update,
+                status.last_themes_keywords_update = CASE
+                    WHEN $themes_updated THEN $now
+                    ELSE status.last_themes_keywords_update
+                END,
+                status.last_clustering_update = CASE
+                    WHEN $clustering_updated THEN $now
+                    ELSE status.last_clustering_update
+                END,
+                status.last_sentiment_update = CASE
+                    WHEN $sentiment_updated THEN $now
+                    ELSE status.last_sentiment_update
+                END,
                 status.node_type = $node_type,
                 status.updated_at = $now
             RETURN status
@@ -640,19 +819,28 @@ impl<'a> DocumentEnrichmentManager<'a> {
         let query = query(query_str)
             .param("node_id", node_id)
             .param("node_type", node_type)
-            .param("themes_update", now_str.clone())
-            .param("clustering_update", now_str.clone())
-            .param("sentiment_update", now_str.clone())
-            .param("now", now_str);
+            .param("now", now_str)
+            .param("themes_updated", themes_updated)
+            .param("clustering_updated", clustering_updated)
+            .param("sentiment_updated", sentiment_updated);
 
         let mut result = self.graph.execute(query).await?;
 
         if result.next().await?.is_some() {
-            debug!("Updated enrichment status for node {} ({})", node_id, node_type);
+            debug!(
+                "Updated enrichment status for node {} ({})",
+                node_id, node_type
+            );
             Ok(())
         } else {
-            error!("Failed to update enrichment status for node {} ({})", node_id, node_type);
-            Err(anyhow!("Failed to update enrichment status for node {}", node_id))
+            error!(
+                "Failed to update enrichment status for node {} ({})",
+                node_id, node_type
+            );
+            Err(anyhow!(
+                "Failed to update enrichment status for node {}",
+                node_id
+            ))
         }
     }
 }

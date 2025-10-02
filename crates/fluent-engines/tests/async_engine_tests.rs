@@ -1,13 +1,11 @@
-use fluent_engines::{
-    optimized_openai::OptimizedOpenAIEngine,
-    enhanced_cache::{EnhancedCache, CacheConfig},
-};
-use fluent_core::{
-    config::{EngineConfig, ConnectionConfig},
-};
-use std::time::Duration;
-use std::collections::HashMap;
 use anyhow::Result;
+use fluent_core::config::{ConnectionConfig, EngineConfig};
+use fluent_engines::{
+    enhanced_cache::{CacheConfig, EnhancedCache},
+    optimized_openai::OptimizedOpenAIEngine,
+};
+use std::collections::HashMap;
+use std::time::Duration;
 
 /// Simplified async tests for engine operations
 /// Tests focus on creation and basic functionality without complex API calls
@@ -65,7 +63,3 @@ async fn test_async_cache_creation() -> Result<()> {
 
     Ok(())
 }
-
-
-
-

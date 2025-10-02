@@ -1,7 +1,7 @@
-use std::time::{Duration, Instant};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use anyhow::{Result, anyhow};
+use std::time::{Duration, Instant};
 
 /// Memory profiling metrics for reflection operations
 #[derive(Debug, Clone)]
@@ -42,14 +42,18 @@ impl ReflectionMemoryProfiler {
     /// End profiling and record the results
     pub fn end_operation(&self) -> Result<MemoryProfile> {
         let operation_name = {
-            let mut current = self.current_operation.lock()
+            let mut current = self
+                .current_operation
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to lock current operation: {}", e))?;
-            current.take().unwrap_or_else(|| "unknown_operation".to_string())
+            current
+                .take()
+                .unwrap_or_else(|| "unknown_operation".to_string())
         };
 
         let current_memory = Self::get_current_memory_usage();
         let peak_bytes = current_memory.saturating_sub(self.baseline_memory);
-        
+
         let profile = MemoryProfile {
             operation_name: operation_name.clone(),
             peak_bytes,
@@ -67,19 +71,23 @@ impl ReflectionMemoryProfiler {
     }
 
     /// Profile a closure and return the memory profile
-    pub fn profile_operation<F, T>(&self, operation_name: &str, operation: F) -> Result<(T, MemoryProfile)>
+    pub fn profile_operation<F, T>(
+        &self,
+        operation_name: &str,
+        operation: F,
+    ) -> Result<(T, MemoryProfile)>
     where
         F: FnOnce() -> T,
     {
         let start_memory = Self::get_current_memory_usage();
         let start_time = Instant::now();
-        
+
         self.start_operation(operation_name);
         let result = operation();
-        
+
         let end_memory = Self::get_current_memory_usage();
         let duration = start_time.elapsed();
-        
+
         let profile = MemoryProfile {
             operation_name: operation_name.to_string(),
             peak_bytes: end_memory.saturating_sub(start_memory),
@@ -98,9 +106,9 @@ impl ReflectionMemoryProfiler {
 
     /// Profile an async operation
     pub async fn profile_async_operation<F, Fut, T>(
-        &self, 
-        operation_name: &str, 
-        operation: F
+        &self,
+        operation_name: &str,
+        operation: F,
     ) -> Result<(T, MemoryProfile)>
     where
         F: FnOnce() -> Fut,
@@ -108,13 +116,13 @@ impl ReflectionMemoryProfiler {
     {
         let start_memory = Self::get_current_memory_usage();
         let start_time = Instant::now();
-        
+
         self.start_operation(operation_name);
         let result = operation().await;
-        
+
         let end_memory = Self::get_current_memory_usage();
         let duration = start_time.elapsed();
-        
+
         let profile = MemoryProfile {
             operation_name: operation_name.to_string(),
             peak_bytes: end_memory.saturating_sub(start_memory),
@@ -133,7 +141,8 @@ impl ReflectionMemoryProfiler {
 
     /// Get all recorded profiles
     pub fn get_profiles(&self) -> Vec<MemoryProfile> {
-        self.profiles.lock()
+        self.profiles
+            .lock()
             .map(|profiles| profiles.clone())
             .unwrap_or_default()
     }
@@ -141,7 +150,7 @@ impl ReflectionMemoryProfiler {
     /// Generate a comprehensive memory usage report
     pub fn generate_report(&self) -> String {
         let profiles = self.get_profiles();
-        
+
         if profiles.is_empty() {
             return "No memory profiles recorded".to_string();
         }
@@ -160,16 +169,23 @@ impl ReflectionMemoryProfiler {
         report.push_str(&format!("Summary:\n"));
         report.push_str(&format!("  Total Operations: {}\n", total_operations));
         report.push_str(&format!("  Total Memory Used: {} bytes\n", total_memory));
-        report.push_str(&format!("  Average Memory per Operation: {} bytes\n", avg_memory));
+        report.push_str(&format!(
+            "  Average Memory per Operation: {} bytes\n",
+            avg_memory
+        ));
         report.push_str(&format!("  Peak Memory Usage: {} bytes\n", max_memory));
         report.push_str(&format!("  Total Duration: {:?}\n\n", total_duration));
 
         // Per-operation details
         report.push_str("Operation Details:\n");
         report.push_str("------------------\n");
-        
+
         for (i, profile) in profiles.iter().enumerate() {
-            report.push_str(&format!("{}. Operation: {}\n", i + 1, profile.operation_name));
+            report.push_str(&format!(
+                "{}. Operation: {}\n",
+                i + 1,
+                profile.operation_name
+            ));
             report.push_str(&format!("   Memory Used: {} bytes\n", profile.peak_bytes));
             report.push_str(&format!("   Duration: {:?}\n", profile.duration));
             report.push_str(&format!("   Timestamp: {:?}\n\n", profile.timestamp));
@@ -178,15 +194,19 @@ impl ReflectionMemoryProfiler {
         // Performance analysis
         report.push_str("Performance Analysis:\n");
         report.push_str("--------------------\n");
-        
-        let high_memory_ops: Vec<_> = profiles.iter()
+
+        let high_memory_ops: Vec<_> = profiles
+            .iter()
             .filter(|p| p.peak_bytes > avg_memory * 2)
             .collect();
-            
+
         if !high_memory_ops.is_empty() {
             report.push_str("High Memory Operations:\n");
             for op in high_memory_ops {
-                report.push_str(&format!("  - {}: {} bytes\n", op.operation_name, op.peak_bytes));
+                report.push_str(&format!(
+                    "  - {}: {} bytes\n",
+                    op.operation_name, op.peak_bytes
+                ));
             }
         } else {
             report.push_str("No high memory usage operations detected.\n");
@@ -208,9 +228,7 @@ impl ReflectionMemoryProfiler {
         // In a real implementation, you might want to use a different approach
         match std::thread::spawn(|| {
             tokio::runtime::Handle::try_current()
-                .map(|handle| {
-                    handle.block_on(get_process_memory_usage())
-                })
+                .map(|handle| handle.block_on(get_process_memory_usage()))
                 .unwrap_or_else(|_| {
                     // If no tokio runtime, create a minimal one
                     match tokio::runtime::Runtime::new() {
@@ -221,7 +239,9 @@ impl ReflectionMemoryProfiler {
                         }
                     }
                 })
-        }).join() {
+        })
+        .join()
+        {
             Ok(Ok(memory)) => memory,
             _ => {
                 // Fallback: return a reasonable estimate
@@ -314,13 +334,15 @@ mod tests {
     #[test]
     fn test_memory_profiler_basic() {
         let profiler = ReflectionMemoryProfiler::new();
-        
-        let (result, profile) = profiler.profile_operation("test_operation", || {
-            // Simulate some work
-            let _data = vec![0u8; 1024]; // Allocate 1KB
-            42
-        }).unwrap();
-        
+
+        let (result, profile) = profiler
+            .profile_operation("test_operation", || {
+                // Simulate some work
+                let _data = vec![0u8; 1024]; // Allocate 1KB
+                42
+            })
+            .unwrap();
+
         assert_eq!(result, 42);
         assert_eq!(profile.operation_name, "test_operation");
         assert!(profile.duration > Duration::from_nanos(0));
@@ -329,18 +351,20 @@ mod tests {
     #[test]
     fn test_memory_profiler_multiple_operations() {
         let profiler = ReflectionMemoryProfiler::new();
-        
+
         // Profile multiple operations
         for i in 0..3 {
             let operation_name = format!("operation_{}", i);
-            profiler.profile_operation(&operation_name, || {
-                thread::sleep(Duration::from_millis(10));
-            }).unwrap();
+            profiler
+                .profile_operation(&operation_name, || {
+                    thread::sleep(Duration::from_millis(10));
+                })
+                .unwrap();
         }
-        
+
         let profiles = profiler.get_profiles();
         assert_eq!(profiles.len(), 3);
-        
+
         let report = profiler.generate_report();
         assert!(report.contains("Memory Profiling Report"));
         assert!(report.contains("Total Operations: 3"));
@@ -349,12 +373,15 @@ mod tests {
     #[tokio::test]
     async fn test_async_profiling() {
         let profiler = ReflectionMemoryProfiler::new();
-        
-        let (result, profile) = profiler.profile_async_operation("async_test", || async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            "async_result"
-        }).await.unwrap();
-        
+
+        let (result, profile) = profiler
+            .profile_async_operation("async_test", || async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                "async_result"
+            })
+            .await
+            .unwrap();
+
         assert_eq!(result, "async_result");
         assert_eq!(profile.operation_name, "async_test");
         assert!(profile.duration >= Duration::from_millis(10));

@@ -1,15 +1,15 @@
 //! Parallel execution module
-//! 
+//!
 //! This module handles the execution of parallel pipeline steps,
 //! managing concurrent execution and result aggregation.
 
-use crate::pipeline_executor::{PipelineStep, PipelineState};
 use crate::pipeline::step_executor::StepExecutor;
+use crate::pipeline_executor::{PipelineState, PipelineStep};
 use anyhow::Error;
+use log::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use log::debug;
 
 /// Handles execution of parallel pipeline steps
 pub struct ParallelExecutor;
@@ -21,7 +21,7 @@ impl ParallelExecutor {
         state: &mut PipelineState,
     ) -> Result<HashMap<String, String>, Error> {
         debug!("Executing parallel steps: {} steps", steps.len());
-        
+
         let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
         let mut set = JoinSet::new();
 
@@ -40,10 +40,8 @@ impl ParallelExecutor {
                     combined_results.extend(step_result);
                 }
                 Ok(Err(e)) => {
-                    combined_results.insert(
-                        format!("error_{}", combined_results.len()),
-                        e.to_string(),
-                    );
+                    combined_results
+                        .insert(format!("error_{}", combined_results.len()), e.to_string());
                 }
                 Err(e) => {
                     combined_results.insert(
@@ -61,5 +59,4 @@ impl ParallelExecutor {
 
         Ok(combined_results)
     }
-
 }

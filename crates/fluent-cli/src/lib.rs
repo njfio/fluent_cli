@@ -7,6 +7,7 @@
 //! # Key Modules
 //!
 //! - [`agentic`] - Autonomous agentic execution capabilities
+//! - [`agent_control`] - Human-in-the-loop control channel for agent collaboration
 //! - [`commands`] - Modular command handlers for different CLI operations
 //! - [`pipeline_builder`] - Pipeline construction and execution
 //! - [`memory`] - Memory management for conversations and context
@@ -50,15 +51,13 @@
 //! ```
 
 pub mod agentic;
-pub mod cli;
-pub mod error;
 pub mod commands;
+pub mod memory;
 pub mod neo4j_operations;
 pub mod pipeline_builder;
+pub mod tui;
 pub mod validation;
-pub mod memory;
-pub mod utils;
-
+// pub mod frogger; // Removed frogger module as it doesn't exist
 
 // New modular components
 pub mod cli_builder;
@@ -67,17 +66,24 @@ pub mod request_processor;
 pub mod response_formatter;
 
 // Refactored CLI modules
+pub mod cli;
+pub mod error;
 pub mod mcp_runner;
 pub mod neo4j_runner;
-
-use fluent_engines::create_engine;
+pub mod utils; // Added utils module
 
 // Re-export commonly used functions
-pub use utils::{extract_cypher_query, is_valid_cypher, format_as_csv, extract_code};
-pub use validation::{validate_engine_name, validate_file_path_secure, parse_key_value_pair};
+// Updated to use the local utils module instead of trying to import from a non-existent path
+pub use fluent_engines::create_engine;
 pub use memory::MemoryManager;
+pub use utils::{extract_code, extract_cypher_query, format_as_csv, is_valid_cypher};
+pub use validation::{parse_key_value_pair, validate_engine_name, validate_file_path_secure};
 
 // Re-export main CLI functionality
-// CLI functionality moved to main.rs
-pub use mcp_runner::{run_mcp_server, run_agentic_mode, run_agent_with_mcp};
-pub use neo4j_runner::{get_neo4j_query_llm, generate_cypher_query};
+pub use cli::{run, run_modular};
+pub use cli_builder::build_cli;
+// Removed print_response as it doesn't exist in the cli module
+
+// Re-export MCP runner functions
+pub use mcp_runner::{run_agent_with_mcp, run_agentic_mode, run_mcp_server};
+pub use neo4j_runner::{generate_cypher_query, get_neo4j_query_llm};

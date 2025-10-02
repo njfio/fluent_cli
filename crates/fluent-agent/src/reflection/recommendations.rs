@@ -1,5 +1,5 @@
 //! Recommendation generation and prioritization components
-//! 
+//!
 //! This module handles the generation of actionable recommendations based on
 //! reflection analysis, strategy adjustments, and learning insights.
 
@@ -21,37 +21,46 @@ impl RecommendationGenerator {
         let mut recommendations = Vec::new();
 
         // Generate immediate action recommendations
-        let immediate_recommendations = Self::generate_immediate_actions(strategy_adjustments).await?;
+        let immediate_recommendations =
+            Self::generate_immediate_actions(strategy_adjustments).await?;
         recommendations.extend(immediate_recommendations);
 
         // Generate learning recommendations
-        let learning_recommendations = Self::generate_learning_recommendations(&analysis.learning_opportunities).await?;
+        let learning_recommendations =
+            Self::generate_learning_recommendations(&analysis.learning_opportunities).await?;
         recommendations.extend(learning_recommendations);
 
         // Generate optimization recommendations
-        let optimization_recommendations = Self::generate_optimization_recommendations(analysis).await?;
+        let optimization_recommendations =
+            Self::generate_optimization_recommendations(analysis).await?;
         recommendations.extend(optimization_recommendations);
 
         // Generate preventive recommendations
-        let preventive_recommendations = Self::generate_preventive_recommendations(analysis).await?;
+        let preventive_recommendations =
+            Self::generate_preventive_recommendations(analysis).await?;
         recommendations.extend(preventive_recommendations);
 
         // Generate strategic recommendations
-        let strategic_recommendations = Self::generate_strategic_recommendations(learning_insights).await?;
+        let strategic_recommendations =
+            Self::generate_strategic_recommendations(learning_insights).await?;
         recommendations.extend(strategic_recommendations);
 
         // Sort by priority and urgency
         recommendations.sort_by(|a, b| {
             let a_score = Self::calculate_recommendation_score(a);
             let b_score = Self::calculate_recommendation_score(b);
-            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
+            b_score
+                .partial_cmp(&a_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         Ok(recommendations)
     }
 
     /// Generate immediate action recommendations
-    async fn generate_immediate_actions(strategy_adjustments: &[StrategyAdjustment]) -> Result<Vec<Recommendation>> {
+    async fn generate_immediate_actions(
+        strategy_adjustments: &[StrategyAdjustment],
+    ) -> Result<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
 
         for adjustment in strategy_adjustments {
@@ -59,7 +68,10 @@ impl RecommendationGenerator {
                 recommendations.push(Recommendation {
                     recommendation_id: uuid::Uuid::new_v4().to_string(),
                     recommendation_type: RecommendationType::ImmediateAction,
-                    description: format!("Implement critical adjustment: {}", adjustment.description),
+                    description: format!(
+                        "Implement critical adjustment: {}",
+                        adjustment.description
+                    ),
                     priority: Priority::Critical,
                     urgency: Urgency::Immediate,
                     implementation_timeline: Duration::from_secs(300), // 5 minutes
@@ -77,7 +89,10 @@ impl RecommendationGenerator {
                 recommendations.push(Recommendation {
                     recommendation_id: uuid::Uuid::new_v4().to_string(),
                     recommendation_type: RecommendationType::PerformanceImprovement,
-                    description: format!("Implement high-impact adjustment: {}", adjustment.description),
+                    description: format!(
+                        "Implement high-impact adjustment: {}",
+                        adjustment.description
+                    ),
                     priority: Priority::High,
                     urgency: Urgency::High,
                     implementation_timeline: Duration::from_secs(900), // 15 minutes
@@ -94,18 +109,27 @@ impl RecommendationGenerator {
     }
 
     /// Generate learning recommendations
-    async fn generate_learning_recommendations(opportunities: &[LearningOpportunity]) -> Result<Vec<Recommendation>> {
+    async fn generate_learning_recommendations(
+        opportunities: &[LearningOpportunity],
+    ) -> Result<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
 
         for opportunity in opportunities {
-            if opportunity.potential_impact == ImpactLevel::High && opportunity.priority == Priority::High {
+            if opportunity.potential_impact == ImpactLevel::High
+                && opportunity.priority == Priority::High
+            {
                 recommendations.push(Recommendation {
                     recommendation_id: uuid::Uuid::new_v4().to_string(),
                     recommendation_type: RecommendationType::SkillDevelopment,
-                    description: format!("Pursue learning opportunity: {}", opportunity.description),
+                    description: format!(
+                        "Pursue learning opportunity: {}",
+                        opportunity.description
+                    ),
                     priority: opportunity.priority.clone(),
                     urgency: Self::map_priority_to_urgency(&opportunity.priority),
-                    implementation_timeline: Self::calculate_learning_timeline(&opportunity.implementation_difficulty),
+                    implementation_timeline: Self::calculate_learning_timeline(
+                        &opportunity.implementation_difficulty,
+                    ),
                     expected_benefits: vec![
                         "Improved capabilities".to_string(),
                         "Better performance".to_string(),
@@ -123,7 +147,9 @@ impl RecommendationGenerator {
     }
 
     /// Generate optimization recommendations
-    async fn generate_optimization_recommendations(analysis: &ReflectionAnalysis) -> Result<Vec<Recommendation>> {
+    async fn generate_optimization_recommendations(
+        analysis: &ReflectionAnalysis,
+    ) -> Result<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
 
         // Resource optimization
@@ -169,7 +195,9 @@ impl RecommendationGenerator {
     }
 
     /// Generate preventive recommendations
-    async fn generate_preventive_recommendations(analysis: &ReflectionAnalysis) -> Result<Vec<Recommendation>> {
+    async fn generate_preventive_recommendations(
+        analysis: &ReflectionAnalysis,
+    ) -> Result<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
 
         // Bottleneck prevention
@@ -178,7 +206,10 @@ impl RecommendationGenerator {
                 recommendations.push(Recommendation {
                     recommendation_id: uuid::Uuid::new_v4().to_string(),
                     recommendation_type: RecommendationType::PreventiveMeasure,
-                    description: format!("Implement preventive measures for: {}", bottleneck.description),
+                    description: format!(
+                        "Implement preventive measures for: {}",
+                        bottleneck.description
+                    ),
                     priority: Priority::Medium,
                     urgency: Urgency::Low,
                     implementation_timeline: Duration::from_secs(3600), // 1 hour
@@ -216,7 +247,9 @@ impl RecommendationGenerator {
     }
 
     /// Generate strategic recommendations
-    async fn generate_strategic_recommendations(learning_insights: &[LearningInsight]) -> Result<Vec<Recommendation>> {
+    async fn generate_strategic_recommendations(
+        learning_insights: &[LearningInsight],
+    ) -> Result<Vec<Recommendation>> {
         let mut recommendations = Vec::new();
 
         // High-value insights
@@ -312,8 +345,10 @@ impl RecommendationPrioritizer {
         let mut prioritized = Vec::new();
 
         for (index, recommendation) in recommendations.iter().enumerate() {
-            let adjusted_priority = Self::adjust_priority_for_constraints(recommendation, context_constraints);
-            let feasibility_score = Self::calculate_feasibility(recommendation, context_constraints);
+            let adjusted_priority =
+                Self::adjust_priority_for_constraints(recommendation, context_constraints);
+            let feasibility_score =
+                Self::calculate_feasibility(recommendation, context_constraints);
             let impact_score = Self::calculate_impact_score(recommendation);
 
             prioritized.push(PrioritizedRecommendation {
@@ -330,7 +365,9 @@ impl RecommendationPrioritizer {
         prioritized.sort_by(|a, b| {
             let a_score = Self::calculate_combined_score(a);
             let b_score = Self::calculate_combined_score(b);
-            b_score.partial_cmp(&a_score).unwrap_or(std::cmp::Ordering::Equal)
+            b_score
+                .partial_cmp(&a_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Update execution order
@@ -352,8 +389,9 @@ impl RecommendationPrioritizer {
         }
 
         // If resource-constrained, deprioritize resource-intensive recommendations
-        if constraints.resource_limitations && 
-           recommendation.implementation_timeline > Duration::from_secs(3600) {
+        if constraints.resource_limitations
+            && recommendation.implementation_timeline > Duration::from_secs(3600)
+        {
             return match recommendation.priority {
                 Priority::Critical => Priority::High,
                 Priority::High => Priority::Medium,
@@ -366,11 +404,16 @@ impl RecommendationPrioritizer {
     }
 
     /// Calculate feasibility score
-    fn calculate_feasibility(recommendation: &Recommendation, constraints: &ContextConstraints) -> f64 {
+    fn calculate_feasibility(
+        recommendation: &Recommendation,
+        constraints: &ContextConstraints,
+    ) -> f64 {
         let mut score = 1.0;
 
         // Time feasibility
-        if constraints.time_pressure && recommendation.implementation_timeline > Duration::from_secs(1800) {
+        if constraints.time_pressure
+            && recommendation.implementation_timeline > Duration::from_secs(1800)
+        {
             score *= 0.7;
         }
 
@@ -380,8 +423,9 @@ impl RecommendationPrioritizer {
         }
 
         // Complexity feasibility
-        if constraints.complexity_limitations && 
-           recommendation.recommendation_type == RecommendationType::StrategyRefinement {
+        if constraints.complexity_limitations
+            && recommendation.recommendation_type == RecommendationType::StrategyRefinement
+        {
             score *= 0.6;
         }
 
@@ -392,7 +436,7 @@ impl RecommendationPrioritizer {
     fn calculate_impact_score(recommendation: &Recommendation) -> f64 {
         let benefit_score = recommendation.expected_benefits.len() as f64 * 0.2;
         let risk_penalty = recommendation.potential_risks.len() as f64 * 0.1;
-        
+
         (benefit_score - risk_penalty).max(0.1)
     }
 
@@ -405,7 +449,9 @@ impl RecommendationPrioritizer {
             Priority::Low => 0.4,
         };
 
-        (priority_weight * 0.4) + (prioritized.feasibility_score * 0.3) + (prioritized.impact_score * 0.3)
+        (priority_weight * 0.4)
+            + (prioritized.feasibility_score * 0.3)
+            + (prioritized.impact_score * 0.3)
     }
 
     /// Identify dependencies between recommendations
@@ -418,8 +464,9 @@ impl RecommendationPrioritizer {
         // Simple dependency logic - immediate actions should come before others
         if recommendation.recommendation_type != RecommendationType::ImmediateAction {
             for other in all_recommendations {
-                if other.recommendation_type == RecommendationType::ImmediateAction &&
-                   other.recommendation_id != recommendation.recommendation_id {
+                if other.recommendation_type == RecommendationType::ImmediateAction
+                    && other.recommendation_id != recommendation.recommendation_id
+                {
                     dependencies.push(other.recommendation_id.clone());
                 }
             }

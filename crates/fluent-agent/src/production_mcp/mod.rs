@@ -11,29 +11,28 @@
 // - Security review of transport and authentication mechanisms
 // - Monitoring and alerting integration
 
-pub mod error;
 pub mod client;
+pub mod config;
+pub mod enhanced_mcp_system;
+pub mod error;
+pub mod health;
+pub mod metrics;
+pub mod registry;
 pub mod server;
 pub mod transport;
-pub mod config;
-pub mod metrics;
-pub mod health;
-pub mod registry;
-pub mod enhanced_mcp_system;
 
-pub use error::*;
 pub use client::*;
+pub use config::*;
+pub use enhanced_mcp_system::*;
+pub use error::*;
+pub use health::*;
+pub use metrics::*;
+pub use registry::*;
 pub use server::*;
 pub use transport::*;
-pub use config::*;
-pub use metrics::*;
-pub use health::*;
-pub use registry::*;
-pub use enhanced_mcp_system::*;
 
 use anyhow::Result;
 use std::sync::Arc;
-
 
 /// Production MCP manager that coordinates all MCP functionality
 pub struct ProductionMcpManager {
@@ -164,7 +163,6 @@ pub async fn initialize_production_mcp_with_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[tokio::test]
     async fn test_production_mcp_manager_lifecycle() {

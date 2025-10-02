@@ -37,9 +37,7 @@ impl PoisonRecoveryUtils {
                 if config.log_poison_events {
                     eprintln!(
                         "⚠️  Mutex poisoned in {}: {}. Attempting recovery with strategy: {:?}",
-                        context,
-                        poison_error,
-                        config.strategy
+                        context, poison_error, config.strategy
                     );
                 }
 
@@ -58,18 +56,12 @@ impl PoisonRecoveryUtils {
     }
 
     /// Safely read from a mutex with poison recovery
-    pub fn safe_read<T: Clone>(
-        mutex: &Arc<Mutex<T>>,
-        context: &str,
-    ) -> Result<T, FluentError> {
+    pub fn safe_read<T: Clone>(mutex: &Arc<Mutex<T>>, context: &str) -> Result<T, FluentError> {
         Self::safe_execute(mutex, context, |data| Ok(data.clone()))
     }
 
     /// Safely read from a mutex with default fallback
-    pub fn safe_read_or_default<T: Clone + Default>(
-        mutex: &Arc<Mutex<T>>,
-        context: &str,
-    ) -> T {
+    pub fn safe_read_or_default<T: Clone + Default>(mutex: &Arc<Mutex<T>>, context: &str) -> T {
         Self::safe_read(mutex, context).unwrap_or_default()
     }
 
@@ -244,7 +236,7 @@ mod tests {
     #[test]
     fn test_poison_resistant_mutex() {
         let mutex = PoisonResistantMutex::new(vec![1, 2, 3]);
-        
+
         // Test read
         let result = mutex.read("test_read");
         assert!(result.is_ok());

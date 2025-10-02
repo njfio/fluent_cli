@@ -332,7 +332,10 @@ mod comprehensive_streaming_tests {
         let collected_chunks_clone = collected_chunks.clone();
 
         let mut callback = StreamingUtils::create_progress_callback(move |chunk: &str| {
-            collected_chunks_clone.lock().unwrap().push(chunk.to_string());
+            collected_chunks_clone
+                .lock()
+                .unwrap()
+                .push(chunk.to_string());
         });
 
         let chunk1 = StreamChunk {

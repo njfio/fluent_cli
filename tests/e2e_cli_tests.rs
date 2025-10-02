@@ -4,7 +4,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 /// Simple E2E CLI Tests
-/// 
+///
 /// These tests validate basic CLI functionality using assert_cmd properly.
 
 /// Test utilities for E2E CLI testing
@@ -26,12 +26,12 @@ impl CliTestRunner {
         cmd.current_dir(self.temp_dir.path());
         cmd
     }
-    
+
     /// Get the temporary directory path
     pub fn temp_dir(&self) -> &std::path::Path {
         self.temp_dir.path()
     }
-    
+
     /// Create a test configuration file
     pub fn create_test_config(&self, content: &str) -> Result<String> {
         let config_path = self.temp_dir.path().join("test_config.yaml");
@@ -48,11 +48,12 @@ mod basic_tests {
     #[test]
     fn test_help_command() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
-        runner.run_command(&["--help"])
+
+        runner
+            .run_command(&["--help"])
             .assert()
             .code(predicate::in_iter([0, 2]));
-        
+
         println!("✅ Help command test passed");
         Ok(())
     }
@@ -61,12 +62,13 @@ mod basic_tests {
     #[test]
     fn test_agent_commands() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test agent help - should succeed or fail gracefully
-        runner.run_command(&["agent", "--help"])
+        runner
+            .run_command(&["agent", "--help"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
-        
+
         println!("✅ Agent commands test passed");
         Ok(())
     }
@@ -75,12 +77,13 @@ mod basic_tests {
     #[test]
     fn test_tools_commands() -> Result<()> {
         let runner = CliTestRunner::new()?;
-        
+
         // Test tools help
-        runner.run_command(&["tools", "--help"])
+        runner
+            .run_command(&["tools", "--help"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
-        
+
         println!("✅ Tools commands test passed");
         Ok(())
     }
@@ -91,7 +94,8 @@ mod basic_tests {
         let runner = CliTestRunner::new()?;
 
         // Test neo4j help
-        runner.run_command(&["neo4j", "--help"])
+        runner
+            .run_command(&["neo4j", "--help"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
 
@@ -105,7 +109,8 @@ mod basic_tests {
         let runner = CliTestRunner::new()?;
 
         // Test invalid command
-        runner.run_command(&["invalid-command"])
+        runner
+            .run_command(&["invalid-command"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
 
@@ -119,7 +124,8 @@ mod basic_tests {
         let runner = CliTestRunner::new()?;
 
         // Test version command
-        runner.run_command(&["--version"])
+        runner
+            .run_command(&["--version"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
 
@@ -155,7 +161,8 @@ engines:
         let config_path = runner.create_test_config(config_content)?;
 
         // Test with config file
-        runner.run_command(&["-c", &config_path, "--help"])
+        runner
+            .run_command(&["-c", &config_path, "--help"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
 
@@ -169,7 +176,8 @@ engines:
         let runner = CliTestRunner::new()?;
 
         // Test with non-existent config file
-        runner.run_command(&["-c", "/non/existent/config.yaml", "--help"])
+        runner
+            .run_command(&["-c", "/non/existent/config.yaml", "--help"])
             .assert()
             .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
 
@@ -195,7 +203,8 @@ mod error_tests {
         ];
 
         for case in error_cases {
-            runner.run_command(&case)
+            runner
+                .run_command(&case)
                 .assert()
                 .code(predicate::in_iter([0, 1, 2])); // Allow various exit codes
         }

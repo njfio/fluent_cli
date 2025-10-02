@@ -4,26 +4,26 @@
 //! scalability, and effectiveness of the enhanced agentic system.
 
 use anyhow::Result;
-use futures::pin_mut;
+use fluent_core::neo4j_client::Neo4jClient;
+// use futures::pin_mut;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 use uuid::Uuid;
-use fluent_core::neo4j_client::Neo4jClient;
 
-use crate::{
-    ExecutionContext, Goal, GoalType,
-    TreeOfThoughtEngine, ToTConfig, HTNPlanner, HTNConfig,
-    ErrorRecoverySystem, RecoveryConfig,
-    AgentOrchestrator, MemorySystem, MemoryConfig, ErrorInstance, ErrorType, ErrorSeverity,
-};
-use crate::reasoning::ReasoningEngine;
-use crate::action::{ActionPlanner, ActionExecutor, ActionPlan, ActionResult};
+use crate::action::{ActionExecutor, ActionPlan, ActionPlanner, ActionResult};
 use crate::observation::ObservationProcessor;
-use crate::orchestrator::{ReasoningResult, Observation, ObservationType};
-use crate::state_manager::StateManager;
+use crate::orchestrator::{Observation, ObservationType, ReasoningResult};
+use crate::reasoning::ReasoningEngine;
 use crate::reflection_engine::ReflectionEngine;
+use crate::state_manager::StateManager;
+use crate::{
+    AgentOrchestrator, ErrorInstance, ErrorRecoverySystem, ErrorSeverity, ErrorType,
+    ExecutionContext, Goal, GoalType, HTNConfig, HTNPlanner, MemoryConfig, MemorySystem,
+    RecoveryConfig, ToTConfig, TreeOfThoughtEngine,
+};
 use fluent_core::traits::Engine;
 
 /// Comprehensive benchmark suite for autonomous task execution
@@ -140,15 +140,19 @@ impl BenchmarkEngine {
 
 #[async_trait::async_trait]
 impl Engine for BenchmarkEngine {
-    fn execute<'a>(&'a self, _request: &'a fluent_core::types::Request) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+    fn execute<'a>(
+        &'a self,
+        _request: &'a fluent_core::types::Request,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a>
+    {
         Box::new(async move {
             // Simulate processing delay
             sleep(self.response_delay).await;
-            
+
             let mut count = self.call_count.lock().unwrap();
             *count += 1;
             let index = (*count as usize - 1) % self.responses.len();
-            
+
             Ok(fluent_core::types::Response {
                 content: self.responses[index].clone(),
                 usage: fluent_core::types::Usage {
@@ -167,7 +171,11 @@ impl Engine for BenchmarkEngine {
         })
     }
 
-    fn upsert<'a>(&'a self, _request: &'a fluent_core::types::UpsertRequest) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::UpsertResponse>> + Send + 'a> {
+    fn upsert<'a>(
+        &'a self,
+        _request: &'a fluent_core::types::UpsertRequest,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::UpsertResponse>> + Send + 'a>
+    {
         Box::new(async move {
             Ok(fluent_core::types::UpsertResponse {
                 processed_files: vec![],
@@ -184,17 +192,26 @@ impl Engine for BenchmarkEngine {
         None
     }
 
-    fn extract_content(&self, _json: &serde_json::Value) -> Option<fluent_core::types::ExtractedContent> {
+    fn extract_content(
+        &self,
+        _json: &serde_json::Value,
+    ) -> Option<fluent_core::types::ExtractedContent> {
         None
     }
 
-    fn upload_file<'a>(&'a self, _path: &'a std::path::Path) -> Box<dyn std::future::Future<Output = Result<String>> + Send + 'a> {
-        Box::new(async move {
-            Ok("mock-file-id".to_string())
-        })
+    fn upload_file<'a>(
+        &'a self,
+        _path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<String>> + Send + 'a> {
+        Box::new(async move { Ok("mock-file-id".to_string()) })
     }
 
-    fn process_request_with_file<'a>(&'a self, request: &'a fluent_core::types::Request, _path: &'a std::path::Path) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a> {
+    fn process_request_with_file<'a>(
+        &'a self,
+        request: &'a fluent_core::types::Request,
+        _path: &'a std::path::Path,
+    ) -> Box<dyn std::future::Future<Output = Result<fluent_core::types::Response>> + Send + 'a>
+    {
         self.execute(request)
     }
 }
@@ -207,11 +224,11 @@ impl ReasoningEngine for MockReasoningEngine {
     async fn reason(&self, _problem: &str, _context: &ExecutionContext) -> Result<String> {
         Ok("Mock reasoning result".to_string())
     }
-    
+
     async fn get_confidence(&self) -> f64 {
         0.8
     }
-    
+
     async fn get_capabilities(&self) -> Vec<crate::reasoning::ReasoningCapability> {
         vec![]
     }
@@ -221,7 +238,11 @@ struct MockActionPlanner;
 
 #[async_trait::async_trait]
 impl ActionPlanner for MockActionPlanner {
-    async fn plan_action(&self, _reasoning: ReasoningResult, _context: &ExecutionContext) -> Result<ActionPlan> {
+    async fn plan_action(
+        &self,
+        _reasoning: ReasoningResult,
+        _context: &ExecutionContext,
+    ) -> Result<ActionPlan> {
         Ok(ActionPlan {
             action_id: "mock_action".to_string(),
             action_type: crate::orchestrator::ActionType::Analysis,
@@ -236,11 +257,11 @@ impl ActionPlanner for MockActionPlanner {
             success_criteria: Vec::new(),
         })
     }
-    
+
     fn get_capabilities(&self) -> Vec<crate::action::PlanningCapability> {
         vec![]
     }
-    
+
     fn can_plan(&self, _action_type: &crate::orchestrator::ActionType) -> bool {
         true
     }
@@ -250,17 +271,16 @@ struct MockActionExecutor;
 
 #[async_trait::async_trait]
 impl ActionExecutor for MockActionExecutor {
-    async fn execute(&self, _plan: ActionPlan, _context: &mut ExecutionContext) -> Result<ActionResult> {
+    async fn execute(
+        &self,
+        _plan: ActionPlan,
+        _context: &mut ExecutionContext,
+    ) -> Result<ActionResult> {
         Ok(ActionResult {
             action_id: "mock_action".to_string(),
             action_type: crate::orchestrator::ActionType::Analysis,
             parameters: std::collections::HashMap::new(),
-            result: crate::orchestrator::ActionResult {
-                success: true,
-                output: Some("Mock execution result".to_string()),
-                error: None,
-                metadata: std::collections::HashMap::new(),
-            },
+            result: serde_json::Value::Null,
             execution_time: Duration::from_millis(50),
             success: true,
             output: Some("Mock output".to_string()),
@@ -269,11 +289,11 @@ impl ActionExecutor for MockActionExecutor {
             side_effects: Vec::new(),
         })
     }
-    
+
     fn get_capabilities(&self) -> Vec<crate::action::ExecutionCapability> {
         vec![]
     }
-    
+
     fn can_execute(&self, _action_type: &crate::orchestrator::ActionType) -> bool {
         true
     }
@@ -283,7 +303,11 @@ struct MockObservationProcessor;
 
 #[async_trait::async_trait]
 impl ObservationProcessor for MockObservationProcessor {
-    async fn process(&self, _result: ActionResult, _context: &ExecutionContext) -> Result<Observation> {
+    async fn process(
+        &self,
+        _result: ActionResult,
+        _context: &ExecutionContext,
+    ) -> Result<Observation> {
         Ok(Observation {
             observation_id: "mock_obs".to_string(),
             timestamp: SystemTime::now(),
@@ -294,8 +318,12 @@ impl ObservationProcessor for MockObservationProcessor {
             impact_assessment: None,
         })
     }
-    
-    async fn process_environment_change(&self, _change: crate::observation::EnvironmentChange, _context: &ExecutionContext) -> Result<Observation> {
+
+    async fn process_environment_change(
+        &self,
+        _change: crate::observation::EnvironmentChange,
+        _context: &ExecutionContext,
+    ) -> Result<Observation> {
         Ok(Observation {
             observation_id: "mock_env_obs".to_string(),
             timestamp: SystemTime::now(),
@@ -306,7 +334,7 @@ impl ObservationProcessor for MockObservationProcessor {
             impact_assessment: None,
         })
     }
-    
+
     fn get_capabilities(&self) -> Vec<crate::observation::ProcessingCapability> {
         vec![]
     }
@@ -325,23 +353,23 @@ impl AutonomousBenchmarkSuite {
     /// Execute all benchmarks
     pub async fn run_all_benchmarks(&mut self) -> Result<()> {
         println!("🚀 Starting Autonomous Task Execution Benchmarks");
-        
+
         if self.config.enable_performance_benchmarks {
             self.run_performance_benchmarks().await?;
         }
-        
+
         if self.config.enable_scalability_benchmarks {
             self.run_scalability_benchmarks().await?;
         }
-        
+
         if self.config.enable_quality_benchmarks {
             self.run_quality_benchmarks().await?;
         }
-        
+
         if self.config.enable_stress_tests {
             self.run_stress_tests().await?;
         }
-        
+
         self.generate_benchmark_report().await?;
         Ok(())
     }
@@ -349,19 +377,19 @@ impl AutonomousBenchmarkSuite {
     /// Run performance benchmarks
     async fn run_performance_benchmarks(&mut self) -> Result<()> {
         println!("📊 Running Performance Benchmarks");
-        
+
         // Reasoning Engine Performance
         let result = self.benchmark_reasoning_performance().await?;
         self.results.push(result);
-        
+
         // Planning System Performance
         let result = self.benchmark_planning_performance().await?;
         self.results.push(result);
-        
+
         // Memory System Performance
         let result = self.benchmark_memory_performance().await?;
         self.results.push(result);
-        
+
         Ok(())
     }
 
@@ -369,22 +397,25 @@ impl AutonomousBenchmarkSuite {
     async fn benchmark_reasoning_performance(&self) -> Result<BenchmarkResult> {
         let engine = Arc::new(BenchmarkEngine::new(Duration::from_millis(50)));
         let tot_engine = TreeOfThoughtEngine::new(engine.clone(), ToTConfig::default());
-        
+
         let start = Instant::now();
         let mut success_count = 0;
         let context = ExecutionContext::default();
-        
+
         for i in 0..self.config.iterations_per_test {
-            let problem = format!("Optimize algorithm performance for dataset size {}", i * 1000);
+            let problem = format!(
+                "Optimize algorithm performance for dataset size {}",
+                i * 1000
+            );
             match tot_engine.reason(&problem, &context).await {
                 Ok(_) => success_count += 1,
                 Err(_) => {}
             }
         }
-        
+
         let execution_time = start.elapsed();
         let throughput = self.config.iterations_per_test as f64 / execution_time.as_secs_f64();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Reasoning Engine Performance".to_string(),
@@ -413,26 +444,26 @@ impl AutonomousBenchmarkSuite {
     async fn benchmark_planning_performance(&self) -> Result<BenchmarkResult> {
         let engine = Arc::new(BenchmarkEngine::new(Duration::from_millis(30)));
         let htn_planner = HTNPlanner::new(engine.clone(), HTNConfig::default());
-        
+
         let start = Instant::now();
         let mut success_count = 0;
         let context = ExecutionContext::default();
-        
+
         for i in 0..self.config.iterations_per_test {
             let goal = Goal::new(
                 format!("Process {} data points with validation", i * 100),
-                GoalType::Analysis
+                GoalType::Analysis,
             );
-            
+
             match htn_planner.plan_decomposition(&goal, &context).await {
                 Ok(_) => success_count += 1,
                 Err(_) => {}
             }
         }
-        
+
         let execution_time = start.elapsed();
         let throughput = self.config.iterations_per_test as f64 / execution_time.as_secs_f64();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Planning System Performance".to_string(),
@@ -460,33 +491,33 @@ impl AutonomousBenchmarkSuite {
     /// Benchmark memory system performance
     async fn benchmark_memory_performance(&self) -> Result<BenchmarkResult> {
         let memory_system = MemorySystem::new(MemoryConfig::default()).await?;
-        
+
         let start = Instant::now();
         let mut success_count = 0;
-        
+
         for i in 0..self.config.iterations_per_test {
             let mut context = ExecutionContext::new(Goal::new(
                 "Default context goal".to_string(),
-                GoalType::Analysis
+                GoalType::Analysis,
             ));
-            
+
             // Add substantial context data
             for j in 0..100 {
                 context.add_context_item(
                     format!("item_{}_{}", i, j),
-                    format!("Context data for benchmark iteration {}, item {}", i, j)
+                    format!("Context data for benchmark iteration {}, item {}", i, j),
                 );
             }
-            
+
             match memory_system.update_context(&context).await {
                 Ok(_) => success_count += 1,
                 Err(_) => {}
             }
         }
-        
+
         let execution_time = start.elapsed();
         let throughput = self.config.iterations_per_test as f64 / execution_time.as_secs_f64();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Memory System Performance".to_string(),
@@ -514,13 +545,13 @@ impl AutonomousBenchmarkSuite {
     /// Run scalability benchmarks
     async fn run_scalability_benchmarks(&mut self) -> Result<()> {
         println!("📈 Running Scalability Benchmarks");
-        
+
         let result = self.benchmark_concurrent_task_handling().await?;
         self.results.push(result);
-        
+
         let result = self.benchmark_large_context_handling().await?;
         self.results.push(result);
-        
+
         Ok(())
     }
 
@@ -528,54 +559,59 @@ impl AutonomousBenchmarkSuite {
     async fn benchmark_concurrent_task_handling(&self) -> Result<BenchmarkResult> {
         let engine = Arc::new(BenchmarkEngine::new(Duration::from_millis(20)));
         let memory_system = MemorySystem::new(MemoryConfig::default()).await?;
-        
+
         // Create all required components for AgentOrchestrator
         let reasoning_engine: Box<dyn ReasoningEngine> = Box::new(MockReasoningEngine);
         let action_planner: Box<dyn ActionPlanner> = Box::new(MockActionPlanner);
         let action_executor: Box<dyn ActionExecutor> = Box::new(MockActionExecutor);
-        let observation_processor: Box<dyn ObservationProcessor> = Box::new(MockObservationProcessor);
-        let persistent_state_manager = Arc::new(StateManager::new(crate::state_manager::StateManagerConfig::default()).await?);
+        let observation_processor: Box<dyn ObservationProcessor> =
+            Box::new(MockObservationProcessor);
+        let state_manager =
+            Arc::new(StateManager::new(crate::state_manager::StateManagerConfig::default()).await?);
         let reflection_engine = ReflectionEngine::new();
-        
-        let orchestrator = Arc::new(AgentOrchestrator::new(
-            reasoning_engine,
-            action_planner,
-            action_executor,
-            observation_processor,
-            Arc::new(memory_system),
-            persistent_state_manager,
-            reflection_engine,
-        ).await);
-        
-        let start = Instant::now();
+
+        let performance_metrics =
+            Arc::new(RwLock::new(crate::monitoring::PerformanceMetrics::default()));
+        let orchestrator = Arc::new(
+            AgentOrchestrator::new(
+                reasoning_engine,
+                action_planner,
+                action_executor,
+                observation_processor,
+                Arc::new(memory_system.clone()),
+                state_manager.clone(),
+                reflection_engine,
+                performance_metrics,
+                None,
+                None,
+                None,
+            )
+            .await,
+        );
+        let start = std::time::Instant::now();
         let concurrent_tasks = 20;
         let mut handles = Vec::new();
-        
+
         for i in 0..concurrent_tasks {
-            let goal = Goal::new(
-                format!("Process concurrent task {}", i),
-                GoalType::Analysis
-            );
-            
+            let goal = Goal::new(format!("Process concurrent task {}", i), GoalType::Analysis);
+
             let _context = ExecutionContext::default();
             let orch_clone = Arc::clone(&orchestrator);
-            
-            let handle = tokio::spawn(async move {
-                orch_clone.execute_goal(goal).await
-            });
+
+            let handle = tokio::spawn(async move { orch_clone.execute_goal(goal).await });
             handles.push(handle);
         }
-        
+
         let mut success_count = 0;
         for handle in handles {
             if let Ok(Ok(_)) = handle.await {
                 success_count += 1;
             }
         }
-        
+
         let execution_time = start.elapsed();
         let throughput = concurrent_tasks as f64 / execution_time.as_secs_f64();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Concurrent Task Handling".to_string(),
@@ -603,24 +639,27 @@ impl AutonomousBenchmarkSuite {
     /// Benchmark large context handling
     async fn benchmark_large_context_handling(&self) -> Result<BenchmarkResult> {
         let memory_system = MemorySystem::new(MemoryConfig::default()).await?;
-        
+
         let start = Instant::now();
         let mut context = ExecutionContext::new(Goal::new(
             "Default context goal".to_string(),
-            GoalType::Analysis
+            GoalType::Analysis,
         ));
-        
+
         // Create large context with 10,000 items
         for i in 0..10000 {
             context.add_context_item(
                 format!("large_context_item_{}", i),
-                format!("Large context data item {} with substantial content to test memory handling", i)
+                format!(
+                    "Large context data item {} with substantial content to test memory handling",
+                    i
+                ),
             );
         }
-        
+
         let result = memory_system.update_context(&context).await;
         let execution_time = start.elapsed();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Large Context Handling".to_string(),
@@ -648,29 +687,32 @@ impl AutonomousBenchmarkSuite {
     /// Run quality benchmarks
     async fn run_quality_benchmarks(&mut self) -> Result<()> {
         println!("🎯 Running Quality Benchmarks");
-        
+
         let result = self.benchmark_decision_quality().await?;
         self.results.push(result);
-        
+
         Ok(())
     }
 
     /// Benchmark decision quality
     async fn benchmark_decision_quality(&self) -> Result<BenchmarkResult> {
         let engine = Arc::new(BenchmarkEngine::new(Duration::from_millis(40)));
-        
+
         let start = Instant::now();
         let context = ExecutionContext::default();
         let quality_scenarios = 10;
         let mut success_count = 0;
-        
+
         for i in 0..quality_scenarios {
-            let problem = format!("Make optimal decision for scenario {} with constraints and trade-offs", i);
+            let problem = format!(
+                "Make optimal decision for scenario {} with constraints and trade-offs",
+                i
+            );
             let request = fluent_core::types::Request {
                 flowname: "quality_test".to_string(),
                 payload: problem,
             };
-            
+
             // Simulate execution result for testing purposes
             let response = fluent_core::types::Response {
                 content: "Mock benchmark response".to_string(),
@@ -687,15 +729,16 @@ impl AutonomousBenchmarkSuite {
                     total_cost: 0.003,
                 },
             };
-            
+
             // Simulate quality assessment
-            if response.content.len() > 50 { // Basic quality check
+            if response.content.len() > 50 {
+                // Basic quality check
                 success_count += 1;
             }
         }
-        
+
         let execution_time = start.elapsed();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Decision Quality".to_string(),
@@ -723,10 +766,10 @@ impl AutonomousBenchmarkSuite {
     /// Run stress tests
     async fn run_stress_tests(&mut self) -> Result<()> {
         println!("⚡ Running Stress Tests");
-        
+
         let result = self.stress_test_error_recovery().await?;
         self.results.push(result);
-        
+
         Ok(())
     }
 
@@ -734,13 +777,13 @@ impl AutonomousBenchmarkSuite {
     async fn stress_test_error_recovery(&self) -> Result<BenchmarkResult> {
         let engine = Arc::new(BenchmarkEngine::new(Duration::from_millis(10)));
         let error_recovery = ErrorRecoverySystem::new(engine.clone(), RecoveryConfig::default());
-        
+
         error_recovery.initialize_strategies().await?;
-        
+
         let start = Instant::now();
         let error_scenarios = 50;
         let mut recovery_count = 0;
-        
+
         for i in 0..error_scenarios {
             let error = ErrorInstance {
                 error_id: format!("stress_error_{}", i),
@@ -753,18 +796,24 @@ impl AutonomousBenchmarkSuite {
                 root_cause: Some("Stress test condition".to_string()),
                 recovery_suggestions: vec!["Apply recovery strategy".to_string()],
             };
-            
-            match error_recovery.handle_error(error, &ExecutionContext::new(Goal::new(
-                "Error recovery context".to_string(),
-                GoalType::Analysis
-            ))).await {
+
+            match error_recovery
+                .handle_error(
+                    error,
+                    &ExecutionContext::new(Goal::new(
+                        "Error recovery context".to_string(),
+                        GoalType::Analysis,
+                    )),
+                )
+                .await
+            {
                 Ok(result) if result.success => recovery_count += 1,
                 _ => {}
             }
         }
-        
+
         let execution_time = start.elapsed();
-        
+
         Ok(BenchmarkResult {
             benchmark_id: Uuid::new_v4().to_string(),
             benchmark_name: "Error Recovery Stress Test".to_string(),
@@ -793,51 +842,63 @@ impl AutonomousBenchmarkSuite {
     async fn generate_benchmark_report(&self) -> Result<()> {
         println!("\n🎯 AUTONOMOUS TASK EXECUTION BENCHMARK REPORT");
         println!("{}", "=".repeat(60));
-        
+
         let mut total_tests = 0;
         let mut passed_tests = 0;
         let mut total_throughput = 0.0;
         let mut avg_success_rate = 0.0;
-        
+
         for result in &self.results {
             total_tests += 1;
-            if result.success_rate > 0.8 { passed_tests += 1; }
+            if result.success_rate > 0.8 {
+                passed_tests += 1;
+            }
             total_throughput += result.throughput;
             avg_success_rate += result.success_rate;
-            
+
             println!("\n📊 {}", result.benchmark_name);
             println!("   Success Rate: {:.1}%", result.success_rate * 100.0);
             println!("   Execution Time: {}ms", result.execution_time.as_millis());
             println!("   Throughput: {:.2} ops/sec", result.throughput);
-            println!("   Quality Score: {:.2}", 
-                     (result.quality_metrics.accuracy_score + 
-                      result.quality_metrics.completeness_score + 
-                      result.quality_metrics.efficiency_score + 
-                      result.quality_metrics.adaptability_score) / 4.0);
-            println!("   Resource Usage: {:.1}MB memory, {:.1}% CPU", 
-                     result.resource_usage.peak_memory_mb,
-                     result.resource_usage.avg_cpu_percent);
+            println!(
+                "   Quality Score: {:.2}",
+                (result.quality_metrics.accuracy_score
+                    + result.quality_metrics.completeness_score
+                    + result.quality_metrics.efficiency_score
+                    + result.quality_metrics.adaptability_score)
+                    / 4.0
+            );
+            println!(
+                "   Resource Usage: {:.1}MB memory, {:.1}% CPU",
+                result.resource_usage.peak_memory_mb, result.resource_usage.avg_cpu_percent
+            );
         }
-        
+
         if total_tests > 0 {
             avg_success_rate /= total_tests as f64;
             let avg_throughput = total_throughput / total_tests as f64;
-            
+
             println!("\n🏆 SUMMARY");
             println!("   Total Tests: {}", total_tests);
-            println!("   Tests Passed: {} ({:.1}%)", passed_tests, (passed_tests as f64 / total_tests as f64) * 100.0);
+            println!(
+                "   Tests Passed: {} ({:.1}%)",
+                passed_tests,
+                (passed_tests as f64 / total_tests as f64) * 100.0
+            );
             println!("   Average Success Rate: {:.1}%", avg_success_rate * 100.0);
             println!("   Average Throughput: {:.2} ops/sec", avg_throughput);
-            
+
             if avg_success_rate > 0.8 {
-                println!("   ✅ Overall Assessment: EXCELLENT - System performing above expectations");
+                println!(
+                    "   ✅ Overall Assessment: EXCELLENT - System performing above expectations"
+                );
             } else if avg_success_rate > 0.6 {
                 println!("   ⚠️  Overall Assessment: GOOD - System performing adequately");
             } else {
                 println!("   ❌ Overall Assessment: NEEDS IMPROVEMENT - System below performance targets");
             }
         }
-        
+
         Ok(())
     }
 

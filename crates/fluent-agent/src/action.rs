@@ -2,11 +2,12 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::info;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use crate::context::ExecutionContext;
-use crate::orchestrator::{ActionResult as OrchActionResult, ActionType, ReasoningResult};
+use crate::orchestrator::{ActionType, ReasoningResult};
 
 /// Trait for action planners that can determine the best next action
 #[async_trait]
@@ -73,12 +74,12 @@ pub struct ActionPlan {
     pub description: String,
     pub parameters: HashMap<String, serde_json::Value>,
     pub expected_outcome: String,
+    pub success_criteria: Vec<String>,
     pub confidence_score: f64,
     pub estimated_duration: Option<Duration>,
     pub risk_level: RiskLevel,
     pub alternatives: Vec<AlternativeAction>,
     pub prerequisites: Vec<String>,
-    pub success_criteria: Vec<String>,
 }
 
 /// Alternative action if the primary action fails
@@ -105,7 +106,7 @@ pub struct ActionResult {
     pub action_id: String,
     pub action_type: ActionType,
     pub parameters: HashMap<String, serde_json::Value>,
-    pub result: OrchActionResult,
+    pub result: serde_json::Value,
     pub execution_time: Duration,
     pub success: bool,
     pub output: Option<String>,
@@ -296,10 +297,7 @@ impl ActionPlanner for IntelligentActionPlanner {
         let mut prefer_low_risk = false;
         let mut avoid_file_write = false;
         for adj in &context.strategy_adjustments {
-            let text = adj
-                .adjustments
-                .join("; ")
-                .to_lowercase();
+            let text = adj.adjustments.join("; ").to_lowercase();
             if text.contains("quality") || text.contains("validation") {
                 enforce_validation = true;
             }
@@ -324,6 +322,7 @@ impl ActionPlanner for IntelligentActionPlanner {
 
         // Assess risk
         plan.risk_level = self.risk_assessor.assess_risk(&plan, context).await?;
+        plan.confidence_score = reasoning.confidence_score;
 
         // Apply reflection-derived preferences
         if prefer_low_risk {
@@ -347,20 +346,26 @@ impl ActionPlanner for IntelligentActionPlanner {
             {
                 plan.action_type = crate::orchestrator::ActionType::Analysis;
                 plan.description = "Validate generated artifact before persisting".to_string();
-                plan.parameters.insert(
-                    "analysis_type".to_string(),
-                    serde_json::json!("validation"),
-                );
+                plan.parameters
+                    .insert("analysis_type".to_string(), serde_json::json!("validation"));
                 plan.expected_outcome = "Validation report produced".to_string();
                 plan.risk_level = RiskLevel::Low;
             }
         }
 
-        if avoid_file_write && matches!(plan.action_type, crate::orchestrator::ActionType::FileOperation) {
+        if avoid_file_write
+            && matches!(
+                plan.action_type,
+                crate::orchestrator::ActionType::FileOperation
+            )
+        {
             // Defer file writes; do planning/analysis instead
             plan.action_type = crate::orchestrator::ActionType::Planning;
             plan.description = "Plan safe persistence strategy (write deferred)".to_string();
-            plan.parameters.insert("scope".to_string(), serde_json::json!("persistence_strategy"));
+            plan.parameters.insert(
+                "scope".to_string(),
+                serde_json::json!("persistence_strategy"),
+            );
             plan.expected_outcome = "Persistence plan drafted".to_string();
             plan.risk_level = RiskLevel::Low;
         }
@@ -377,7 +382,10 @@ impl ActionPlanner for IntelligentActionPlanner {
                 description: "Run error diagnostics and refine plan".to_string(),
                 parameters: {
                     let mut m = HashMap::new();
-                    m.insert("analysis_type".to_string(), serde_json::json!("error_recovery"));
+                    m.insert(
+                        "analysis_type".to_string(),
+                        serde_json::json!("error_recovery"),
+                    );
                     m
                 },
                 trigger_conditions: vec!["consecutive_failures>=3".to_string()],
@@ -485,12 +493,7 @@ impl ActionExecutor for ComprehensiveActionExecutor {
                 action_id: plan.action_id,
                 action_type: plan.action_type,
                 parameters: plan.parameters,
-                result: OrchActionResult {
-                    success: true,
-                    output: output.clone(),
-                    error: None,
-                    metadata: metadata.clone(),
-                },
+                result: serde_json::Value::Null,
                 execution_time,
                 success: true,
                 output,
@@ -502,12 +505,7 @@ impl ActionExecutor for ComprehensiveActionExecutor {
                 action_id: plan.action_id,
                 action_type: plan.action_type,
                 parameters: plan.parameters,
-                result: OrchActionResult {
-                    success: false,
-                    output: None,
-                    error: Some(e.to_string()),
-                    metadata: HashMap::new(),
-                },
+                result: serde_json::Value::Null,
                 execution_time,
                 success: false,
                 output: None,

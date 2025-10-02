@@ -2,7 +2,6 @@ use super::{
     AuthConfig, AuthType, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpTransport,
     RetryConfig, TimeoutConfig,
 };
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -11,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
@@ -20,8 +20,10 @@ pub struct WebSocketTransport {
     auth_config: Option<AuthConfig>,
     timeout_config: TimeoutConfig,
     retry_config: RetryConfig,
-    connection: Arc<tokio::sync::Mutex<Option<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>>>,
-    response_handlers: Arc<tokio::sync::RwLock<HashMap<String, mpsc::UnboundedSender<JsonRpcResponse>>>>,
+    connection:
+        Arc<tokio::sync::Mutex<Option<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>>>,
+    response_handlers:
+        Arc<tokio::sync::RwLock<HashMap<String, mpsc::UnboundedSender<JsonRpcResponse>>>>,
     notification_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<JsonRpcNotification>>>>,
     is_connected: Arc<std::sync::atomic::AtomicBool>,
     message_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<Message>>>>,
@@ -109,8 +111,9 @@ impl WebSocketTransport {
         if let Some(auth) = auth_token {
             request.headers_mut().insert(
                 "Authorization",
-                format!("Bearer {}", auth).parse()
-                    .map_err(|e| anyhow::anyhow!("Invalid auth header: {}", e))?
+                format!("Bearer {}", auth)
+                    .parse()
+                    .map_err(|e| anyhow::anyhow!("Invalid auth header: {}", e))?,
             );
         }
 

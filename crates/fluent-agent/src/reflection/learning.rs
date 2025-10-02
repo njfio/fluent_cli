@@ -1,5 +1,5 @@
 //! Learning insights and knowledge extraction components
-//! 
+//!
 //! This module handles the extraction of learning insights from reflection analysis,
 //! pattern recognition, and knowledge retention strategies.
 
@@ -29,11 +29,13 @@ impl LearningInsightExtractor {
         insights.extend(failure_insights);
 
         // Extract insights from strategy effectiveness
-        let strategy_insights = Self::extract_strategy_insights(&analysis.strategy_effectiveness).await?;
+        let strategy_insights =
+            Self::extract_strategy_insights(&analysis.strategy_effectiveness).await?;
         insights.extend(strategy_insights);
 
         // Extract insights from resource utilization
-        let resource_insights = Self::extract_resource_insights(&analysis.resource_utilization).await?;
+        let resource_insights =
+            Self::extract_resource_insights(&analysis.resource_utilization).await?;
         insights.extend(resource_insights);
 
         // Extract contextual insights
@@ -55,7 +57,10 @@ impl LearningInsightExtractor {
                 evidence: pattern.conditions.clone(),
                 confidence: pattern.success_rate,
                 applicability: Applicability {
-                    context_types: vec!["similar_goals".to_string(), "comparable_complexity".to_string()],
+                    context_types: vec![
+                        "similar_goals".to_string(),
+                        "comparable_complexity".to_string(),
+                    ],
                     goal_types: vec!["analysis".to_string(), "problem_solving".to_string()],
                     confidence_level: pattern.success_rate,
                     generalizability: Self::calculate_generalizability(pattern.success_rate),
@@ -72,7 +77,10 @@ impl LearningInsightExtractor {
                     evidence: pattern.conditions.clone(),
                     confidence: pattern.success_rate,
                     applicability: Applicability {
-                        context_types: vec!["high_stakes".to_string(), "critical_tasks".to_string()],
+                        context_types: vec![
+                            "high_stakes".to_string(),
+                            "critical_tasks".to_string(),
+                        ],
                         goal_types: vec!["optimization".to_string(), "performance".to_string()],
                         confidence_level: pattern.success_rate,
                         generalizability: 0.9,
@@ -97,7 +105,10 @@ impl LearningInsightExtractor {
                 evidence: pattern.conditions.clone(),
                 confidence: pattern.failure_rate,
                 applicability: Applicability {
-                    context_types: vec!["similar_goals".to_string(), "risk_prone_tasks".to_string()],
+                    context_types: vec![
+                        "similar_goals".to_string(),
+                        "risk_prone_tasks".to_string(),
+                    ],
                     goal_types: vec!["analysis".to_string(), "problem_solving".to_string()],
                     confidence_level: pattern.failure_rate,
                     generalizability: Self::calculate_generalizability(pattern.failure_rate),
@@ -128,7 +139,9 @@ impl LearningInsightExtractor {
     }
 
     /// Extract insights from strategy effectiveness
-    async fn extract_strategy_insights(effectiveness: &StrategyEffectiveness) -> Result<Vec<LearningInsight>> {
+    async fn extract_strategy_insights(
+        effectiveness: &StrategyEffectiveness,
+    ) -> Result<Vec<LearningInsight>> {
         let mut insights = Vec::new();
 
         if effectiveness.current_strategy_score > 0.8 {
@@ -136,7 +149,10 @@ impl LearningInsightExtractor {
                 insight_id: uuid::Uuid::new_v4().to_string(),
                 insight_type: InsightType::StrategyOptimization,
                 description: "Current strategy is highly effective".to_string(),
-                evidence: vec![format!("Strategy score: {:.2}", effectiveness.current_strategy_score)],
+                evidence: vec![format!(
+                    "Strategy score: {:.2}",
+                    effectiveness.current_strategy_score
+                )],
                 confidence: effectiveness.current_strategy_score,
                 applicability: Applicability {
                     context_types: vec!["similar_contexts".to_string()],
@@ -153,7 +169,10 @@ impl LearningInsightExtractor {
                 insight_id: uuid::Uuid::new_v4().to_string(),
                 insight_type: InsightType::ConsistencyImprovement,
                 description: "Strategy consistency needs improvement".to_string(),
-                evidence: vec![format!("Consistency score: {:.2}", effectiveness.strategy_consistency)],
+                evidence: vec![format!(
+                    "Consistency score: {:.2}",
+                    effectiveness.strategy_consistency
+                )],
                 confidence: 1.0 - effectiveness.strategy_consistency,
                 applicability: Applicability {
                     context_types: vec!["strategy_planning".to_string()],
@@ -169,7 +188,9 @@ impl LearningInsightExtractor {
     }
 
     /// Extract insights from resource utilization
-    async fn extract_resource_insights(utilization: &ResourceUtilization) -> Result<Vec<LearningInsight>> {
+    async fn extract_resource_insights(
+        utilization: &ResourceUtilization,
+    ) -> Result<Vec<LearningInsight>> {
         let mut insights = Vec::new();
 
         if utilization.efficiency_score < 0.6 {
@@ -197,15 +218,19 @@ impl LearningInsightExtractor {
     }
 
     /// Extract contextual insights
-    async fn extract_contextual_insights(context: &ExecutionContext) -> Result<Vec<LearningInsight>> {
+    async fn extract_contextual_insights(
+        context: &ExecutionContext,
+    ) -> Result<Vec<LearningInsight>> {
         let mut insights = Vec::new();
 
         // Analyze task completion patterns
         let completion_rate = if !context.completed_tasks.is_empty() {
-            context.completed_tasks
+            context
+                .completed_tasks
                 .iter()
                 .filter(|task| task.success == Some(true))
-                .count() as f64 / context.completed_tasks.len() as f64
+                .count() as f64
+                / context.completed_tasks.len() as f64
         } else {
             0.0
         };
@@ -242,11 +267,14 @@ pub struct PatternRecognizer;
 
 impl PatternRecognizer {
     /// Recognize success patterns from execution history
-    pub async fn recognize_success_patterns(context: &ExecutionContext) -> Result<Vec<SuccessPattern>> {
+    pub async fn recognize_success_patterns(
+        context: &ExecutionContext,
+    ) -> Result<Vec<SuccessPattern>> {
         let mut patterns = Vec::new();
 
         // Analyze successful tasks
-        let successful_tasks: Vec<_> = context.completed_tasks
+        let successful_tasks: Vec<_> = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(true))
             .collect();
@@ -257,8 +285,9 @@ impl PatternRecognizer {
 
             for (pattern_key, tasks) in pattern_groups {
                 let success_rate = tasks.len() as f64 / context.completed_tasks.len() as f64;
-                
-                if success_rate > 0.3 { // Only consider patterns with reasonable frequency
+
+                if success_rate > 0.3 {
+                    // Only consider patterns with reasonable frequency
                     patterns.push(SuccessPattern {
                         pattern_id: uuid::Uuid::new_v4().to_string(),
                         description: format!("Success pattern: {}", pattern_key),
@@ -276,11 +305,14 @@ impl PatternRecognizer {
     }
 
     /// Recognize failure patterns from execution history
-    pub async fn recognize_failure_patterns(context: &ExecutionContext) -> Result<Vec<FailurePattern>> {
+    pub async fn recognize_failure_patterns(
+        context: &ExecutionContext,
+    ) -> Result<Vec<FailurePattern>> {
         let mut patterns = Vec::new();
 
         // Analyze failed tasks
-        let failed_tasks: Vec<_> = context.completed_tasks
+        let failed_tasks: Vec<_> = context
+            .completed_tasks
             .iter()
             .filter(|task| task.success == Some(false))
             .collect();
@@ -291,15 +323,22 @@ impl PatternRecognizer {
 
             for (pattern_key, tasks) in pattern_groups {
                 let failure_rate = tasks.len() as f64 / context.completed_tasks.len() as f64;
-                
-                if failure_rate > 0.2 { // Consider patterns with reasonable frequency
+
+                if failure_rate > 0.2 {
+                    // Consider patterns with reasonable frequency
                     patterns.push(FailurePattern {
                         pattern_id: uuid::Uuid::new_v4().to_string(),
                         description: format!("Failure pattern: {}", pattern_key),
                         conditions: vec![pattern_key.clone()],
-                        actions: vec!["rushed_execution".to_string(), "insufficient_validation".to_string()],
+                        actions: vec![
+                            "rushed_execution".to_string(),
+                            "insufficient_validation".to_string(),
+                        ],
                         failure_rate,
-                        mitigation_strategies: vec!["improve_planning".to_string(), "enhance_validation".to_string()],
+                        mitigation_strategies: vec![
+                            "improve_planning".to_string(),
+                            "enhance_validation".to_string(),
+                        ],
                         frequency: tasks.len(),
                         context_factors: Self::extract_context_factors(&tasks),
                     });
@@ -311,7 +350,9 @@ impl PatternRecognizer {
     }
 
     /// Group tasks by similarity
-    fn group_tasks_by_similarity<'a>(tasks: &'a [&'a crate::task::Task]) -> HashMap<String, Vec<&'a crate::task::Task>> {
+    fn group_tasks_by_similarity<'a>(
+        tasks: &'a [&'a crate::task::Task],
+    ) -> HashMap<String, Vec<&'a crate::task::Task>> {
         let mut groups = HashMap::new();
 
         for task in tasks {
@@ -353,12 +394,14 @@ pub struct KnowledgeRetentionManager;
 
 impl KnowledgeRetentionManager {
     /// Prioritize insights for retention
-    pub async fn prioritize_for_retention(insights: &[LearningInsight]) -> Result<Vec<RetentionPriority>> {
+    pub async fn prioritize_for_retention(
+        insights: &[LearningInsight],
+    ) -> Result<Vec<RetentionPriority>> {
         let mut priorities = Vec::new();
 
         for insight in insights {
             let priority_score = Self::calculate_retention_priority(insight);
-            
+
             priorities.push(RetentionPriority {
                 insight_id: insight.insight_id.clone(),
                 priority_score,
@@ -369,7 +412,8 @@ impl KnowledgeRetentionManager {
 
         // Sort by priority score (highest first)
         priorities.sort_by(|a, b| {
-            b.priority_score.partial_cmp(&a.priority_score)
+            b.priority_score
+                .partial_cmp(&a.priority_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
