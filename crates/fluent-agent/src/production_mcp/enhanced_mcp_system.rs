@@ -478,7 +478,7 @@ pub struct WebSocketTransport {
 
 #[async_trait::async_trait]
 impl McpTransport for WebSocketTransport {
-    async fn connect(&mut self, endpoint: &str) -> Result<String> {
+    async fn connect(&mut self, _endpoint: &str) -> Result<String> {
         let connection_id = Uuid::new_v4().to_string();
         // WebSocket connection implementation
         Ok(connection_id)

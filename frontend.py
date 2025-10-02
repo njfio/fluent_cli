@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 import shutil
 
-app = Flask(__name__, static_folder='frontend')
+app = Flask(__name__)
 
 # Global list to track temporary files for cleanup
 _temp_files = []
@@ -32,7 +32,53 @@ signal.signal(signal.SIGINT, lambda signum, frame: cleanup_temp_files())
 
 @app.route('/', methods=['GET'])
 def index():
-    return app.send_static_file('index.html')
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Fluent CLI Web Interface</title></head>
+    <body>
+        <h1>Fluent CLI Web Interface</h1>
+        <p>API endpoints are working:</p>
+        <ul>
+            <li><a href="/api/collections">/api/collections</a></li>
+            <li><a href="/api/price/all">/api/price/all</a></li>
+        </ul>
+        <p>Use the original HTML interface at: <a href="/frontend">/frontend</a></p>
+    </body>
+    </html>
+    """
+
+@app.route('/api/collections', methods=['GET'])
+def get_collections():
+    """Return a list of available collections"""
+    try:
+        # For now, return a simple list of mock collections
+        # In a real implementation, this would query a database or storage system
+        collections = [
+            {"id": "1", "name": "Default Collection", "description": "Default collection for testing"},
+            {"id": "2", "name": "User Collection", "description": "User-specific collection"}
+        ]
+        return jsonify(collections)
+    except Exception as e:
+        logging.error(f"Error fetching collections: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/price/all', methods=['GET'])
+def get_price_all():
+    """Return pricing information for all items"""
+    try:
+        # For now, return mock pricing data
+        # In a real implementation, this would query pricing from a database or external service
+        prices = {
+            "items": [
+                {"id": "1", "name": "Basic Plan", "price": 9.99, "currency": "USD"},
+                {"id": "2", "name": "Pro Plan", "price": 29.99, "currency": "USD"}
+            ]
+        }
+        return jsonify(prices)
+    except Exception as e:
+        logging.error(f"Error fetching prices: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/execute', methods=['POST'])
 def execute_fluent():

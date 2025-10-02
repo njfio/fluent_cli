@@ -7,6 +7,7 @@
 //! # Key Modules
 //!
 //! - [`agentic`] - Autonomous agentic execution capabilities
+//! - [`agent_control`] - Human-in-the-loop control channel for agent collaboration
 //! - [`commands`] - Modular command handlers for different CLI operations
 //! - [`pipeline_builder`] - Pipeline construction and execution
 //! - [`memory`] - Memory management for conversations and context
@@ -54,6 +55,7 @@ pub mod commands;
 pub mod memory;
 pub mod neo4j_operations;
 pub mod pipeline_builder;
+pub mod tui;
 pub mod validation;
 // pub mod frogger; // Removed frogger module as it doesn't exist
 
@@ -70,13 +72,9 @@ pub mod mcp_runner;
 pub mod neo4j_runner;
 pub mod utils; // Added utils module
 
-use anyhow::Error;
-use fluent_core::config::EngineConfig;
-use fluent_core::traits::Engine;
-use fluent_engines::create_engine;
-
 // Re-export commonly used functions
 // Updated to use the local utils module instead of trying to import from a non-existent path
+pub use fluent_engines::create_engine;
 pub use memory::MemoryManager;
 pub use utils::{extract_code, extract_cypher_query, format_as_csv, is_valid_cypher};
 pub use validation::{parse_key_value_pair, validate_engine_name, validate_file_path_secure};

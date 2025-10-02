@@ -1,11 +1,13 @@
 //! Advanced reasoning engines for sophisticated problem solving
 //!
 //! This module contains various reasoning engines that implement different
-//! cognitive patterns for autonomous problem solving.
+//! cognitive patterns for autonomous problem solving, including multi-modal
+//! reasoning capabilities for processing text, code, images, and audio.
 
 pub mod chain_of_thought;
 pub mod enhanced_multi_modal;
 pub mod meta_reasoning;
+pub mod multi_modal;
 pub mod tree_of_thought;
 
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
@@ -13,6 +15,10 @@ pub use enhanced_multi_modal::{
     EnhancedMultiModalEngine, EnhancedReasoningConfig, EnhancedReasoningResult,
 };
 pub use meta_reasoning::{MetaConfig, MetaReasoningEngine, MetaReasoningResult};
+pub use multi_modal::{
+    AudioData, BinaryData, CodeContent, CrossModalRelationship, ImageData, MultiModalInput,
+    MultiModalReasoningEngine, MultiModalReasoningResult, StructuredData,
+};
 pub use tree_of_thought::{ToTConfig, ToTReasoningResult, TreeOfThoughtEngine};
 
 // Re-export the main reasoning traits
@@ -133,7 +139,7 @@ impl ReasoningEngine for CompositeReasoningEngine {
 
                 if complexity > 0.5 {
                     // Use Tree-of-Thought for complex problems
-                    if let Some(tot_engine) = self.engines.iter().find(|e| {
+                    if let Some(tot_engine) = self.engines.iter().find(|_e| {
                         // Check if this is a Tree-of-Thought engine by type name
                         std::any::type_name::<dyn ReasoningEngine>().contains("TreeOfThought")
                     }) {

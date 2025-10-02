@@ -636,14 +636,6 @@ impl McpResourceManager {
         } else {
             (total_size as f64 / self.config.max_cache_size_bytes as f64) * 100.0
         };
-        stats.insert(
-            "utilization_percent".to_string(),
-            json!(utilization),
-        );
-            } else {
-                0.0
-            }),
-        );
 
         stats
     }

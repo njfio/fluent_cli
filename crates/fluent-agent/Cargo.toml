@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ strum = { version = "0.26", features = ["derive"] }
+ strum_macros = "0.26"
 fluent-engines = { workspace = true }
 fluent-core = { workspace = true }
 anyhow = { workspace = true }
@@ -16,7 +18,7 @@ log = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 futures = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
 regex = { workspace = true }
 rmcp = { workspace = true }
 rusqlite = { workspace = true }
@@ -41,6 +43,9 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 bincode = "1.3"
 toml = { workspace = true }
+# Web dashboard dependencies
+warp = "0.3"
+futures-util = { version = "0.3", features = ["sink", "std"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -309,6 +309,9 @@ async fn demo_config_system() -> Result<()> {
         config_path: Some("./config_test.json".to_string()),
         max_iterations: Some(50),
         timeout_seconds: Some(300),
+        performance: "default".to_string(),
+        state_management: "default".to_string(),
+        supervisor: "default".to_string(),
     };
 
     // Validate configuration

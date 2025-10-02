@@ -1,3 +1,6 @@
+#![allow(unused)]
+#![allow(ambiguous_glob_reexports)]
+
 //! # Fluent Agent - Advanced Agentic Framework
 //!
 //! This crate provides advanced agentic capabilities for the Fluent CLI system,
@@ -34,7 +37,7 @@
 use anyhow::{anyhow, Result};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
-use security::security_framework::SecurityFramework;
+// use security::security_framework::SecurityFramework;
 use std::path::Path;
 use std::pin::Pin;
 use std::process::Stdio;
@@ -44,13 +47,18 @@ use tokio::process::Command;
 // Advanced agentic modules
 pub mod action;
 pub mod adapters;
-pub mod autonomy;
+pub mod advanced_tools;
+pub mod agent_control;
 pub mod agent_with_mcp;
+pub mod autonomy;
 pub mod benchmarks;
+pub mod collaboration_bridge;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
+pub mod ethical_guardrails;
 pub mod goal;
+pub mod human_collaboration;
 pub mod mcp_adapter;
 pub mod mcp_client;
 pub mod mcp_resource_manager;
@@ -68,14 +76,26 @@ pub mod reflection;
 pub mod reflection_engine;
 pub mod security;
 pub mod state_manager;
+pub mod swarm_intelligence;
 pub mod task;
 pub mod tools;
 pub mod transport;
+pub mod web_dashboard;
 pub mod workflow;
 
 // Re-export advanced agentic types
 pub use action::{
     ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
+};
+pub use advanced_tools::{
+    AdvancedTool, AdvancedToolRegistry, ToolCategory, ToolParameters, ToolPriority, ToolResult,
+};
+pub use agent_control::{
+    AgentControlChannel, ApprovalRequest, ApprovalResponse, ControlMessage, ControlMessageType,
+    StateUpdate, StateUpdateType,
+};
+pub use collaboration_bridge::{
+    ApprovalConfig, CollaborativeOrchestrator, ControlAction,
 };
 pub use autonomy::{
     AutonomySupervisor, AutonomySupervisorConfig, GuardrailDecision, RiskAssessment,
@@ -83,7 +103,18 @@ pub use autonomy::{
 };
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
+pub use ethical_guardrails::{
+    EthicalEvaluation, EthicalGuardrailsSystem, EthicalRecommendation, FilterResult, HarmCategory,
+    RiskLevel,
+};
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
+pub use human_collaboration::{
+    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent, CollaborationMessage,
+    CollaborationSession, CommunicationChannels, FeedbackEntry, FeedbackSystem, FeedbackType,
+    HumanCollaborationCoordinator, HumanCollaborationInterface, Intervention, InterventionManager,
+    InterventionOutcome, InterventionPriority, InterventionRequester, InterventionResponse,
+    InterventionStatus, InterventionType, MessageSender, MessageType, SessionStatus, UserProfile,
+};
 pub use memory::{
     ContextCompressor, CrossSessionPersistence, IntegratedMemorySystem, MemoryConfig,
     MemoryContent, MemoryItem, MemoryStats, MemorySystem, WorkingMemory,
@@ -93,9 +124,7 @@ pub use monitoring::{
     PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult,
 };
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
-pub use orchestrator::{
-    AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics,
-};
+pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
 pub use planning::{
     CompletePlanningResult, CompositePlanner, DependencyAnalyzer, DynamicReplanner, HTNConfig,
     HTNPlanner, HTNResult,
@@ -105,14 +134,22 @@ pub use production_mcp::{
     McpMetrics, ProductionMcpConfig, ProductionMcpManager,
 };
 pub use reasoning::{
-    ChainOfThoughtEngine, CoTConfig, CoTReasoningResult, CompositeReasoningEngine, MetaConfig,
-    MetaReasoningEngine, MetaReasoningResult, ReasoningCapability, ReasoningEngine, ToTConfig,
-    ToTReasoningResult, TreeOfThoughtEngine,
+    AudioData, BinaryData, ChainOfThoughtEngine, CoTConfig, CoTReasoningResult, CodeContent,
+    CompositeReasoningEngine, CrossModalRelationship, ImageData, MetaConfig, MetaReasoningEngine,
+    MetaReasoningResult, MultiModalInput, MultiModalReasoningEngine, MultiModalReasoningResult,
+    ReasoningCapability, ReasoningEngine, StructuredData, ToTConfig, ToTReasoningResult,
+    TreeOfThoughtEngine,
 };
 pub use reflection_engine::{ReflectionConfig, ReflectionEngine, ReflectionResult, ReflectionType};
-pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
-pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
 pub use security::capability::CapabilityManager;
+pub use state_manager::{StateManager, StateManagerConfig, StateRecoveryInfo};
+pub use swarm_intelligence::{
+    AgentPerformance, AgentSpecialization, AgentStatus, ConsensusEngine, Message, SwarmAgent,
+    SwarmCoordinator, SwarmMetrics, SwarmResult, SwarmTask, TaskAllocator,
+    TaskPriority as SwarmTaskPriority, TaskResult as SwarmTaskResult, Vote,
+};
+pub use task::{Task, TaskPriority, TaskResult, TaskTemplates, TaskType};
+pub use web_dashboard::{DashboardConfig, WebDashboard};
 
 /// Simple agent that keeps a history of prompt/response pairs.
 pub struct Agent {

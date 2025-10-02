@@ -37,9 +37,8 @@ impl AnthropicEngine {
 
         // Create reusable HTTP client with optimized settings
         let mut client_builder = Client::builder()
-let mut client_builder = Client::builder()
-    .timeout(std::time::Duration::from_secs(600)) // Keep in sync with the per-request timeout
-    .connect_timeout(std::time::Duration::from_secs(30)) // Increased from 10 to 30 seconds
+            .timeout(std::time::Duration::from_secs(600)) // Keep in sync with the per-request timeout
+            .connect_timeout(std::time::Duration::from_secs(30)) // Increased from 10 to 30 seconds
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .tcp_keepalive(std::time::Duration::from_secs(60));

@@ -187,14 +187,20 @@ pub fn build_cli() -> Command {
                         .value_parser(clap::value_parser!(u32))
                         .default_value("3"),
                 )
-                .arg(
-                    Arg::new("min-html-size")
-                        .long("min-html-size")
-                        .value_name("BYTES")
-                        .help("Minimum HTML size to accept as valid output")
-                        .value_parser(clap::value_parser!(u32))
-                        .default_value("2000"),
-                )
+                 .arg(
+                     Arg::new("min-html-size")
+                         .long("min-html-size")
+                         .value_name("BYTES")
+                         .help("Minimum HTML size to accept as valid output")
+                         .value_parser(clap::value_parser!(u32))
+                         .default_value("2000"),
+                 )
+                 .arg(
+                     Arg::new("tui")
+                         .long("tui")
+                         .help("Enable terminal user interface for better monitoring")
+                         .action(ArgAction::SetTrue),
+                 )
                 .arg(
                     Arg::new("task")
                         .short('t')

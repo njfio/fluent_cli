@@ -5,10 +5,11 @@
 
 use anyhow::Result;
 use fluent_core::neo4j_client::Neo4jClient;
-use futures::pin_mut;
+// use futures::pin_mut;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 use uuid::Uuid;
 
@@ -279,12 +280,7 @@ impl ActionExecutor for MockActionExecutor {
             action_id: "mock_action".to_string(),
             action_type: crate::orchestrator::ActionType::Analysis,
             parameters: std::collections::HashMap::new(),
-            result: crate::orchestrator::ActionResult {
-                success: true,
-                output: Some("Mock execution result".to_string()),
-                error: None,
-                metadata: std::collections::HashMap::new(),
-            },
+            result: serde_json::Value::Null,
             execution_time: Duration::from_millis(50),
             success: true,
             output: Some("Mock output".to_string()),
@@ -574,21 +570,25 @@ impl AutonomousBenchmarkSuite {
             Arc::new(StateManager::new(crate::state_manager::StateManagerConfig::default()).await?);
         let reflection_engine = ReflectionEngine::new();
 
+        let performance_metrics =
+            Arc::new(RwLock::new(crate::monitoring::PerformanceMetrics::default()));
         let orchestrator = Arc::new(
             AgentOrchestrator::new(
                 reasoning_engine,
                 action_planner,
                 action_executor,
                 observation_processor,
-                memory_system.clone(),
+                Arc::new(memory_system.clone()),
                 state_manager.clone(),
                 reflection_engine,
+                performance_metrics,
                 None,
                 None,
                 None,
             )
             .await,
         );
+        let start = std::time::Instant::now();
         let concurrent_tasks = 20;
         let mut handles = Vec::new();
 

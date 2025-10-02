@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
-use log::{debug, error, info, warn};
+use log::info;
 use std::io::IsTerminal;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 // The actual implementation uses the existing agentic infrastructure from lib.rs
 
 use super::{CommandHandler, CommandResult};
+use crate::mcp_runner;
 
 /// Agent command handler with real agentic framework integration
 pub struct AgentCommand {
@@ -58,18 +59,21 @@ impl AgentCommand {
         _agent_config_path: &str,
         max_iterations: u32,
         enable_tools: bool,
+        enable_reflection: bool,
         config: &Config,
         config_path: &str,
         model_override: Option<String>,
         gen_retries: Option<u32>,
         min_html_size: Option<u32>,
         dry_run: bool,
+        enable_tui: bool,
     ) -> Result<CommandResult> {
         println!("🤖 Starting Real Agentic Mode");
         info!("agent.cli.run_agentic_mode goal='{}' max_iterations={} enable_tools={} model_override={:?} gen_retries={:?} min_html_size={:?} dry_run={}", goal_description, max_iterations, enable_tools, model_override, gen_retries, min_html_size, dry_run);
         println!("Goal: {goal_description}");
         println!("Max iterations: {max_iterations}");
         println!("Tools enabled: {enable_tools}");
+        println!("Reflection enabled: {enable_reflection}");
 
         // If dry-run, do not execute any long-running agent loop; just acknowledge inputs
         if dry_run {
@@ -77,6 +81,7 @@ impl AgentCommand {
             println!("  Goal: {goal_description}");
             println!("  Max iterations: {max_iterations}");
             println!("  Tools enabled: {enable_tools}");
+            println!("  Reflection enabled: {enable_reflection}");
             println!("  Model override: {:?}", model_override);
             println!("  Gen retries: {:?}", gen_retries);
             println!("  Min HTML size: {:?}", min_html_size);
@@ -98,15 +103,17 @@ impl AgentCommand {
         // This delegates to the real agentic implementation
         println!("🚀 Starting autonomous execution using existing agentic framework...");
 
-        match crate::run_agentic_mode(
+        match mcp_runner::run_agentic_mode(
             goal_description,
             _agent_config_path,
             max_iterations,
             enable_tools,
+            enable_reflection,
             config_path,
             model_override.as_deref(),
             gen_retries,
             min_html_size,
+            enable_tui,
         )
         .await
         {
@@ -154,15 +161,17 @@ impl AgentCommand {
         // For now, use the existing agentic mode with MCP context
         let mcp_task = format!("MCP Task with servers {mcp_servers:?}: {task}");
 
-        match crate::run_agentic_mode(
+        match mcp_runner::run_agentic_mode(
             &mcp_task,
             "agent_config.json",
             20,
             true,
+            false,
             "fluent_config.toml",
             None,
             None,
             None,
+            false, // TUI disabled for MCP mode
         )
         .await
         {
@@ -222,11 +231,21 @@ impl CommandHandler for AgentCommand {
             }
         }
 
+        // Extract common flags
+        let max_iterations = matches
+            .get_one::<u32>("max-iterations")
+            .copied()
+            .unwrap_or(10);
+        let enable_tools = matches.get_flag("enable-tools");
+        let reflection = matches.get_flag("reflection");
+
         // Check for different agent subcommands
         let run_agentic = matches.get_flag("agentic")
             || matches.get_one::<String>("goal").is_some()
             || matches.get_one::<String>("goal-file").is_some()
             || matches.get_flag("dry-run");
+
+        println!("🔍 run_agentic = {}, agentic flag = {}, goal provided = {}", run_agentic, matches.get_flag("agentic"), matches.get_one::<String>("goal").is_some());
 
         if run_agentic {
             // Load goal from --goal-file if provided, otherwise --goal string
@@ -274,11 +293,9 @@ impl CommandHandler for AgentCommand {
                 .map(|s| s.as_str())
                 .unwrap_or("agent_config.json");
 
-            let max_iterations = max_iters_override
-                .or_else(|| matches.get_one::<u32>("max-iterations").copied())
-                .unwrap_or(50);
+            let max_iterations = max_iters_override.unwrap_or(max_iterations);
 
-            let enable_tools = matches.get_flag("enable-tools");
+            let enable_tools = enable_tools;
 
             let config_path = matches
                 .get_one::<String>("config")
@@ -294,6 +311,7 @@ impl CommandHandler for AgentCommand {
             }
 
             let dry_run = matches.get_flag("dry-run");
+            let enable_tui = matches.get_flag("tui");
 
             let result = agent_command
                 .run_agentic_mode(
@@ -301,12 +319,14 @@ impl CommandHandler for AgentCommand {
                     agent_config,
                     max_iterations,
                     enable_tools,
+                    reflection,
                     config,
                     config_path,
                     model_override,
                     gen_retries,
                     min_html_size,
                     dry_run,
+                    enable_tui,
                 )
                 .await?;
 
@@ -331,7 +351,7 @@ impl CommandHandler for AgentCommand {
 
             // Initialize the framework for interactive mode
             agent_command
-                .initialize_agentic_framework(config, true)
+                .initialize_agentic_framework(config, enable_tools)
                 .await?;
 
             println!("✅ Agentic framework initialized");
@@ -403,15 +423,17 @@ impl CommandHandler for AgentCommand {
                             .unwrap_or("fluent_config.toml");
 
                         let model_override = matches.get_one::<String>("model").map(|s| s.as_str());
-                        match crate::run_agentic_mode(
+                        match mcp_runner::run_agentic_mode(
                             goal_desc,
                             "agent_config.json",
-                            10,
-                            true,
+                            max_iterations,
+                            enable_tools,
+                            reflection,
                             config_path,
                             model_override,
                             None,
                             None,
+                            false, // TUI disabled for interactive sub-commands
                         )
                         .await
                         {
@@ -435,15 +457,17 @@ impl CommandHandler for AgentCommand {
                             .unwrap_or("fluent_config.toml");
 
                         let model_override = matches.get_one::<String>("model").map(|s| s.as_str());
-                        match crate::run_agentic_mode(
+                        match mcp_runner::run_agentic_mode(
                             &goal_desc,
                             "agent_config.json",
-                            5,
-                            false,
+                            max_iterations,
+                            enable_tools,
+                            reflection,
                             config_path,
                             model_override,
                             None,
                             None,
+                            false, // TUI disabled for interactive sub-commands
                         )
                         .await
                         {

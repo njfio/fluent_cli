@@ -1,13 +1,13 @@
+use crate::action::{ActionPlan, ActionResult, RiskLevel as ActionRiskLevel};
 use crate::monitoring::PerformanceMetrics;
 use crate::orchestrator::Observation;
-use crate::action::{ActionPlan, ActionResult, RiskLevel as ActionRiskLevel};
 use crate::security::capability::{CapabilityManager, ResourceRequest};
 use crate::security::{AuditEvent, AuditEventType, AuditOutcome, AuditSeverity, SecurityFramework};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 /// Supervisor stages for lifecycle governance
@@ -146,7 +146,7 @@ impl AutonomySupervisor {
             .create_session(
                 &self.config.policy_name,
                 None,
-                HashMap::from([( "environment".to_string(), "agentic".to_string())]),
+                HashMap::from([("environment".to_string(), "agentic".to_string())]),
             )
             .await?;
         *guard = Some(session_id);
@@ -172,7 +172,10 @@ impl AutonomySupervisor {
         if metrics.execution_metrics.tasks_failed > 0 {
             let fail_factor = (metrics.execution_metrics.tasks_failed as f64).min(5.0) * 0.05;
             score += fail_factor;
-            triggers.push(format!("failed_tasks:{}", metrics.execution_metrics.tasks_failed));
+            triggers.push(format!(
+                "failed_tasks:{}",
+                metrics.execution_metrics.tasks_failed
+            ));
         }
         if iteration > 0 {
             score += (iteration as f64 * 0.005).min(0.1);
@@ -313,10 +316,7 @@ impl AutonomySupervisor {
         Ok(None)
     }
 
-    pub async fn register_resource_usage(
-        &self,
-        resource: ResourceRequest,
-    ) -> Result<()> {
+    pub async fn register_resource_usage(&self, resource: ResourceRequest) -> Result<()> {
         if let Some(session_id) = self.active_session.read().await.as_ref() {
             match self
                 .capability_manager
@@ -324,8 +324,12 @@ impl AutonomySupervisor {
                 .await?
             {
                 crate::security::capability::PermissionResult::Granted => Ok(()),
-                crate::security::capability::PermissionResult::Conditional { conditions } => Err(anyhow!(format!("Capability conditions unmet: {:?}", conditions))),
-                crate::security::capability::PermissionResult::Denied { reason } => Err(anyhow!(format!("Resource request denied: {}", reason))),
+                crate::security::capability::PermissionResult::Conditional { conditions } => Err(
+                    anyhow!(format!("Capability conditions unmet: {:?}", conditions)),
+                ),
+                crate::security::capability::PermissionResult::Denied { reason } => {
+                    Err(anyhow!(format!("Resource request denied: {}", reason)))
+                }
             }
         } else {
             Err(anyhow!("Supervisor has no active security session"))

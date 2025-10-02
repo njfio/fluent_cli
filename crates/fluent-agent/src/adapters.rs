@@ -979,18 +979,13 @@ impl act::ActionExecutor for DryRunActionExecutor {
             plan.action_type, plan.parameters
         );
         Ok(act::ActionResult {
-            action_id: plan.action_id,
-            action_type: plan.action_type,
-            parameters: plan.parameters,
-            result: crate::orchestrator::ActionResult {
-                success: true,
-                output: Some(msg.clone()),
-                error: None,
-                metadata: std::collections::HashMap::new(),
-            },
-            execution_time: std::time::Duration::from_millis(1),
+            action_id: plan.action_id.clone(),
+            action_type: plan.action_type.clone(),
+            parameters: plan.parameters.clone(),
+            result: serde_json::Value::Null,
+            execution_time: std::time::Duration::from_secs(1),
             success: true,
-            output: Some(msg),
+            output: Some(msg.clone()),
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),

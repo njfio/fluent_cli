@@ -28,7 +28,7 @@ pub use working_memory::{
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::SystemTime;
+// use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 /// Backward compatibility types
@@ -64,6 +64,7 @@ use crate::context::ExecutionContext;
 use fluent_core::traits::Engine;
 
 /// Integrated memory management system
+#[derive(Clone)]
 pub struct IntegratedMemorySystem {
     working_memory: Arc<RwLock<WorkingMemory>>,
     compressor: Arc<RwLock<ContextCompressor>>,
@@ -302,7 +303,7 @@ impl LongTermMemory for AsyncSqliteMemoryStore {
 
         for (_, memory) in memories.iter() {
             // Apply filters
-            let mut matches = true;
+            let matches = true;
 
             // For simplicity in this mock, we're not implementing complex filtering
             // In a real implementation, we would apply the query filters

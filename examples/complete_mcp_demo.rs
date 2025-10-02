@@ -1,11 +1,11 @@
 // Complete MCP Protocol Demo with All Features
 use anyhow::Result;
 use fluent_agent::{
-use fluent_agent::{
     mcp_client::{McpClient, McpClientConfig},
     mcp_resource_manager::McpResourceManager,
     mcp_tool_registry::McpToolRegistry,
-    memory::{AsyncSqliteMemoryStore, LongTermMemory},
+    memory::AsyncSqliteMemoryStore,
+    agent_with_mcp::LongTermMemory,
     tools::ToolRegistry,
 };
 use serde_json::json;

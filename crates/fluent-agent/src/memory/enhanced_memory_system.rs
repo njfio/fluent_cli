@@ -6,15 +6,14 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::context::ExecutionContext;
-use crate::memory::working_memory::ContentType;
-use crate::memory::{MemoryContent, MemoryItem, WorkingMemory, WorkingMemoryConfig};
+use crate::memory::{MemoryItem, WorkingMemory, WorkingMemoryConfig};
 use fluent_core::traits::Engine;
 
 /// Enhanced multi-level memory system

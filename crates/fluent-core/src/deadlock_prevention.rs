@@ -106,7 +106,6 @@ impl DeadlockSafeLockManager {
         // Sort locks by priority to ensure consistent ordering
         let registry = self.registry.read().await;
         let mut lock_info: Vec<_> = locks.into_iter().collect();
-        let mut lock_info: Vec<_> = locks.into_iter().collect();
 
         for &(lock_name, _) in &lock_info {
             if registry.get_priority(lock_name).is_none() {
@@ -156,8 +155,6 @@ impl DeadlockSafeLockManager {
     ) -> Result<Vec<tokio::sync::RwLockReadGuard<'a, T>>, FluentError> {
         // Sort locks by priority
         let registry = self.registry.read().await;
-        let mut lock_info: Vec<_> = locks.into_iter().collect();
-
         let mut lock_info: Vec<_> = locks.into_iter().collect();
 
         // Reject any lock names not present in the registry

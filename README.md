@@ -93,6 +93,7 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Advanced Tool System**: File operations, shell commands, and code analysis (via agent interface)
 - **String Replace Editor**: Surgical file editing with precision targeting and validation
 - **Memory System**: SQLite-based persistent memory with performance optimization
+- **Terminal User Interface (TUI)**: Real-time monitoring with progress bars, status displays, and interactive controls
 - **Security Features**: Input validation and secure execution patterns (ongoing development)
 
 ### 🧠 **Self-Reflection & Learning System**
@@ -111,6 +112,54 @@ A modern, secure, and modular Rust-based command-line interface for interacting 
 - **Command Sandboxing**: Isolated execution environment with timeouts
 - **Security Audit Tools**: Automated security scanning and vulnerability detection
 - **Code Quality Assessment**: Automated quality metrics and best practice validation
+
+### 🎨 **Terminal User Interface (TUI)**
+
+Fluent CLI includes an advanced Terminal User Interface for real-time monitoring of agent execution:
+
+#### Features
+- **Real-time Progress**: Live progress bars and status updates
+- **Interactive Controls**: Scroll through logs, pause/resume, and quit
+- **Rich Display**: Color-coded status, iteration tracking, and feature indicators
+- **Fallback Support**: Automatic fallback to ASCII mode for incompatible terminals
+
+#### Usage
+```bash
+# Enable TUI for agent execution
+fluent agent --goal "Analyze this codebase" --tui
+
+# TUI with custom settings
+fluent agent --goal "Refactor the API" --tui --max-iterations 10 --enable-tools
+```
+
+#### Terminal Compatibility
+
+**Full Graphical TUI** (Recommended):
+- ✅ iTerm2 (macOS)
+- ✅ Alacritty (Cross-platform)
+- ✅ Windows Terminal (Windows)
+- ✅ GNOME Terminal / Konsole (Linux)
+- ✅ Any terminal supporting raw mode and alternate screen buffers
+
+**ASCII Fallback TUI** (Automatic):
+- ✅ All terminals including macOS Terminal.app
+- ✅ Non-interactive environments
+- ✅ SSH sessions and CI/CD pipelines
+- ✅ Text-based interfaces
+
+#### Controls
+
+**Full TUI Mode:**
+- `↑/↓` - Scroll through logs
+- `PgUp/PgDn` - Page through logs
+- `Q` or `Esc` - Quit
+- `P` - Pause/Resume (planned)
+
+**ASCII TUI Mode:**
+- `Q` or `Esc` - Quit
+- `C` - Clear screen
+- `H` or `?` - Show help
+- Auto-updates every 200ms
 
 ## 📦 Installation
 

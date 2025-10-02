@@ -2,11 +2,12 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::info;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use crate::context::ExecutionContext;
-use crate::orchestrator::{ActionResult as OrchActionResult, ActionType, ReasoningResult};
+use crate::orchestrator::{ActionType, ReasoningResult};
 
 /// Trait for action planners that can determine the best next action
 #[async_trait]
@@ -73,13 +74,12 @@ pub struct ActionPlan {
     pub description: String,
     pub parameters: HashMap<String, serde_json::Value>,
     pub expected_outcome: String,
+    pub success_criteria: Vec<String>,
     pub confidence_score: f64,
     pub estimated_duration: Option<Duration>,
     pub risk_level: RiskLevel,
     pub alternatives: Vec<AlternativeAction>,
     pub prerequisites: Vec<String>,
-    pub success_criteria: Vec<String>,
-    pub confidence_score: f64,
 }
 
 /// Alternative action if the primary action fails
@@ -106,7 +106,7 @@ pub struct ActionResult {
     pub action_id: String,
     pub action_type: ActionType,
     pub parameters: HashMap<String, serde_json::Value>,
-    pub result: OrchActionResult,
+    pub result: serde_json::Value,
     pub execution_time: Duration,
     pub success: bool,
     pub output: Option<String>,
@@ -493,12 +493,7 @@ impl ActionExecutor for ComprehensiveActionExecutor {
                 action_id: plan.action_id,
                 action_type: plan.action_type,
                 parameters: plan.parameters,
-                result: OrchActionResult {
-                    success: true,
-                    output: output.clone(),
-                    error: None,
-                    metadata: metadata.clone(),
-                },
+                result: serde_json::Value::Null,
                 execution_time,
                 success: true,
                 output,
@@ -510,12 +505,7 @@ impl ActionExecutor for ComprehensiveActionExecutor {
                 action_id: plan.action_id,
                 action_type: plan.action_type,
                 parameters: plan.parameters,
-                result: OrchActionResult {
-                    success: false,
-                    output: None,
-                    error: Some(e.to_string()),
-                    metadata: HashMap::new(),
-                },
+                result: serde_json::Value::Null,
                 execution_time,
                 success: false,
                 output: None,

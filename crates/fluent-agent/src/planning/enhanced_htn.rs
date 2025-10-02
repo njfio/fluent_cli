@@ -797,7 +797,6 @@ impl EnhancedHTNPlanner {
 
         Ok(())
     }
-    }
 
     /// Perform intelligent task decomposition
     async fn perform_smart_decomposition(&self, context: &ExecutionContext) -> Result<()> {
