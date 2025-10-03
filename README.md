@@ -1,654 +1,143 @@
-# Fluent CLI - Advanced Multi-LLM Command Line Interface
+# Fluent CLI
 
-A modern, secure, and modular Rust-based command-line interface for interacting with multiple Large Language Model (LLM) providers. Fluent CLI provides a unified interface for OpenAI, Anthropic, Google Gemini, and other LLM services, with experimental agentic capabilities, comprehensive security features, and Model Context Protocol (MCP) integration.
+Fluent CLI is a Rust workspace that provides a modular command-line interface for orchestrating Large Language Model (LLM) workflows. The CLI layers configuration management, a pipeline runner, goal-directed agent mode, tool execution, and Model Context Protocol (MCP) utilities on top of shared engine adapters in `crates/fluent-engines` and agent infrastructure in `crates/fluent-agent`.
 
-## 🎉 **Production-Ready Release (v0.1.0)**
+The repository now focuses on the production code paths only. All generated documentation, examples, and ad-hoc research artefacts were removed, so this README is the primary source of project information.
 
-### ✅ **Code Quality Remediation Complete**
+## Feature Overview
+- **Multi-provider engine abstraction** – `fluent-engines` implements adapters for OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, Perplexity, StabilityAI, Langflow/Flowise, webhooks, and related providers. Engines are selected through the workspace configuration layer in `fluent-core`.
+- **Pipeline executor** – `fluent-engines::pipeline_executor` runs YAML-defined pipelines with optional state persistence and resumable execution.
+- **Agent mode** – `fluent-cli` exposes an interactive and non-interactive agent loop (`fluent agent --goal …`) that drives the higher level reasoning/orchestration code from `crates/fluent-agent`. An optional TUI is available via `--tui`.
+- **Tooling system** – The agent toolbox bundles safe filesystem access, a guarded shell runner, a string-replace editor, and a Rust build/test helper. All tools enforce whitelists and size limits defined in `ToolExecutionConfig`.
+- **MCP utilities** – `fluent mcp …` bridges the Model Context Protocol server/client implementation in `crates/fluent-agent`.
+- **Neo4j helpers** – `fluent neo4j …` surfaces the Cypher generation utilities in `fluent-cli::neo4j_runner`.
+- **Shell completions** – `fluent completions --shell <bash|zsh|fish|powershell|elvish>` emits completion scripts built from the current CLI definition.
 
-**Systematic code quality improvements completed across all priority levels:**
+## Getting Started
+### Prerequisites
+- Rust 1.79+ and Cargo.
+- API keys for any engines you intend to call, supplied via environment variables (for example `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`).
 
-- **Zero Critical Issues**: ✅ All production code free of unwrap() calls and panic-prone patterns
-- **Comprehensive Error Handling**: ✅ Result types and proper error propagation throughout
-- **Clean Builds**: ✅ Zero compilation errors, only documented deprecation warnings
-- **Test Coverage**: ✅ 20+ new unit tests, 7/7 cache tests, 8/8 security tests passing
-- **Documentation Accuracy**: ✅ All claims verified and aligned with implementation state
-
-### 🔒 **Security Improvements (Latest)**
-
-- **Command Injection Protection**: ✅ Critical vulnerability fixed with comprehensive validation
-- **Security Configuration**: ✅ Runtime security policy configuration via environment variables
-- **Engine Connectivity Validation**: ✅ Real API connectivity testing with proper error handling
-- **Credential Security**: ✅ Enhanced credential handling with no hardcoded secrets
-- **Security Documentation**: ✅ Comprehensive warnings and guidance for safe configuration
-
-### 🏗️ **Architecture & Performance**
-
-- **Modular Codebase**: ✅ Clean separation of concerns across crates
-- **Connection Pooling**: ✅ HTTP client reuse and connection management
-- **Response Caching**: ✅ Intelligent caching system with configurable TTL
-- **Async Optimization**: ✅ Proper async/await patterns throughout the codebase
-- **Memory Optimization**: ✅ Reduced allocations and improved resource management
-
-### 🔧 **Advanced Features Implemented**
-
-- **Neo4j Enrichment Status Management**: ✅ Complete database-backed status tracking for enrichment operations
-- **Topological Dependency Sorting**: ✅ Kahn's algorithm implementation for parallel task execution
-- **Secure Command Validation**: ✅ Environment-configurable command whitelisting with security validation
-- **Multi-Level Cache System**: ✅ L1/L2/L3 caching with TTL management and fallback behavior
-- **Async Memory Store**: ✅ Connection pooling and async patterns (LongTermMemory trait in progress)
-
-### 🤖 **Agentic Capabilities (Production-Ready Core)**
-
-✅ **Production Status**: Core agentic features are production-ready with comprehensive error handling and security validation. Advanced features under continued development.
-
-- **ReAct Agent Loop**: ✅ Core reasoning, acting, observing cycle implementation
-- **Tool System**: ✅ File operations, shell commands, and code analysis (with security validation)
-- **String Replace Editor**: ✅ File editing capabilities with test coverage
-- **MCP Integration**: ✅ Model Context Protocol client and server support (basic functionality)
-- **Reflection Engine**: ✅ Learning and strategy adjustment capabilities (experimental)
-- **State Management**: ✅ Execution context persistence with checkpoint/restore
-
-### 📊 **Code Quality Metrics**
-
-**Systematic Remediation Results:**
-
-- **Production unwrap() Calls**: 0 (100% elimination from critical paths)
-- **Critical TODO Comments**: 9 → 4 (56% reduction, remaining documented)
-- **Dead Code Warnings**: 0 (100% elimination)
-- **Test Coverage**: +20 comprehensive unit tests added
-- **Build Warnings**: Only documented deprecation warnings (acceptable)
-- **Security Validation**: 8/8 security tests passing
-
-### 🚀 **Production Readiness Status**
-
-- **Core Functionality**: ✅ Production-ready multi-LLM interface with comprehensive error handling
-- **Security**: ✅ Command injection protection, credential security, configurable validation
-- **Performance**: ✅ Multi-level caching, connection pooling, async optimization
-- **Reliability**: ✅ Zero unwrap() calls in production, comprehensive test coverage
-- **Maintainability**: ✅ Clean architecture, documented technical debt, modern Rust patterns
-
-## 🚀 Key Features
-
-### 🌐 **Multi-Provider LLM Support**
-
-- **OpenAI**: GPT models with text and vision capabilities
-- **Anthropic**: Claude models for advanced reasoning
-- **Google**: Gemini Pro for multimodal interactions
-- **Additional Providers**: Cohere, Mistral, Perplexity, Groq, and more
-- **Webhook Integration**: Custom API endpoints and local models
-
-### 🔧 **Core Functionality**
-
-- **Direct LLM Queries**: Send text prompts to any supported LLM provider
-- **Image Analysis**: Vision capabilities for supported models
-- **Configuration Management**: YAML-based configuration for multiple engines
-- **Pipeline Execution**: YAML-defined multi-step workflows
-- **Caching**: Optional request caching for improved performance
-
-### 🤖 **Experimental Agentic Features**
-
-- **Modular Agent Architecture**: Clean separation of reasoning, action, and reflection engines
-- **MCP Integration**: Model Context Protocol client and server capabilities (experimental)
-- **Advanced Tool System**: File operations, shell commands, and code analysis (via agent interface)
-- **String Replace Editor**: Surgical file editing with precision targeting and validation
-- **Memory System**: SQLite-based persistent memory with performance optimization
-- **Terminal User Interface (TUI)**: Real-time monitoring with progress bars, status displays, and interactive controls
-- **Security Features**: Input validation and secure execution patterns (ongoing development)
-
-### 🧠 **Self-Reflection & Learning System**
-
-- **Multi-Type Reflection**: Routine, triggered, deep, meta, and crisis reflection modes
-- **Strategy Adjustment**: Automatic strategy optimization based on performance analysis
-- **Learning Retention**: Experience-based learning with configurable retention periods
-- **Pattern Recognition**: Success and failure pattern identification and application
-- **Performance Metrics**: Comprehensive performance tracking and confidence assessment
-- **State Persistence**: Execution context and learning experience persistence
-
-### 🔒 **Security & Quality Features**
-
-- **Comprehensive Input Validation**: Protection against injection attacks and malicious input
-- **Rate Limiting**: Configurable request throttling (30 requests/minute default)
-- **Command Sandboxing**: Isolated execution environment with timeouts
-- **Security Audit Tools**: Automated security scanning and vulnerability detection
-- **Code Quality Assessment**: Automated quality metrics and best practice validation
-
-### 🎨 **Terminal User Interface (TUI)**
-
-Fluent CLI includes an advanced Terminal User Interface for real-time monitoring of agent execution:
-
-#### Features
-- **Real-time Progress**: Live progress bars and status updates
-- **Interactive Controls**: Scroll through logs, pause/resume, and quit
-- **Rich Display**: Color-coded status, iteration tracking, and feature indicators
-- **Fallback Support**: Automatic fallback to ASCII mode for incompatible terminals
-
-#### Usage
+### Build
 ```bash
-# Enable TUI for agent execution
-fluent agent --goal "Analyze this codebase" --tui
-
-# TUI with custom settings
-fluent agent --goal "Refactor the API" --tui --max-iterations 10 --enable-tools
-```
-
-#### Terminal Compatibility
-
-**Full Graphical TUI** (Recommended):
-- ✅ iTerm2 (macOS)
-- ✅ Alacritty (Cross-platform)
-- ✅ Windows Terminal (Windows)
-- ✅ GNOME Terminal / Konsole (Linux)
-- ✅ Any terminal supporting raw mode and alternate screen buffers
-
-**ASCII Fallback TUI** (Automatic):
-- ✅ All terminals including macOS Terminal.app
-- ✅ Non-interactive environments
-- ✅ SSH sessions and CI/CD pipelines
-- ✅ Text-based interfaces
-
-#### Controls
-
-**Full TUI Mode:**
-- `↑/↓` - Scroll through logs
-- `PgUp/PgDn` - Page through logs
-- `Q` or `Esc` - Quit
-- `P` - Pause/Resume (planned)
-
-**ASCII TUI Mode:**
-- `Q` or `Esc` - Quit
-- `C` - Clear screen
-- `H` or `?` - Show help
-- Auto-updates every 200ms
-
-## 📦 Installation
-
-### From Source
-
-```bash
-git clone https://github.com/njfio/fluent_cli.git
-cd fluent_cli
 cargo build --release
 ```
 
-## 🚀 Quick Start
+### Configure Engines
+`fluent_config.toml` is the default workspace configuration. Populate it with the engines you need; a minimal Anthropic example is shipped in the repository:
 
-### 1. Configure API Keys
+```toml
+[[engines]]
+name = "anthropic"
+engine = "anthropic"
 
-```bash
-# Set your preferred LLM provider API key
-export OPENAI_API_KEY="your-api-key-here"
-# or
-export ANTHROPIC_API_KEY="your-api-key-here"
+[engines.connection]
+protocol = "https"
+hostname = "api.anthropic.com"
+port = 443
+request_path = "/v1/messages"
+
+[engines.parameters]
+bearer_token = "${ANTHROPIC_API_KEY}"
+modelName = "claude-3-7-sonnet-20250219"
+temperature = 0.1
+max_tokens = 4000
+system = "You are an expert Rust programmer and game developer."
 ```
 
-### 2. Basic Usage
+Additional sample JSON configurations (for example `anthropic_config.json`) mirror the same schema and can be copied or adapted.
 
-#### Direct LLM Queries
-
-```bash
-# Simple query to OpenAI (use exact engine name from config)
-fluent openai-gpt4 "Explain quantum computing"
-
-# Query with Anthropic (use exact engine name from config)
-fluent anthropic-claude "Write a Python function to calculate fibonacci"
-
-# Note: Engine names must match those defined in config.yaml
-# Image upload and caching features are implemented but may require specific configuration
-# Check the configuration section for details on enabling these features
-```
-
-### 3. New Modular Command Structure
-
-#### Agent Commands
-
-```bash
-# Interactive agent session (requires API keys)
-fluent agent
-
-# For MCP integration, see the MCP commands below
-# Set appropriate API keys before running:
-# export OPENAI_API_KEY="your-api-key-here"
-# export ANTHROPIC_API_KEY="your-api-key-here"
-```
-
-#### Pipeline Commands
-
-```bash
-# Execute a pipeline
-fluent pipeline -f pipeline.yaml -i "process this data"
-
-# Build a pipeline interactively
-fluent build-pipeline
-
-# Note: Pipeline execution requires a properly formatted YAML pipeline file
-# See the configuration section for pipeline format details
-```
-
-#### MCP (Model Context Protocol) Commands
-
-```bash
-# Start MCP server (STDIO transport)
-fluent mcp server --stdio
-
-# Start MCP server with specific port (HTTP transport)
-fluent mcp server --port 8080
-```
-
-#### Neo4j Integration Commands
-
-```bash
-# Neo4j integration commands (requires Neo4j configuration)
-fluent neo4j
-
-# Note: Neo4j integration requires proper database configuration
-# See the configuration section for Neo4j setup details
-```
-
-#### Engine Commands
-
+### Running the CLI
 ```bash
 # List configured engines
-fluent engine list
+cargo run -- engine list
 
-# Test connectivity for an engine
-fluent engine test <engine-name>
+# Probe engine connectivity
+cargo run -- engine test anthropic
+
+# Execute a pipeline (author pipeline.yaml first)
+cargo run -- pipeline -f pipeline.yaml -i "Write a summary of docs"
+
+# Launch an agentic run
+cargo run -- agent --goal "Produce a refactoring plan for src/lib.rs" --enable-tools
+
+# Start the MCP server over stdio
+cargo run -- mcp server --stdio
+
+# Inspect available tools
+cargo run -- tools list
 ```
 
-#### Tool Access Commands ✅ **NEW**
-
-```bash
-# List all available tools
-fluent tools list
-
-# List tools by category
-fluent tools list --category file
-fluent tools list --category compiler
-
-# Get tool description and usage
-fluent tools describe read_file
-fluent tools describe cargo_build
-
-# Execute tools directly
-fluent tools exec read_file --path "README.md"
-fluent tools exec cargo_check
-fluent tools exec string_replace --path "file.txt" --old "old text" --new "new text"
-
-# JSON output for automation
-fluent tools list --json
-fluent tools exec file_exists --path "Cargo.toml" --json-output
-
-# Available tool categories: file, compiler, shell, editor, system
-```
-
-## 🔧 Configuration
-
-### Engine Configuration
-
-Create a YAML configuration file for your LLM providers:
+Pipelines are defined with the `Pipeline` schema in `fluent_engines::pipeline_executor`. A minimal example that echoes the provided input:
 
 ```yaml
-# config.yaml
-engines:
-  - name: "openai-gpt4"
-    engine: "openai"
-    connection:
-      protocol: "https"
-      hostname: "api.openai.com"
-      port: 443
-      request_path: "/v1/chat/completions"
-    parameters:
-      bearer_token: "${OPENAI_API_KEY}"
-      modelName: "gpt-4"
-      max_tokens: 4000
-      temperature: 0.7
-      top_p: 1
-      n: 1
-      stream: false
-      presence_penalty: 0
-      frequency_penalty: 0
-
-  - name: "anthropic-claude"
-    engine: "anthropic"
-    connection:
-      protocol: "https"
-      hostname: "api.anthropic.com"
-      port: 443
-      request_path: "/v1/messages"
-    parameters:
-      bearer_token: "${ANTHROPIC_API_KEY}"
-      modelName: "claude-3-sonnet-20240229"
-      max_tokens: 4000
-      temperature: 0.5
-```
-
-### Pipeline Configuration
-
-Define multi-step workflows in YAML:
-
-```yaml
-# pipeline.yaml
-name: "code-analysis"
-description: "Analyze code and generate documentation"
+name: "echo"
 steps:
-  - name: "read-files"
-    type: "file_operation"
-    config:
-      operation: "read"
-      pattern: "src/**/*.rs"
-
-  - name: "analyze"
-    type: "llm_query"
-    config:
-      engine: "openai"
-      prompt: "Analyze this code and suggest improvements: {{previous_output}}"
+  - PrintOutput:
+      name: "show-input"
+      value: "Pipeline input: ${input}"
+  - Command:
+      name: "echo-input"
+      command: "echo ${input}"
+      save_output: "echo_result"
+  - PrintOutput:
+      name: "show-result"
+      value: "Echoed output: ${echo_result}"
 ```
 
-### Self-Reflection Configuration
+## Agent Mode
+The `agent` subcommand provides both interactive and goal-driven flows.
 
-Configure the agent's self-reflection and learning capabilities:
+- Non-interactive goals:
+  ```bash
+  cargo run -- agent --goal "Add logging to pipeline executor" --max-iterations 12 --enable-tools
+  ```
+- Interactive REPL (requires a TTY):
+  ```bash
+  cargo run -- agent
+  ```
+- Optional terminal UI:
+  ```bash
+  cargo run -- agent --goal "Investigate memory usage" --tui
+  ```
 
-```yaml
-# reflection_config.yaml
-reflection:
-  reflection_frequency: 5              # Reflect every 5 iterations
-  deep_reflection_frequency: 20        # Deep reflection every 20 reflections
-  learning_retention_days: 30          # Keep learning experiences for 30 days
-  confidence_threshold: 0.6            # Trigger reflection if confidence < 0.6
-  performance_threshold: 0.7           # Trigger adjustment if performance < 0.7
-  enable_meta_reflection: true         # Enable reflection on reflection process
-  strategy_adjustment_sensitivity: 0.8 # How readily to adjust strategy (0.0-1.0)
+Agent tools are disabled by default unless `--enable-tools` or the agent config explicitly enables them.
 
-state_management:
-  state_directory: "./agent_state"     # Directory for state persistence
-  auto_save_enabled: true              # Enable automatic state saving
-  auto_save_interval_seconds: 30       # Save state every 30 seconds
-  max_checkpoints: 50                  # Maximum checkpoints to retain
-  backup_retention_days: 7             # Keep backups for 7 days
-```
+## Security Posture
+Security-sensitive functionality is gated and validated throughout the codebase:
+- **Tool whitelists and sanitisation** – `ShellExecutor` and the command validation helpers in `crates/fluent-agent::tools` reject commands containing dangerous constructs (`&&`, pipelines, path traversal, interpreters, etc.) and only allow the prefixes configured in `ToolExecutionConfig.allowed_commands`.
+- **Path confinement** – File operations and the string replace editor call `validation::validate_path`, ensuring targets stay within the allowed directories declared in tool configuration.
+- **Runtime feature flags** – Potentially risky behaviours in `fluent-core::output_processor` (ad-hoc script execution and shell commands) are switched off unless the operator sets `FLUENT_ENABLE_SCRIPT_EXECUTION=true` or `FLUENT_ENABLE_COMMAND_EXECUTION=true`.
+- **Environment hygiene** – Shell commands launched from the output processor use `env_clear()` with a minimal `PATH`, and agent shell tools drop stdin to prevent interactive escalation.
+- **Secrets** – No API keys or credentials are committed; sample configurations reference environment substitutions.
 
-### Agent Configuration
+During the review no hardcoded credentials or obvious injection paths were found. If you extend the tool whitelist or enable script execution, audit those changes carefully.
 
-Complete agent configuration with all capabilities:
-
-```yaml
-# agent_config.yaml
-agent:
-  max_iterations: 20
-  enable_tools: true
-  memory_enabled: true
-  reflection_enabled: true
-
-reasoning:
-  engine: "openai"
-  model: "gpt-4"
-  temperature: 0.7
-
-tools:
-  string_replace_editor:
-    allowed_paths: ["./src", "./docs", "./examples"]
-    create_backups: true
-    case_sensitive: false
-    max_file_size: 10485760  # 10MB
-
-  filesystem:
-    allowed_paths: ["./"]
-    max_file_size: 10485760
-
-  shell:
-    allowed_commands: ["cargo", "git", "ls", "cat"]
-    timeout_seconds: 30
-```
-
-## 🤖 Experimental Features
-
-### Agent Mode
-
-Interactive agent sessions with basic functionality:
-
+## Development
 ```bash
-# Start an interactive agent session (requires API keys)
-fluent agent
-
-# Note: Advanced agentic features like autonomous goal execution are implemented
-# in the codebase but not yet exposed through simple CLI flags
-# Use the agent command for basic interactive functionality
-```
-
-### MCP Integration
-
-Model Context Protocol support for tool integration:
-
-```bash
-# Start MCP server (STDIO transport)
-fluent mcp
-
-# Agent with MCP capabilities (experimental)
-fluent agent-mcp -e openai -t "Read files" -s "filesystem:server"
-```
-
-**Note**: Agentic features are experimental and under active development.
-
-## 🔧 Tool System
-
-### String Replace Editor
-
-Advanced file editing capabilities with surgical precision:
-
-```bash
-# Note: The string replace editor is implemented as part of the agentic system
-# It's available through the agent interface and MCP integration
-# Direct CLI access to specific tools is not yet implemented
-
-# Tool functionality is accessible through:
-fluent agent  # Interactive agent with tool access
-fluent agent-mcp -e openai -t "edit files" -s "filesystem:server"  # MCP integration
-
-# Dry run preview
-fluent openai agent --tool string_replace --file "app.rs" --old "HashMap" --new "BTreeMap" --dry-run
-```
-
-**Features:**
-
-- **Multiple occurrence modes**: First, Last, All, Indexed
-- **Line range targeting**: Restrict changes to specific line ranges
-- **Dry run previews**: See changes before applying
-- **Automatic backups**: Timestamped backup creation
-- **Security validation**: Path restrictions and input validation
-- **Case sensitivity control**: Configurable matching behavior
-
-### Available Tools
-
-- **File Operations**: Read, write, list, create directories
-- **String Replace Editor**: Surgical file editing with precision targeting
-- **Shell Commands**: Execute system commands safely
-- **Rust Compiler**: Build, test, check, clippy, format
-- **Git Operations**: Basic version control operations
-
-## 🛠️ Supported Engines
-
-### Available Providers
-
-- **OpenAI**: GPT-3.5, GPT-4, GPT-4 Turbo, GPT-4 Vision
-- **Anthropic**: Claude 3 (Haiku, Sonnet, Opus), Claude 2.1
-- **Google**: Gemini Pro, Gemini Pro Vision
-- **Cohere**: Command, Command Light, Command Nightly
-- **Mistral**: Mistral 7B, Mistral 8x7B, Mistral Large
-- **Perplexity**: Various models via API
-- **Groq**: Fast inference models
-- **Custom**: Webhook endpoints for local/custom models
-
-### Configuration
-
-Set API keys as environment variables:
-
-```bash
-export OPENAI_API_KEY="your-key"
-export ANTHROPIC_API_KEY="your-key"
-export GOOGLE_API_KEY="your-key"
-# ... etc
-```
-
-## Logging
-
-- Human logs (default): human-readable.
-- JSON logs: set FLUENT_LOG_FORMAT=json or pass --json-logs.
-
-```bash
-FLUENT_LOG_FORMAT=json fluent tools list
-# or
-fluent --json-logs tools list
-```
-
-## Shell Completions
-
-Generate completion scripts for your shell:
-
-```bash
-# Zsh
-fluent completions --shell zsh > _fluent
-# Bash
-fluent completions --shell bash > fluent.bash
-# Fish
-fluent completions --shell fish > fluent.fish
-```
-
-## 🔧 Development Status
-
-### ✅ Production-Ready Features
-
-- **Core LLM Integration**: ✅ Fully functional with all major providers
-- **Multi-provider Support**: ✅ OpenAI, Anthropic, Google, and more
-- **Pipeline System**: ✅ YAML-based workflows with comprehensive execution
-- **Configuration Management**: ✅ YAML configuration files with validation
-- **Caching System**: ✅ Optional request caching with TTL support
-- **Agent System**: ✅ Complete ReAct loop implementation
-- **MCP Integration**: ✅ Full client and server support with working examples
-- **Advanced Tool System**: ✅ Production-ready file operations and code analysis
-- **String Replace Editor**: ✅ Surgical file editing with precision targeting
-- **Memory System**: ✅ SQLite-based persistent memory with optimization
-- **Self-Reflection Engine**: ✅ Advanced learning and strategy adjustment
-- **State Management**: ✅ Execution context persistence with checkpoint/restore
-- **Quality Assurance**: ✅ Comprehensive test suite with 31/31 tests passing
-- **Clean Builds**: ✅ All compilation errors resolved, minimal warnings
-
-### Planned Features
-
-- Enhanced multi-modal capabilities
-- Expanded tool ecosystem
-- Advanced workflow orchestration
-- Real-time collaboration features
-- Plugin system for custom tools
-
-## 🧪 Development
-
-### Building from Source
-
-```bash
-git clone https://github.com/njfio/fluent_cli.git
-cd fluent_cli
-cargo build --release
-```
-
-### Running Tests
-
-```bash
-# Run all tests
+# Workspace checks
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
 cargo test
-
-# Run specific package tests
-cargo test --package fluent-agent
-
-# Run integration tests
-cargo test --test integration
-
-# Run reflection system tests
-cargo test -p fluent-agent reflection
 ```
 
-### Running Examples
+Most crates retain their unit tests; integration fixtures and generated documentation were intentionally removed. Add new tests near the code they cover.
 
-```bash
-# Run the working MCP demo (demonstrates full MCP protocol)
-cargo run --example complete_mcp_demo
-
-# Run the MCP working demo (shows MCP integration)
-cargo run --example mcp_working_demo
-
-# Run the self-reflection and strategy adjustment demo
-cargo run --example reflection_demo
-
-# Run the state management demo
-cargo run --example state_management_demo
-
-# Run the string replace editor demo
-cargo run --example string_replace_demo
-
-# Run other available examples (some may require API keys)
-cargo run --example real_agentic_demo
-cargo run --example working_agentic_demo
-
-# All examples now compile and run successfully
+## Project Layout
 ```
-
-### Quality Assurance Tools
-
-#### Security Audit
-
-```bash
-# Run comprehensive security audit (15 security checks)
-./scripts/security_audit.sh
-```
-
-#### Code Quality Assessment
-
-```bash
-# Run code quality checks (15 quality metrics)
-./scripts/code_quality_check.sh
-```
-
-### Project Structure
-
-```text
 fluent_cli/
 ├── crates/
-│   ├── fluent-cli/          # Main CLI application with modular commands
-│   ├── fluent-core/         # Core utilities and configuration
-│   ├── fluent-engines/      # LLM engine implementations
-│   ├── fluent-agent/        # Agentic capabilities and tools
-│   ├── fluent-storage/      # Storage and persistence layer
-│   └── fluent-sdk/          # SDK for external integrations
-├── docs/                    # Organized documentation
-│   ├── analysis/           # Code review and analysis
-│   ├── guides/             # User and development guides
-│   ├── implementation/     # Implementation status
-│   ├── security/           # Security documentation
-│   └── testing/            # Testing documentation
-├── scripts/                # Quality assurance scripts
-├── tests/                  # Integration tests and test data
-└── examples/               # Usage examples and demos
+│   ├── fluent-cli/      # CLI surface, commands, TUI helpers, CLI builder
+│   ├── fluent-agent/    # Agent runtime, tool system, MCP support
+│   ├── fluent-core/     # Shared config layer, error types, utilities
+│   ├── fluent-engines/  # Engine adapters and pipeline executor
+│   ├── fluent-storage/  # Persistence helpers
+│   └── fluent-sdk/      # SDK utilities for embedding Fluent in other apps
+├── scripts/             # Security and quality helper scripts
+├── fluent_config.toml   # Default engine configuration template
+├── AGENTS.md / CLAUDE.md / WARP.md  # High-level notes retained after cleanup
+└── LICENSE              # Apache-2.0
 ```
 
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Submit a pull request
-
-Before opening a PR, read the Repository Guidelines in [AGENTS.md](AGENTS.md) for structure, commands, style, testing, and PR requirements.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/njfio/fluent_cli/issues)
-- **Discussions**: [Community discussions](https://github.com/njfio/fluent_cli/discussions)
-
----
-
-**Fluent CLI: Multi-LLM Command Line Interface** 🚀
+## License
+Apache License 2.0 – see [`LICENSE`](LICENSE).
