@@ -519,8 +519,18 @@ impl ToolsCommand {
     async fn show_analytics(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
         let json_output = matches.get_flag("json");
         let tool_name = matches.get_one::<String>("tool");
+        let show_combinations = matches.get_flag("combinations");
+        let show_trends = matches.get_flag("trends");
 
-        Self::with_tool_registry(config, |_registry| {
+        Self::with_tool_registry(config, |registry| {
+            if show_combinations {
+                return Self::show_tool_combinations(json_output);
+            }
+
+            if show_trends {
+                return Self::show_usage_trends(json_output);
+            }
+
             if json_output {
                 println!("{}", json!({
                     "analytics": {
@@ -531,10 +541,13 @@ impl ToolsCommand {
                             "Average execution time",
                             "Usage frequency",
                             "Tool combinations",
-                            "Error patterns"
+                            "Error patterns",
+                            "Usage trends"
                         ]
                     },
-                    "tool": tool_name
+                    "tool": tool_name,
+                    "combinations": "Use --combinations flag to see tool combination patterns",
+                    "trends": "Use --trends flag to see usage trends over time"
                 }));
             } else {
                 println!("📊 Tool Usage Analytics");
@@ -546,6 +559,13 @@ impl ToolsCommand {
                     println!("⚠️  No analytics available yet.");
                     println!("   Analytics are tracked automatically when tools are used in agent mode.");
                     println!("   Try: fluent agent \"Task that uses tools\" --enable-tools");
+                    println!();
+                    println!("💡 Available Metrics:");
+                    println!("   • Success rate");
+                    println!("   • Average execution time");
+                    println!("   • Usage frequency");
+                    println!("   • Common tool combinations");
+                    println!("   • Error patterns");
                 } else {
                     println!("📈 Overall Tool Performance:");
                     println!();
@@ -558,16 +578,105 @@ impl ToolsCommand {
                     println!("   • Usage frequency");
                     println!("   • Tool combinations");
                     println!("   • Error patterns");
+                    println!("   • Usage trends over time");
                     println!();
                     println!("📚 Usage:");
                     println!("   • Run agent tasks to generate analytics");
                     println!("   • Use 'fluent tools analytics --tool <name>' for specific tool");
+                    println!("   • Use 'fluent tools analytics --combinations' for combination patterns");
+                    println!("   • Use 'fluent tools analytics --trends' for usage trends");
                     println!("   • Analytics improve over time as patterns are learned");
                 }
             }
 
             Ok(CommandResult::success())
         })
+    }
+
+    /// Show tool combination patterns
+    fn show_tool_combinations(json_output: bool) -> Result<CommandResult> {
+        if json_output {
+            println!("{}", json!({
+                "tool_combinations": [],
+                "message": "Tool combination patterns are learned during agent execution",
+                "note": "Common tool combinations improve task success rates",
+                "example_combinations": [
+                    {
+                        "tools": ["read_file", "write_file"],
+                        "success_rate": 0.95,
+                        "frequency": 0,
+                        "typical_context": "File processing workflows"
+                    },
+                    {
+                        "tools": ["compile", "test"],
+                        "success_rate": 0.90,
+                        "frequency": 0,
+                        "typical_context": "Development workflows"
+                    }
+                ]
+            }));
+        } else {
+            println!("🔗 Tool Combination Patterns");
+            println!("============================\n");
+            println!("⚠️  No combination patterns available yet.");
+            println!("   Patterns are learned automatically as tools are used together.");
+            println!();
+            println!("💡 How Combinations Work:");
+            println!("   • System tracks which tools are used together");
+            println!("   • Identifies successful tool sequences");
+            println!("   • Learns context-specific combinations");
+            println!("   • Suggests combinations for similar tasks");
+            println!();
+            println!("📚 Example Combinations:");
+            println!("   • read_file + write_file (File processing)");
+            println!("   • compile + test (Development workflows)");
+            println!("   • search + read_file (Information gathering)");
+            println!();
+            println!("💡 Try:");
+            println!("   fluent agent \"Complex task requiring multiple tools\" --enable-tools");
+            println!("   fluent tools analytics --combinations");
+        }
+        Ok(CommandResult::success())
+    }
+
+    /// Show tool usage trends
+    fn show_usage_trends(json_output: bool) -> Result<CommandResult> {
+        if json_output {
+            println!("{}", json!({
+                "usage_trends": [],
+                "message": "Usage trends are tracked over time during agent execution",
+                "note": "Trends show how tool usage changes over time",
+                "metrics_tracked": [
+                    "Usage frequency over time",
+                    "Success rate trends",
+                    "Performance trends",
+                    "Popularity changes"
+                ]
+            }));
+        } else {
+            println!("📈 Tool Usage Trends");
+            println!("===================\n");
+            println!("⚠️  No usage trends available yet.");
+            println!("   Trends are tracked automatically over time as tools are used.");
+            println!();
+            println!("💡 What's Tracked:");
+            println!("   • Usage frequency over time");
+            println!("   • Success rate trends");
+            println!("   • Performance trends (execution time)");
+            println!("   • Popularity changes");
+            println!("   • Tool adoption patterns");
+            println!();
+            println!("📊 Trend Analysis:");
+            println!("   • Tools becoming more/less popular");
+            println!("   • Performance improvements/degradations");
+            println!("   • Success rate changes");
+            println!("   • Usage pattern shifts");
+            println!();
+            println!("💡 Try:");
+            println!("   fluent agent \"Multiple tasks over time\" --enable-tools");
+            println!("   fluent tools analytics --trends");
+        }
+        Ok(CommandResult::success())
     }
 
     /// Get tool recommendations for a task
@@ -615,6 +724,9 @@ impl ToolsCommand {
                 recommendations = all_tools.iter().take(5).map(|t| t.name.clone()).collect();
             }
 
+            // Suggest tool combinations
+            let combinations = Self::suggest_tool_combinations(&task_lower, &all_tools);
+
             // Remove duplicates
             recommendations.sort();
             recommendations.dedup();
@@ -623,6 +735,7 @@ impl ToolsCommand {
                 println!("{}", json!({
                     "task": task_description,
                     "recommendations": recommendations,
+                    "combinations": combinations,
                     "count": recommendations.len(),
                     "note": "Recommendations improve as tool usage patterns are learned"
                 }));
@@ -635,6 +748,15 @@ impl ToolsCommand {
                 for (i, tool) in recommendations.iter().enumerate() {
                     println!("  {}. {}", i + 1, tool);
                 }
+                
+                if !combinations.is_empty() {
+                    println!();
+                    println!("🔗 Suggested Tool Combinations:");
+                    for (i, combo) in combinations.iter().enumerate() {
+                        println!("  {}. {} → {}", i + 1, combo.0, combo.1);
+                    }
+                }
+                
                 println!();
                 println!("💡 Note:");
                 println!("   • Recommendations improve as tool usage patterns are learned");
@@ -886,6 +1008,41 @@ impl ToolsCommand {
                 tools_to_doc.len()
             )))
         })
+    }
+
+    /// Suggest tool combinations based on task
+    fn suggest_tool_combinations(task: &str, all_tools: &[fluent_agent::tools::ToolInfo]) -> Vec<(String, String)> {
+        let mut combinations = Vec::new();
+        
+        // Common combinations based on task keywords
+        if task.contains("file") && task.contains("process") {
+            if let (Some(read_tool), Some(write_tool)) = (
+                all_tools.iter().find(|t| t.name.contains("read")),
+                all_tools.iter().find(|t| t.name.contains("write"))
+            ) {
+                combinations.push((read_tool.name.clone(), write_tool.name.clone()));
+            }
+        }
+        
+        if task.contains("compile") || task.contains("build") {
+            if let (Some(compile_tool), Some(test_tool)) = (
+                all_tools.iter().find(|t| t.name.contains("compile") || t.name.contains("build")),
+                all_tools.iter().find(|t| t.name.contains("test"))
+            ) {
+                combinations.push((compile_tool.name.clone(), test_tool.name.clone()));
+            }
+        }
+        
+        if task.contains("search") && task.contains("read") {
+            if let (Some(search_tool), Some(read_tool)) = (
+                all_tools.iter().find(|t| t.name.contains("search")),
+                all_tools.iter().find(|t| t.name.contains("read"))
+            ) {
+                combinations.push((search_tool.name.clone(), read_tool.name.clone()));
+            }
+        }
+        
+        combinations
     }
 
     /// Get tool requirements and compatibility

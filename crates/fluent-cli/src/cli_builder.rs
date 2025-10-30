@@ -411,6 +411,18 @@ pub fn build_cli() -> Command {
                             Arg::new("tool")
                                 .help("Show analytics for specific tool")
                                 .required(false),
+                        )
+                        .arg(
+                            Arg::new("combinations")
+                                .long("combinations")
+                                .help("Show tool combination patterns")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("trends")
+                                .long("trends")
+                                .help("Show usage trends over time")
+                                .action(ArgAction::SetTrue),
                         ),
                 )
                 .subcommand(
