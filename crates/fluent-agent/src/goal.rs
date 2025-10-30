@@ -4,6 +4,85 @@ use std::time::{Duration, SystemTime};
 
 use crate::context::ExecutionContext;
 
+/// Format duration for display
+fn format_duration(duration: Duration) -> String {
+    let total_seconds = duration.as_secs();
+    if total_seconds < 60 {
+        format!("{}s", total_seconds)
+    } else if total_seconds < 3600 {
+        format!("{}m", total_seconds / 60)
+    } else {
+        format!("{}h {}m", total_seconds / 3600, (total_seconds % 3600) / 60)
+    }
+}
+
+/// Sub-goal that contributes to the main goal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGoal {
+    pub id: String,
+    pub description: String,
+    pub goal_type: GoalType,
+    pub required_tools: Vec<String>,
+    pub estimated_duration: Duration,
+    pub dependencies: Vec<String>, // IDs of other sub-goals this depends on
+    pub success_criteria: Vec<String>,
+    pub status: SubGoalStatus,
+}
+
+/// Status of a sub-goal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SubGoalStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
+/// Dependency relationship between goals
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoalDependency {
+    pub from_goal: String,
+    pub to_goal: String,
+    pub dependency_type: DependencyType,
+}
+
+/// Types of dependencies between goals
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DependencyType {
+    MustCompleteBefore,  // from_goal must complete before to_goal starts
+    SharesResources,     // goals share resources and may conflict
+    RelatedOutput,       // to_goal uses output from from_goal
+}
+
+/// Execution plan for a goal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionPlan {
+    pub milestones: Vec<Milestone>,
+    pub required_tools: Vec<String>,
+    pub estimated_total_duration: Duration,
+    pub risk_assessment: RiskLevel,
+    pub parallel_opportunities: Vec<String>,
+}
+
+/// Milestone in goal execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Milestone {
+    pub id: String,
+    pub description: String,
+    pub estimated_duration: Duration,
+    pub required_tools: Vec<String>,
+    pub success_criteria: Vec<String>,
+}
+
+/// Risk assessment levels
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum RiskLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
 /// Goal that the agent is working towards
 ///
 /// Goals represent high-level objectives that the agent should achieve.
@@ -18,6 +97,9 @@ pub struct Goal {
     pub max_iterations: Option<u32>,
     pub timeout: Option<Duration>,
     pub metadata: HashMap<String, serde_json::Value>,
+    pub sub_goals: Vec<SubGoal>,
+    pub dependencies: Vec<GoalDependency>,
+    pub execution_plan: Option<ExecutionPlan>,
 }
 
 /// Types of goals the agent can work on
@@ -86,7 +168,7 @@ pub struct GoalBuilder {
 impl Goal {
     /// Create a new goal
     pub fn new(description: String, goal_type: GoalType) -> Self {
-        Self {
+        let mut goal = Self {
             goal_id: uuid::Uuid::new_v4().to_string(),
             description,
             goal_type,
@@ -95,7 +177,15 @@ impl Goal {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
-        }
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
+        };
+
+        // Try to analyze and decompose immediately, but don't fail if it doesn't work
+        let _ = goal.analyze_and_decompose();
+
+        goal
     }
 
     /// Create a goal builder for fluent construction
@@ -222,7 +312,346 @@ impl Goal {
     pub fn get_metadata(&self, key: &str) -> Option<&serde_json::Value> {
         self.metadata.get(key)
     }
+
+    /// Analyze goal and create decomposition plan
+    pub fn analyze_and_decompose(&mut self) -> Result<(), GoalAnalysisError> {
+        // Analyze the goal description for complexity patterns
+        let analysis = self.analyze_goal_complexity()?;
+
+        // Decompose into sub-goals if complex enough
+        if analysis.needs_decomposition {
+            self.decompose_into_sub_goals(&analysis)?;
+        }
+
+        // Create execution plan
+        self.create_execution_plan(&analysis)?;
+
+        Ok(())
+    }
+
+    /// Analyze goal complexity and decomposition needs
+    fn analyze_goal_complexity(&self) -> Result<GoalAnalysis, GoalAnalysisError> {
+        let description_words = self.description.split_whitespace().count();
+        let has_multiple_tasks = self.description.contains(" and ") ||
+                                self.description.contains(" then ") ||
+                                self.description.contains(" also ");
+        let has_file_operations = self.description.to_lowercase().contains("file") ||
+                                self.description.to_lowercase().contains("create") ||
+                                self.description.to_lowercase().contains("write");
+        let has_analysis = self.description.to_lowercase().contains("analyze") ||
+                          self.description.to_lowercase().contains("review") ||
+                          self.description.to_lowercase().contains("check");
+        let has_multiple_criteria = self.success_criteria.len() > 3;
+
+        let complexity_score = if description_words > 50 { 3 }
+                              else if description_words > 25 { 2 }
+                              else { 1 } +
+                              if has_multiple_tasks { 2 } else { 0 } +
+                              if has_file_operations { 1 } else { 0 } +
+                              if has_analysis { 1 } else { 0 } +
+                              if has_multiple_criteria { 1 } else { 0 };
+
+        let needs_decomposition = complexity_score >= 4;
+        let estimated_sub_goals = if needs_decomposition {
+            (complexity_score / 2).max(2).min(5)
+        } else { 1 };
+
+        Ok(GoalAnalysis {
+            complexity_score,
+            needs_decomposition,
+            estimated_sub_goals,
+            identified_tasks: self.extract_potential_tasks(),
+            required_tools: self.identify_required_tools(),
+        })
+    }
+
+    /// Extract potential tasks from goal description
+    fn extract_potential_tasks(&self) -> Vec<String> {
+        let mut tasks = Vec::new();
+        let description = self.description.to_lowercase();
+
+        // Look for task indicators
+        if description.contains("create") && description.contains("test") {
+            tasks.push("Create unit tests".to_string());
+        }
+        if description.contains("analyze") || description.contains("review") {
+            tasks.push("Analyze code".to_string());
+        }
+        if description.contains("debug") || description.contains("fix") {
+            tasks.push("Debug issues".to_string());
+        }
+        if description.contains("document") {
+            tasks.push("Create documentation".to_string());
+        }
+        if description.contains("refactor") {
+            tasks.push("Refactor code".to_string());
+        }
+
+        // Add success criteria as tasks if they look like actions
+        for criterion in &self.success_criteria {
+            if criterion.contains("create") || criterion.contains("implement") ||
+               criterion.contains("add") || criterion.contains("write") {
+                tasks.push(criterion.clone());
+            }
+        }
+
+        tasks.truncate(5); // Limit to 5 tasks
+        tasks
+    }
+
+    /// Identify tools that might be needed for this goal
+    fn identify_required_tools(&self) -> Vec<String> {
+        let mut tools = Vec::new();
+        let description = self.description.to_lowercase();
+
+        if description.contains("file") || description.contains("read") || description.contains("write") {
+            tools.push("file_system".to_string());
+        }
+        if description.contains("http") || description.contains("api") || description.contains("web") {
+            tools.push("http_client".to_string());
+        }
+        if description.contains("shell") || description.contains("command") || description.contains("run") {
+            tools.push("shell".to_string());
+        }
+        if description.contains("search") || description.contains("find") {
+            tools.push("grep".to_string());
+        }
+        if description.contains("test") {
+            tools.push("test_runner".to_string());
+        }
+
+        tools
+    }
+
+    /// Decompose goal into sub-goals
+    fn decompose_into_sub_goals(&mut self, analysis: &GoalAnalysis) -> Result<(), GoalAnalysisError> {
+        let mut sub_goals = Vec::new();
+
+        // Create sub-goals from identified tasks
+        for (i, task) in analysis.identified_tasks.iter().enumerate() {
+            let sub_goal = SubGoal {
+                id: format!("{}_sub_{}", self.goal_id, i),
+                description: task.clone(),
+                goal_type: self.infer_sub_goal_type(task),
+                required_tools: self.identify_tools_for_task(task),
+                estimated_duration: self.estimate_task_duration(task),
+                dependencies: Vec::new(), // Will be set after all sub-goals are created
+                success_criteria: vec![format!("Complete: {}", task)],
+                status: SubGoalStatus::Pending,
+            };
+            sub_goals.push(sub_goal);
+        }
+
+        // Set up dependencies between sub-goals
+        self.setup_sub_goal_dependencies(&mut sub_goals);
+
+        self.sub_goals = sub_goals;
+        Ok(())
+    }
+
+    /// Infer goal type for a sub-task
+    fn infer_sub_goal_type(&self, task: &str) -> GoalType {
+        let task_lower = task.to_lowercase();
+        if task_lower.contains("test") || task_lower.contains("spec") {
+            GoalType::Testing
+        } else if task_lower.contains("debug") || task_lower.contains("fix") || task_lower.contains("error") {
+            GoalType::Debugging
+        } else if task_lower.contains("analyze") || task_lower.contains("review") || task_lower.contains("check") {
+            GoalType::Analysis
+        } else if task_lower.contains("document") {
+            GoalType::Documentation
+        } else if task_lower.contains("refactor") {
+            GoalType::Refactoring
+        } else if task_lower.contains("file") || task_lower.contains("create") || task_lower.contains("write") {
+            GoalType::FileOperation
+        } else {
+            GoalType::CodeGeneration
+        }
+    }
+
+    /// Identify tools needed for a specific task
+    fn identify_tools_for_task(&self, task: &str) -> Vec<String> {
+        let mut tools = Vec::new();
+        let task_lower = task.to_lowercase();
+
+        if task_lower.contains("file") || task_lower.contains("read") || task_lower.contains("write") {
+            tools.push("file_system".to_string());
+        }
+        if task_lower.contains("http") || task_lower.contains("api") {
+            tools.push("http_client".to_string());
+        }
+        if task_lower.contains("shell") || task_lower.contains("command") {
+            tools.push("shell".to_string());
+        }
+        if task_lower.contains("search") {
+            tools.push("grep".to_string());
+        }
+        if task_lower.contains("test") {
+            tools.push("test_runner".to_string());
+        }
+
+        tools
+    }
+
+    /// Estimate duration for a task
+    fn estimate_task_duration(&self, task: &str) -> Duration {
+        let task_lower = task.to_lowercase();
+        if task_lower.contains("analyze") || task_lower.contains("review") {
+            Duration::from_secs(180) // 3 minutes
+        } else if task_lower.contains("debug") || task_lower.contains("fix") {
+            Duration::from_secs(300) // 5 minutes
+        } else if task_lower.contains("test") {
+            Duration::from_secs(240) // 4 minutes
+        } else if task_lower.contains("document") {
+            Duration::from_secs(360) // 6 minutes
+        } else {
+            Duration::from_secs(120) // 2 minutes default
+        }
+    }
+
+    /// Set up dependencies between sub-goals
+    fn setup_sub_goal_dependencies(&mut self, sub_goals: &mut [SubGoal]) {
+        // Simple dependency logic: analysis/review tasks should come before implementation
+        let mut analysis_indices = Vec::new();
+        let mut implementation_indices = Vec::new();
+
+        for (i, sub_goal) in sub_goals.iter().enumerate() {
+            match sub_goal.goal_type {
+                GoalType::Analysis | GoalType::CodeReview => analysis_indices.push(i),
+                GoalType::CodeGeneration | GoalType::FileOperation | GoalType::Testing => implementation_indices.push(i),
+                _ => {}
+            }
+        }
+
+        // Make implementation tasks depend on analysis tasks
+        for &impl_idx in &implementation_indices {
+            for &analysis_idx in &analysis_indices {
+                if analysis_idx != impl_idx {
+                    sub_goals[impl_idx].dependencies.push(sub_goals[analysis_idx].id.clone());
+                }
+            }
+        }
+    }
+
+    /// Create execution plan for the goal
+    fn create_execution_plan(&mut self, analysis: &GoalAnalysis) -> Result<(), GoalAnalysisError> {
+        let mut milestones = Vec::new();
+        let mut total_duration = Duration::from_secs(0);
+        let mut all_tools = analysis.required_tools.clone();
+
+        if self.sub_goals.is_empty() {
+            // Single milestone for simple goals
+            milestones.push(Milestone {
+                id: format!("{}_milestone_1", self.goal_id),
+                description: format!("Complete goal: {}", self.description),
+                estimated_duration: self.get_estimated_duration(),
+                required_tools: analysis.required_tools.clone(),
+                success_criteria: self.success_criteria.clone(),
+            });
+            total_duration = self.get_estimated_duration();
+        } else {
+            // Multiple milestones for complex goals
+            for (i, sub_goal) in self.sub_goals.iter().enumerate() {
+                milestones.push(Milestone {
+                    id: format!("{}_milestone_{}", self.goal_id, i + 1),
+                    description: sub_goal.description.clone(),
+                    estimated_duration: sub_goal.estimated_duration,
+                    required_tools: sub_goal.required_tools.clone(),
+                    success_criteria: sub_goal.success_criteria.clone(),
+                });
+                total_duration += sub_goal.estimated_duration;
+                all_tools.extend(sub_goal.required_tools.clone());
+            }
+        }
+
+        // Remove duplicates from tools
+        all_tools.sort();
+        all_tools.dedup();
+
+        let risk_level = if analysis.complexity_score >= 6 {
+            RiskLevel::High
+        } else if analysis.complexity_score >= 4 {
+            RiskLevel::Medium
+        } else {
+            RiskLevel::Low
+        };
+
+        // Identify parallel opportunities
+        let parallel_opportunities = self.identify_parallel_opportunities();
+
+        self.execution_plan = Some(ExecutionPlan {
+            milestones,
+            required_tools: all_tools,
+            estimated_total_duration: total_duration,
+            risk_assessment: risk_level,
+            parallel_opportunities,
+        });
+
+        Ok(())
+    }
+
+    /// Identify opportunities for parallel execution
+    fn identify_parallel_opportunities(&self) -> Vec<String> {
+        let mut opportunities = Vec::new();
+
+        if self.sub_goals.len() >= 2 {
+            // Check if any sub-goals have no dependencies
+            let independent_goals: Vec<_> = self.sub_goals.iter()
+                .filter(|sg| sg.dependencies.is_empty())
+                .collect();
+
+            if independent_goals.len() >= 2 {
+                opportunities.push("Multiple independent sub-tasks can run in parallel".to_string());
+            }
+        }
+
+        opportunities
+    }
+
+    /// Get execution plan summary for display
+    pub fn get_execution_plan_summary(&self) -> String {
+        if let Some(plan) = &self.execution_plan {
+            format!(
+                "Execution Plan: {} milestones, {} total duration, {} risk, {} tools required",
+                plan.milestones.len(),
+                format_duration(plan.estimated_total_duration),
+                format!("{:?}", plan.risk_assessment).to_lowercase(),
+                plan.required_tools.len()
+            )
+        } else {
+            "No execution plan available".to_string()
+        }
+    }
 }
+
+/// Analysis result for goal decomposition
+struct GoalAnalysis {
+    complexity_score: u32,
+    needs_decomposition: bool,
+    estimated_sub_goals: u32,
+    identified_tasks: Vec<String>,
+    required_tools: Vec<String>,
+}
+
+/// Errors that can occur during goal analysis
+#[derive(Debug, Clone, PartialEq)]
+pub enum GoalAnalysisError {
+    TooComplex,
+    InvalidStructure,
+    MissingInformation,
+}
+
+impl std::fmt::Display for GoalAnalysisError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GoalAnalysisError::TooComplex => write!(f, "Goal is too complex to analyze"),
+            GoalAnalysisError::InvalidStructure => write!(f, "Goal has invalid structure"),
+            GoalAnalysisError::MissingInformation => write!(f, "Goal is missing required information"),
+        }
+    }
+}
+
+impl std::error::Error for GoalAnalysisError {}
 
 /// Complexity levels for goals
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -508,6 +937,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         assert!(matches!(
@@ -570,5 +1002,68 @@ mod tests {
 
         let recent_start = SystemTime::now() - Duration::from_secs(50);
         assert!(!goal.is_timed_out(recent_start));
+    }
+
+    #[test]
+    fn test_goal_analysis_and_decomposition() {
+        let mut goal = Goal::builder(
+            "Create a Rust function to calculate fibonacci numbers and write comprehensive unit tests for it".to_string(),
+            GoalType::CodeGeneration,
+        )
+        .success_criteria(vec![
+            "Function compiles without errors".to_string(),
+            "Function returns correct fibonacci values".to_string(),
+            "Unit tests pass".to_string(),
+            "Code is well-documented".to_string(),
+        ])
+        .build()
+        .unwrap();
+
+        // Test analysis and decomposition
+        goal.analyze_and_decompose().unwrap();
+
+        // Should have decomposed into sub-goals
+        assert!(!goal.sub_goals.is_empty());
+
+        // Should have an execution plan
+        assert!(goal.execution_plan.is_some());
+
+        let plan = goal.execution_plan.as_ref().unwrap();
+        assert!(!plan.milestones.is_empty());
+        assert!(plan.estimated_total_duration > Duration::from_secs(0));
+    }
+
+    #[test]
+    fn test_simple_goal_no_decomposition() {
+        let mut goal = Goal::builder(
+            "Say hello".to_string(),
+            GoalType::Communication,
+        )
+        .success_criterion("Output hello message".to_string())
+        .build()
+        .unwrap();
+
+        // Test analysis - should not decompose
+        goal.analyze_and_decompose().unwrap();
+
+        // Should not have decomposed
+        assert!(goal.sub_goals.is_empty());
+
+        // Should still have an execution plan
+        assert!(goal.execution_plan.is_some());
+    }
+
+    #[test]
+    fn test_execution_plan_summary() {
+        let mut goal = Goal::builder("Test goal".to_string(), GoalType::CodeGeneration)
+            .success_criterion("Complete task".to_string())
+            .build()
+            .unwrap();
+
+        goal.analyze_and_decompose().unwrap();
+
+        let summary = goal.get_execution_plan_summary();
+        assert!(summary.contains("Execution Plan"));
+        assert!(summary.contains("milestones"));
     }
 }

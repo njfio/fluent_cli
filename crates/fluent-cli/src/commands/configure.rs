@@ -1,298 +1,338 @@
-//! Progressive configuration discovery and management
+//! Advanced configuration management and optimization
 //!
-//! This module provides commands for discovering, viewing, and configuring
-//! FluentCLI features progressively, with presets and optimization suggestions.
+//! This module provides tools for viewing, modifying, and optimizing
+//! FluentCLI configuration, including presets and suggestions.
 
-use crate::error::CliError;
+use crate::commands::CommandHandler;
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
-use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect, Select};
-use fluent_core::config::{Config, EngineConfig};
+use fluent_core::config::Config;
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 
-use super::CommandHandler;
-
-/// Configuration command handler
+/// Configure command handler
 pub struct ConfigureCommand;
 
 impl ConfigureCommand {
+    /// Create a new configure command handler
     pub fn new() -> Self {
         Self
     }
 
     /// Show current configuration
-    async fn show_config(matches: &ArgMatches, config: &Config) -> Result<()> {
-        let json_output = matches.get_flag("json");
-
-        if json_output {
-            let config_json = serde_json::json!({
-                "engines": config.engines.iter().map(|e| {
-                    serde_json::json!({
-                        "name": e.name,
-                        "engine": e.engine,
-                        "connection": {
-                            "protocol": e.connection.protocol,
-                            "hostname": e.connection.hostname,
-                            "port": e.connection.port,
-                            "request_path": e.connection.request_path,
-                        },
-                        "parameters": e.parameters,
-                    })
-                }).collect::<Vec<_>>()
-            });
-            println!("{}", serde_json::to_string_pretty(&config_json)?);
-        } else {
-            println!("📋 Current Configuration:\n");
-            println!("Configured Engines: {}\n", config.engines.len());
-
-            if config.engines.is_empty() {
-                println!("⚠️  No engines configured.");
-                println!("💡 Run 'fluent setup' to configure your first engine.\n");
-            } else {
-                for (idx, engine) in config.engines.iter().enumerate() {
-                    println!("{}. Engine: {}", idx + 1, engine.name);
-                    println!("   Type: {}", engine.engine);
-                    println!("   Endpoint: {}://{}:{}{}", 
-                        engine.connection.protocol,
-                        engine.connection.hostname,
-                        engine.connection.port,
-                        engine.connection.request_path);
-                    
-                    if let Some(model) = engine.parameters.get("modelName") {
-                        println!("   Model: {}", model);
-                    }
-                    if let Some(temp) = engine.parameters.get("temperature") {
-                        println!("   Temperature: {}", temp);
-                    }
-                    println!();
-                }
-            }
-
-            // Show configuration suggestions
-            Self::show_suggestions(config)?;
-        }
-
-        Ok(())
-    }
-
-    /// Show optimization suggestions
-    fn show_suggestions(config: &Config) -> Result<()> {
-        println!("💡 Configuration Suggestions:\n");
-
-        if config.engines.is_empty() {
-            println!("  ⚠️  No engines configured. Run 'fluent setup' to add one.");
-        } else {
-            // Check for common optimization opportunities
-            let mut suggestions = Vec::new();
+    fn show_config(&self, config: &Config, json: bool) -> Result<()> {
+        if json {
+            // Create a simple JSON representation
+            let mut json_config = serde_json::Map::new();
+            let mut engines = Vec::new();
 
             for engine in &config.engines {
-                // Check temperature settings
-                if let Some(temp) = engine.parameters.get("temperature") {
-                    if let Some(t) = temp.as_f64() {
-                        if t > 0.7 {
-                            suggestions.push(format!(
-                                "  ℹ️  Engine '{}' has high temperature ({}). Consider lowering for more deterministic results.",
-                                engine.name, t
-                            ));
-                        }
-                    }
-                }
-
-                // Check max_tokens
-                if let Some(max_tokens) = engine.parameters.get("max_tokens") {
-                    if let Some(mt) = max_tokens.as_u64() {
-                        if mt < 1000 {
-                            suggestions.push(format!(
-                                "  ⚠️  Engine '{}' has low max_tokens ({}). Consider increasing for longer responses.",
-                                engine.name, mt
-                            ));
-                        }
-                    }
-                }
+                let mut engine_map = serde_json::Map::new();
+                engine_map.insert("name".to_string(), serde_json::Value::String(engine.name.clone()));
+                engine_map.insert("engine".to_string(), serde_json::Value::String(engine.engine.clone()));
+                engine_map.insert("connection".to_string(), serde_json::json!({
+                    "protocol": engine.connection.protocol,
+                    "hostname": engine.connection.hostname,
+                    "port": engine.connection.port,
+                    "request_path": engine.connection.request_path
+                }));
+                engine_map.insert("parameters".to_string(), serde_json::to_value(&engine.parameters)?);
+                engines.push(serde_json::Value::Object(engine_map));
             }
 
-            if suggestions.is_empty() {
-                println!("  ✅ Configuration looks good! No major suggestions.");
-            } else {
-                for suggestion in suggestions {
-                    println!("{}", suggestion);
-                }
-            }
-        }
+            json_config.insert("engines".to_string(), serde_json::Value::Array(engines));
 
-        println!();
-        Ok(())
-    }
-
-    /// Interactive configuration with presets
-    async fn interactive_configure(config_path: &str) -> Result<()> {
-        let theme = ColorfulTheme::default();
-
-        println!("\n⚙️  FluentCLI Configuration Wizard\n");
-
-        // Load existing config if available
-        let existing_config = if Path::new(config_path).exists() {
-            match fluent_core::config::load_config(config_path, "", &HashMap::new()) {
-                Ok(cfg) => Some(cfg),
-                Err(_) => None,
-            }
+            let json_output = serde_json::to_string_pretty(&json_config)?;
+            println!("{}", json_output);
         } else {
-            None
-        };
+            println!("🔧 Current FluentCLI Configuration");
+            println!("===================================");
+            println!();
 
-        // Step 1: Select configuration preset
-        println!("Select a configuration preset (or skip to custom configuration):\n");
-        let preset_options = vec![
-            "Developer - Optimized for code generation and development",
-            "Researcher - Optimized for research and analysis tasks",
-            "Production - Optimized for reliability and performance",
-            "Custom - Manual configuration",
-        ];
-
-        let preset_selection = Select::with_theme(&theme)
-            .with_prompt("Select preset")
-            .default(0)
-            .items(&preset_options)
-            .interact()?;
-
-        let preset_name = match preset_selection {
-            0 => "developer",
-            1 => "researcher",
-            2 => "production",
-            3 => "custom",
-            _ => return Err(anyhow!("Invalid selection")),
-        };
-
-        if preset_selection == 3 {
-            println!("\nCustom configuration mode.");
-            println!("Edit {} directly to customize your configuration.", config_path);
-            return Ok(());
-        }
-
-        // Step 2: Apply preset optimizations
-        println!("\n📝 Applying {} preset optimizations...", preset_name);
-
-        let optimizations = Self::get_preset_optimizations(preset_name);
-
-        if let Some(config) = existing_config {
-            println!("\nCurrent configuration:\n");
-            Self::show_config_summary(&config)?;
-
-            let apply = Confirm::with_theme(&theme)
-                .with_prompt("Apply optimizations to existing configuration?")
-                .default(true)
-                .interact()?;
-
-            if !apply {
-                println!("Configuration unchanged.");
+            if config.engines.is_empty() {
+                println!("❌ No engines configured");
+                println!("   Run 'fluent setup' to configure your first engine");
                 return Ok(());
             }
+
+            println!("🤖 Configured Engines ({}):", config.engines.len());
+            for (i, engine) in config.engines.iter().enumerate() {
+                println!("  {}. {} ({})", i + 1, engine.name, engine.engine);
+                println!("     Hostname: {}", engine.connection.hostname);
+                println!("     Port: {}", engine.connection.port);
+                println!("     Model: {}", engine.parameters.get("modelName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default"));
+                println!("     Temperature: {}", engine.parameters.get("temperature")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.1));
+                println!("     Max Tokens: {}", engine.parameters.get("max_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(4000));
+                println!();
+            }
+
+            println!("💡 Tips:");
+            println!("  • Use 'fluent configure optimize' to get optimization suggestions");
+            println!("  • Use 'fluent configure presets' to see available presets");
+            println!("  • Use 'fluent configure set <key> <value>' to modify settings");
         }
+        Ok(())
+    }
 
-        // Step 3: Show what will be optimized
-        println!("\n🔧 Optimizations to apply:\n");
-        for opt in &optimizations {
-            println!("  • {}", opt);
+    /// Show available presets
+    fn show_presets(&self, apply_preset: Option<&str>) -> Result<()> {
+        let presets = self.get_presets();
+
+        if let Some(preset_name) = apply_preset {
+            if let Some(preset) = presets.get(preset_name) {
+                println!("📋 Applying preset: {}", preset_name);
+                println!("Description: {}", preset.description);
+                println!();
+
+                // Here we would apply the preset to the config
+                // For now, just show what would be applied
+                println!("✅ Preset '{}' would be applied with the following changes:", preset_name);
+                for (key, value) in &preset.settings {
+                    println!("  {} = {}", key, value);
+                }
+                println!();
+                println!("⚠️  Preset application not yet implemented");
+                println!("   Manual configuration required for now");
+            } else {
+                let available: Vec<String> = presets.keys().map(|s| s.clone()).collect();
+                return Err(anyhow!("Preset '{}' not found. Available presets: {}",
+                    preset_name, available.join(", ")));
+            }
+        } else {
+            println!("🎭 Available Configuration Presets");
+            println!("===================================");
+            println!();
+
+            for (name, preset) in &presets {
+                println!("📦 {} - {}", name, preset.description);
+                println!("   Best for: {}", preset.use_case);
+                println!("   Key settings:");
+                for (key, value) in &preset.settings {
+                    println!("     • {} = {}", key, value);
+                }
+                println!();
+            }
+
+            println!("💡 Usage:");
+            println!("  fluent configure presets --apply developer");
+            println!("  fluent configure presets --apply production");
         }
-
-        let confirm = Confirm::with_theme(&theme)
-            .with_prompt("Apply these optimizations?")
-            .default(true)
-            .interact()?;
-
-        if !confirm {
-            println!("Configuration unchanged.");
-            return Ok(());
-        }
-
-        println!("\n✅ Configuration optimized!");
-        println!("💡 Note: Some optimizations require manual editing of {}.", config_path);
-        println!("   Review the configuration file for full details.\n");
 
         Ok(())
     }
 
-    /// Get preset optimizations
-    fn get_preset_optimizations(preset: &str) -> Vec<String> {
-        match preset {
-            "developer" => vec![
-                "Set temperature to 0.1 for deterministic code generation".to_string(),
-                "Increase max_tokens for longer code outputs".to_string(),
-                "Enable tool usage by default".to_string(),
-                "Set system prompt for code-focused tasks".to_string(),
-            ],
-            "researcher" => vec![
-                "Set temperature to 0.3 for balanced creativity".to_string(),
-                "Increase max_tokens for long-form research".to_string(),
-                "Enable reflection mode for iterative analysis".to_string(),
-                "Configure memory for cross-session learning".to_string(),
-            ],
-            "production" => vec![
-                "Set temperature to 0.0 for maximum determinism".to_string(),
-                "Configure retry logic for reliability".to_string(),
-                "Enable logging for monitoring".to_string(),
-                "Set conservative token limits".to_string(),
-            ],
-            _ => vec![],
-        }
-    }
+    /// Analyze and suggest optimizations
+    fn optimize_config(&self, config: &Config, dry_run: bool) -> Result<()> {
+        println!("🔍 Analyzing Configuration for Optimizations");
+        println!("============================================");
+        println!();
 
-    /// Show configuration summary
-    fn show_config_summary(config: &Config) -> Result<()> {
-        println!("Engines: {}", config.engines.len());
+        let mut suggestions = Vec::new();
+
+        // Check engine configurations
         for engine in &config.engines {
-            println!("  - {}", engine.name);
+            // Temperature optimization
+            if let Some(temp) = engine.parameters.get("temperature").and_then(|v| v.as_f64()) {
+                if temp < 0.1 {
+                    suggestions.push(format!(
+                        "⚡ {}: Temperature {:.1} is very low - consider increasing to 0.3-0.7 for more creative responses",
+                        engine.name, temp
+                    ));
+                } else if temp > 1.0 {
+                    suggestions.push(format!(
+                        "🎲 {}: Temperature {:.1} is very high - consider decreasing to 0.7-0.9 for more focused responses",
+                        engine.name, temp
+                    ));
+                }
+            }
+
+            // Max tokens optimization
+            if let Some(tokens) = engine.parameters.get("max_tokens").and_then(|v| v.as_u64()) {
+                if tokens < 1000 {
+                    suggestions.push(format!(
+                        "📏 {}: Max tokens {} is low - consider increasing to 2000-4000 for complex tasks",
+                        engine.name, tokens
+                    ));
+                } else if tokens > 8000 {
+                    suggestions.push(format!(
+                        "📏 {}: Max tokens {} is high - this may increase costs and response time",
+                        engine.name, tokens
+                    ));
+                }
+            }
         }
+
+        // General suggestions
+        if config.engines.len() == 1 {
+            suggestions.push(
+                "🔄 Consider configuring multiple engines for different use cases (coding, research, etc.)".to_string()
+            );
+        }
+
+        if suggestions.is_empty() {
+            println!("✅ Your configuration looks well-optimized!");
+            println!("   No major improvements suggested at this time.");
+        } else {
+            println!("💡 Optimization Suggestions ({}):", suggestions.len());
+            println!();
+            for suggestion in &suggestions {
+                println!("  {}", suggestion);
+            }
+            println!();
+
+            if dry_run {
+                println!("🔍 This was a dry run. No changes were made.");
+                println!("   Run 'fluent configure optimize' to apply suggestions.");
+            } else {
+                println!("⚠️  Optimization application not yet implemented");
+                println!("   Manual configuration required for now");
+            }
+        }
+
         Ok(())
     }
 
-    /// Preview configuration changes
-    async fn preview_config(config_path: &str) -> Result<()> {
-        if !Path::new(config_path).exists() {
-            return Err(anyhow!("Configuration file not found: {}", config_path));
-        }
+    /// Set a configuration value
+    fn set_config_value(&self, key: &str, value: &str, config_path: &str) -> Result<()> {
+        println!("⚙️  Setting configuration: {} = {}", key, value);
+        println!();
 
-        let config_content = fs::read_to_string(config_path)?;
-        println!("📄 Current configuration file:\n");
-        println!("{}", config_content);
+        // For now, just show what would be set
+        println!("✅ Would set {} to {}", key, value);
+        println!("   Configuration file: {}", config_path);
+        println!();
+        println!("⚠️  Configuration setting not yet implemented");
+        println!("   Manual editing of {} required for now", config_path);
 
         Ok(())
     }
+
+    /// Get available configuration presets
+    fn get_presets(&self) -> HashMap<String, Preset> {
+        let mut presets = HashMap::new();
+
+        presets.insert("developer".to_string(), Preset {
+            description: "Optimized for software development and coding tasks".to_string(),
+            use_case: "Writing code, debugging, refactoring".to_string(),
+            settings: {
+                let mut settings = HashMap::new();
+                settings.insert("temperature".to_string(), "0.1".to_string());
+                settings.insert("max_tokens".to_string(), "4000".to_string());
+                settings.insert("model".to_string(), "claude-3-7-sonnet-20250219".to_string());
+                settings
+            },
+        });
+
+        presets.insert("researcher".to_string(), Preset {
+            description: "Optimized for research, analysis, and information gathering".to_string(),
+            use_case: "Research, data analysis, documentation".to_string(),
+            settings: {
+                let mut settings = HashMap::new();
+                settings.insert("temperature".to_string(), "0.3".to_string());
+                settings.insert("max_tokens".to_string(), "6000".to_string());
+                settings.insert("model".to_string(), "claude-3-7-sonnet-20250219".to_string());
+                settings
+            },
+        });
+
+        presets.insert("creative".to_string(), Preset {
+            description: "Optimized for creative writing and brainstorming".to_string(),
+            use_case: "Writing stories, generating ideas, creative tasks".to_string(),
+            settings: {
+                let mut settings = HashMap::new();
+                settings.insert("temperature".to_string(), "0.8".to_string());
+                settings.insert("max_tokens".to_string(), "3000".to_string());
+                settings.insert("model".to_string(), "claude-3-7-sonnet-20250219".to_string());
+                settings
+            },
+        });
+
+        presets.insert("production".to_string(), Preset {
+            description: "Conservative settings for production use".to_string(),
+            use_case: "Stable, predictable responses in production".to_string(),
+            settings: {
+                let mut settings = HashMap::new();
+                settings.insert("temperature".to_string(), "0.0".to_string());
+                settings.insert("max_tokens".to_string(), "2000".to_string());
+                settings.insert("model".to_string(), "claude-3-7-sonnet-20250219".to_string());
+                settings
+            },
+        });
+
+        presets
+    }
+}
+
+/// Configuration preset
+struct Preset {
+    description: String,
+    use_case: String,
+    settings: HashMap<String, String>,
 }
 
 impl CommandHandler for ConfigureCommand {
     async fn execute(&self, matches: &ArgMatches, config: &Config) -> Result<()> {
+        let config_path = matches
+            .get_one::<String>("config")
+            .map(|s| s.as_str())
+            .unwrap_or("fluent_config.toml");
+
         match matches.subcommand() {
             Some(("show", sub_matches)) => {
-                Self::show_config(sub_matches, config).await
+                let json = sub_matches.get_flag("json");
+                self.show_config(config, json)?;
             }
-            Some(("interactive", sub_matches)) => {
-                let config_path = sub_matches
-                    .get_one::<String>("config-path")
-                    .map(|s| s.as_str())
-                    .unwrap_or("fluent_config.toml");
-                Self::interactive_configure(config_path).await
+            Some(("presets", sub_matches)) => {
+                let apply_preset = sub_matches.get_one::<String>("apply").map(|s| s.as_str());
+                self.show_presets(apply_preset)?;
             }
-            Some(("preview", sub_matches)) => {
-                let config_path = sub_matches
-                    .get_one::<String>("config-path")
-                    .map(|s| s.as_str())
-                    .unwrap_or("fluent_config.toml");
-                Self::preview_config(config_path).await
+            Some(("optimize", sub_matches)) => {
+                let dry_run = sub_matches.get_flag("dry-run");
+                self.optimize_config(config, dry_run)?;
+            }
+            Some(("set", sub_matches)) => {
+                let key = sub_matches.get_one::<String>("key").unwrap();
+                let value = sub_matches.get_one::<String>("value").unwrap();
+                self.set_config_value(key, value, config_path)?;
             }
             _ => {
-                eprintln!("No subcommand provided. Use 'fluent configure --help' for usage.");
-                Ok(())
+                println!("🔧 FluentCLI Configuration Management");
+                println!("=====================================");
+                println!();
+                println!("📖 Available subcommands:");
+                println!("  show     - Display current configuration");
+                println!("  presets  - List and apply configuration presets");
+                println!("  optimize - Analyze and optimize configuration");
+                println!("  set      - Set a configuration value");
+                println!();
+                println!("📚 Examples:");
+                println!("  fluent configure show");
+                println!("  fluent configure presets");
+                println!("  fluent configure optimize --dry-run");
+                println!("  fluent configure set memory.max_tokens 8000");
             }
         }
+
+        Ok(())
     }
 }
 
-impl Default for ConfigureCommand {
-    fn default() -> Self {
-        Self::new()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_presets() {
+        let cmd = ConfigureCommand::new();
+        let presets = cmd.get_presets();
+        assert!(presets.contains_key("developer"));
+        assert!(presets.contains_key("researcher"));
+        assert!(presets.contains_key("creative"));
+        assert!(presets.contains_key("production"));
     }
 }
-

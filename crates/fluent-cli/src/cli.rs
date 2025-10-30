@@ -5,14 +5,176 @@
 
 use crate::error::CliError;
 use anyhow::Result;
+use clap::ArgMatches;
 use std::path::Path;
 
 use crate::cli_builder::build_cli;
 use crate::commands::{
-    agent::AgentCommand, configure::ConfigureCommand, engine::EngineCommand, mcp::McpCommand,
-    neo4j::Neo4jCommand, pipeline::PipelineCommand, setup::SetupCommand, tools::ToolsCommand,
-    CommandHandler,
+    agent::AgentCommand, configure::ConfigureCommand, engine::EngineCommand, mcp::McpCommand, neo4j::Neo4jCommand,
+    pipeline::PipelineCommand, setup::SetupCommand, tools::ToolsCommand, CommandHandler,
 };
+
+/// Show examples for the given command
+fn show_examples(matches: &ArgMatches) -> Result<()> {
+    match matches.subcommand() {
+        Some(("agent", _)) => {
+            println!("🤖 FluentCLI Agent Examples");
+            println!("============================");
+            println!();
+            println!("📝 Basic Usage:");
+            println!("  fluent agent \"Hello, world!\"");
+            println!("  fluent agent \"Write a Rust function to calculate fibonacci numbers\"");
+            println!("  fluent agent \"Analyze this code for performance issues\" --file code.rs");
+            println!();
+            println!("🔧 Advanced Usage:");
+            println!("  fluent agent \"Refactor this legacy code\" --interactive");
+            println!("  fluent agent \"Debug this error message\" --verbose");
+            println!("  fluent agent \"Create a comprehensive test suite\" --config custom.toml");
+            println!();
+            println!("🎯 Common Tasks:");
+            println!("  fluent agent \"Generate API documentation\"");
+            println!("  fluent agent \"Optimize database queries\"");
+            println!("  fluent agent \"Implement authentication middleware\"");
+            println!("  fluent agent \"Create deployment scripts\"");
+        }
+        Some(("pipeline", _)) => {
+            println!("🔄 FluentCLI Pipeline Examples");
+            println!("================================");
+            println!();
+            println!("📝 Basic Usage:");
+            println!("  fluent pipeline -f example_pipelines/test_pipeline.yaml");
+            println!("  fluent pipeline -f pipelines/code_review.yaml -i \"Review this PR\"");
+            println!();
+            println!("🔧 Advanced Usage:");
+            println!("  fluent pipeline -f complex_workflow.yaml --verbose");
+            println!("  fluent pipeline -f pipelines/ci_cd.yaml --config production.toml");
+            println!();
+            println!("📋 Available Example Pipelines:");
+            println!("  • example_pipelines/test_pipeline.yaml - Basic agent execution");
+            println!("  • example_pipelines/code_analysis.yaml - Code review workflow");
+            println!("  • example_pipelines/documentation.yaml - Documentation generation");
+        }
+        Some(("setup", _)) => {
+            println!("🚀 FluentCLI Setup Examples");
+            println!("============================");
+            println!();
+            println!("📝 Basic Setup:");
+            println!("  fluent setup");
+            println!("  fluent setup --output my_config.toml");
+            println!();
+            println!("🔧 Advanced Setup:");
+            println!("  fluent setup --force --skip-validation");
+            println!("  fluent setup -o production_config.toml");
+            println!();
+            println!("💡 Pro Tips:");
+            println!("  • Set API keys in environment variables for auto-detection");
+            println!("  • Use --force to overwrite existing configurations");
+            println!("  • Run setup first to configure your AI engines");
+        }
+        Some(("tools", sub_matches)) => {
+            if let Some(("list", _)) = sub_matches.subcommand() {
+                println!("🛠️  FluentCLI Tools List Examples");
+                println!("=================================");
+                println!();
+                println!("📝 Basic Usage:");
+                println!("  fluent tools list");
+                println!("  fluent tools list --json");
+                println!();
+                println!("🔍 Search and Filter:");
+                println!("  fluent tools search \"file\"");
+                println!("  fluent tools search \"http\" --category network");
+                println!();
+                println!("📚 Tool Categories:");
+                println!("  • file - File system operations");
+                println!("  • network - HTTP and API calls");
+                println!("  • system - OS and environment");
+                println!("  • data - Parsing and processing");
+                println!("  • ai - AI and ML utilities");
+            } else {
+                println!("🛠️  FluentCLI Tools Examples");
+                println!("============================");
+                println!();
+                println!("📝 Basic Usage:");
+                println!("  fluent tools list");
+                println!("  fluent tools search \"query\"");
+                println!();
+                println!("🔧 Tool Management:");
+                println!("  fluent tools test <tool_name>");
+                println!("  fluent tools info <tool_name>");
+                println!();
+                println!("💡 Tip: Use 'fluent tools list' to see all available tools");
+            }
+        }
+        Some(("engine", sub_matches)) => {
+            if let Some(("list", _)) = sub_matches.subcommand() {
+                println!("⚙️  FluentCLI Engine List Examples");
+                println!("==================================");
+                println!();
+                println!("📝 Basic Usage:");
+                println!("  fluent engine list");
+                println!("  fluent engine list --json");
+                println!();
+                println!("🔍 Engine Information:");
+                println!("  Shows all configured AI engines");
+                println!("  Displays engine status and capabilities");
+            } else if let Some(("test", _)) = sub_matches.subcommand() {
+                println!("⚙️  FluentCLI Engine Test Examples");
+                println!("==================================");
+                println!();
+                println!("📝 Basic Usage:");
+                println!("  fluent engine test anthropic");
+                println!("  fluent engine test openai");
+                println!();
+                println!("🔧 Testing Engines:");
+                println!("  fluent engine test groq --verbose");
+                println!("  fluent engine test google --config test_config.toml");
+                println!();
+                println!("💡 Tip: Test engines after configuration to ensure connectivity");
+            } else {
+                println!("⚙️  FluentCLI Engine Examples");
+                println!("============================");
+                println!();
+                println!("📝 Basic Usage:");
+                println!("  fluent engine list");
+                println!("  fluent engine test <engine_name>");
+                println!();
+                println!("🔧 Engine Management:");
+                println!("  fluent engine list --json");
+                println!("  fluent engine test anthropic --verbose");
+                println!();
+                println!("💡 Tip: Configure engines with 'fluent setup' first");
+            }
+        }
+        _ => {
+            println!("🌟 FluentCLI Examples");
+            println!("====================");
+            println!();
+            println!("🚀 Getting Started:");
+            println!("  fluent setup                    # Configure FluentCLI");
+            println!("  fluent agent \"Hello, world!\"     # Run your first agent");
+            println!();
+            println!("🤖 Agent Commands:");
+            println!("  fluent agent \"Write a function\" --examples");
+            println!("  fluent agent \"Debug this code\" --interactive");
+            println!();
+            println!("🔄 Pipeline Commands:");
+            println!("  fluent pipeline -f example_pipelines/test_pipeline.yaml");
+            println!("  fluent pipeline --examples");
+            println!();
+            println!("🛠️  Tool Commands:");
+            println!("  fluent tools list");
+            println!("  fluent tools search \"file\"");
+            println!();
+            println!("⚙️  Configuration:");
+            println!("  fluent setup --examples");
+            println!("  fluent engine list");
+            println!();
+            println!("📚 For more examples, use --examples with any subcommand:");
+            println!("  fluent <command> --examples");
+        }
+    }
+    Ok(())
+}
 
 /// Main CLI entry point
 pub async fn run_modular() -> Result<()> {
@@ -49,6 +211,12 @@ pub async fn run_modular() -> Result<()> {
         std::env::set_var("FLUENT_LOG_FORMAT", "human");
     }
 
+    // Handle examples flag
+    if matches.get_flag("examples") {
+        show_examples(&matches)?;
+        return Ok(());
+    }
+
     // Capture config path argument early for logging metadata
     let config_path = matches
         .get_one::<String>("config")
@@ -59,11 +227,6 @@ pub async fn run_modular() -> Result<()> {
     let requires_config = match matches.subcommand() {
         Some(("tools", _)) => false,
         Some(("completions", _)) => false,
-        Some(("setup", _)) => false,
-        Some(("configure", sub_m)) => match sub_m.subcommand() {
-            Some(("interactive", _)) => false,
-            _ => true,
-        },
         Some(("engine", sub_m)) => match sub_m.subcommand() {
             Some(("list", _)) => false,
             _ => true,
@@ -141,16 +304,16 @@ pub async fn run_modular() -> Result<()> {
             let handler = ToolsCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
-        Some(("setup", sub_matches)) => {
-            let span = tracing::info_span!("setup", config_path = %config_path);
-            let _e = span.enter();
-            let handler = SetupCommand::new();
-            handler.execute(sub_matches, &config).await?;
-        }
         Some(("configure", sub_matches)) => {
-            let span = tracing::info_span!("configure", config_path = %config_path);
+            let span = tracing::info_span!("configure");
             let _e = span.enter();
             let handler = ConfigureCommand::new();
+            handler.execute(sub_matches, &config).await?;
+        }
+        Some(("setup", sub_matches)) => {
+            let span = tracing::info_span!("setup");
+            let _e = span.enter();
+            let handler = SetupCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("completions", sub_matches)) => {

@@ -536,7 +536,6 @@ impl AgenticExecutor {
     /// Create goal from description
     fn create_goal(&mut self) -> Result<fluent_agent::goal::Goal> {
         use fluent_agent::goal::{Goal, GoalType};
-        use fluent_agent::goal_analyzer::GoalAnalyzer;
 
         let mut builder = Goal::builder(
             self.config.goal_description.clone(),
@@ -557,19 +556,36 @@ impl AgenticExecutor {
                 .success_criterion("Code meets the specified requirements".to_string());
         }
 
-        let goal = builder.build()?;
+        let mut goal = builder.build()?;
 
-        // Analyze goal and show plan if interactive mode
-        if std::env::var("FLUENT_AGENT_INTERACTIVE").is_ok() {
-            match GoalAnalyzer::analyze_goal(&goal) {
-                Ok(analysis) => {
-                    let formatted = GoalAnalyzer::format_analysis(&analysis);
-                    self.tui.add_log("\n📊 Goal Analysis and Plan:\n".to_string());
-                    self.tui.add_log(formatted);
+        // Analyze and decompose the goal for complex tasks
+        self.tui.add_log("🔍 Analyzing goal complexity...".to_string());
+        match goal.analyze_and_decompose() {
+            Ok(_) => {
+                self.tui.add_log("✅ Goal analysis complete".to_string());
+
+                // Show execution plan summary
+                let plan_summary = goal.get_execution_plan_summary();
+                self.tui.add_log(format!("📋 {}", plan_summary));
+
+                // Show sub-goals if any
+                if !goal.sub_goals.is_empty() {
+                    self.tui.add_log(format!("🎯 Decomposed into {} sub-goals:", goal.sub_goals.len()));
+                    for (i, sub_goal) in goal.sub_goals.iter().enumerate() {
+                        self.tui.add_log(format!("  {}. {} ({:?})", i + 1, sub_goal.description, sub_goal.goal_type));
+                    }
                 }
-                Err(e) => {
-                    self.tui.add_log(format!("⚠️  Goal analysis failed: {}", e));
+
+                // Show required tools
+                if let Some(plan) = &goal.execution_plan {
+                    if !plan.required_tools.is_empty() {
+                        self.tui.add_log(format!("🛠️  Required tools: {}", plan.required_tools.join(", ")));
+                    }
                 }
+            }
+            Err(e) => {
+                self.tui.add_log(format!("⚠️  Goal analysis failed: {}", e));
+                self.tui.add_log("   Proceeding with basic goal execution".to_string());
             }
         }
 

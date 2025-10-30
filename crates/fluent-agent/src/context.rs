@@ -776,6 +776,9 @@ mod tests {
             max_iterations: Some(10),
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let context = ExecutionContext::new(goal.clone());
@@ -798,6 +801,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let mut context = ExecutionContext::new(goal);
@@ -825,6 +831,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let context = ExecutionContext::new(goal);
@@ -846,6 +855,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let context = ExecutionContext::new(goal);
@@ -869,6 +881,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let mut context = ExecutionContext::new(goal);
@@ -897,6 +912,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let mut context = ExecutionContext::new(goal);
@@ -928,6 +946,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let context = ExecutionContext::new(goal);
@@ -954,6 +975,9 @@ mod tests {
             max_iterations: None,
             timeout: None,
             metadata: HashMap::new(),
+            sub_goals: Vec::new(),
+            dependencies: Vec::new(),
+            execution_plan: None,
         };
 
         let mut context = ExecutionContext::new(goal);

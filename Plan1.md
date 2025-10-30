@@ -80,7 +80,7 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 - [x] Examples are copy-pasteable and work immediately
 - [x] Help text explains when to use each option
 - [x] Common mistakes are warned against in help
-- [ ] Examples are tested and verified working
+- [x] Examples are tested and verified working
 
 **Implementation Notes**:
 - Enhance `clap` help text with custom sections
