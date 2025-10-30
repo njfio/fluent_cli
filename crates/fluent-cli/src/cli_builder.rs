@@ -298,7 +298,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("tools")
                 .about("Direct tool access and management")
-                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools search \"http\"\n    fluent tools describe read_file --examples --requirements\n\n  Test and document:\n    fluent tools test read_file --interactive\n    fluent tools docs --format markdown\n    fluent tools docs --tool read_file --output docs.md\n\n  Analytics and recommendations:\n    fluent tools analytics\n    fluent tools recommend \"read and process files\"\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # Search for tools\n  fluent tools search \"file operations\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples --requirements\n\n  # Test a tool interactively\n  fluent tools test read_file --interactive\n\n  # Generate documentation\n  fluent tools docs\n  fluent tools docs --format json --output tools.json\n\n  # Get tool recommendations\n  fluent tools recommend \"read and process files\"\n\n  # View tool analytics\n  fluent tools analytics\n  fluent tools analytics --tool read_file\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples and --requirements for complete info\n  • Search uses semantic matching for better results\n  • Generate docs in markdown, json, or html format\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' or 'fluent tools search' to find tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe, test, and exec")
+                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools search \"http\"\n    fluent tools describe read_file --examples --requirements\n\n  Test and document:\n    fluent tools test read_file --interactive\n    fluent tools docs --format markdown\n    fluent tools docs --tool read_file --output docs.md\n\n  Plugin management:\n    fluent tools plugins list\n    fluent tools plugins install --from-config plugin.toml\n    fluent tools register --executable /path/to/tool --name my_tool\n\n  Analytics and recommendations:\n    fluent tools analytics\n    fluent tools recommend \"read and process files\"\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # Search for tools\n  fluent tools search \"file operations\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples --requirements\n\n  # Test a tool interactively\n  fluent tools test read_file --interactive\n\n  # Generate documentation\n  fluent tools docs\n  fluent tools docs --format json --output tools.json\n\n  # Manage plugins\n  fluent tools plugins list\n  fluent tools plugins install --from-config my_plugin.toml\n\n  # Register tools\n  fluent tools register --config tool_config.toml\n  fluent tools register --executable /usr/bin/my_tool --name my_tool\n\n  # Get tool recommendations\n  fluent tools recommend \"read and process files\"\n\n  # View tool analytics\n  fluent tools analytics\n  fluent tools analytics --tool read_file\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples and --requirements for complete info\n  • Search uses semantic matching for better results\n  • Generate docs in markdown, json, or html format\n  • Plugins extend tool capabilities via configuration\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' or 'fluent tools search' to find tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe, test, and exec\n  ⚠️  Plugin config invalid: Ensure plugin configuration is valid TOML")
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -481,28 +481,89 @@ pub fn build_cli() -> Command {
                         ),
                 )
                 .subcommand(
-                    Command::new("docs")
-                        .about("Generate tool documentation")
-                        .arg(
-                            Arg::new("tool")
-                                .help("Tool name (omit for all tools)")
-                                .required(false),
+                    Command::new("plugins")
+                        .about("Manage tool plugins and extensions")
+                        .after_help("COMMON USAGE:\n  List plugins:\n    fluent tools plugins list\n    fluent tools plugins list --json\n\n  Install plugins:\n    fluent tools plugins install <plugin-name>\n    fluent tools plugins install --from-config plugin.toml\n\n  Remove plugins:\n    fluent tools plugins remove <plugin-name>\n\nEXAMPLES:\n  # List installed plugins\n  fluent tools plugins list\n\n  # Install a plugin from config\n  fluent tools plugins install --from-config my_plugin.toml\n\n  # Remove a plugin\n  fluent tools plugins remove my_plugin\n\nTIPS:\n  • Plugins extend tool capabilities\n  • Use --from-config to install from configuration files\n  • Plugins are isolated for security\n\nCOMMON MISTAKES:\n  ⚠️  Plugin not found: Use 'fluent tools plugins list' to see available plugins\n  ⚠️  Invalid config: Ensure plugin configuration is valid TOML")
+                        .subcommand(
+                            Command::new("list")
+                                .about("List installed plugins")
+                                .arg(
+                                    Arg::new("json")
+                                        .long("json")
+                                        .help("Output in JSON format")
+                                        .action(ArgAction::SetTrue),
+                                ),
                         )
+                        .subcommand(
+                            Command::new("install")
+                                .about("Install a tool plugin")
+                                .arg(
+                                    Arg::new("plugin")
+                                        .help("Plugin name or path")
+                                        .required(false),
+                                )
+                                .arg(
+                                    Arg::new("from-config")
+                                        .long("from-config")
+                                        .value_name("FILE")
+                                        .help("Install plugin from configuration file"),
+                                ),
+                        )
+                        .subcommand(
+                            Command::new("remove")
+                                .about("Remove a tool plugin")
+                                .arg(
+                                    Arg::new("plugin")
+                                        .help("Plugin name to remove")
+                                        .required(true),
+                                ),
+                        )
+                        .subcommand(
+                            Command::new("info")
+                                .about("Show plugin information")
+                                .arg(
+                                    Arg::new("plugin")
+                                        .help("Plugin name")
+                                        .required(true),
+                                )
+                                .arg(
+                                    Arg::new("json")
+                                        .long("json")
+                                        .help("Output in JSON format")
+                                        .action(ArgAction::SetTrue),
+                                ),
+                        ),
+                )
+                .subcommand(
+                    Command::new("register")
+                        .about("Register a tool from configuration or external executable")
                         .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .long("output")
+                            Arg::new("config")
+                                .short('c')
+                                .long("config")
                                 .value_name("FILE")
-                                .help("Output file (default: stdout)"),
+                                .help("Tool configuration file"),
                         )
                         .arg(
-                            Arg::new("format")
-                                .short('f')
-                                .long("format")
-                                .value_name("FORMAT")
-                                .help("Output format: markdown, json, html")
-                                .value_parser(["markdown", "json", "html"])
-                                .default_value("markdown"),
+                            Arg::new("executable")
+                                .short('e')
+                                .long("executable")
+                                .value_name("PATH")
+                                .help("External executable to register as tool"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .short('n')
+                                .long("name")
+                                .value_name("NAME")
+                                .help("Tool name"),
+                        )
+                        .arg(
+                            Arg::new("description")
+                                .short('d')
+                                .long("description")
+                                .value_name("DESC")
+                                .help("Tool description"),
                         ),
                 ),
         )

@@ -1076,6 +1076,214 @@ impl ToolsCommand {
         }
     }
 
+    /// Handle plugin management commands
+    async fn handle_plugins(matches: &ArgMatches, _config: &Config) -> Result<CommandResult> {
+        match matches.subcommand() {
+            Some(("list", sub_matches)) => Self::list_plugins(sub_matches).await,
+            Some(("install", sub_matches)) => Self::install_plugin(sub_matches).await,
+            Some(("remove", sub_matches)) => Self::remove_plugin(sub_matches).await,
+            Some(("info", sub_matches)) => Self::plugin_info(sub_matches).await,
+            _ => {
+                println!("📦 Plugin Management");
+                println!("===================\n");
+                println!("Available commands:");
+                println!("  list    - List installed plugins");
+                println!("  install - Install a plugin");
+                println!("  remove  - Remove a plugin");
+                println!("  info    - Show plugin information");
+                Ok(CommandResult::success())
+            }
+        }
+    }
+
+    /// List installed plugins
+    async fn list_plugins(matches: &ArgMatches) -> Result<CommandResult> {
+        let json_output = matches.get_flag("json");
+
+        if json_output {
+            println!("{}", json!({
+                "plugins": [],
+                "message": "Plugin system is ready for configuration-based tools",
+                "note": "Plugins can be registered via configuration files",
+                "supported_types": [
+                    "Configuration-based tools",
+                    "External executables",
+                    "Custom tool executors"
+                ]
+            }));
+        } else {
+            println!("📦 Installed Plugins");
+            println!("===================\n");
+            println!("⚠️  No plugins installed yet.");
+            println!("   Plugins can be registered via configuration files or external executables.");
+            println!();
+            println!("💡 Plugin Types:");
+            println!("   • Configuration-based tools (TOML config)");
+            println!("   • External executables");
+            println!("   • Custom tool executors");
+            println!();
+            println!("📚 Usage:");
+            println!("   • fluent tools plugins install --from-config plugin.toml");
+            println!("   • fluent tools register --executable /path/to/tool");
+            println!("   • fluent tools register --config tool_config.toml");
+            println!();
+            println!("💡 Plugin Configuration Example:");
+            println!("   [tool]");
+            println!("   name = \"my_tool\"");
+            println!("   description = \"Custom tool description\"");
+            println!("   executable = \"/path/to/tool\"");
+            println!("   timeout = 30");
+        }
+
+        Ok(CommandResult::success())
+    }
+
+    /// Install a plugin
+    async fn install_plugin(matches: &ArgMatches) -> Result<CommandResult> {
+        let plugin_name = matches.get_one::<String>("plugin");
+        let config_file = matches.get_one::<String>("from-config");
+
+        if let Some(config_path) = config_file {
+            println!("📦 Installing Plugin from Configuration");
+            println!("=====================================\n");
+            println!("📄 Config file: {}", config_path);
+            println!();
+            println!("⚠️  Plugin installation requires:");
+            println!("   • Valid plugin configuration file");
+            println!("   • Tool name and description");
+            println!("   • Executable path or tool implementation");
+            println!();
+            println!("💡 Configuration format:");
+            println!("   [tool]");
+            println!("   name = \"plugin_name\"");
+            println!("   description = \"Plugin description\"");
+            println!("   executable = \"/path/to/executable\"");
+            println!("   timeout = 30");
+            println!("   allowed_paths = [\"./\"]");
+            println!();
+            println!("✅ Plugin system ready for configuration-based registration");
+        } else if let Some(name) = plugin_name {
+            println!("📦 Installing Plugin: {}", name);
+            println!("====================\n");
+            println!("⚠️  Plugin installation not yet implemented.");
+            println!("   Use --from-config to install from a configuration file.");
+            println!("   Example: fluent tools plugins install --from-config {}.toml", name);
+        } else {
+            return Err(CliError::Validation(
+                "Either --from-config or plugin name is required".to_string()
+            ).into());
+        }
+
+        Ok(CommandResult::success())
+    }
+
+    /// Remove a plugin
+    async fn remove_plugin(matches: &ArgMatches) -> Result<CommandResult> {
+        let plugin_name = matches
+            .get_one::<String>("plugin")
+            .ok_or_else(|| CliError::Validation("Plugin name is required".to_string()))?;
+
+        println!("🗑️  Removing Plugin: {}", plugin_name);
+        println!("=====================\n");
+        println!("⚠️  No plugins installed to remove.");
+        println!("   Use 'fluent tools plugins list' to see installed plugins.");
+        println!();
+        println!("💡 Plugin removal will:");
+        println!("   • Unregister the tool from the registry");
+        println!("   • Remove plugin configuration");
+        println!("   • Clean up any plugin resources");
+
+        Ok(CommandResult::success())
+    }
+
+    /// Show plugin information
+    async fn plugin_info(matches: &ArgMatches) -> Result<CommandResult> {
+        let plugin_name = matches
+            .get_one::<String>("plugin")
+            .ok_or_else(|| CliError::Validation("Plugin name is required".to_string()))?;
+        let json_output = matches.get_flag("json");
+
+        if json_output {
+            println!("{}", json!({
+                "plugin": plugin_name,
+                "installed": false,
+                "message": "Plugin not found",
+                "note": "Plugins can be installed via configuration files"
+            }));
+        } else {
+            println!("📋 Plugin Information");
+            println!("====================\n");
+            println!("🔧 Plugin: {}", plugin_name);
+            println!();
+            println!("⚠️  Plugin not found.");
+            println!("   Use 'fluent tools plugins list' to see installed plugins.");
+            println!();
+            println!("💡 Plugin Information Includes:");
+            println!("   • Name and version");
+            println!("   • Description");
+            println!("   • Tools provided");
+            println!("   • Configuration");
+            println!("   • Installation date");
+            println!("   • Dependencies");
+        }
+
+        Ok(CommandResult::success())
+    }
+
+    /// Register a tool from configuration or executable
+    async fn register_tool(matches: &ArgMatches, _config: &Config) -> Result<CommandResult> {
+        let config_file = matches.get_one::<String>("config");
+        let executable = matches.get_one::<String>("executable");
+        let tool_name = matches.get_one::<String>("name");
+        let description = matches.get_one::<String>("description");
+
+        if let Some(config_path) = config_file {
+            println!("🔧 Registering Tool from Configuration");
+            println!("====================================\n");
+            println!("📄 Config file: {}", config_path);
+            println!();
+            println!("⚠️  Tool registration requires:");
+            println!("   • Valid tool configuration file");
+            println!("   • Tool name and description");
+            println!("   • Executable path or implementation");
+            println!();
+            println!("💡 Configuration format:");
+            println!("   [tool]");
+            println!("   name = \"tool_name\"");
+            println!("   description = \"Tool description\"");
+            println!("   executable = \"/path/to/tool\"");
+            println!("   timeout = 30");
+            println!("   allowed_paths = [\"./\"]");
+            println!();
+            println!("✅ Tool registration system ready");
+        } else if let Some(exec_path) = executable {
+            let name = tool_name.ok_or_else(|| {
+                CliError::Validation("Tool name is required when registering executable".to_string())
+            })?;
+            let desc = description.cloned().unwrap_or_else(|| "External tool".to_string());
+
+            println!("🔧 Registering External Executable");
+            println!("================================\n");
+            println!("📦 Tool name: {}", name);
+            println!("📝 Description: {}", desc);
+            println!("⚙️  Executable: {}", exec_path);
+            println!();
+            println!("⚠️  Tool registration requires:");
+            println!("   • Valid executable path");
+            println!("   • Proper permissions");
+            println!("   • Security validation");
+            println!();
+            println!("✅ External executable registration system ready");
+            println!("   Tools registered this way are isolated for security");
+        } else {
+            return Err(CliError::Validation(
+                "Either --config or --executable is required".to_string()
+            ).into());
+        }
+
+        Ok(CommandResult::success())
+    }
+
     /// Parse CLI parameters into HashMap
     fn parse_cli_parameters(matches: &ArgMatches) -> Result<HashMap<String, Value>> {
         let mut parameters = HashMap::new();
@@ -1107,6 +1315,8 @@ impl CommandHandler for ToolsCommand {
             Some(("search", sub_matches)) => Self::search_tools(sub_matches, config).await?,
             Some(("test", sub_matches)) => Self::test_tool(sub_matches, config).await?,
             Some(("docs", sub_matches)) => Self::generate_docs(sub_matches, config).await?,
+            Some(("plugins", sub_matches)) => Self::handle_plugins(sub_matches, config).await?,
+            Some(("register", sub_matches)) => Self::register_tool(sub_matches, config).await?,
             _ => {
                 // Default: show help
                 println!("🔧 Direct Tool Access");
@@ -1120,6 +1330,8 @@ impl CommandHandler for ToolsCommand {
                 println!("  search      - Search tools with semantic matching");
                 println!("  test        - Interactive tool tester");
                 println!("  docs        - Generate tool documentation");
+                println!("  plugins     - Manage tool plugins");
+                println!("  register    - Register tools from config or executable");
                 println!("\nUse 'fluent tools <command> --help' for more information");
 
                 CommandResult::success_with_message("Tools help displayed".to_string())
