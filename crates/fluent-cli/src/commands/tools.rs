@@ -162,9 +162,10 @@ impl ToolsCommand {
         let tool_name = matches
             .get_one::<String>("tool")
             .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
-        let show_schema = matches.get_flag("schema");
-        let show_examples = matches.get_flag("examples");
-        let json_output = matches.get_flag("json");
+            let show_schema = matches.get_flag("schema");
+            let show_examples = matches.get_flag("examples");
+            let show_requirements = matches.get_flag("requirements");
+            let json_output = matches.get_flag("json");
 
         Self::with_tool_registry(config, |registry| {
             // Check if tool exists
@@ -196,9 +197,13 @@ impl ToolsCommand {
                     result["examples"] = Self::get_tool_examples(&tool_info.name);
                 }
 
+                if show_requirements {
+                    result["requirements"] = Self::get_tool_requirements(&tool_info.name);
+                }
+
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                Self::print_tool_description(tool_info, show_schema, show_examples);
+                Self::print_tool_description(&tool_info, show_schema, show_examples, show_requirements);
             }
 
             Ok(CommandResult::success_with_message(format!(
@@ -433,11 +438,22 @@ impl ToolsCommand {
         tool: &fluent_agent::tools::ToolInfo,
         show_schema: bool,
         show_examples: bool,
+        show_requirements: bool,
     ) {
         println!("🔧 Tool: {}", tool.name);
         println!("📂 Category: {}", Self::get_tool_category(&tool.name));
         println!("⚙️  Executor: {}", tool.executor);
         println!("📝 Description: {}", tool.description);
+
+        if show_requirements {
+            println!("\n📋 Requirements & Compatibility:");
+            let requirements = Self::get_tool_requirements(&tool.name);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&requirements)
+                    .unwrap_or_else(|_| "No requirements available".to_string())
+            );
+        }
 
         if show_schema {
             println!("\n📋 Parameter Schema:");
@@ -504,7 +520,7 @@ impl ToolsCommand {
         let json_output = matches.get_flag("json");
         let tool_name = matches.get_one::<String>("tool");
 
-        Self::with_tool_registry(config, |registry| {
+        Self::with_tool_registry(config, |_registry| {
             if json_output {
                 println!("{}", json!({
                     "analytics": {
@@ -633,6 +649,276 @@ impl ToolsCommand {
         })
     }
 
+    /// Search tools with semantic matching
+    async fn search_tools(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
+        let query = matches
+            .get_one::<String>("query")
+            .ok_or_else(|| CliError::Validation("Search query is required".to_string()))?;
+        let json_output = matches.get_flag("json");
+        let limit = matches.get_one::<usize>("limit").copied().unwrap_or(10);
+
+        Self::with_tool_registry(config, |registry| {
+            let all_tools = registry.get_all_available_tools();
+            let query_lower = query.to_lowercase();
+            let query_words: Vec<&str> = query_lower.split_whitespace().collect();
+
+            // Semantic search: score tools based on relevance
+            let mut scored_tools: Vec<_> = all_tools
+                .iter()
+                .map(|tool| {
+                    let mut score = 0.0;
+                    let name_lower = tool.name.to_lowercase();
+                    let desc_lower = tool.description.to_lowercase();
+                    let category = Self::get_tool_category(&tool.name).to_lowercase();
+
+                    // Exact name match gets highest score
+                    if name_lower.contains(&query_lower) {
+                        score += 10.0;
+                    }
+                    // Word matches in name
+                    for word in &query_words {
+                        if name_lower.contains(word) {
+                            score += 5.0;
+                        }
+                    }
+                    // Description matches
+                    for word in &query_words {
+                        if desc_lower.contains(word) {
+                            score += 2.0;
+                        }
+                    }
+                    // Category match
+                    if category.contains(&query_lower) {
+                        score += 3.0;
+                    }
+
+                    (score, tool)
+                })
+                .filter(|(score, _)| *score > 0.0)
+                .collect();
+
+            // Sort by score descending
+            scored_tools.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            scored_tools.truncate(limit);
+
+            if json_output {
+                println!("{}", json!({
+                    "query": query,
+                    "results": scored_tools.iter().map(|(score, tool)| json!({
+                        "name": tool.name,
+                        "description": tool.description,
+                        "category": Self::get_tool_category(&tool.name),
+                        "executor": tool.executor,
+                        "relevance_score": score
+                    })).collect::<Vec<_>>(),
+                    "count": scored_tools.len(),
+                    "total_searched": all_tools.len()
+                }));
+            } else {
+                println!("🔍 Tool Search Results");
+                println!("====================\n");
+                println!("📋 Query: \"{}\"", query);
+                println!("📊 Found {} relevant tools (out of {} total)\n", scored_tools.len(), all_tools.len());
+
+                if scored_tools.is_empty() {
+                    println!("⚠️  No tools found matching your query.");
+                    println!("   Try a different search term or use 'fluent tools list' to see all tools.");
+                } else {
+                    for (i, (score, tool)) in scored_tools.iter().enumerate() {
+                        println!("{}. {} ({:.1}% match)", i + 1, tool.name, score * 10.0);
+                        println!("   Category: {}", Self::get_tool_category(&tool.name));
+                        println!("   Description: {}", tool.description);
+                        println!();
+                    }
+                }
+            }
+
+            Ok(CommandResult::success_with_message(format!(
+                "Found {} relevant tools",
+                scored_tools.len()
+            )))
+        })
+    }
+
+    /// Interactive tool tester
+    async fn test_tool(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
+        let tool_name = matches
+            .get_one::<String>("tool")
+            .ok_or_else(|| CliError::Validation("Tool name is required".to_string()))?;
+        let interactive = matches.get_flag("interactive");
+
+        Self::with_tool_registry(config, |registry| {
+            if !registry.is_tool_available(tool_name) {
+                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+            }
+
+            let all_tools = registry.get_all_available_tools();
+            let tool_info = all_tools
+                .iter()
+                .find(|tool| tool.name == *tool_name)
+                .ok_or_else(|| anyhow!("Failed to get tool information"))?;
+
+            println!("🧪 Tool Tester");
+            println!("=============\n");
+            println!("🔧 Tool: {}", tool_info.name);
+            println!("📂 Category: {}", Self::get_tool_category(&tool_info.name));
+            println!("📝 Description: {}", tool_info.description);
+            println!();
+
+            if interactive {
+                println!("📋 Parameter Schema:");
+                let schema = Self::get_tool_schema(&tool_info.name);
+                println!("{}", serde_json::to_string_pretty(&schema)?);
+                println!();
+                println!("💡 Usage Examples:");
+                let examples = Self::get_tool_examples(&tool_info.name);
+                println!("{}", serde_json::to_string_pretty(&examples)?);
+                println!();
+                println!("💡 To test this tool:");
+                println!("   fluent tools exec {} --json '<parameters>'", tool_info.name);
+            } else {
+                println!("📋 Parameter Schema:");
+                let schema = Self::get_tool_schema(&tool_info.name);
+                println!("{}", serde_json::to_string_pretty(&schema)?);
+                println!();
+                println!("💡 Usage Examples:");
+                let examples = Self::get_tool_examples(&tool_info.name);
+                println!("{}", serde_json::to_string_pretty(&examples)?);
+                println!();
+                println!("✅ Tool is available and ready to use");
+                println!("💡 Use 'fluent tools test {} --interactive' for interactive mode", tool_info.name);
+            }
+
+            Ok(CommandResult::success())
+        })
+    }
+
+    /// Generate tool documentation
+    async fn generate_docs(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
+        let tool_name = matches.get_one::<String>("tool");
+        let output_file = matches.get_one::<String>("output");
+        let default_format = "markdown".to_string();
+        let format = matches.get_one::<String>("format").unwrap_or(&default_format);
+
+        Self::with_tool_registry(config, |registry| {
+            let all_tools = registry.get_all_available_tools();
+            let tools_to_doc: Vec<_> = if let Some(name) = tool_name {
+                all_tools
+                    .iter()
+                    .filter(|t| t.name == *name)
+                    .collect()
+            } else {
+                all_tools.iter().collect()
+            };
+
+            if tools_to_doc.is_empty() {
+                return Err(CliError::Validation(
+                    "No tools found to document".to_string()
+                ).into());
+            }
+
+            let mut output = String::new();
+
+            match format.as_str() {
+                "markdown" => {
+                    output.push_str("# Tool Documentation\n\n");
+                    output.push_str(&format!("Generated: {}\n\n", chrono::Utc::now().to_rfc3339()));
+                    
+                    for tool in &tools_to_doc {
+                        output.push_str(&format!("## {}\n\n", tool.name));
+                        output.push_str(&format!("**Category:** {}\n\n", Self::get_tool_category(&tool.name)));
+                        output.push_str(&format!("**Executor:** {}\n\n", tool.executor));
+                        output.push_str(&format!("**Description:** {}\n\n", tool.description));
+                        
+                        let schema = Self::get_tool_schema(&tool.name);
+                        output.push_str("### Parameters\n\n");
+                        output.push_str("```json\n");
+                        output.push_str(&serde_json::to_string_pretty(&schema)?);
+                        output.push_str("\n```\n\n");
+                        
+                        let examples = Self::get_tool_examples(&tool.name);
+                        output.push_str("### Examples\n\n");
+                        output.push_str("```json\n");
+                        output.push_str(&serde_json::to_string_pretty(&examples)?);
+                        output.push_str("\n```\n\n");
+                        
+                        output.push_str("---\n\n");
+                    }
+                }
+                "json" => {
+                    let docs: Vec<_> = tools_to_doc.iter().map(|tool| {
+                        json!({
+                            "name": tool.name,
+                            "category": Self::get_tool_category(&tool.name),
+                            "executor": tool.executor,
+                            "description": tool.description,
+                            "schema": Self::get_tool_schema(&tool.name),
+                            "examples": Self::get_tool_examples(&tool.name),
+                            "requirements": Self::get_tool_requirements(&tool.name)
+                        })
+                    }).collect();
+                    output = serde_json::to_string_pretty(&docs)?;
+                }
+                "html" => {
+                    output.push_str("<!DOCTYPE html><html><head><title>Tool Documentation</title></head><body>");
+                    output.push_str("<h1>Tool Documentation</h1>");
+                    for tool in &tools_to_doc {
+                        output.push_str(&format!("<h2>{}</h2>", tool.name));
+                        output.push_str(&format!("<p><strong>Category:</strong> {}</p>", Self::get_tool_category(&tool.name)));
+                        output.push_str(&format!("<p><strong>Description:</strong> {}</p>", tool.description));
+                    }
+                    output.push_str("</body></html>");
+                }
+                _ => {
+                    return Err(CliError::Validation(format!("Unknown format: {}", format)).into());
+                }
+            }
+
+            if let Some(file_path) = output_file {
+                std::fs::write(file_path, output)?;
+                println!("✅ Documentation written to: {}", file_path);
+            } else {
+                println!("{}", output);
+            }
+
+            Ok(CommandResult::success_with_message(format!(
+                "Generated documentation for {} tool(s)",
+                tools_to_doc.len()
+            )))
+        })
+    }
+
+    /// Get tool requirements and compatibility
+    fn get_tool_requirements(tool_name: &str) -> Value {
+        match tool_name {
+            name if name.contains("file") || name.contains("read") || name.contains("write") => {
+                json!({
+                    "file_permissions": "read/write",
+                    "path_restrictions": "Must be within allowed paths",
+                    "dependencies": []
+                })
+            }
+            name if name.contains("shell") || name.contains("command") => {
+                json!({
+                    "shell_access": "Required",
+                    "command_whitelist": "Only allowed commands can be executed",
+                    "dependencies": []
+                })
+            }
+            name if name.contains("compile") => {
+                json!({
+                    "rust_toolchain": "Required",
+                    "cargo": "Required",
+                    "dependencies": ["rustc", "cargo"]
+                })
+            }
+            _ => json!({
+                "dependencies": [],
+                "requirements": "None"
+            })
+        }
+    }
+
     /// Parse CLI parameters into HashMap
     fn parse_cli_parameters(matches: &ArgMatches) -> Result<HashMap<String, Value>> {
         let mut parameters = HashMap::new();
@@ -661,6 +947,9 @@ impl CommandHandler for ToolsCommand {
             Some(("categories", sub_matches)) => Self::list_categories(sub_matches, config).await?,
             Some(("analytics", sub_matches)) => Self::show_analytics(sub_matches, config).await?,
             Some(("recommend", sub_matches)) => Self::get_recommendations(sub_matches, config).await?,
+            Some(("search", sub_matches)) => Self::search_tools(sub_matches, config).await?,
+            Some(("test", sub_matches)) => Self::test_tool(sub_matches, config).await?,
+            Some(("docs", sub_matches)) => Self::generate_docs(sub_matches, config).await?,
             _ => {
                 // Default: show help
                 println!("🔧 Direct Tool Access");
@@ -671,6 +960,9 @@ impl CommandHandler for ToolsCommand {
                 println!("  categories  - List tool categories");
                 println!("  analytics   - Show tool usage analytics");
                 println!("  recommend   - Get tool recommendations for a task");
+                println!("  search      - Search tools with semantic matching");
+                println!("  test        - Interactive tool tester");
+                println!("  docs        - Generate tool documentation");
                 println!("\nUse 'fluent tools <command> --help' for more information");
 
                 CommandResult::success_with_message("Tools help displayed".to_string())

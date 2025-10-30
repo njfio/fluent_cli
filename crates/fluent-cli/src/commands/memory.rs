@@ -4,7 +4,7 @@
 //! and memory statistics from the agent's learning system.
 
 use crate::commands::CommandHandler;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::ArgMatches;
 use fluent_core::config::Config;
 use serde_json::json;
@@ -21,7 +21,7 @@ impl MemoryCommand {
     /// Show learned insights
     async fn show_insights(&self, matches: &ArgMatches) -> Result<()> {
         let json_output = matches.get_flag("json");
-        let limit = matches.get_one::<usize>("limit").copied().unwrap_or(10);
+        let _limit = matches.get_one::<usize>("limit").copied().unwrap_or(10);
 
         if json_output {
             // JSON output - placeholder for actual implementation

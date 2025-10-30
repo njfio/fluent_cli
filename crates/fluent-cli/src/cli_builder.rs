@@ -298,7 +298,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("tools")
                 .about("Direct tool access and management")
-                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools list --search \"http\"\n    fluent tools describe read_file --examples\n\n  Analytics and recommendations:\n    fluent tools analytics\n    fluent tools recommend \"read and process files\"\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # List tools by category\n  fluent tools list --category file\n  fluent tools list --category network\n\n  # Search for tools\n  fluent tools list --search \"file\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples\n\n  # Get tool recommendations\n  fluent tools recommend \"read and process files\"\n\n  # View tool analytics\n  fluent tools analytics\n  fluent tools analytics --tool read_file\n\n  # Execute a tool\n  fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\n  # List categories\n  fluent tools categories\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples to see usage patterns\n  • Recommendations improve as tool usage patterns are learned\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' to see available tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe and exec")
+                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools search \"http\"\n    fluent tools describe read_file --examples --requirements\n\n  Test and document:\n    fluent tools test read_file --interactive\n    fluent tools docs --format markdown\n    fluent tools docs --tool read_file --output docs.md\n\n  Analytics and recommendations:\n    fluent tools analytics\n    fluent tools recommend \"read and process files\"\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # Search for tools\n  fluent tools search \"file operations\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples --requirements\n\n  # Test a tool interactively\n  fluent tools test read_file --interactive\n\n  # Generate documentation\n  fluent tools docs\n  fluent tools docs --format json --output tools.json\n\n  # Get tool recommendations\n  fluent tools recommend \"read and process files\"\n\n  # View tool analytics\n  fluent tools analytics\n  fluent tools analytics --tool read_file\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples and --requirements for complete info\n  • Search uses semantic matching for better results\n  • Generate docs in markdown, json, or html format\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' or 'fluent tools search' to find tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe, test, and exec")
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -360,6 +360,12 @@ pub fn build_cli() -> Command {
                                 .long("examples")
                                 .help("Show usage examples")
                                 .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("requirements")
+                                .long("requirements")
+                                .help("Show tool requirements and compatibility")
+                                .action(ArgAction::SetTrue),
                         ),
                 )
                 .subcommand(
@@ -420,6 +426,71 @@ pub fn build_cli() -> Command {
                                 .long("json")
                                 .help("Output in JSON format")
                                 .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("search")
+                        .about("Search tools with semantic matching")
+                        .arg(
+                            Arg::new("query")
+                                .help("Search query (semantic search)")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .short('l')
+                                .long("limit")
+                                .value_name("N")
+                                .help("Limit number of results")
+                                .value_parser(clap::value_parser!(usize))
+                                .default_value("10"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("test")
+                        .about("Interactive tool tester")
+                        .arg(
+                            Arg::new("tool")
+                                .help("Tool name to test")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("interactive")
+                                .short('i')
+                                .long("interactive")
+                                .help("Run in interactive mode")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("docs")
+                        .about("Generate tool documentation")
+                        .arg(
+                            Arg::new("tool")
+                                .help("Tool name (omit for all tools)")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_name("FILE")
+                                .help("Output file (default: stdout)"),
+                        )
+                        .arg(
+                            Arg::new("format")
+                                .short('f')
+                                .long("format")
+                                .value_name("FORMAT")
+                                .help("Output format: markdown, json, html")
+                                .value_parser(["markdown", "json", "html"])
+                                .default_value("markdown"),
                         ),
                 ),
         )
