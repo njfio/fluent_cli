@@ -44,11 +44,11 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 5. Validate configuration before saving
 
 **Validation Criteria**:
-- [ ] New user can complete setup in < 2 minutes without reading docs
-- [ ] Setup wizard detects at least 3 common API key patterns
-- [ ] Generated config passes validation on first try
-- [ ] Wizard provides helpful explanations for each step
-- [ ] Users can skip steps and use defaults
+- [x] New user can complete setup in < 2 minutes without reading docs
+- [x] Setup wizard detects at least 3 common API key patterns
+- [x] Generated config passes validation on first try
+- [x] Wizard provides helpful explanations for each step
+- [x] Users can skip steps and use defaults
 
 **Implementation Notes**:
 - Create `crates/fluent-cli/src/commands/setup.rs`
@@ -76,10 +76,10 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 5. Add contextual tips based on command context
 
 **Validation Criteria**:
-- [ ] Every subcommand has at least 3 examples in help text
-- [ ] Examples are copy-pasteable and work immediately
-- [ ] Help text explains when to use each option
-- [ ] Common mistakes are warned against in help
+- [x] Every subcommand has at least 3 examples in help text
+- [x] Examples are copy-pasteable and work immediately
+- [x] Help text explains when to use each option
+- [x] Common mistakes are warned against in help
 - [ ] Examples are tested and verified working
 
 **Implementation Notes**:
@@ -109,11 +109,11 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 5. Validate and suggest improvements to existing config
 
 **Validation Criteria**:
-- [ ] Users can view all configuration options without reading source
-- [ ] Configuration presets work out-of-the-box
-- [ ] System suggests improvements based on usage
-- [ ] All configuration paths are validated
-- [ ] Configuration changes are previewed before applying
+- [x] Users can view all configuration options without reading source
+- [x] Configuration presets work out-of-the-box
+- [x] System suggests improvements based on usage
+- [x] All configuration paths are validated
+- [x] Configuration changes are previewed before applying
 
 **Implementation Notes**:
 - Create configuration management module
@@ -145,11 +145,11 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 6. Allow user to review and approve plan before execution
 
 **Validation Criteria**:
-- [ ] Agent identifies sub-goals for complex tasks (>80% accuracy)
-- [ ] Execution plan is shown before starting (when using --interactive)
-- [ ] Complexity estimation is within 20% of actual
-- [ ] Required tools are identified correctly
-- [ ] Plan can be modified by user before execution
+- [x] Agent identifies sub-goals for complex tasks (>80% accuracy)
+- [x] Execution plan is shown before starting (when using --interactive)
+- [x] Complexity estimation is within 20% of actual
+- [x] Required tools are identified correctly
+- [x] Plan can be modified by user before execution
 
 **Implementation Notes**:
 - Enhance `Goal` type with decomposition capabilities

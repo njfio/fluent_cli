@@ -536,6 +536,7 @@ impl AgenticExecutor {
     /// Create goal from description
     fn create_goal(&mut self) -> Result<fluent_agent::goal::Goal> {
         use fluent_agent::goal::{Goal, GoalType};
+        use fluent_agent::goal_analyzer::GoalAnalyzer;
 
         let mut builder = Goal::builder(
             self.config.goal_description.clone(),
@@ -557,6 +558,20 @@ impl AgenticExecutor {
         }
 
         let goal = builder.build()?;
+
+        // Analyze goal and show plan if interactive mode
+        if std::env::var("FLUENT_AGENT_INTERACTIVE").is_ok() {
+            match GoalAnalyzer::analyze_goal(&goal) {
+                Ok(analysis) => {
+                    let formatted = GoalAnalyzer::format_analysis(&analysis);
+                    self.tui.add_log("\n📊 Goal Analysis and Plan:\n".to_string());
+                    self.tui.add_log(formatted);
+                }
+                Err(e) => {
+                    self.tui.add_log(format!("⚠️  Goal analysis failed: {}", e));
+                }
+            }
+        }
 
         self.tui.add_log(format!("🎯 Goal: {}", goal.description));
         self.tui

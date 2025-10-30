@@ -58,6 +58,7 @@ pub mod context;
 pub mod enhanced_mcp_client;
 pub mod ethical_guardrails;
 pub mod goal;
+pub mod goal_analyzer;
 pub mod human_collaboration;
 pub mod mcp_adapter;
 pub mod mcp_client;
@@ -108,6 +109,7 @@ pub use ethical_guardrails::{
     RiskLevel,
 };
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
+pub use goal_analyzer::{GoalAnalysis, GoalAnalyzer, SubGoal};
 pub use human_collaboration::{
     ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent, CollaborationMessage,
     CollaborationSession, CommunicationChannels, FeedbackEntry, FeedbackSystem, FeedbackType,

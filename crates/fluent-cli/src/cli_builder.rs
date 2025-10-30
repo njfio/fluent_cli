@@ -53,6 +53,23 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("pipeline")
                 .about("Execute a pipeline from a YAML file")
+                .long_about(
+                    "Execute a pipeline defined in a YAML file\n\n\
+                    Examples:\n\
+                      # Basic pipeline execution\n\
+                      fluent pipeline -f my_pipeline.yaml -i \"Hello world\"\n\n\
+                      # With variables\n\
+                      fluent pipeline -f pipeline.yaml -i \"input\" --variables name=value key=value2\n\n\
+                      # Dry run to preview\n\
+                      fluent pipeline -f pipeline.yaml -i \"test\" --dry-run\n\n\
+                      # JSON output\n\
+                      fluent pipeline -f pipeline.yaml -i \"input\" --json\n\n\
+                    Tips:\n\
+                      - Pipeline files must be valid YAML\n\
+                      - Use --dry-run to preview without executing\n\
+                      - Variables override pipeline defaults\n\
+                      - Use --force-fresh to ignore cached state"
+                )
                 .arg(
                     Arg::new("file")
                         .short('f')
@@ -106,6 +123,26 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("agent")
                 .about("Run agentic workflows")
+                .long_about(
+                    "Run autonomous agentic workflows with AI agents\n\n\
+                    Examples:\n\
+                      # Simple goal\n\
+                      fluent agent --goal \"Create a simple web game\" --enable-tools\n\n\
+                      # With specific model\n\
+                      fluent agent --goal \"Analyze code\" --model claude-3-5-sonnet-20241022\n\n\
+                      # With reflection enabled\n\
+                      fluent agent --goal \"Research topic\" --reflection --enable-tools\n\n\
+                      # Using goal file\n\
+                      fluent agent --goal-file goal.toml --enable-tools --tui\n\n\
+                      # Dry run to preview\n\
+                      fluent agent --goal \"Task\" --dry-run\n\n\
+                    Tips:\n\
+                      - Use --enable-tools for file operations and shell commands\n\
+                      - --reflection enables self-improvement mode\n\
+                      - --tui provides real-time monitoring\n\
+                      - --max-iterations controls how many steps the agent takes\n\
+                      - Always test with --dry-run first in production"
+                )
                 .arg(
                     Arg::new("agentic")
                         .long("agentic")
@@ -267,6 +304,24 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completion scripts")
+                .long_about(
+                    "Generate shell completion scripts for bash, zsh, fish, powershell, or elvish\n\n\
+                    Examples:\n\
+                      # Generate for bash\n\
+                      fluent completions --shell bash > fluent.bash\n\
+                      source fluent.bash\n\n\
+                      # Generate for zsh\n\
+                      fluent completions --shell zsh > ~/.zsh/completions/_fluent\n\n\
+                      # Generate for fish\n\
+                      fluent completions --shell fish > ~/.config/fish/completions/fluent.fish\n\n\
+                      # Save to custom location\n\
+                      fluent completions --shell bash --output /usr/local/share/bash-completion/completions/fluent\n\n\
+                    Tips:\n\
+                      - Install completions in your shell's completion directory\n\
+                      - Restart your shell after installing\n\
+                      - Fish completions go in ~/.config/fish/completions/\n\
+                      - Bash completions go in /etc/bash_completion.d/ or ~/.bash_completion.d/"
+                )
                 .arg(
                     Arg::new("shell")
                         .short('s')
@@ -286,6 +341,25 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("tools")
                 .about("Direct tool access and management")
+                .long_about(
+                    "Manage and execute tools directly\n\n\
+                    Examples:\n\
+                      # List all tools\n\
+                      fluent tools list\n\n\
+                      # Search for tools\n\
+                      fluent tools list --search file\n\n\
+                      # Describe a tool with examples\n\
+                      fluent tools describe read_file --examples\n\n\
+                      # List tools by category\n\
+                      fluent tools list --category filesystem\n\n\
+                      # Execute a tool\n\
+                      fluent tools exec read_file --args '{\"path\": \"file.txt\"}'\n\n\
+                    Tips:\n\
+                      - Use --detailed for more information\n\
+                      - --examples shows usage examples\n\
+                      - --schema shows parameter schemas\n\
+                      - Tools must be available (not disabled)"
+                )
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -352,6 +426,20 @@ pub fn build_cli() -> Command {
                 .subcommand(
                     Command::new("exec")
                         .about("Execute a tool directly")
+                        .long_about(
+                            "Execute a tool directly with provided arguments\n\n\
+                            Examples:\n\
+                              # Read a file\n\
+                              fluent tools exec read_file --args '{\"path\": \"README.md\"}'\n\n\
+                              # Write a file\n\
+                              fluent tools exec write_file --args '{\"path\": \"test.txt\", \"content\": \"Hello\"}'\n\n\
+                              # Get JSON output\n\
+                              fluent tools exec read_file --args '{\"path\": \"file.txt\"}' --json-output\n\n\
+                            Tips:\n\
+                              - Arguments must be valid JSON\n\
+                              - Use --json-output for structured results\n\
+                              - Test tools before using them in agents"
+                        )
                         .arg(
                             Arg::new("tool")
                                 .help("Tool name to execute")
@@ -383,6 +471,21 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("engine")
                 .about("Engine management and configuration")
+                .long_about(
+                    "Manage and test AI engine configurations\n\n\
+                    Examples:\n\
+                      # List configured engines\n\
+                      fluent engine list\n\n\
+                      # List engines as JSON\n\
+                      fluent engine list --json\n\n\
+                      # Test engine connectivity\n\
+                      fluent engine test anthropic\n\n\
+                    Tips:\n\
+                      - Engines must be configured in fluent_config.toml\n\
+                      - Use test to verify API keys and connectivity\n\
+                      - JSON output is useful for scripting\n\
+                      - Engine names are case-sensitive"
+                )
                 .subcommand(
                     Command::new("list")
                         .about("List available engines")
@@ -400,6 +503,77 @@ pub fn build_cli() -> Command {
                             Arg::new("engine")
                                 .help("Engine name to test")
                                 .required(true),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("setup")
+                .about("Interactive setup wizard for initial configuration")
+                .long_about(
+                    "Guides you through setting up FluentCLI with an interactive wizard.\n\
+                    Auto-detects API keys from environment variables and generates\n\
+                    optimized configuration files.\n\n\
+                    Examples:\n\
+                      fluent setup                  # Setup with default config path\n\
+                      fluent setup --config-path custom.toml  # Custom config path"
+                )
+                .arg(
+                    Arg::new("config-path")
+                        .long("config-path")
+                        .value_name("FILE")
+                        .help("Path where configuration file will be saved")
+                        .default_value("fluent_config.toml"),
+                ),
+        )
+        .subcommand(
+            Command::new("configure")
+                .about("Manage and optimize configuration")
+                .long_about(
+                    "View, manage, and optimize your FluentCLI configuration\n\n\
+                    Examples:\n\
+                      # Show current configuration\n\
+                      fluent configure show\n\n\
+                      # Show as JSON\n\
+                      fluent configure show --json\n\n\
+                      # Interactive configuration wizard\n\
+                      fluent configure interactive\n\n\
+                      # Preview configuration file\n\
+                      fluent configure preview\n\n\
+                    Tips:\n\
+                      - Use 'show' to view current settings\n\
+                      - Use 'interactive' for guided optimization\n\
+                      - Presets optimize for common use cases"
+                )
+                .subcommand(
+                    Command::new("show")
+                        .about("Show current configuration")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("interactive")
+                        .about("Interactive configuration wizard with presets")
+                        .arg(
+                            Arg::new("config-path")
+                                .long("config-path")
+                                .value_name("FILE")
+                                .help("Path to configuration file")
+                                .default_value("fluent_config.toml"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("preview")
+                        .about("Preview configuration file contents")
+                        .arg(
+                            Arg::new("config-path")
+                                .long("config-path")
+                                .value_name("FILE")
+                                .help("Path to configuration file")
+                                .default_value("fluent_config.toml"),
                         ),
                 ),
         )

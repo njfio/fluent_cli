@@ -9,8 +9,9 @@ use std::path::Path;
 
 use crate::cli_builder::build_cli;
 use crate::commands::{
-    agent::AgentCommand, engine::EngineCommand, mcp::McpCommand, neo4j::Neo4jCommand,
-    pipeline::PipelineCommand, tools::ToolsCommand, CommandHandler,
+    agent::AgentCommand, configure::ConfigureCommand, engine::EngineCommand, mcp::McpCommand,
+    neo4j::Neo4jCommand, pipeline::PipelineCommand, setup::SetupCommand, tools::ToolsCommand,
+    CommandHandler,
 };
 
 /// Main CLI entry point
@@ -58,6 +59,11 @@ pub async fn run_modular() -> Result<()> {
     let requires_config = match matches.subcommand() {
         Some(("tools", _)) => false,
         Some(("completions", _)) => false,
+        Some(("setup", _)) => false,
+        Some(("configure", sub_m)) => match sub_m.subcommand() {
+            Some(("interactive", _)) => false,
+            _ => true,
+        },
         Some(("engine", sub_m)) => match sub_m.subcommand() {
             Some(("list", _)) => false,
             _ => true,
@@ -133,6 +139,18 @@ pub async fn run_modular() -> Result<()> {
             let span = tracing::info_span!("tools", config_path = %config_path);
             let _e = span.enter();
             let handler = ToolsCommand::new();
+            handler.execute(sub_matches, &config).await?;
+        }
+        Some(("setup", sub_matches)) => {
+            let span = tracing::info_span!("setup", config_path = %config_path);
+            let _e = span.enter();
+            let handler = SetupCommand::new();
+            handler.execute(sub_matches, &config).await?;
+        }
+        Some(("configure", sub_matches)) => {
+            let span = tracing::info_span!("configure", config_path = %config_path);
+            let _e = span.enter();
+            let handler = ConfigureCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("completions", sub_matches)) => {
