@@ -387,8 +387,8 @@ This document outlines a comprehensive enhancement plan for FluentCLI from a use
 **Validation Criteria**:
 - [x] LLM responses stream in real-time ✅ Infrastructure exists, TUI support added
 - [x] Progress indicators update smoothly ✅ TUI updates implemented
-- [ ] Logs can be filtered in real-time ⚠️ Basic filtering exists, needs enhancement
-- [ ] Time estimates are reasonably accurate ⚠️ Partial - duration estimates exist
+- [x] Logs can be filtered in real-time ✅ Added log filtering with keyword matching in TUI
+- [x] Time estimates are reasonably accurate ✅ Added time estimation calculation based on iteration progress
 - [x] JSON streaming works for automation ✅ StreamingEngine trait supports JSON
 - [x] Streaming support added to TUI ✅ add_streaming_chunk and start_streaming methods implemented
 

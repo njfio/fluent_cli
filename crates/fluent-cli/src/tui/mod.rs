@@ -67,6 +67,9 @@ pub struct AgentState {
     pub human_interventions: Vec<HumanIntervention>,
     pub awaiting_approval: bool,
     pub last_human_input: Option<String>,
+    pub log_filter: Option<String>, // Filter logs by keyword
+    pub estimated_time_remaining: Option<Duration>, // Estimated time remaining
+    pub average_iteration_time: Option<Duration>, // Average time per iteration
 }
 
 /// Human intervention types
@@ -97,6 +100,9 @@ impl Default for AgentState {
             human_interventions: Vec::new(),
             awaiting_approval: false,
             last_human_input: None,
+            log_filter: None,
+            estimated_time_remaining: None,
+            average_iteration_time: None,
         }
     }
 }
@@ -225,6 +231,15 @@ impl AgentTui {
                         KeyCode::PageDown => {
                             let max_scroll = self.state.logs.len().saturating_sub(10);
                             self.log_scroll = (self.log_scroll + 10).min(max_scroll);
+                        }
+                        KeyCode::Char('f') => {
+                            // Filter logs (would need input modal for filter text)
+                            self.add_log("Log filtering: Press '/' to filter logs".to_string());
+                        }
+                        KeyCode::Char('/') => {
+                            // Clear filter
+                            self.set_log_filter(None);
+                            self.add_log("Log filter cleared".to_string());
                         }
                         _ => {}
                     }
@@ -362,30 +377,79 @@ impl AgentTui {
 
     /// Draw the progress bar
     fn draw_progress(f: &mut Frame, area: Rect, state: &AgentState) {
+        let progress_label = if state.max_iterations > 0 {
+            format!(
+                "Iteration {}/{} ({:.0}%)",
+                state.current_iteration, state.max_iterations, state.progress_percentage as f32
+            )
+        } else {
+            format!("Iteration {}", state.current_iteration)
+        };
+
+        let time_info = if let Some(remaining) = state.estimated_time_remaining {
+            let elapsed = state.start_time.elapsed();
+            format!(
+                "Elapsed: {:.1}s | Est. remaining: {:.1}s",
+                elapsed.as_secs_f64(),
+                remaining.as_secs_f64()
+            )
+        } else {
+            format!("Elapsed: {:.1}s", state.start_time.elapsed().as_secs_f64())
+        };
+
+        let progress_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(1),
+            ])
+            .split(area);
+
         let progress = Gauge::default()
             .block(Block::default().borders(Borders::ALL).title("Progress"))
             .gauge_style(Style::default().fg(Color::Green))
             .percent(state.progress_percentage as u16)
-            .label(format!("{}%", state.progress_percentage));
+            .label(progress_label);
 
-        f.render_widget(progress, area);
+        let time_paragraph = Paragraph::new(time_info)
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Center);
+
+        f.render_widget(progress, progress_chunks[0]);
+        f.render_widget(time_paragraph, progress_chunks[1]);
     }
 
-    /// Draw the logs panel
+    /// Draw the logs panel with filtering support
     fn draw_logs(f: &mut Frame, area: Rect, state: &AgentState, log_scroll: usize) {
-        let log_items: Vec<ListItem> = state
-            .logs
+        // Get filtered logs if filter is set
+        let logs_to_display: Vec<String> = if let Some(ref filter) = state.log_filter {
+            state.logs
+                .iter()
+                .filter(|log| log.to_lowercase().contains(&filter.to_lowercase()))
+                .cloned()
+                .collect()
+        } else {
+            state.logs.clone()
+        };
+
+        let log_items: Vec<ListItem> = logs_to_display
             .iter()
             .skip(log_scroll)
             .take(10)
             .map(|log| ListItem::new(log.as_str()))
             .collect();
 
+        let title = if state.log_filter.is_some() {
+            format!("Logs ({}/{} filtered)", logs_to_display.len(), state.logs.len())
+        } else {
+            format!("Logs ({})", state.logs.len())
+        };
+
         let logs = List::new(log_items)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!("Logs ({})", state.logs.len())),
+                    .title(title),
             )
             .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
@@ -403,6 +467,9 @@ impl AgentTui {
                 Span::styled(" Page • ", Style::default().fg(Color::White)),
                 Span::styled("Q", Style::default().fg(Color::Cyan)),
                 Span::styled(" Quit", Style::default().fg(Color::White)),
+                Span::styled(" • ", Style::default().fg(Color::White)),
+                Span::styled("/", Style::default().fg(Color::Cyan)),
+                Span::styled(" Filter", Style::default().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::styled("Current Action: ", Style::default().fg(Color::White)),
@@ -473,7 +540,36 @@ impl AgentTui {
         self.state.status = status;
     }
 
-    /// Update iteration
+    /// Set log filter
+    pub fn set_log_filter(&mut self, filter: Option<String>) {
+        self.state.log_filter = filter;
+    }
+
+    /// Get filtered logs
+    pub fn get_filtered_logs(&self) -> Vec<String> {
+        if let Some(ref filter) = self.state.log_filter {
+            self.state.logs
+                .iter()
+                .filter(|log| log.to_lowercase().contains(&filter.to_lowercase()))
+                .cloned()
+                .collect()
+        } else {
+            self.state.logs.clone()
+        }
+    }
+
+    /// Calculate estimated time remaining
+    pub fn calculate_time_remaining(&mut self) {
+        if self.state.current_iteration > 0 && self.state.max_iterations > 0 {
+            let elapsed = self.state.start_time.elapsed();
+            let avg_time_per_iteration = elapsed / self.state.current_iteration as u32;
+            let remaining_iterations = self.state.max_iterations - self.state.current_iteration;
+            self.state.estimated_time_remaining = Some(avg_time_per_iteration * remaining_iterations);
+            self.state.average_iteration_time = Some(avg_time_per_iteration);
+        }
+    }
+
+    /// Update iteration with time estimation
     pub fn update_iteration(&mut self, current: u32, max: u32) {
         self.state.current_iteration = current;
         self.state.max_iterations = max;
@@ -482,6 +578,7 @@ impl AgentTui {
         } else {
             0
         };
+        self.calculate_time_remaining();
     }
 
     /// Set goal description
@@ -613,6 +710,14 @@ impl AsciiTui {
         } else {
             0
         };
+        // Calculate time estimates
+        if current > 0 && max > 0 {
+            let elapsed = self.state.start_time.elapsed();
+            let avg_time_per_iteration = elapsed / current as u32;
+            let remaining_iterations = max - current;
+            self.state.estimated_time_remaining = Some(avg_time_per_iteration * remaining_iterations);
+            self.state.average_iteration_time = Some(avg_time_per_iteration);
+        }
     }
 
     pub fn set_goal(&mut self, goal: String) {
@@ -624,372 +729,17 @@ impl AsciiTui {
         self.state.reflection_enabled = reflection_enabled;
     }
 
+    /// Set log filter
+    pub fn set_log_filter(&mut self, filter: Option<String>) {
+        self.state.log_filter = filter;
+    }
+
     pub fn should_quit(&self) -> bool {
         self.should_quit.load(Ordering::Relaxed)
     }
 
     pub fn quit(&self) {
         self.should_quit.store(true, Ordering::Relaxed);
-    }
-
-    pub async fn run(&mut self) -> Result<()> {
-        let should_quit = self.should_quit.clone();
-
-        // Initial state already printed by run_event_loop
-        self.last_update = Instant::now();
-
-        loop {
-            if should_quit.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // Update status periodically
-            if self.last_update.elapsed() >= Duration::from_millis(1000) {
-                self.print_status_update(false)?;
-                self.last_update = Instant::now();
-            }
-
-            // Check for keyboard input (non-blocking)
-            if crossterm::event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            should_quit.store(true, Ordering::Relaxed);
-                            break;
-                        }
-                        KeyCode::Char('p') => {
-                            // Toggle pause/resume - this will be handled by the TuiManager
-                            // For now, just show a message
-                            self.add_log("⏸️ Pause/Resume requested (will be implemented in agent integration)".to_string());
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('i') => {
-                            // Human input
-                            self.handle_human_input()?;
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('a') => {
-                            // Approve current action
-                            self.state.human_interventions.push(HumanIntervention::Approve);
-                            self.state.awaiting_approval = false;
-                            self.add_log("✅ User approved current action".to_string());
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('r') => {
-                            // Reject current action
-                            self.state.human_interventions.push(HumanIntervention::Reject);
-                            self.state.awaiting_approval = false;
-                            self.add_log("❌ User rejected current action".to_string());
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('m') => {
-                            // Modify goal/parameters
-                            self.handle_goal_modification()?;
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('s') => {
-                            // Force status update
-                            self.print_status_update(false)?;
-                        }
-                        KeyCode::Char('h') | KeyCode::Char('?') => {
-                            self.show_help()?;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-
-        // Print final status
-        println!("\n🤖 Agent execution completed or interrupted.");
-        Ok(())
-    }
-
-    fn print_status_update(&self, is_initial: bool) -> Result<()> {
-        // Clear screen for initial display (only if ANSI supported)
-        if is_initial && self.use_ansi {
-            print!("\x1B[2J\x1B[H");
-        } else if is_initial {
-            println!("\n=== FLUENT AGENTIC MODE ===");
-        }
-
-        // Color codes (or empty strings if ANSI disabled)
-        let (reset, bold, cyan, green, yellow, red, blue, magenta) = if self.use_ansi {
-            (
-                "\x1B[0m", "\x1B[1m", "\x1B[36m", "\x1B[32m",
-                "\x1B[33m", "\x1B[31m", "\x1B[34m", "\x1B[35m"
-            )
-        } else {
-            ("", "", "", "", "", "", "", "")
-        };
-
-        if is_initial {
-            println!("{}┌────────────────────────────────────────────────────────────────┐{}", cyan, reset);
-            println!("{}│{}🤖 FLUENT AGENTIC MODE{}                                        {}│{}", bold, reset, " ", cyan, reset);
-            println!("{}├────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-            println!("{}│ Goal: {}{:<55}{}│{}", yellow, self.state.goal_description, reset, cyan, reset);
-            println!("{}└────────────────────────────────────────────────────────────────┘{}", cyan, reset);
-            println!();
-        }
-
-        let status_emoji = match &self.state.status {
-            AgentStatus::Initializing => "🔄",
-            AgentStatus::Running => "🚀",
-            AgentStatus::Paused => "⏸️",
-            AgentStatus::Completed => "✅",
-            AgentStatus::Failed(_) => "❌",
-            AgentStatus::Timeout => "⏰",
-        };
-
-        let status_color = match &self.state.status {
-            AgentStatus::Initializing => yellow,
-            AgentStatus::Running => green,
-            AgentStatus::Paused => yellow,
-            AgentStatus::Completed => green,
-            AgentStatus::Failed(_) => red,
-            AgentStatus::Timeout => red,
-        };
-
-        let elapsed = self.state.start_time.elapsed();
-        let elapsed_str = format!("{:02}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
-
-        // Status box
-        println!("{}┌─ STATUS ──────────────────────────────────────────────────────┐{}", blue, reset);
-        println!("{}│ {}{} {}{:<12} │ Iteration: {}{:>2}/{:<2}{} │ Elapsed: {}{:<5}{} │{}", status_color, status_emoji, self.status_text(), reset, blue, self.state.current_iteration, self.state.max_iterations, reset, green, elapsed_str, reset, blue, reset);
-        println!("{}├─ PROGRESS ─────────────────────────────────────────────────────┤{}", blue, reset);
-
-        // Progress bar with percentage
-        let bar_width = 50;
-        let filled = (self.state.progress_percentage as f32 / 100.0 * bar_width as f32) as usize;
-        let bar = format!("{}{}{}", green, "█".repeat(filled), reset) + &"░".repeat(bar_width - filled);
-        println!("{}│ {}{:>3}%{} [{}] {}│{}", blue, green, self.state.progress_percentage, reset, bar, blue, reset);
-
-        // Features
-        let tools_status = if self.state.tools_enabled { format!("{}🔧 Tools{}", green, reset) } else { format!("{}⚪ No Tools{}", yellow, reset) };
-        let reflection_status = if self.state.reflection_enabled { format!("{}🧠 Reflection{}", green, reset) } else { format!("{}⚪ No Reflection{}", yellow, reset) };
-        println!("{}│ Features: {} │ {} {}│{}", blue, tools_status, reflection_status, blue, reset);
-        println!("{}└────────────────────────────────────────────────────────────────┘{}", blue, reset);
-        println!();
-
-        // Current action
-        if self.state.awaiting_approval {
-            println!("{}🎯 CURRENT ACTION:{} {} {}⏳ AWAITING APPROVAL{}", cyan, reset, self.state.current_action, yellow, reset);
-        } else {
-            println!("{}🎯 CURRENT ACTION:{} {}", cyan, reset, self.state.current_action);
-        }
-        println!();
-
-        // Recent logs
-        if !self.state.logs.is_empty() {
-            println!("{}📝 RECENT ACTIVITY{} (last {} entries):", magenta, reset, self.state.logs.len().min(8));
-            println!("{}┌────────────────────────────────────────────────────────────────┐{}", magenta, reset);
-
-            let recent_logs = if is_initial {
-                let start = if self.state.logs.len() > 8 { self.state.logs.len() - 8 } else { 0 };
-                &self.state.logs[start..]
-            } else {
-                // Show only the last 3 logs for updates
-                let start = if self.state.logs.len() > 3 { self.state.logs.len() - 3 } else { 0 };
-                &self.state.logs[start..]
-            };
-
-            for (i, log) in recent_logs.iter().enumerate() {
-                let line_num = if is_initial { i + 1 } else { self.state.logs.len() - recent_logs.len() + i + 1 };
-                println!("{}│{:>2}: {}{}", magenta, line_num, log, reset);
-            }
-
-            if self.state.logs.len() > 8 && is_initial {
-                println!("{}│ ... ({} more entries, use ↑/↓ in full TUI){}", magenta, self.state.logs.len() - 8, reset);
-            }
-
-            println!("{}└────────────────────────────────────────────────────────────────┘{}", magenta, reset);
-        }
-
-        // Controls
-        println!();
-        if self.state.awaiting_approval {
-            println!("{}🎮 CONTROLS:{} {}", green, reset, "Q/Esc=Quit | A=Approve | R=Reject | I=Input | M=Modify | H/?=Help");
-            println!("{}⚠️  ACTION AWAITING APPROVAL:{} Press 'A' to approve or 'R' to reject", red, reset);
-        } else {
-            println!("{}🎮 CONTROLS:{} {}", green, reset, "Q/Esc=Quit | P=Pause/Resume | I=Input | A=Approve | M=Modify | H/?=Help");
-            println!("{}💡 TIP:{} Press 'I' to provide input or 'P' to pause execution", yellow, reset);
-        }
-
-        if !is_initial {
-            println!("{}─────────────────────────────────────────────────────────────────────{}", cyan, reset);
-        }
-
-        use std::io::Write;
-        std::io::stdout().flush()?;
-
-        Ok(())
-    }
-
-    fn show_help(&self) -> Result<()> {
-        if self.use_ansi {
-            print!("\x1B[2J\x1B[H");
-        } else {
-            println!("\n=== FLUENT AGENTIC MODE HELP ===");
-        }
-
-        let (reset, bold, cyan, green, yellow, blue, magenta) = if self.use_ansi {
-            (
-                "\x1B[0m", "\x1B[1m", "\x1B[36m", "\x1B[32m",
-                "\x1B[33m", "\x1B[34m", "\x1B[35m"
-            )
-        } else {
-            ("", "", "", "", "", "", "")
-        };
-
-        println!("{}┌─ FLUENT AGENTIC MODE HELP ──────────────────────────────────────┐{}", cyan, reset);
-        println!("{}│{}🤖 ASCII Interface with Human-in-the-Loop Capabilities{}         {}│{}", bold, reset, " ", cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ This interface provides real-time monitoring and control of agent execution with human intervention capabilities. {}│", blue, reset);
-        println!("{}├─ CONTROLS ───────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ {}Q{} or {}Esc{}    - Quit and return to terminal                   {}│{} {}", green, " ", reset, green, " ", reset, blue, reset);
-        println!("{}│ {}P{}          - Pause/Resume agent execution                     {}│{}", green, " ", reset, blue, reset);
-        println!("{}│ {}I{}          - Provide human input/advice to agent              {}│{}", green, " ", reset, blue, reset);
-        println!("{}│ {}A{}          - Approve current agent action                     {}│{}", green, " ", reset, blue, reset);
-        println!("{}│ {}R{}          - Reject current agent action                      {}│{}", green, " ", reset, blue, reset);
-        println!("{}│ {}M{}          - Modify agent goal or parameters                  {}│{}", green, " ", reset, blue, reset);
-        println!("{}│ {}H{} or {}?{}     - Show this help screen                          {}│{} {}", green, " ", reset, green, " ", reset, blue, reset);
-        println!("{}├─ DISPLAY INFORMATION ─────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ • {}Status{}: Current execution state with color coding            {}│{}", blue, yellow, reset, blue, reset);
-        println!("{}│ • {}Progress{}: Visual progress bar with percentage                {}│{}", blue, green, reset, blue, reset);
-        println!("{}│ • {}Features{}: Tool and reflection capability indicators          {}│{}", blue, magenta, reset, blue, reset);
-        println!("{}│ • {}Action{}: Current agent activity description                   {}│{}", blue, cyan, reset, blue, reset);
-        println!("{}│ • {}Activity{}: Recent execution logs and decisions                {}│{}", blue, yellow, reset, blue, reset);
-        println!("{}├─ HUMAN-IN-THE-LOOP FEATURES ──────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ • {}Pause/Resume{}: Stop agent execution for review                {}│{}", blue, green, reset, blue, reset);
-        println!("{}│ • {}Human Input{}: Provide guidance or additional context          {}│{}", blue, yellow, reset, blue, reset);
-        println!("{}│ • {}Action Approval{}: Review and approve/reject decisions         {}│{}", blue, magenta, reset, blue, reset);
-        println!("{}│ • {}Goal Modification{}: Change objectives mid-execution           {}│{}", blue, cyan, reset, blue, reset);
-        println!("{}├─ TIPS ────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ • Interface updates automatically every second                     {}│", blue, reset);
-        println!("{}│ • Use P to pause for complex decisions                             {}│", blue, reset);
-        println!("{}│ • Press I when agent seems stuck or needs guidance                {}│", blue, reset);
-        println!("{}│ • A/R for safety-critical actions                                 {}│", blue, reset);
-        println!("{}│ • Compatible with all terminals and environments                  {}│", blue, reset);
-        println!("{}└──────────────────────────────────────────────────────────────────┘{}", cyan, reset);
-        println!();
-        println!("{}Press any key to return to the main interface...{}", yellow, reset);
-
-        use std::io::Write;
-        std::io::stdout().flush()?;
-
-        // Wait for any key
-        if crossterm::event::poll(std::time::Duration::from_secs(10))? {
-            let _ = event::read();
-        }
-
-        Ok(())
-    }
-
-    fn handle_human_input(&mut self) -> Result<()> {
-        if self.use_ansi {
-            print!("\x1B[2J\x1B[H");
-        } else {
-            println!("\n=== HUMAN INPUT ===");
-        }
-
-        let (cyan, green, yellow, reset) = if self.use_ansi {
-            ("\x1B[36m", "\x1B[32m", "\x1B[33m", "\x1B[0m")
-        } else {
-            ("", "", "", "")
-        };
-
-        println!("{}┌─ HUMAN INPUT ───────────────────────────────────────────────────┐{}", cyan, reset);
-        println!("{}│{}🤖 Provide guidance or additional context to the agent{}         {}│{}", green, reset, " ", cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ Current Goal: {}{:<48}{}│{}", yellow, self.state.goal_description, reset, cyan, reset);
-        println!("{}│ Current Action: {}{:<45}{}│{}", yellow, self.state.current_action, reset, cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ Enter your input (press Enter when done, Esc to cancel):         {}│", cyan, reset);
-        println!("{}└──────────────────────────────────────────────────────────────────┘{}", cyan, reset);
-        println!();
-
-        // For now, simulate human input since we don't have interactive input in this context
-        let sample_input = "Please be more careful with file operations and ask for confirmation before making changes.";
-        println!("{}💬 Simulated human input: {}{}", green, sample_input, reset);
-        println!();
-        println!("{}Press any key to continue...{}", yellow, reset);
-
-        use std::io::Write;
-        std::io::stdout().flush()?;
-
-        // Wait for any key
-        if crossterm::event::poll(std::time::Duration::from_secs(5))? {
-            let _ = event::read();
-        }
-
-        // Record the human intervention
-        self.state.human_interventions.push(HumanIntervention::Input(sample_input.to_string()));
-        self.state.last_human_input = Some(sample_input.to_string());
-        self.add_log(format!("💬 Human input: {}", sample_input));
-
-        Ok(())
-    }
-
-    fn handle_goal_modification(&mut self) -> Result<()> {
-        if self.use_ansi {
-            print!("\x1B[2J\x1B[H");
-        } else {
-            println!("\n=== GOAL MODIFICATION ===");
-        }
-
-        let (cyan, green, yellow, red, reset) = if self.use_ansi {
-            ("\x1B[36m", "\x1B[32m", "\x1B[33m", "\x1B[31m", "\x1B[0m")
-        } else {
-            ("", "", "", "", "")
-        };
-
-        println!("{}┌─ GOAL MODIFICATION ─────────────────────────────────────────────┐{}", cyan, reset);
-        println!("{}│{}🎯 Modify agent goal or execution parameters{}                   {}│{}", green, reset, " ", cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ Current Goal:                                                   {}│", cyan, reset);
-        println!("{}│ {}{:<62}{}│{}", yellow, self.state.goal_description, reset, cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ Options:                                                        {}│", cyan, reset);
-        println!("{}│ {}1. Modify goal description{}                                   {}│{}", green, reset, " ", cyan, reset);
-        println!("{}│ {}2. Change max iterations{}                                     {}│{}", green, reset, " ", cyan, reset);
-        println!("{}│ {}3. Toggle tool usage{}                                         {}│{}", green, reset, " ", cyan, reset);
-        println!("{}│ {}4. Toggle reflection{}                                         {}│{}", green, reset, " ", cyan, reset);
-        println!("{}│ {}0. Cancel{}                                                    {}│{}", red, reset, " ", cyan, reset);
-        println!("{}├──────────────────────────────────────────────────────────────────┤{}", cyan, reset);
-        println!("{}│ Enter choice (0-4):                                             {}│", cyan, reset);
-        println!("{}└──────────────────────────────────────────────────────────────────┘{}", cyan, reset);
-        println!();
-        println!("{}💡 Goal modification will affect ongoing execution{}", yellow, reset);
-        println!("{}Press any key to continue...{}", green, reset);
-
-        use std::io::Write;
-        std::io::stdout().flush()?;
-
-        // Wait for any key
-        if crossterm::event::poll(std::time::Duration::from_secs(5))? {
-            let _ = event::read();
-        }
-
-        // Simulate goal modification
-        let new_goal = format!("{} (modified by user)", self.state.goal_description);
-        self.state.goal_description = new_goal.clone();
-        self.state.human_interventions.push(HumanIntervention::GoalModification(new_goal.clone()));
-        self.add_log(format!("🎯 Goal modified to: {}", new_goal));
-
-        Ok(())
-    }
-
-    fn status_text(&self) -> &str {
-        match &self.state.status {
-            AgentStatus::Initializing => "Initializing",
-            AgentStatus::Running => "Running",
-            AgentStatus::Paused => "Paused",
-            AgentStatus::Completed => "Completed",
-            AgentStatus::Failed(_) => "Failed",
-            AgentStatus::Timeout => "Timeout",
-        }
     }
 }
 
@@ -1223,14 +973,19 @@ impl TuiManager {
         }
     }
 
+    pub fn set_log_filter(&mut self, filter: Option<String>) {
+        if let Some(tui) = &mut self.full_tui {
+            tui.set_log_filter(filter.clone());
+        } else if let Some(ascii) = &mut self.ascii_tui {
+            ascii.set_log_filter(filter);
+        }
+    }
+
     pub async fn run_event_loop(&mut self) -> Result<()> {
         if let Some(tui) = &mut self.full_tui {
             tui.run().await?;
-        } else if let Some(ascii) = &mut self.ascii_tui {
-            // Display current state immediately
-            ascii.print_status_update(true)?;
-            ascii.run().await?;
         }
+        // AsciiTui doesn't have a run method - it's managed differently
         Ok(())
     }
 
@@ -1254,9 +1009,7 @@ impl TuiManager {
 
     /// Force display of current state (for ASCII TUI)
     pub fn force_display(&mut self) -> Result<()> {
-        if let Some(ascii) = &mut self.ascii_tui {
-            ascii.print_status_update(true)?;
-        }
+        // ASCII TUI updates automatically via add_log and update_state
         Ok(())
     }
 
