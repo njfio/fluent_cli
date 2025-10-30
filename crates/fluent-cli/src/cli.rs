@@ -10,7 +10,8 @@ use std::path::Path;
 
 use crate::cli_builder::build_cli;
 use crate::commands::{
-    agent::AgentCommand, configure::ConfigureCommand, engine::EngineCommand, mcp::McpCommand, neo4j::Neo4jCommand,
+    agent::AgentCommand, configure::ConfigureCommand, engine::EngineCommand, examples::ExamplesCommand,
+    mcp::McpCommand, neo4j::Neo4jCommand,
     pipeline::PipelineCommand, setup::SetupCommand, tools::ToolsCommand, CommandHandler,
 };
 
@@ -314,6 +315,12 @@ pub async fn run_modular() -> Result<()> {
             let span = tracing::info_span!("setup");
             let _e = span.enter();
             let handler = SetupCommand::new();
+            handler.execute(sub_matches, &config).await?;
+        }
+        Some(("examples", sub_matches)) => {
+            let span = tracing::info_span!("examples");
+            let _e = span.enter();
+            let handler = ExamplesCommand::new();
             handler.execute(sub_matches, &config).await?;
         }
         Some(("completions", sub_matches)) => {

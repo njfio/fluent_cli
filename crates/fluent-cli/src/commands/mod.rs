@@ -7,6 +7,7 @@
 pub mod agent;
 pub mod configure;
 pub mod engine;
+pub mod examples;
 pub mod mcp;
 pub mod neo4j;
 pub mod pipeline;

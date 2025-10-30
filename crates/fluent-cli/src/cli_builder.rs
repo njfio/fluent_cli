@@ -59,7 +59,8 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("pipeline")
-                .about("Execute a pipeline from a YAML file\n\nEXAMPLES:\n    fluent pipeline -f example_pipelines/test_pipeline.yaml\n    fluent pipeline -f pipeline.yaml -i \"Process this data\"\n    fluent pipeline -f workflow.yaml --variables key=value")
+                .about("Execute a pipeline from a YAML file")
+                .after_help("COMMON USAGE:\n  Basic pipeline execution:\n    fluent pipeline -f example_pipelines/test_pipeline.yaml\n    fluent pipeline -f pipeline.yaml -i \"Process this data\"\n    fluent pipeline -f workflow.yaml --variables key=value\n\n  Advanced usage:\n    fluent pipeline -f complex_workflow.yaml --verbose\n    fluent pipeline -f pipelines/ci_cd.yaml --config production.toml\n    fluent pipeline -f pipeline.yaml --dry-run\n\nEXAMPLES:\n  # Execute a simple pipeline\n  fluent pipeline -f example_pipelines/test_pipeline.yaml\n\n  # Execute with input data\n  fluent pipeline -f pipelines/code_review.yaml -i \"Review this PR\"\n\n  # Execute with variables\n  fluent pipeline -f workflow.yaml --variables API_KEY=xxx OUTPUT_DIR=/tmp\n\n  # Preview execution without running\n  fluent pipeline -f pipeline.yaml --dry-run\n\nTIPS:\n  • Use --dry-run to preview pipeline execution before running\n  • Variables can be passed multiple times: --variables key1=val1 --variables key2=val2\n  • Use --force-fresh to ignore cached state\n  • Pipeline files must be valid YAML\n\nCOMMON MISTAKES:\n  ⚠️  Missing -f flag: fluent pipeline pipeline.yaml (WRONG)\n  ✅ Correct: fluent pipeline -f pipeline.yaml\n  ⚠️  File not found: Check file path and ensure it exists\n  ⚠️  Invalid YAML: Validate YAML syntax before running")
                 .arg(
                     Arg::new("file")
                         .short('f')
@@ -112,7 +113,8 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("agent")
-                .about("Run agentic workflows with AI assistance\n\nEXAMPLES:\n    fluent agent \"Hello, world!\"\n    fluent agent \"Write a Rust function\" --interactive\n    fluent agent \"Debug this error\" --verbose\n    fluent agent \"Create tests\" --file src/main.rs")
+                .about("Run agentic workflows with AI assistance")
+                .after_help("COMMON USAGE:\n  Basic agent execution:\n    fluent agent \"Hello, world!\"\n    fluent agent \"Write a Rust function\" --interactive\n    fluent agent \"Debug this error\" --verbose\n\n  With files:\n    fluent agent \"Create tests\" --file src/main.rs\n    fluent agent \"Refactor this\" --goal-file goal.toml\n\nEXAMPLES:\n  # Simple agent task\n  fluent agent \"Write a function to calculate fibonacci numbers\"\n\n  # Interactive mode with file context\n  fluent agent \"Analyze this code\" --file src/main.rs --interactive\n\n  # Enable tool usage\n  fluent agent \"Create a REST API\" --enable-tools --max-iterations 20\n\n  # Use specific model\n  fluent agent \"Write Python tests\" --model gpt-4o\n\n  # Reflection mode for complex tasks\n  fluent agent \"Design a system architecture\" --reflection --tui\n\n  # Goal file for complex tasks\n  fluent agent --goal-file project_goal.toml\n\nTIPS:\n  • Use --interactive for complex tasks requiring human input\n  • --enable-tools allows the agent to modify files and run commands\n  • --tui provides a better monitoring experience\n  • Use --max-iterations to control execution depth\n  • --reflection enables self-improvement during execution\n\nCOMMON MISTAKES:\n  ⚠️  Missing quotes: fluent agent Write a function (WRONG)\n  ✅ Correct: fluent agent \"Write a function\"\n  ⚠️  Too many iterations: Start with default (10) and increase if needed\n  ⚠️  File not found: Check file path with --file option")
                 .arg(
                     Arg::new("agentic")
                         .long("agentic")
@@ -220,6 +222,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("mcp")
                 .about("MCP server operations")
+                .after_help("COMMON USAGE:\n  Start server:\n    fluent mcp server\n    fluent mcp server --port 8080\n\n  Connect as client:\n    fluent mcp client --server http://localhost:8080\n\nEXAMPLES:\n  # Start MCP server on default port\n  fluent mcp server\n\n  # Start on custom port\n  fluent mcp server --port 9090\n\n  # Connect as client\n  fluent mcp client --server http://localhost:8080\n\nTIPS:\n  • Default port is 8080\n  • Use --port to specify custom port\n  • Server URL must include protocol (http:// or https://)\n\nCOMMON MISTAKES:\n  ⚠️  Port already in use: Use --port to specify different port\n  ⚠️  Invalid URL: Include protocol (http:// or https://)")
                 .subcommand(
                     Command::new("server")
                         .about("Start MCP server")
@@ -249,6 +252,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("neo4j")
                 .about("Neo4j database operations")
+                .after_help("COMMON USAGE:\n  Query Neo4j:\n    fluent neo4j --query \"MATCH (n) RETURN n LIMIT 10\"\n    fluent neo4j --query \"Find all users\" --generate-cypher\n\n  Upsert data:\n    fluent neo4j --upsert-file data.json\n\nEXAMPLES:\n  # Execute Cypher query\n  fluent neo4j --query \"MATCH (n) RETURN n LIMIT 10\"\n\n  # Generate Cypher from natural language\n  fluent neo4j --query \"Find all users\" --generate-cypher\n\n  # Upsert data from file\n  fluent neo4j --upsert-file users.json\n\nTIPS:\n  • Use --generate-cypher for natural language queries\n  • File format should be JSON for upsert operations\n  • Neo4j connection must be configured in fluent_config.toml\n\nCOMMON MISTAKES:\n  ⚠️  Neo4j not configured: Set up Neo4j connection in configuration\n  ⚠️  Invalid query: Check Cypher syntax\n  ⚠️  File format: Ensure JSON format for --upsert-file")
                 .arg(
                     Arg::new("generate-cypher")
                         .long("generate-cypher")
@@ -274,6 +278,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completion scripts")
+                .after_help("COMMON USAGE:\n  Generate for shell:\n    fluent completions --shell bash\n    fluent completions --shell zsh --output fluent.bash\n\nEXAMPLES:\n  # Generate for bash\n  fluent completions --shell bash\n\n  # Generate for zsh\n  fluent completions --shell zsh --output fluent.zsh\n\n  # Generate for fish\n  fluent completions --shell fish\n\nTIPS:\n  • Supported shells: bash, zsh, fish, powershell, elvish\n  • Output to file for permanent installation\n  • Add to your shell's rc file for persistence\n\nCOMMON MISTAKES:\n  ⚠️  Unsupported shell: Check supported shells list\n  ⚠️  Not installed: Source the generated file in your shell config")
                 .arg(
                     Arg::new("shell")
                         .short('s')
@@ -292,7 +297,8 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("tools")
-                .about("Direct tool access and management\n\nEXAMPLES:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools search \"http\"\n    fluent tools test <tool_name>")
+                .about("Direct tool access and management")
+                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools search \"http\"\n    fluent tools describe read_file --examples\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # List tools by category\n  fluent tools list --category file\n  fluent tools list --category network\n\n  # Search for tools\n  fluent tools list --search \"file\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples\n\n  # Execute a tool\n  fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\n  # List categories\n  fluent tools categories\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples to see usage patterns\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' to see available tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe and exec")
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -389,7 +395,8 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("configure")
-                .about("Advanced configuration management and optimization\n\nEXAMPLES:\n    fluent configure show\n    fluent configure presets\n    fluent configure optimize\n    fluent configure set memory.max_tokens 8000")
+                .about("Advanced configuration management and optimization")
+                .after_help("COMMON USAGE:\n  View configuration:\n    fluent configure show\n    fluent configure show --json\n\n  Apply presets:\n    fluent configure presets\n    fluent configure presets --apply developer\n\n  Optimize:\n    fluent configure optimize\n    fluent configure optimize --dry-run\n\n  Set values:\n    fluent configure set memory.max_tokens 8000\n\nEXAMPLES:\n  # View current configuration\n  fluent configure show\n\n  # View as JSON\n  fluent configure show --json\n\n  # List available presets\n  fluent configure presets\n\n  # Apply a preset\n  fluent configure presets --apply developer\n  fluent configure presets --apply production\n\n  # Optimize configuration\n  fluent configure optimize --dry-run\n  fluent configure optimize\n\n  # Set configuration values\n  fluent configure set memory.max_tokens 8000\n  fluent configure set agent.max_iterations 20\n\nTIPS:\n  • Use presets for common configurations (developer, researcher, production)\n  • --dry-run shows what would change without applying\n  • Configuration keys use dot notation (e.g., memory.max_tokens)\n  • Optimize analyzes usage patterns and suggests improvements\n\nCOMMON MISTAKES:\n  ⚠️  Invalid key format: Use dot notation (memory.max_tokens, not memory/max_tokens)\n  ⚠️  Unknown preset: Use 'fluent configure presets' to see available options\n  ⚠️  Not saved: Changes are applied immediately, no separate save step")
                 .subcommand(
                     Command::new("show")
                         .about("Display current configuration")
@@ -438,6 +445,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("setup")
                 .about("Interactive setup wizard for FluentCLI configuration")
+                .after_help("COMMON USAGE:\n  First-time setup:\n    fluent setup\n    fluent setup --output my_config.toml\n\n  Reconfigure:\n    fluent setup --force\n    fluent setup --skip-validation\n\nEXAMPLES:\n  # Initial setup (interactive)\n  fluent setup\n\n  # Setup with custom output file\n  fluent setup --output production_config.toml\n\n  # Overwrite existing config\n  fluent setup --force\n\n  # Skip validation (faster for testing)\n  fluent setup --skip-validation\n\nTIPS:\n  • Set API keys in environment variables for auto-detection\n  • ANTHROPIC_API_KEY, OPENAI_API_KEY, etc. are auto-detected\n  • Use --force to overwrite existing configurations\n  • Run setup first before using other commands\n  • Configuration is saved to fluent_config.toml by default\n\nCOMMON MISTAKES:\n  ⚠️  Missing API key: Set environment variable or enter manually\n  ⚠️  Invalid configuration: Use --skip-validation only for testing\n  ⚠️  File exists: Use --force to overwrite without prompt")
                 .arg(
                     Arg::new("output")
                         .short('o')
@@ -462,6 +470,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("engine")
                 .about("Engine management and configuration")
+                .after_help("COMMON USAGE:\n  List engines:\n    fluent engine list\n    fluent engine list --json\n\n  Test engines:\n    fluent engine test anthropic\n    fluent engine test openai --verbose\n\nEXAMPLES:\n  # List all configured engines\n  fluent engine list\n\n  # List engines as JSON\n  fluent engine list --json\n\n  # Test engine connectivity\n  fluent engine test anthropic\n  fluent engine test openai\n\n  # Test with verbose output\n  fluent engine test groq --verbose\n\nTIPS:\n  • Test engines after configuration to ensure connectivity\n  • Use --json for programmatic access\n  • Engine names are case-sensitive\n  • Test engines before using them in agent mode\n\nCOMMON MISTAKES:\n  ⚠️  Engine not found: Configure engines first with 'fluent setup'\n  ⚠️  Wrong engine name: Use exact names (anthropic, openai, groq, etc.)\n  ⚠️  Connection failed: Check API keys and network connectivity")
                 .subcommand(
                     Command::new("list")
                         .about("List available engines")
@@ -480,6 +489,22 @@ pub fn build_cli() -> Command {
                                 .help("Engine name to test")
                                 .required(true),
                         ),
+                ),
+        )
+        .subcommand(
+            Command::new("examples")
+                .about("Show detailed examples for commands")
+                .arg(
+                    Arg::new("command")
+                        .help("Command name to show examples for")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all")
+                        .short('a')
+                        .long("all")
+                        .help("Show all examples for all commands")
+                        .action(ArgAction::SetTrue),
                 ),
         )
 }
