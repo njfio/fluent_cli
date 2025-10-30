@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} - Simple Blog{% endblock %}
+
+{% block content %}
+<article class="post-full">
+    <h2>{{ post.title }}</h2>
+    <div class="post-meta">
+        <span class="author">By {{ post.author }}</span>
+        <span class="date">{{ post.created_at }}</span>
+        {% if post.updated_at != post.created_at %}
+            <span class="updated">(Updated: {{ post.updated_at }})</span>
+        {% endif %}
+    </div>
+    <div class="post-content">
+        {{ post.content }}
+    </div>
+    <div class="post-actions">
+        <a href="/posts/{{ post.id }}/edit" class="btn btn-primary">Edit</a>
+        <form action="/posts/{{ post.id }}/delete" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this post?')">Delete</button>
+        </form>
+        <a href="/" class="btn btn-secondary">Back to Home</a>
+    </div>
+</article>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Simple Blog{% endblock %}
+
+{% block content %}
+<div class="posts-list">
+    <h2>Recent Posts</h2>
+
+    {% if posts.is_empty() %}
+        <p class="empty-state">No posts yet. <a href="/posts/new">Create your first post!</a></p>
+    {% else %}
+        {% for post in posts %}
+        <article class="post-preview">
+            <h3><a href="/posts/{{ post.id }}">{{ post.title }}</a></h3>
+            <div class="post-meta">
+                <span class="author">By {{ post.author }}</span>
+                <span class="date">{{ post.created_at }}</span>
+            </div>
+            <p class="post-excerpt">
+                {% if post.content.len() > 200 %}
+                    {{ post.content[..200] }}...
+                {% else %}
+                    {{ post.content }}
+                {% endif %}
+            </p>
+            <a href="/posts/{{ post.id }}" class="read-more">Read more →</a>
+        </article>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}
