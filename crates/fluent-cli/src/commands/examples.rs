@@ -29,9 +29,10 @@ impl ExamplesCommand {
             "mcp" => self.show_mcp_examples(),
             "neo4j" => self.show_neo4j_examples(),
             "completions" => self.show_completions_examples(),
+            "memory" => self.show_memory_examples(),
             _ => {
                 println!("Unknown command: {}", command);
-                println!("Available commands: agent, pipeline, tools, setup, configure, engine, mcp, neo4j, completions");
+                println!("Available commands: agent, pipeline, tools, setup, configure, engine, mcp, neo4j, completions, memory");
                 Ok(())
             }
         }
@@ -67,6 +68,9 @@ impl ExamplesCommand {
         println!("\n{}\n", "=".repeat(50));
         
         self.show_completions_examples()?;
+        println!("\n{}\n", "=".repeat(50));
+        
+        self.show_memory_examples()?;
         
         Ok(())
     }
@@ -276,6 +280,31 @@ impl ExamplesCommand {
         println!("  • Source in your shell's rc file");
         Ok(())
     }
+
+    fn show_memory_examples(&self) -> Result<()> {
+        println!("🧠 Memory Command Examples");
+        println!("==========================");
+        println!();
+        println!("📝 View Insights:");
+        println!("  fluent memory insights");
+        println!("  fluent memory insights --limit 20");
+        println!("  fluent memory insights --json");
+        println!();
+        println!("🔍 View Patterns:");
+        println!("  fluent memory patterns");
+        println!("  fluent memory patterns --domain programming");
+        println!("  fluent memory patterns --domain file_management --json");
+        println!();
+        println!("📊 View Statistics:");
+        println!("  fluent memory stats");
+        println!("  fluent memory stats --json");
+        println!();
+        println!("💡 Tips:");
+        println!("  • Run agent tasks first to generate learning data");
+        println!("  • Insights show what the agent has learned");
+        println!("  • Patterns show reusable successful approaches");
+        Ok(())
+    }
 }
 
 impl CommandHandler for ExamplesCommand {
@@ -301,6 +330,7 @@ impl CommandHandler for ExamplesCommand {
             println!("  • mcp         - MCP operations");
             println!("  • neo4j       - Neo4j operations");
             println!("  • completions - Shell completions");
+            println!("  • memory      - Memory insights and patterns");
         }
         Ok(())
     }

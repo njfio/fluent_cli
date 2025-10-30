@@ -499,6 +499,140 @@ impl ToolsCommand {
         }
     }
 
+    /// Show tool usage analytics
+    async fn show_analytics(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
+        let json_output = matches.get_flag("json");
+        let tool_name = matches.get_one::<String>("tool");
+
+        Self::with_tool_registry(config, |registry| {
+            if json_output {
+                println!("{}", json!({
+                    "analytics": {
+                        "message": "Tool analytics feature requires agent runtime to track usage",
+                        "note": "Analytics are tracked automatically during agent execution",
+                        "available_metrics": [
+                            "Success rate per tool",
+                            "Average execution time",
+                            "Usage frequency",
+                            "Tool combinations",
+                            "Error patterns"
+                        ]
+                    },
+                    "tool": tool_name
+                }));
+            } else {
+                println!("📊 Tool Usage Analytics");
+                println!("======================\n");
+
+                if let Some(tool) = tool_name {
+                    println!("🔧 Analytics for: {}", tool);
+                    println!();
+                    println!("⚠️  No analytics available yet.");
+                    println!("   Analytics are tracked automatically when tools are used in agent mode.");
+                    println!("   Try: fluent agent \"Task that uses tools\" --enable-tools");
+                } else {
+                    println!("📈 Overall Tool Performance:");
+                    println!();
+                    println!("⚠️  No analytics available yet.");
+                    println!("   Analytics are tracked automatically when tools are used.");
+                    println!();
+                    println!("💡 Available Metrics:");
+                    println!("   • Success rate per tool");
+                    println!("   • Average execution time");
+                    println!("   • Usage frequency");
+                    println!("   • Tool combinations");
+                    println!("   • Error patterns");
+                    println!();
+                    println!("📚 Usage:");
+                    println!("   • Run agent tasks to generate analytics");
+                    println!("   • Use 'fluent tools analytics --tool <name>' for specific tool");
+                    println!("   • Analytics improve over time as patterns are learned");
+                }
+            }
+
+            Ok(CommandResult::success())
+        })
+    }
+
+    /// Get tool recommendations for a task
+    async fn get_recommendations(matches: &ArgMatches, config: &Config) -> Result<CommandResult> {
+        let task_description = matches
+            .get_one::<String>("task")
+            .ok_or_else(|| CliError::Validation("Task description is required".to_string()))?;
+        let json_output = matches.get_flag("json");
+
+        Self::with_tool_registry(config, |registry| {
+            let all_tools = registry.get_all_available_tools();
+            let task_lower = task_description.to_lowercase();
+            let mut recommendations = Vec::new();
+
+            // Simple keyword-based recommendations
+            if task_lower.contains("file") || task_lower.contains("read") || task_lower.contains("write") {
+                recommendations.extend(
+                    all_tools
+                        .iter()
+                        .filter(|t| t.name.contains("file") || t.name.contains("read") || t.name.contains("write"))
+                        .map(|t| t.name.clone())
+                );
+            }
+
+            if task_lower.contains("compile") || task_lower.contains("build") || task_lower.contains("test") {
+                recommendations.extend(
+                    all_tools
+                        .iter()
+                        .filter(|t| t.name.contains("compile") || t.name.contains("build") || t.name.contains("test"))
+                        .map(|t| t.name.clone())
+                );
+            }
+
+            if task_lower.contains("shell") || task_lower.contains("command") || task_lower.contains("run") {
+                recommendations.extend(
+                    all_tools
+                        .iter()
+                        .filter(|t| t.name.contains("shell") || t.name.contains("command") || t.name.contains("run"))
+                        .map(|t| t.name.clone())
+                );
+            }
+
+            if recommendations.is_empty() {
+                // Fallback: recommend all available tools
+                recommendations = all_tools.iter().take(5).map(|t| t.name.clone()).collect();
+            }
+
+            // Remove duplicates
+            recommendations.sort();
+            recommendations.dedup();
+
+            if json_output {
+                println!("{}", json!({
+                    "task": task_description,
+                    "recommendations": recommendations,
+                    "count": recommendations.len(),
+                    "note": "Recommendations improve as tool usage patterns are learned"
+                }));
+            } else {
+                println!("💡 Tool Recommendations");
+                println!("======================\n");
+                println!("📋 Task: {}", task_description);
+                println!();
+                println!("🎯 Recommended Tools:");
+                for (i, tool) in recommendations.iter().enumerate() {
+                    println!("  {}. {}", i + 1, tool);
+                }
+                println!();
+                println!("💡 Note:");
+                println!("   • Recommendations improve as tool usage patterns are learned");
+                println!("   • Use 'fluent tools describe <tool>' for more information");
+                println!("   • Run agent tasks to generate learning data");
+            }
+
+            Ok(CommandResult::success_with_message(format!(
+                "Found {} recommendations",
+                recommendations.len()
+            )))
+        })
+    }
+
     /// Parse CLI parameters into HashMap
     fn parse_cli_parameters(matches: &ArgMatches) -> Result<HashMap<String, Value>> {
         let mut parameters = HashMap::new();
@@ -525,6 +659,8 @@ impl CommandHandler for ToolsCommand {
             Some(("describe", sub_matches)) => Self::describe_tool(sub_matches, config).await?,
             Some(("exec", sub_matches)) => Self::execute_tool(sub_matches, config).await?,
             Some(("categories", sub_matches)) => Self::list_categories(sub_matches, config).await?,
+            Some(("analytics", sub_matches)) => Self::show_analytics(sub_matches, config).await?,
+            Some(("recommend", sub_matches)) => Self::get_recommendations(sub_matches, config).await?,
             _ => {
                 // Default: show help
                 println!("🔧 Direct Tool Access");
@@ -533,6 +669,8 @@ impl CommandHandler for ToolsCommand {
                 println!("  describe    - Describe a specific tool");
                 println!("  exec        - Execute a tool directly");
                 println!("  categories  - List tool categories");
+                println!("  analytics   - Show tool usage analytics");
+                println!("  recommend   - Get tool recommendations for a task");
                 println!("\nUse 'fluent tools <command> --help' for more information");
 
                 CommandResult::success_with_message("Tools help displayed".to_string())

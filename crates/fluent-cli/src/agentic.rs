@@ -885,13 +885,13 @@ impl<'a> AutonomousExecutor<'a> {
             reasoning_request.flowname,
             reasoning_request.payload.len()
         );
-        match Pin::from(
-            self.runtime_config
-                .reasoning_engine
-                .execute(&reasoning_request),
-        )
-        .await
-        {
+
+        // Try to use streaming if available
+        // Note: Full streaming integration requires engine type detection
+        // For now, we use regular execute; streaming will be enhanced in future updates
+        let engine = self.runtime_config.reasoning_engine.as_ref();
+
+        match Pin::from(engine.execute(&reasoning_request)).await {
             Ok(response) => {
                 self.tui
                     .add_log(format!("🤖 Agent reasoning: {}", response.content));

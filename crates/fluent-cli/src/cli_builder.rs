@@ -298,7 +298,7 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("tools")
                 .about("Direct tool access and management")
-                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools search \"http\"\n    fluent tools describe read_file --examples\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # List tools by category\n  fluent tools list --category file\n  fluent tools list --category network\n\n  # Search for tools\n  fluent tools list --search \"file\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples\n\n  # Execute a tool\n  fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\n  # List categories\n  fluent tools categories\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples to see usage patterns\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' to see available tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe and exec")
+                .after_help("COMMON USAGE:\n  List tools:\n    fluent tools list\n    fluent tools list --category file\n    fluent tools list --available\n\n  Search and describe:\n    fluent tools list --search \"http\"\n    fluent tools describe read_file --examples\n\n  Analytics and recommendations:\n    fluent tools analytics\n    fluent tools recommend \"read and process files\"\n\n  Execute tools:\n    fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\nEXAMPLES:\n  # List all tools\n  fluent tools list\n\n  # List tools by category\n  fluent tools list --category file\n  fluent tools list --category network\n\n  # Search for tools\n  fluent tools list --search \"file\"\n\n  # Get detailed tool information\n  fluent tools describe read_file --schema --examples\n\n  # Get tool recommendations\n  fluent tools recommend \"read and process files\"\n\n  # View tool analytics\n  fluent tools analytics\n  fluent tools analytics --tool read_file\n\n  # Execute a tool\n  fluent tools exec read_file --json '{\"path\": \"README.md\"}'\n\n  # List categories\n  fluent tools categories\n\nTIPS:\n  • Use --json for programmatic tool access\n  • --category filters tools by type (file, network, system, data, ai)\n  • --available shows only enabled tools\n  • --detailed provides more information\n  • Use describe with --examples to see usage patterns\n  • Recommendations improve as tool usage patterns are learned\n\nCOMMON MISTAKES:\n  ⚠️  Tool not found: Use 'fluent tools list' to see available tools\n  ⚠️  Invalid JSON: Ensure proper JSON format for exec arguments\n  ⚠️  Missing tool name: Tool name is required for describe and exec")
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -385,6 +385,36 @@ pub fn build_cli() -> Command {
                 .subcommand(
                     Command::new("categories")
                         .about("List tool categories")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("analytics")
+                        .about("Show tool usage analytics and performance metrics")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("tool")
+                                .help("Show analytics for specific tool")
+                                .required(false),
+                        ),
+                )
+                .subcommand(
+                    Command::new("recommend")
+                        .about("Get tool recommendations for a task")
+                        .arg(
+                            Arg::new("task")
+                                .help("Task description for recommendations")
+                                .required(true),
+                        )
                         .arg(
                             Arg::new("json")
                                 .long("json")
@@ -488,6 +518,111 @@ pub fn build_cli() -> Command {
                             Arg::new("engine")
                                 .help("Engine name to test")
                                 .required(true),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("errors")
+                .about("View error recovery information and patterns")
+                .after_help("COMMON USAGE:\n  View error patterns:\n    fluent errors patterns\n    fluent errors patterns --json\n\n  View recovery history:\n    fluent errors history\n    fluent errors history --limit 20\n\n  View statistics:\n    fluent errors stats\n\nEXAMPLES:\n  # View detected error patterns\n  fluent errors patterns\n\n  # View recovery history\n  fluent errors history\n\n  # View error statistics\n  fluent errors stats\n\n  # View recovery decisions\n  fluent errors recovery\n\nTIPS:\n  • Patterns show common errors and their fixes\n  • History shows past recovery attempts\n  • Stats show recovery success rates\n  • Recovery improves over time as patterns are learned\n\nCOMMON MISTAKES:\n  ⚠️  No data yet: Run agent tasks to generate error data\n  ⚠️  Patterns not shown: Errors must occur first to detect patterns")
+                .subcommand(
+                    Command::new("patterns")
+                        .about("Show detected error patterns")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("history")
+                        .about("Show error recovery history")
+                        .arg(
+                            Arg::new("limit")
+                                .short('l')
+                                .long("limit")
+                                .value_name("N")
+                                .help("Limit number of entries shown")
+                                .value_parser(clap::value_parser!(usize))
+                                .default_value("20"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("stats")
+                        .about("Show error recovery statistics")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("recovery")
+                        .about("Show recovery decisions and strategies")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("memory")
+                .about("View memory insights and learned patterns")
+                .after_help("COMMON USAGE:\n  View insights:\n    fluent memory insights\n    fluent memory insights --json\n\n  View patterns:\n    fluent memory patterns\n    fluent memory patterns --domain programming\n\n  View statistics:\n    fluent memory stats\n\nEXAMPLES:\n  # View learned insights\n  fluent memory insights\n\n  # View insights as JSON\n  fluent memory insights --json\n\n  # View learned patterns\n  fluent memory patterns\n\n  # View patterns for specific domain\n  fluent memory patterns --domain programming\n\n  # View memory statistics\n  fluent memory stats\n\nTIPS:\n  • Insights show what the agent has learned from past executions\n  • Patterns show successful approaches that can be reused\n  • Stats show memory usage and effectiveness\n\nCOMMON MISTAKES:\n  ⚠️  No insights yet: Run some agent tasks first to generate learning data\n  ⚠️  Domain not found: Use 'fluent memory stats' to see available domains")
+                .subcommand(
+                    Command::new("insights")
+                        .about("Show learned insights from past executions")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("limit")
+                                .short('l')
+                                .long("limit")
+                                .value_name("N")
+                                .help("Limit number of insights shown")
+                                .value_parser(clap::value_parser!(usize))
+                                .default_value("10"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("patterns")
+                        .about("Show learned success patterns")
+                        .arg(
+                            Arg::new("domain")
+                                .short('d')
+                                .long("domain")
+                                .value_name("DOMAIN")
+                                .help("Filter by domain (e.g., programming, file_management)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("stats")
+                        .about("Show memory statistics and metrics")
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output in JSON format")
+                                .action(ArgAction::SetTrue),
                         ),
                 ),
         )

@@ -7,8 +7,10 @@
 pub mod agent;
 pub mod configure;
 pub mod engine;
+pub mod errors;
 pub mod examples;
 pub mod mcp;
+pub mod memory;
 pub mod neo4j;
 pub mod pipeline;
 pub mod setup;

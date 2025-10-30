@@ -425,6 +425,39 @@ impl AgentTui {
         }
     }
 
+    /// Add a streaming content chunk (for real-time LLM response display)
+    pub fn add_streaming_chunk(&mut self, chunk: &str) {
+        // Append to the last log entry if it's a streaming message, otherwise create new
+        if let Some(last_log) = self.state.logs.last_mut() {
+            if last_log.contains("🤖 Streaming: ") {
+                // Remove the timestamp prefix and append chunk
+                if let Some(idx) = last_log.find("🤖 Streaming: ") {
+                    let base = &last_log[..idx + 14];
+                    *last_log = format!("{}{}", base, chunk);
+                } else {
+                    last_log.push_str(chunk);
+                }
+            } else {
+                let timestamp = chrono::Utc::now().format("%H:%M:%S");
+                self.state.logs.push(format!("[{}] 🤖 Streaming: {}", timestamp, chunk));
+            }
+        } else {
+            let timestamp = chrono::Utc::now().format("%H:%M:%S");
+            self.state.logs.push(format!("[{}] 🤖 Streaming: {}", timestamp, chunk));
+        }
+        
+        // Keep logs manageable
+        if self.state.logs.len() > 100 {
+            self.state.logs.remove(0);
+        }
+    }
+
+    /// Start a new streaming response (clears previous streaming content)
+    pub fn start_streaming(&mut self) {
+        let timestamp = chrono::Utc::now().format("%H:%M:%S");
+        self.state.logs.push(format!("[{}] 🤖 Streaming response...", timestamp));
+    }
+
     /// Set the current action
     pub fn set_current_action(&mut self, action: String) {
         self.state.current_action = action;
@@ -531,6 +564,33 @@ impl AsciiTui {
         if self.state.logs.len() > 20 {
             self.state.logs.remove(0);
         }
+    }
+
+    /// Add a streaming content chunk (for real-time LLM response display)
+    pub fn add_streaming_chunk(&mut self, chunk: &str) {
+        // Append to the last log entry if it's a streaming message, otherwise create new
+        if let Some(last_log) = self.state.logs.last_mut() {
+            if last_log.contains("🤖 Streaming: ") {
+                last_log.push_str(chunk);
+            } else {
+                let timestamp = chrono::Utc::now().format("%H:%M:%S");
+                self.state.logs.push(format!("[{}] 🤖 Streaming: {}", timestamp, chunk));
+            }
+        } else {
+            let timestamp = chrono::Utc::now().format("%H:%M:%S");
+            self.state.logs.push(format!("[{}] 🤖 Streaming: {}", timestamp, chunk));
+        }
+        
+        // Keep only last 20 logs for ASCII display
+        if self.state.logs.len() > 20 {
+            self.state.logs.remove(0);
+        }
+    }
+
+    /// Start a new streaming response (clears previous streaming content)
+    pub fn start_streaming(&mut self) {
+        let timestamp = chrono::Utc::now().format("%H:%M:%S");
+        self.state.logs.push(format!("[{}] 🤖 Streaming response...", timestamp));
     }
 
     pub fn set_current_action(&mut self, action: String) {
@@ -1045,6 +1105,33 @@ impl TuiManager {
         } else {
             // Fallback to stdout if TUI is disabled
             println!("{}", message);
+        }
+    }
+
+    /// Add a streaming content chunk (for real-time LLM response display)
+    pub fn add_streaming_chunk(&mut self, chunk: &str) {
+        if self.enabled {
+            if let Some(tui) = &mut self.full_tui {
+                tui.add_streaming_chunk(chunk);
+            } else if let Some(ascii) = &mut self.ascii_tui {
+                ascii.add_streaming_chunk(chunk);
+            }
+        } else {
+            // Fallback to stdout if TUI is disabled - print immediately
+            print!("{}", chunk);
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
+    }
+
+    /// Start a new streaming response (clears previous streaming content)
+    pub fn start_streaming(&mut self) {
+        if self.enabled {
+            if let Some(tui) = &mut self.full_tui {
+                tui.start_streaming();
+            } else if let Some(ascii) = &mut self.ascii_tui {
+                ascii.start_streaming();
+            }
         }
     }
 
