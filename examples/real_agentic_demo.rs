@@ -13,6 +13,12 @@ use fluent_agent::{
 async fn main() -> Result<()> {
     println!("🤖 Real Agentic System Demo");
     println!("============================");
+    println!();
+
+    // Note: This demo doesn't make actual LLM API calls, but if you want to
+    // extend it to use real engines, you'll need API keys set:
+    // export OPENAI_API_KEY=your-key-here
+    // export ANTHROPIC_API_KEY=your-key-here
 
     // Demo 1: Real Memory System
     println!("\n📚 Demo 1: Real Memory System");

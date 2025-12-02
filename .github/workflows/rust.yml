@@ -122,30 +122,29 @@ jobs:
           files: ./artifacts/*.tar.gz
 
   fmt:
+    name: Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install latest stable
-        uses: actions-rs/toolchain@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
           components: rustfmt
-      - name: cargo fmt --check
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
   clippy:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install latest stable
-        uses: actions-rs/toolchain@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
           components: clippy
-      - name: cargo clippy (deny warnings)
-        run: cargo clippy --all-targets --all-features -D warnings
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
 
   audit:
     runs-on: ubuntu-latest

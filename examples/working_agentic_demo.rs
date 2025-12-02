@@ -35,6 +35,12 @@ async fn main() -> Result<()> {
     println!("🤖 Working Agentic System Demo");
     println!("===============================");
     println!("This demo shows REAL working examples of the agentic system components");
+    println!();
+
+    // Note: This demo doesn't make actual LLM API calls, but if you want to
+    // extend it to use real engines, you'll need API keys set:
+    // export OPENAI_API_KEY=your-key-here
+    // export ANTHROPIC_API_KEY=your-key-here
 
     // Demo 1: Real Memory System
     println!("\n📚 Demo 1: Real Memory System");
@@ -215,7 +221,9 @@ async fn demo_goal_system() -> Result<()> {
 
 async fn demo_context_system() -> Result<()> {
     // Create a simple goal for the context
-    let goal = Goal::builder("Demo context management".to_string(), GoalType::Analysis).build()?;
+    let goal = Goal::builder("Demo context management".to_string(), GoalType::Analysis)
+        .success_criterion("Set context variables".to_string())
+        .build()?;
 
     // Create real execution context
     let mut context = ExecutionContext::new(goal);

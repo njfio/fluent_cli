@@ -10,6 +10,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::timeout;
+use tracing::{error, info, instrument, warn as tracing_warn};
 use uuid::Uuid;
 
 use crate::tools::validation;
@@ -19,6 +20,12 @@ const MCP_VERSION: &str = "2025-06-18";
 
 /// Default timeout for MCP operations
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Connection timeout for MCP operations
+const MCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Health check timeout
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Maximum response size to prevent memory exhaustion
 const MAX_RESPONSE_SIZE: usize = 10 * 1024 * 1024; // 10MB
@@ -198,8 +205,12 @@ impl McpClient {
         self.connection_time.map(|start| start.elapsed())
     }
 
-    /// Connect to an MCP server via command execution with retry logic
+    /// Connect to an MCP server via command execution with retry logic and health check
+    #[instrument(skip(self, args), fields(command = %command))]
     pub async fn connect_to_server(&mut self, command: &str, args: &[&str]) -> Result<()> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, "Starting MCP connection");
+
         let mut last_error = None;
 
         for attempt in 1..=self.config.retry_attempts {
@@ -208,16 +219,45 @@ impl McpClient {
                     self.connection_time = Some(Instant::now());
                     self.is_connected
                         .store(true, std::sync::atomic::Ordering::Relaxed);
-                    return Ok(());
+
+                    info!(request_id = %request_id, attempt = attempt, "MCP connection established");
+
+                    // Perform health check
+                    match self.health_check().await {
+                        Ok(true) => {
+                            info!(request_id = %request_id, "MCP server health check passed");
+                            return Ok(());
+                        }
+                        Ok(false) => {
+                            error!(request_id = %request_id, "MCP server health check failed");
+                            self.is_connected
+                                .store(false, std::sync::atomic::Ordering::Relaxed);
+                            last_error = Some(anyhow!("MCP server health check failed"));
+                        }
+                        Err(e) => {
+                            error!(request_id = %request_id, error = %e, "MCP server health check error");
+                            self.is_connected
+                                .store(false, std::sync::atomic::Ordering::Relaxed);
+                            last_error = Some(anyhow!("MCP server health check error: {}", e));
+                        }
+                    }
                 }
                 Err(e) => {
                     last_error = Some(e);
                     if attempt < self.config.retry_attempts {
-                        warn!(
-                            "MCP connection attempt {} failed, retrying in {:?}...",
-                            attempt, self.config.retry_delay
+                        tracing_warn!(
+                            request_id = %request_id,
+                            attempt = attempt,
+                            delay = ?self.config.retry_delay,
+                            "MCP connection attempt failed, retrying..."
                         );
                         tokio::time::sleep(self.config.retry_delay).await;
+                    } else {
+                        error!(
+                            request_id = %request_id,
+                            attempt = attempt,
+                            "MCP connection failed after all retries"
+                        );
                     }
                 }
             }
@@ -229,6 +269,44 @@ impl McpClient {
                 self.config.retry_attempts
             )
         }))
+    }
+
+    /// Perform a health check on the MCP server
+    #[instrument(skip(self))]
+    pub async fn health_check(&self) -> Result<bool> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, "Performing MCP health check");
+
+        if !self.is_connected() {
+            error!(request_id = %request_id, "Health check failed: not connected");
+            return Ok(false);
+        }
+
+        // Try to list tools as a simple health check
+        let health_check_result =
+            timeout(HEALTH_CHECK_TIMEOUT, self.send_request("tools/list", None)).await;
+
+        match health_check_result {
+            Ok(Ok(_result)) => {
+                info!(request_id = %request_id, "Health check passed");
+                Ok(true)
+            }
+            Ok(Err(e)) => {
+                error!(request_id = %request_id, error = %e, "Health check failed with error");
+                Ok(false)
+            }
+            Err(_) => {
+                error!(request_id = %request_id, timeout = ?HEALTH_CHECK_TIMEOUT, "Health check timed out");
+                Ok(false)
+            }
+        }
+    }
+
+    /// Connect to MCP server with explicit health check
+    #[instrument(skip(self, args), fields(command = %command))]
+    pub async fn connect_with_health_check(&mut self, command: &str, args: &[&str]) -> Result<()> {
+        // Use connect_to_server which now includes health check
+        self.connect_to_server(command, args).await
     }
 
     /// Internal method to attempt connection
@@ -249,9 +327,15 @@ impl McpClient {
         // Validate arguments for dangerous patterns
         for arg in args {
             // Check for shell injection patterns in arguments
-            if arg.contains("$(") || arg.contains("`") || arg.contains(";")
-                || arg.contains("&&") || arg.contains("||") || arg.contains("|")
-                || arg.contains(">") || arg.contains("<") {
+            if arg.contains("$(")
+                || arg.contains("`")
+                || arg.contains(";")
+                || arg.contains("&&")
+                || arg.contains("||")
+                || arg.contains("|")
+                || arg.contains(">")
+                || arg.contains("<")
+            {
                 return Err(anyhow!(
                     "MCP server argument contains dangerous shell pattern: '{}'",
                     arg
@@ -259,7 +343,11 @@ impl McpClient {
             }
 
             // Check for null bytes and dangerous control characters
-            if arg.contains('\0') || arg.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
+            if arg.contains('\0')
+                || arg
+                    .chars()
+                    .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+            {
                 return Err(anyhow!(
                     "MCP server argument contains invalid control characters: '{}'",
                     arg
@@ -516,23 +604,56 @@ impl McpClient {
     }
 
     /// Call a tool on the MCP server
+    #[instrument(skip(self, arguments), fields(tool = %name))]
     pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<McpToolResult> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, tool = %name, "Calling MCP tool");
+
         let params = json!({
             "name": name,
             "arguments": arguments
         });
 
-        let result = self.send_request("tools/call", Some(params)).await?;
-        serde_json::from_value(result).map_err(|e| anyhow!("Failed to parse tool result: {}", e))
+        let result = self.send_request("tools/call", Some(params)).await;
+
+        match &result {
+            Ok(_) => {
+                info!(request_id = %request_id, tool = %name, "MCP tool call succeeded");
+            }
+            Err(e) => {
+                error!(request_id = %request_id, tool = %name, error = %e, "MCP tool call failed");
+            }
+        }
+
+        let result = result?;
+        serde_json::from_value(result).map_err(|e| {
+            error!(request_id = %request_id, tool = %name, error = %e, "Failed to parse tool result");
+            anyhow!("Failed to parse tool result: {}", e)
+        })
     }
 
     /// Read a resource from the MCP server
+    #[instrument(skip(self), fields(uri = %uri))]
     pub async fn read_resource(&self, uri: &str) -> Result<Value> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, uri = %uri, "Reading MCP resource");
+
         let params = json!({
             "uri": uri
         });
 
-        self.send_request("resources/read", Some(params)).await
+        let result = self.send_request("resources/read", Some(params)).await;
+
+        match &result {
+            Ok(_) => {
+                info!(request_id = %request_id, uri = %uri, "MCP resource read succeeded");
+            }
+            Err(e) => {
+                error!(request_id = %request_id, uri = %uri, error = %e, "MCP resource read failed");
+            }
+        }
+
+        result
     }
 
     /// Check if the server supports tools
@@ -560,7 +681,11 @@ impl McpClient {
     }
 
     /// Disconnect from the server with proper cleanup
+    #[instrument(skip(self))]
     pub async fn disconnect(&mut self) -> Result<()> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, "Disconnecting from MCP server");
+
         self.is_connected
             .store(false, std::sync::atomic::Ordering::Relaxed);
 
@@ -577,21 +702,21 @@ impl McpClient {
         if let Some(mut process) = self.server_process.take() {
             // Try graceful shutdown first
             if let Err(e) = process.kill().await {
-                eprintln!("Warning: Failed to kill MCP server process: {}", e);
+                tracing_warn!(request_id = %request_id, error = %e, "Failed to kill MCP server process");
             }
 
             // Wait for process to exit with timeout
             match timeout(Duration::from_secs(5), process.wait()).await {
                 Ok(Ok(status)) => {
                     if !status.success() {
-                        eprintln!("Warning: MCP server exited with status: {}", status);
+                        tracing_warn!(request_id = %request_id, status = %status, "MCP server exited with non-zero status");
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("Warning: Error waiting for MCP server to exit: {}", e);
+                    tracing_warn!(request_id = %request_id, error = %e, "Error waiting for MCP server to exit");
                 }
                 Err(_) => {
-                    eprintln!("Warning: Timeout waiting for MCP server to exit");
+                    tracing_warn!(request_id = %request_id, "Timeout waiting for MCP server to exit");
                 }
             }
         }
@@ -609,6 +734,7 @@ impl McpClient {
         self.capabilities = None;
         self.connection_time = None;
 
+        info!(request_id = %request_id, "MCP server disconnected successfully");
         Ok(())
     }
 }
