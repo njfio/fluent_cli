@@ -131,10 +131,12 @@ impl Engine for OpenAIEngine {
                 }
             }
 
-            debug!("Config: {:?}", self.config);
+            // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
+            // Use RUST_LOG=trace for detailed debugging if needed, but be aware secrets may be logged
 
             let mut payload = self.config_processor.process_config(&self.config)?;
-            debug!("OpenAI Processed Config Payload: {:#?}", payload);
+            // Payload may contain sensitive data in headers/auth - avoid logging in production
+            debug!("OpenAI request initiated for model: {:?}", payload.get("model"));
 
             // Add the user's request to the messages
             payload["messages"] = json!([

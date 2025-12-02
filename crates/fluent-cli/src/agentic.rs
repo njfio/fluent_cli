@@ -150,20 +150,33 @@ impl AgenticExecutor {
 
     /// Main entry point for agentic mode execution
     pub async fn run(&mut self, _fluent_config: &Config) -> Result<()> {
-        println!("🚀 AgenticExecutor::run() called");
-        // Initialize TUI
-        println!("🔧 Initializing TUI...");
+        if self.tui.enabled() {
+            self.tui.add_log("🚀 AgenticExecutor::run() called".to_string());
+            self.tui.add_log("🔧 Initializing TUI...".to_string());
+        } else {
+            println!("🚀 AgenticExecutor::run() called");
+            println!("🔧 Initializing TUI...");
+        }
         if let Err(e) = self.tui.init() {
-            println!("❌ TUI initialization failed: {}", e);
-            println!("💡 Falling back to non-TUI mode");
-            println!("💡 To use TUI, try:");
-            println!("   - Use a different terminal emulator (iTerm2, Alacritty, etc.)");
-            println!("   - Make sure you're in an interactive terminal session");
-            println!("   - Check that your terminal supports ANSI escape sequences");
+            if self.tui.enabled() {
+                self.tui.add_log(format!("❌ TUI initialization failed: {}", e));
+                self.tui.add_log("💡 Falling back to non-TUI mode".to_string());
+            } else {
+                println!("❌ TUI initialization failed: {}", e);
+                println!("💡 Falling back to non-TUI mode");
+                println!("💡 To use TUI, try:");
+                println!("   - Use a different terminal emulator (iTerm2, Alacritty, etc.)");
+                println!("   - Make sure you're in an interactive terminal session");
+                println!("   - Check that your terminal supports ANSI escape sequences");
+            }
             // Fall back to non-TUI mode by disabling TUI
             self.tui = TuiManager::new(false);
         } else {
-            println!("✅ TUI initialized successfully");
+            if self.tui.enabled() {
+                self.tui.add_log("✅ TUI initialized successfully".to_string());
+            } else {
+                println!("✅ TUI initialized successfully");
+            }
             self.tui.set_goal(self.config.goal_description.clone());
             self.tui.set_features(self.config.enable_tools, self.config.enable_reflection);
             self.tui.update_status(AgentStatus::Initializing);
@@ -173,7 +186,11 @@ impl AgenticExecutor {
         // Spawn SimpleTUI in background if it's available
         let tui_handle = self.tui.spawn_simple_tui();
         if tui_handle.is_some() {
-            println!("✅ SimpleTUI running in background - Press 'Q' to quit");
+            if self.tui.enabled() {
+                self.tui.add_log("✅ SimpleTUI running in background - Press 'Q' to quit".to_string());
+            } else {
+                println!("✅ SimpleTUI running in background - Press 'Q' to quit");
+            }
         }
 
         let agent_config = self.load_agent_configuration().await?;
@@ -213,8 +230,31 @@ impl AgenticExecutor {
 
         // Workflow macro-tools (LLM-powered tools)
         if self.config.enable_tools {
+            // Create tool execution config for workflow executor
+            use fluent_agent::tools::ToolExecutionConfig;
+            let workflow_config = ToolExecutionConfig {
+                timeout_seconds: 60,
+                max_output_size: 10 * 1024 * 1024, // 10MB for workflow outputs
+                allowed_paths: runtime_config
+                    .config
+                    .tools
+                    .allowed_paths
+                    .clone()
+                    .unwrap_or_else(|| {
+                        vec![
+                            "./".to_string(),
+                            "./src".to_string(),
+                            "./examples".to_string(),
+                            "./crates".to_string(),
+                        ]
+                    }),
+                allowed_commands: vec![], // Workflow doesn't execute commands
+                read_only: false,
+            };
+
             let workflow_exec = std::sync::Arc::new(fluent_agent::tools::WorkflowExecutor::new(
                 runtime_config.reasoning_engine.clone(),
+                workflow_config,
             ));
             tool_registry.register("workflow".to_string(), workflow_exec);
             self.tui.add_log(
@@ -749,6 +789,9 @@ pub struct AutonomousExecutor<'a> {
     gen_retries: u32,
     min_html_size: usize,
     tui: &'a mut TuiManager,
+    control_rx: Option<fluent_agent::agent_control::ControlRxHandle>,
+    paused: bool,
+    queued_guidance: Vec<String>,
 }
 
 impl<'a> AutonomousExecutor<'a> {
@@ -759,12 +802,16 @@ impl<'a> AutonomousExecutor<'a> {
         min_html_size: usize,
         tui: &'a mut TuiManager,
     ) -> Self {
+        let crx = tui.control_receiver();
         Self {
             goal,
             runtime_config,
             gen_retries,
             min_html_size,
             tui,
+            control_rx: crx,
+            paused: false,
+            queued_guidance: Vec::new(),
         }
     }
 
@@ -784,6 +831,22 @@ impl<'a> AutonomousExecutor<'a> {
         let mut context = ExecutionContext::new(self.goal.clone());
 
         for iteration in 1..=max_iterations {
+            self.process_controls(&mut context).await?;
+            while self.paused {
+                if let Some(rx) = &self.control_rx {
+                    if let Some(msg) = rx.recv().await {
+                        self.handle_control_message(&mut context, msg).await?;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+
+            if !self.queued_guidance.is_empty() {
+                for (idx, g) in std::mem::take(&mut self.queued_guidance).into_iter().enumerate() {
+                    context.set_variable(format!("queued_guidance_{}", idx + context.iteration_count() as usize), g.clone());
+                    self.tui.add_log(format!("💬 Queued guidance applied: {}", g));
+                }
+            }
             self.tui.update_iteration(iteration, max_iterations);
             self.tui
                 .add_log(format!("🔄 Iteration {}/{}", iteration, max_iterations));
@@ -819,6 +882,59 @@ impl<'a> AutonomousExecutor<'a> {
 
         self.tui
             .add_log("⚠️ Reached maximum iterations without completing goal".to_string());
+        Ok(())
+    }
+
+    async fn process_controls(&mut self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
+        if let Some(rx) = &self.control_rx {
+            let mut msgs = Vec::new();
+            loop {
+                match rx.try_recv().await {
+                    Ok(Some(msg)) => msgs.push(msg),
+                    Ok(None) => break,
+                    Err(_) => break,
+                }
+            }
+            for msg in msgs {
+                self.handle_control_message(context, msg).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_control_message(
+        &mut self,
+        context: &mut fluent_agent::context::ExecutionContext,
+        msg: fluent_agent::agent_control::ControlMessage,
+    ) -> Result<()> {
+        use fluent_agent::agent_control::ControlMessageType;
+        match msg.message_type {
+            ControlMessageType::Pause => {
+                self.paused = true;
+                self.tui.update_status(crate::tui::AgentStatus::Paused);
+                self.tui.add_log("⏸️ Paused by user".to_string());
+            }
+            ControlMessageType::Resume => {
+                self.paused = false;
+                self.tui.update_status(crate::tui::AgentStatus::Running);
+                self.tui.add_log("▶️ Resumed by user".to_string());
+            }
+            ControlMessageType::Input { context: ctx, guidance, apply_to_future } => {
+                if apply_to_future {
+                    self.queued_guidance.push(guidance.clone());
+                    self.tui.add_log(format!("💬 Guidance queued: {}", guidance));
+                } else {
+                    context.set_variable("human_guidance".to_string(), guidance.clone());
+                    self.tui.add_log(format!("💬 Guidance applied: {}", guidance));
+                }
+            }
+            ControlMessageType::ModifyGoal { new_goal, keep_context: _ } => {
+                context.add_context_item("goal_modified".to_string(), new_goal.clone());
+                self.tui.set_goal(new_goal.clone());
+                self.tui.add_log(format!("🎯 Goal modified by user"));
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -1173,6 +1289,13 @@ impl<'a> AutonomousExecutor<'a> {
         let content = self
             .generate_research_content(description, iteration, max_iterations)
             .await?;
+
+        // Ensure parent directories exist
+        if let Some(parent) = std::path::Path::new(file_path).parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                self.tui.add_log(format!("⚠️ Could not create directory {:?}: {}", parent, e));
+            }
+        }
 
         // Write to file
         if let Err(e) = fs::write(file_path, &content) {

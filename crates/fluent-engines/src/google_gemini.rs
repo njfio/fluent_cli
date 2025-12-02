@@ -84,9 +84,10 @@ impl GoogleGeminiEngine {
             .and_then(|v| v.as_str())
             .unwrap_or("gemini-1.5-pro-latest");
 
+        // Build URL without API key - key will be sent via header for security
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
         );
 
         let mut content = vec![json!({
@@ -114,12 +115,13 @@ impl GoogleGeminiEngine {
             }
         });
 
-        debug!("Google Gemini Request: {:?}", request_body);
+        debug!("Google Gemini Request to {}: {:?}", url, request_body);
 
         let response = self
             .client
             .post(&url)
             .header("Content-Type", "application/json")
+            .header("x-goog-api-key", api_key)
             .json(&request_body)
             .send()
             .await?;

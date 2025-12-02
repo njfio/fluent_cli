@@ -12,7 +12,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::{env, fs};
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
     pub name: String,
     pub engine: String,
@@ -21,6 +21,56 @@ pub struct EngineConfig {
     pub session_id: Option<String>, // New field for sessionID
     pub neo4j: Option<Neo4jConfig>,
     pub spinner: Option<SpinnerConfig>,
+}
+
+// Custom Debug implementation that redacts sensitive fields to prevent accidental logging of secrets
+impl std::fmt::Debug for EngineConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // List of sensitive parameter keys that should be redacted
+        // These are checked as case-insensitive substrings
+        const SENSITIVE_KEYS: &[&str] = &[
+            "bearer_token",
+            "api_key",
+            "apikey",
+            "password",
+            "secret",
+            "auth_token",
+            "access_token",
+            "refresh_token",
+            "credential",
+            "private_key",
+            "client_secret",
+        ];
+
+        // Redact sensitive parameters
+        let redacted_parameters: HashMap<String, String> = self
+            .parameters
+            .iter()
+            .map(|(k, v)| {
+                // Check if key contains any sensitive substring (case-insensitive)
+                let is_sensitive = SENSITIVE_KEYS
+                    .iter()
+                    .any(|&sensitive| k.to_lowercase().contains(&sensitive.to_lowercase()));
+
+                if is_sensitive {
+                    (k.clone(), "[REDACTED]".to_string())
+                } else {
+                    // For non-sensitive values, show the value
+                    (k.clone(), format!("{:?}", v))
+                }
+            })
+            .collect();
+
+        f.debug_struct("EngineConfig")
+            .field("name", &self.name)
+            .field("engine", &self.engine)
+            .field("connection", &self.connection)
+            .field("parameters", &redacted_parameters)
+            .field("session_id", &self.session_id)
+            .field("neo4j", &"[REDACTED]") // Neo4j config contains passwords
+            .field("spinner", &self.spinner)
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -458,5 +508,79 @@ pub fn replace_with_env_var(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_engine_config_debug_redacts_sensitive_fields() {
+        let mut params = HashMap::new();
+        params.insert("bearer_token".to_string(), json!("sk-secret-token-12345"));
+        params.insert("api_key".to_string(), json!("super-secret-api-key"));
+        params.insert("openAIApiKey".to_string(), json!("openai-key-xyz"));
+        params.insert("password".to_string(), json!("my-password-123"));
+        params.insert("modelName".to_string(), json!("gpt-4"));
+        params.insert("temperature".to_string(), json!(0.7));
+        params.insert("max_tokens".to_string(), json!(1000));
+
+        let config = EngineConfig {
+            name: "test-engine".to_string(),
+            engine: "openai".to_string(),
+            connection: ConnectionConfig {
+                protocol: "https".to_string(),
+                hostname: "api.openai.com".to_string(),
+                port: 443,
+                request_path: "/v1/chat/completions".to_string(),
+            },
+            parameters: params,
+            session_id: Some("session-123".to_string()),
+            neo4j: None,
+            spinner: None,
+        };
+
+        let debug_output = format!("{:?}", config);
+
+        // Print debug output for inspection
+        println!("Debug output:\n{}", debug_output);
+
+        // Verify secrets are redacted
+        assert!(!debug_output.contains("sk-secret-token-12345"), "Bearer token leaked in debug output!");
+        assert!(!debug_output.contains("super-secret-api-key"), "API key leaked in debug output!");
+        assert!(!debug_output.contains("openai-key-xyz"), "OpenAI API key leaked in debug output!");
+        assert!(!debug_output.contains("my-password-123"), "Password leaked in debug output!");
+
+        // Verify redaction marker is present
+        assert!(debug_output.contains("[REDACTED]"), "Redaction marker not present!");
+
+        // Verify non-sensitive data is still visible
+        assert!(debug_output.contains("test-engine"), "Engine name should be visible");
+        assert!(debug_output.contains("gpt-4"), "Non-sensitive model name should be visible");
+        // Note: Numeric values are formatted as JSON in the debug output (e.g., "Number(0.7)")
+        // so we check for the parameter names instead
+        assert!(debug_output.contains("temperature"), "Temperature parameter should be visible");
+        assert!(debug_output.contains("max_tokens"), "max_tokens parameter should be visible");
+        assert!(debug_output.contains("session-123"), "Session ID should be visible");
+    }
+
+    #[test]
+    fn test_parse_key_value_pair() {
+        assert_eq!(
+            parse_key_value_pair("key=value"),
+            Some(("key".to_string(), "value".to_string()))
+        );
+        assert_eq!(
+            parse_key_value_pair("key="),
+            Some(("key".to_string(), "".to_string()))
+        );
+        assert_eq!(
+            parse_key_value_pair("key=value=with=equals"),
+            Some(("key".to_string(), "value=with=equals".to_string()))
+        );
+        assert_eq!(parse_key_value_pair("invalid"), None);
+        assert_eq!(parse_key_value_pair(""), None);
     }
 }

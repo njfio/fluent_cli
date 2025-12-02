@@ -178,7 +178,8 @@ impl Engine for AnthropicEngine {
                 }
             }
 
-            debug!("Config: {:?}", self.config);
+            // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
+            // Use RUST_LOG=trace for detailed debugging if needed, but be aware secrets may be logged
 
             let mut payload = self.config_processor.process_config(&self.config)?;
 

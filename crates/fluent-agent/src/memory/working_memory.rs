@@ -165,7 +165,7 @@ pub struct ItemMetadata {
     pub retention_policy: RetentionPolicy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Priority {
     Critical,
     High,
@@ -830,4 +830,537 @@ pub struct ConsolidationResult {
     pub archived_items: u32,
     pub deleted_items: u32,
     pub memory_freed: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::goal::{Goal, GoalPriority, GoalType};
+    use std::collections::HashMap;
+
+    fn create_test_context() -> ExecutionContext {
+        let goal = Goal {
+            goal_id: "test-goal".to_string(),
+            description: "Test goal for memory operations".to_string(),
+            goal_type: GoalType::Analysis,
+            priority: GoalPriority::High,
+            success_criteria: vec!["Test success".to_string()],
+            max_iterations: Some(10),
+            timeout: None,
+            metadata: HashMap::new(),
+        };
+        ExecutionContext::new(goal)
+    }
+
+    fn create_test_memory_content(summary: &str) -> MemoryContent {
+        MemoryContent {
+            content_type: ContentType::TaskResult,
+            data: summary.as_bytes().to_vec(),
+            text_summary: summary.to_string(),
+            key_concepts: vec!["test".to_string(), "memory".to_string()],
+            relationships: Vec::new(),
+        }
+    }
+
+    fn create_test_metadata(priority: Priority) -> ItemMetadata {
+        ItemMetadata {
+            tags: vec!["test".to_string()],
+            priority,
+            source: "test_source".to_string(),
+            size_bytes: 100,
+            compression_ratio: 1.0,
+            retention_policy: RetentionPolicy::ContextBased,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_working_memory_creation() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        // Verify memory was created successfully
+        let store = memory.memory_store.read().await;
+        assert_eq!(store.active_items.len(), 0);
+        assert_eq!(store.archived_items.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_store_and_retrieve_item() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content for memory storage");
+        let metadata = create_test_metadata(Priority::High);
+
+        // Store item
+        let item_id = memory.store_item(content.clone(), metadata).await.unwrap();
+        assert!(!item_id.is_empty());
+
+        // Retrieve item
+        let retrieved = memory.retrieve_item(&item_id).await.unwrap();
+        assert!(retrieved.is_some());
+
+        let item = retrieved.unwrap();
+        assert_eq!(item.item_id, item_id);
+        assert_eq!(item.content.text_summary, "Test content for memory storage");
+        assert_eq!(item.access_count, 1); // Access count should be incremented
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_nonexistent_item() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let result = memory.retrieve_item("nonexistent-id").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_multiple_item_storage() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let mut item_ids = Vec::new();
+
+        // Store multiple items
+        for i in 0..5 {
+            let content = create_test_memory_content(&format!("Test content {}", i));
+            let metadata = create_test_metadata(Priority::Medium);
+            let item_id = memory.store_item(content, metadata).await.unwrap();
+            item_ids.push(item_id);
+        }
+
+        // Verify all items are stored
+        let store = memory.memory_store.read().await;
+        assert_eq!(store.active_items.len(), 5);
+
+        // Retrieve each item
+        drop(store);
+        for (i, item_id) in item_ids.iter().enumerate() {
+            let retrieved = memory.retrieve_item(item_id).await.unwrap();
+            assert!(retrieved.is_some());
+            let item = retrieved.unwrap();
+            assert_eq!(item.content.text_summary, format!("Test content {}", i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_access_count_increments() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::High);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Access the item multiple times
+        for _ in 0..3 {
+            memory.retrieve_item(&item_id).await.unwrap();
+        }
+
+        // Check access count
+        let retrieved = memory.retrieve_item(&item_id).await.unwrap();
+        let item = retrieved.unwrap();
+        assert_eq!(item.access_count, 4); // 3 accesses + 1 final retrieval
+    }
+
+    #[tokio::test]
+    async fn test_relevance_scoring() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        // Store items with different content types
+        let content_types = vec![
+            ContentType::TaskResult,
+            ContentType::ContextInformation,
+            ContentType::DecisionPoint,
+            ContentType::ErrorInfo,
+        ];
+
+        let mut item_ids = Vec::new();
+        for content_type in content_types {
+            let content = MemoryContent {
+                content_type: content_type.clone(),
+                data: vec![1, 2, 3],
+                text_summary: "Test".to_string(),
+                key_concepts: Vec::new(),
+                relationships: Vec::new(),
+            };
+            let metadata = create_test_metadata(Priority::Medium);
+            let item_id = memory.store_item(content, metadata).await.unwrap();
+            item_ids.push(item_id);
+        }
+
+        // Verify items have different relevance scores based on content type
+        let store = memory.memory_store.read().await;
+        for item_id in &item_ids {
+            let item = store.active_items.get(item_id).unwrap();
+            assert!(item.relevance_score > 0.0);
+            assert!(item.relevance_score <= 1.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_relevant_items() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        // Store items with different summaries
+        let summaries = vec![
+            "This is about Rust programming",
+            "This is about Python programming",
+            "This is about memory management",
+            "This is about database queries",
+        ];
+
+        for summary in summaries {
+            let content = create_test_memory_content(summary);
+            let metadata = create_test_metadata(Priority::Medium);
+            memory.store_item(content, metadata).await.unwrap();
+        }
+
+        // Search for items related to "programming"
+        let results = memory
+            .search_relevant("programming", 10)
+            .await
+            .unwrap();
+
+        assert!(results.len() >= 2); // Should find at least Rust and Python items
+        for item in &results {
+            assert!(item.content.text_summary.to_lowercase().contains("programming"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_with_max_results() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        // Store 10 items
+        for i in 0..10 {
+            let content = create_test_memory_content(&format!("Test item {}", i));
+            let metadata = create_test_metadata(Priority::Medium);
+            memory.store_item(content, metadata).await.unwrap();
+        }
+
+        // Search with max_results = 3
+        let results = memory.search_relevant("Test", 3).await.unwrap();
+
+        assert_eq!(results.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_attention_update() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::High);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        let context = create_test_context();
+
+        // Update attention based on context
+        memory.update_attention(&context).await.unwrap();
+
+        // Verify attention weights were updated
+        let attention = memory.attention_system.read().await;
+        assert!(attention.attention_weights.contains_key(&item_id));
+        assert!(attention.current_focus.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_memory_consolidation() {
+        let config = WorkingMemoryConfig {
+            enable_consolidation: true,
+            consolidation_threshold: 0.3,
+            ..Default::default()
+        };
+        let memory = WorkingMemory::new(config);
+
+        // Store items with low relevance
+        for i in 0..5 {
+            let content = create_test_memory_content(&format!("Low priority item {}", i));
+            let metadata = ItemMetadata {
+                tags: vec!["test".to_string()],
+                priority: Priority::Low,
+                source: "test".to_string(),
+                size_bytes: 100,
+                compression_ratio: 1.0,
+                retention_policy: RetentionPolicy::ContextBased,
+            };
+            memory.store_item(content, metadata).await.unwrap();
+        }
+
+        // Perform consolidation
+        let result = memory.consolidate_memory().await.unwrap();
+
+        // Some items should be consolidated or archived
+        assert!(
+            result.consolidated_items > 0
+                || result.archived_items > 0
+                || result.deleted_items > 0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_consolidation_disabled() {
+        let config = WorkingMemoryConfig {
+            enable_consolidation: false,
+            ..Default::default()
+        };
+        let memory = WorkingMemory::new(config);
+
+        // Store some items
+        for i in 0..3 {
+            let content = create_test_memory_content(&format!("Item {}", i));
+            let metadata = create_test_metadata(Priority::Low);
+            memory.store_item(content, metadata).await.unwrap();
+        }
+
+        // Perform consolidation (should do nothing)
+        let result = memory.consolidate_memory().await.unwrap();
+
+        assert_eq!(result.consolidated_items, 0);
+        assert_eq!(result.archived_items, 0);
+        assert_eq!(result.deleted_items, 0);
+    }
+
+    #[tokio::test]
+    async fn test_item_archival() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::Low);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Archive the item
+        memory.archive_item(&item_id).await.unwrap();
+
+        // Verify item is no longer in active memory
+        let store = memory.memory_store.read().await;
+        assert!(!store.active_items.contains_key(&item_id));
+        assert!(store.archived_items.contains_key(&item_id));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_from_archive() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Archived content");
+        let metadata = create_test_metadata(Priority::Low);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Archive the item
+        memory.archive_item(&item_id).await.unwrap();
+
+        // Retrieve from archive
+        let retrieved = memory.retrieve_item(&item_id).await.unwrap();
+        assert!(retrieved.is_some());
+
+        let item = retrieved.unwrap();
+        assert_eq!(item.item_id, item_id);
+        assert_eq!(item.metadata.priority, Priority::Archive);
+    }
+
+    #[tokio::test]
+    async fn test_delete_item() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::Low);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Delete the item
+        memory.delete_item(&item_id).await.unwrap();
+
+        // Verify item is deleted
+        let store = memory.memory_store.read().await;
+        assert!(!store.active_items.contains_key(&item_id));
+        assert!(!store.archived_items.contains_key(&item_id));
+
+        // Trying to retrieve should return None
+        drop(store);
+        let retrieved = memory.retrieve_item(&item_id).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_attention_weight_updates() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::High);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Access the item multiple times
+        for _ in 0..5 {
+            memory.update_attention_on_access(&item_id).await.unwrap();
+        }
+
+        // Check attention weight
+        let attention = memory.attention_system.read().await;
+        let weight = attention.attention_weights.get(&item_id).unwrap();
+        assert!(weight.access_frequency >= 5);
+        assert!(weight.weight > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_temporal_relevance_decay() {
+        let config = WorkingMemoryConfig {
+            relevance_decay_rate: 0.1,
+            ..Default::default()
+        };
+        let memory = WorkingMemory::new(config);
+
+        // Calculate temporal relevance for different ages
+        let now = SystemTime::now();
+        let recent = now;
+        let old = now - Duration::from_secs(3600 * 24); // 24 hours ago
+
+        let recent_relevance = memory.calculate_temporal_relevance(recent).await.unwrap();
+        let old_relevance = memory.calculate_temporal_relevance(old).await.unwrap();
+
+        // Recent items should have higher temporal relevance
+        assert!(recent_relevance > old_relevance);
+        assert!(recent_relevance <= 1.0);
+        assert!(old_relevance >= 0.1); // Minimum threshold
+    }
+
+    #[tokio::test]
+    async fn test_context_relevance_calculation() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test goal for memory operations analysis");
+        let metadata = create_test_metadata(Priority::High);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        let context = create_test_context();
+
+        // Retrieve item to get updated relevance
+        let item = memory.retrieve_item(&item_id).await.unwrap().unwrap();
+
+        let relevance = memory
+            .calculate_context_relevance(&item, &context)
+            .await
+            .unwrap();
+
+        // Should have some relevance due to matching words
+        assert!(relevance > 0.0);
+        assert!(relevance <= 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_empty_memory_search() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        // Search in empty memory
+        let results = memory.search_relevant("anything", 10).await.unwrap();
+
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_memory_capacity_management() {
+        let config = WorkingMemoryConfig {
+            max_active_items: 10,
+            ..Default::default()
+        };
+        let memory = WorkingMemory::new(config);
+
+        // Store many items to trigger capacity management
+        for i in 0..15 {
+            let content = create_test_memory_content(&format!("Item {}", i));
+            let metadata = create_test_metadata(Priority::Medium);
+            memory.store_item(content, metadata).await.unwrap();
+        }
+
+        // Memory should handle capacity limits gracefully
+        let store = memory.memory_store.read().await;
+        // Some items might be archived due to capacity management
+        assert!(store.active_items.len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_different_content_types() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content_types = vec![
+            ContentType::TaskResult,
+            ContentType::ContextInformation,
+            ContentType::ReasoningStep,
+            ContentType::DecisionPoint,
+            ContentType::ErrorInfo,
+            ContentType::LearningItem,
+            ContentType::ReferenceData,
+        ];
+
+        for content_type in content_types {
+            let content = MemoryContent {
+                content_type: content_type.clone(),
+                data: b"test data".to_vec(),
+                text_summary: format!("Content of type {:?}", content_type),
+                key_concepts: Vec::new(),
+                relationships: Vec::new(),
+            };
+            let metadata = create_test_metadata(Priority::Medium);
+            let item_id = memory.store_item(content, metadata).await.unwrap();
+
+            // Verify item was stored
+            let retrieved = memory.retrieve_item(&item_id).await.unwrap();
+            assert!(retrieved.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_different_priority_levels() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let priorities = vec![
+            Priority::Critical,
+            Priority::High,
+            Priority::Medium,
+            Priority::Low,
+            Priority::Archive,
+        ];
+
+        for priority in priorities {
+            let content = create_test_memory_content(&format!("Content with {:?} priority", priority));
+            let metadata = create_test_metadata(priority.clone());
+            let item_id = memory.store_item(content, metadata).await.unwrap();
+
+            // Verify item was stored with correct priority
+            let store = memory.memory_store.read().await;
+            let item = store.active_items.get(&item_id).unwrap();
+            assert_eq!(item.metadata.priority, priority);
+            drop(store);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_access_log_management() {
+        let config = WorkingMemoryConfig::default();
+        let memory = WorkingMemory::new(config);
+
+        let content = create_test_memory_content("Test content");
+        let metadata = create_test_metadata(Priority::High);
+        let item_id = memory.store_item(content, metadata).await.unwrap();
+
+        // Perform multiple accesses
+        for _ in 0..5 {
+            memory.retrieve_item(&item_id).await.unwrap();
+        }
+
+        // Verify access log contains events
+        let store = memory.memory_store.read().await;
+        assert!(store.access_log.len() > 0);
+    }
 }

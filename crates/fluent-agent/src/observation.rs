@@ -554,7 +554,7 @@ impl LearningExtractor for BasicLearningExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orchestrator::ActionResult as OrchActionResult;
+    use crate::action::ActionResult;
     use crate::orchestrator::ActionType;
     use std::time::Duration;
 
@@ -571,12 +571,10 @@ mod tests {
             action_id: "test-action".to_string(),
             action_type: ActionType::ToolExecution,
             parameters: HashMap::new(),
-            result: OrchActionResult {
-                success: true,
-                output: Some("Test output".to_string()),
-                error: None,
-                metadata: HashMap::new(),
-            },
+            result: serde_json::json!({
+                "success": true,
+                "output": "Test output"
+            }),
             execution_time: Duration::from_millis(100),
             success: true,
             output: Some("Test output".to_string()),
