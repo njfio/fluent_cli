@@ -35,3 +35,6 @@ serde_yaml.workspace = true
 toml = "0.8"
 once_cell = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = "1.4"

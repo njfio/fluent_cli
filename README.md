@@ -554,15 +554,114 @@ fluent --json-logs tools list
 
 ## Shell Completions
 
-Generate completion scripts for your shell:
+Fluent CLI supports shell completion scripts for Bash, Zsh, Fish, and PowerShell. These completions provide:
+- Command completion (agent, pipeline, tools, engine, etc.)
+- Subcommand completion with context-aware suggestions
+- Flag and option completion
+- File path completion where applicable
+
+### Generating Completions
+
+Use the `completions` subcommand to generate completion scripts for your shell:
 
 ```bash
-# Zsh
-fluent completions --shell zsh > _fluent
-# Bash
-fluent completions --shell bash > fluent.bash
-# Fish
-fluent completions --shell fish > fluent.fish
+# Generate to stdout
+fluent completions --shell bash
+fluent completions --shell zsh
+fluent completions --shell fish
+fluent completions --shell powershell
+
+# Generate and save to file
+fluent completions --shell bash --output fluent.bash
+fluent completions --shell zsh --output _fluent
+```
+
+### Installation Instructions
+
+#### Bash
+
+For user-level installation:
+```bash
+mkdir -p ~/.local/share/bash-completion/completions
+fluent completions --shell bash > ~/.local/share/bash-completion/completions/fluent
+```
+
+For system-wide installation (requires sudo):
+```bash
+sudo fluent completions --shell bash > /etc/bash_completion.d/fluent
+```
+
+Then reload your shell or source the completion file:
+```bash
+source ~/.local/share/bash-completion/completions/fluent
+```
+
+#### Zsh
+
+Add completions to your Zsh functions directory:
+```bash
+mkdir -p ~/.zfunc
+fluent completions --shell zsh > ~/.zfunc/_fluent
+```
+
+Then add the following to your `~/.zshrc` (if not already present):
+```bash
+fpath+=~/.zfunc
+autoload -Uz compinit && compinit
+```
+
+Reload your shell:
+```bash
+source ~/.zshrc
+```
+
+#### Fish
+
+For user-level installation:
+```bash
+mkdir -p ~/.config/fish/completions
+fluent completions --shell fish > ~/.config/fish/completions/fluent.fish
+```
+
+Fish will automatically load completions from this directory. Start a new shell or reload:
+```bash
+source ~/.config/fish/config.fish
+```
+
+#### PowerShell
+
+Add completions to your PowerShell profile:
+```powershell
+# Generate and append to profile
+fluent completions --shell powershell >> $PROFILE
+
+# Or save to a separate file and source it
+fluent completions --shell powershell > fluent-completions.ps1
+# Then add to your $PROFILE:
+# . path\to\fluent-completions.ps1
+```
+
+Reload your profile:
+```powershell
+. $PROFILE
+```
+
+### Legacy Autocomplete Scripts
+
+**Note**: The repository includes legacy autocomplete scripts (`fluent_autocomplete.sh` and `fluent_autocomplete.ps1`) which were designed for an older version of the CLI. It's recommended to use the new `fluent completions` command instead, which:
+- Is automatically generated from the CLI definition
+- Stays in sync with command changes
+- Supports all current subcommands (agent, tools, pipeline, mcp, etc.)
+- Provides better completion accuracy
+
+### Verifying Completions
+
+After installation, test completions by typing `fluent` followed by pressing Tab:
+
+```bash
+fluent <TAB>       # Should show: agent, pipeline, tools, engine, mcp, neo4j, etc.
+fluent tools <TAB> # Should show: list, describe, exec
+fluent engine <TAB># Should show: list, test
 ```
 
 ## 🔍 Troubleshooting
