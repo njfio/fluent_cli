@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::action::{self as act, ActionResult};
@@ -11,7 +12,7 @@ use crate::orchestrator::{Observation, ObservationType};
 use crate::production_mcp::{
     ExecutionPreferences, ProductionMcpClientManager, ProductionMcpManager,
 };
-use crate::tools::ToolRegistry;
+use crate::tools::{validation, ToolRegistry};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use std::collections::HashMap as StdHashMap;
@@ -725,28 +726,66 @@ impl act::CodeGenerator for LlmCodeGenerator {
     }
 }
 
-/// Basic async filesystem manager
-pub struct FsFileManager;
+/// Basic async filesystem manager with path validation
+pub struct FsFileManager {
+    allowed_paths: Vec<String>,
+}
+
+impl FsFileManager {
+    /// Create a new FsFileManager with default allowed paths
+    pub fn new() -> Self {
+        Self {
+            allowed_paths: vec![
+                ".".to_string(),
+                "./src".to_string(),
+                "./crates".to_string(),
+                "./examples".to_string(),
+                "./docs".to_string(),
+                "./tests".to_string(),
+            ],
+        }
+    }
+
+    /// Create a new FsFileManager with custom allowed paths
+    pub fn with_allowed_paths(allowed_paths: Vec<String>) -> Self {
+        Self { allowed_paths }
+    }
+
+    /// Validate a path before performing operations
+    fn validate_path(&self, path: &str) -> Result<PathBuf> {
+        validation::validate_path(path, &self.allowed_paths)
+    }
+}
+
+impl Default for FsFileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 impl act::FileManager for FsFileManager {
     async fn read_file(&self, path: &str) -> Result<String> {
-        Ok(tokio::fs::read_to_string(path).await?)
+        let validated_path = self.validate_path(path)?;
+        Ok(tokio::fs::read_to_string(&validated_path).await?)
     }
     async fn write_file(&self, path: &str, content: &str) -> Result<()> {
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        let validated_path = self.validate_path(path)?;
+        if let Some(parent) = validated_path.parent() {
             if !parent.exists() {
                 tokio::fs::create_dir_all(parent).await?;
             }
         }
-        tokio::fs::write(path, content).await.map_err(Into::into)
+        tokio::fs::write(&validated_path, content).await.map_err(Into::into)
     }
     async fn create_directory(&self, path: &str) -> Result<()> {
-        tokio::fs::create_dir_all(path).await.map_err(Into::into)
+        let validated_path = self.validate_path(path)?;
+        tokio::fs::create_dir_all(&validated_path).await.map_err(Into::into)
     }
     async fn delete_file(&self, path: &str) -> Result<()> {
-        if std::path::Path::new(path).exists() {
-            tokio::fs::remove_file(path).await?;
+        let validated_path = self.validate_path(path)?;
+        if validated_path.exists() {
+            tokio::fs::remove_file(&validated_path).await?;
         }
         Ok(())
     }

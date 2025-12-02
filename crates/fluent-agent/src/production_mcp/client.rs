@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 
+use crate::tools::validation;
+
 /// MCP client manager (Development Stage)
 ///
 /// ⚠️  DEVELOPMENT STATUS: This client manager provides core functionality
@@ -305,6 +307,43 @@ impl ProductionMcpClient {
     pub async fn connect(&self) -> Result<(), McpError> {
         use rmcp::transport::TokioChildProcess;
         use tokio::process::Command;
+
+        // Validate command before execution to prevent arbitrary command execution
+        let allowed_commands = vec![
+            "npx".to_string(),
+            "node".to_string(),
+            "python".to_string(),
+            "python3".to_string(),
+            "deno".to_string(),
+            "bun".to_string(),
+        ];
+
+        validation::validate_command(&self.command, &allowed_commands)
+            .map_err(|e| McpError::configuration(
+                "command",
+                format!("MCP server command validation failed: {}", e)
+            ))?;
+
+        // Validate arguments for dangerous patterns
+        for arg in &self.args {
+            // Check for shell injection patterns in arguments
+            if arg.contains("$(") || arg.contains("`") || arg.contains(";")
+                || arg.contains("&&") || arg.contains("||") || arg.contains("|")
+                || arg.contains(">") || arg.contains("<") {
+                return Err(McpError::configuration(
+                    "args",
+                    format!("MCP server argument contains dangerous shell pattern: '{}'", arg)
+                ));
+            }
+
+            // Check for null bytes and dangerous control characters
+            if arg.contains('\0') || arg.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
+                return Err(McpError::configuration(
+                    "args",
+                    format!("MCP server argument contains invalid control characters: '{}'", arg)
+                ));
+            }
+        }
 
         let mut cmd = Command::new(&self.command);
         for arg in &self.args {

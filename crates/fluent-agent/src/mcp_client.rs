@@ -12,6 +12,8 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::timeout;
 use uuid::Uuid;
 
+use crate::tools::validation;
+
 /// MCP Protocol version
 const MCP_VERSION: &str = "2025-06-18";
 
@@ -231,6 +233,40 @@ impl McpClient {
 
     /// Internal method to attempt connection
     async fn try_connect_to_server(&mut self, command: &str, args: &[&str]) -> Result<()> {
+        // Validate command before execution to prevent arbitrary command execution
+        let allowed_commands = vec![
+            "npx".to_string(),
+            "node".to_string(),
+            "python".to_string(),
+            "python3".to_string(),
+            "deno".to_string(),
+            "bun".to_string(),
+        ];
+
+        validation::validate_command(command, &allowed_commands)
+            .map_err(|e| anyhow!("MCP server command validation failed: {}", e))?;
+
+        // Validate arguments for dangerous patterns
+        for arg in args {
+            // Check for shell injection patterns in arguments
+            if arg.contains("$(") || arg.contains("`") || arg.contains(";")
+                || arg.contains("&&") || arg.contains("||") || arg.contains("|")
+                || arg.contains(">") || arg.contains("<") {
+                return Err(anyhow!(
+                    "MCP server argument contains dangerous shell pattern: '{}'",
+                    arg
+                ));
+            }
+
+            // Check for null bytes and dangerous control characters
+            if arg.contains('\0') || arg.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
+                return Err(anyhow!(
+                    "MCP server argument contains invalid control characters: '{}'",
+                    arg
+                ));
+            }
+        }
+
         // Start the server process
         let mut cmd = Command::new(command);
         cmd.args(args)

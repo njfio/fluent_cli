@@ -306,63 +306,28 @@ pub mod validation {
     }
 
     /// Validate that a command is in the allowed list with enhanced security checks
+    ///
+    /// This function now uses the unified CommandValidator for consistency across the codebase.
     pub fn validate_command(command: &str, allowed_commands: &[String]) -> Result<()> {
-        // Basic input validation
-        if command.is_empty() {
+        use crate::security::command_validator::CommandValidator;
+
+        // Parse the command to extract command name and arguments
+        let parts: Vec<String> = command.split_whitespace().map(|s| s.to_string()).collect();
+
+        if parts.is_empty() {
             return Err(anyhow::anyhow!("Command cannot be empty"));
         }
 
-        if command.len() > 1000 {
-            return Err(anyhow::anyhow!("Command too long (max 1000 characters)"));
-        }
+        let cmd_name = &parts[0];
+        let args = if parts.len() > 1 {
+            parts[1..].to_vec()
+        } else {
+            Vec::new()
+        };
 
-        // Check for null bytes and dangerous control characters
-        if command.contains('\0')
-            || command
-                .chars()
-                .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
-        {
-            return Err(anyhow::anyhow!(
-                "Command contains invalid control characters"
-            ));
-        }
-
-        // Enhanced dangerous pattern detection
-        let dangerous_patterns = [
-            // Command injection patterns
-            "$(", "`", ";", "&&", "||", "|", ">", ">>", "<", "<<", // Path traversal
-            "../", "./", "~", "/etc/", "/proc/", "/sys/", "/dev/",
-            // Privilege escalation
-            "sudo", "su ", "doas", "pkexec", // Network operations
-            "curl", "wget", "nc ", "netcat", "telnet", "ssh", "scp", // File operations
-            "rm ", "rmdir", "del ", "format", "mkfs", "dd ", // Process control
-            "kill", "killall", "pkill", "&", "nohup", // Script execution
-            "bash", "sh ", "zsh", "python", "perl", "ruby", "node", "eval", "exec", "source", ".",
-        ];
-
-        let command_lower = command.to_lowercase();
-        for pattern in &dangerous_patterns {
-            if command_lower.contains(pattern) {
-                return Err(anyhow::anyhow!(
-                    "Command contains dangerous pattern '{}': {}",
-                    pattern,
-                    command
-                ));
-            }
-        }
-
-        // Check against allowed commands list
-        for allowed in allowed_commands {
-            if command_lower.starts_with(&allowed.to_lowercase()) {
-                return Ok(());
-            }
-        }
-
-        Err(anyhow::anyhow!(
-            "Command '{}' is not in the allowed commands list: {:?}",
-            command,
-            allowed_commands
-        ))
+        // Use the unified validator
+        let validator = CommandValidator::new(allowed_commands.to_vec());
+        validator.validate(cmd_name, &args)
     }
 
     /// Sanitize output to prevent excessive memory usage
@@ -456,11 +421,20 @@ mod tests {
 
     #[test]
     fn test_command_validation() {
-        let allowed_commands = vec!["cargo build".to_string(), "cargo test".to_string()];
+        // Note: The unified validator now requires exact command names (not prefixes like "cargo build")
+        // This is more secure as it prevents "cargo" from matching "cargo-malicious"
+        let allowed_commands = vec!["cargo".to_string(), "rm".to_string()];
 
         assert!(validation::validate_command("cargo build", &allowed_commands).is_ok());
         assert!(validation::validate_command("cargo test --lib", &allowed_commands).is_ok());
+
+        // rm should be rejected because it has dangerous patterns (even though in allowlist)
+        // The unified validator checks patterns in addition to allowlist
         assert!(validation::validate_command("rm -rf /", &allowed_commands).is_err());
+
+        // Command not in allowlist should fail
+        let allowed_commands_no_rm = vec!["cargo".to_string()];
+        assert!(validation::validate_command("rm -rf /", &allowed_commands_no_rm).is_err());
     }
 
     #[test]

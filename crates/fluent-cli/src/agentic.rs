@@ -292,7 +292,7 @@ impl AgenticExecutor {
         let codegen = Box::new(LlmCodeGenerator::new(
             runtime_config.reasoning_engine.clone(),
         ));
-        let filemgr = Box::new(FsFileManager);
+        let filemgr = Box::new(FsFileManager::new());
         let base_executor: Box<dyn ActionExecutor> = Box::new(ComprehensiveActionExecutor::new(
             tool_adapter,
             codegen,
