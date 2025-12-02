@@ -49,6 +49,7 @@ fn classify_exit_code(err: &anyhow::Error) -> i32 {
             fluent_cli::error::CliError::Config(_) => 10,
             fluent_cli::error::CliError::Engine(_) => 13,
             fluent_cli::error::CliError::Network(_) => 12,
+            fluent_cli::error::CliError::Authentication(_) => 11,
             fluent_cli::error::CliError::Validation(_) => 14,
             fluent_cli::error::CliError::Unknown(_) => 1,
         };

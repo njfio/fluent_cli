@@ -68,6 +68,7 @@ pub mod response_formatter;
 // Refactored CLI modules
 pub mod cli;
 pub mod error;
+pub mod exit_codes;
 pub mod mcp_runner;
 pub mod neo4j_runner;
 pub mod utils; // Added utils module

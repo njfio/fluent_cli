@@ -187,15 +187,15 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 #### Direct LLM Queries
 
 ```bash
-# Simple query to OpenAI (use exact engine name from config)
-fluent openai-gpt4 "Explain quantum computing"
+# Simple query to OpenAI (use configuration name from config file)
+fluent openai-latest "Explain quantum computing"
 
-# Query with Anthropic (use exact engine name from config)
-fluent anthropic-claude "Write a Python function to calculate fibonacci"
+# Query with Anthropic (use configuration name from config file)
+fluent anthropic "Write a Python function to calculate fibonacci"
 
-# Note: Engine names must match those defined in config.yaml
+# Note: The engine name in commands is the 'name' field from your config.yaml
+# The 'engine' field in config must be a valid engine type (see Supported Engines section)
 # Image upload and caching features are implemented but may require specific configuration
-# Check the configuration section for details on enabling these features
 ```
 
 ### 3. New Modular Command Structure
@@ -285,13 +285,15 @@ fluent tools exec file_exists --path "Cargo.toml" --json-output
 
 ### Engine Configuration
 
-Create a YAML configuration file for your LLM providers:
+Create a YAML configuration file for your LLM providers. The configuration file should be named `fluent_config.yaml`, `fluent_config.toml`, or `config.yaml`, or specify a custom path with `--config`.
+
+**Important**: The `engine` field must be one of the supported engine types (see Supported Engine Types below), while the `name` field can be any identifier you choose.
 
 ```yaml
-# config.yaml
+# fluent_config.yaml or config.yaml
 engines:
-  - name: "openai-gpt4"
-    engine: "openai"
+  - name: "openai-gpt4"              # Custom name - use this in CLI commands
+    engine: "openai"                 # MUST be a valid engine type (case-insensitive)
     connection:
       protocol: "https"
       hostname: "api.openai.com"
@@ -308,8 +310,8 @@ engines:
       presence_penalty: 0
       frequency_penalty: 0
 
-  - name: "anthropic-claude"
-    engine: "anthropic"
+  - name: "anthropic-claude"         # Custom name - use this in CLI commands
+    engine: "anthropic"               # MUST be a valid engine type (case-insensitive)
     connection:
       protocol: "https"
       hostname: "api.anthropic.com"
@@ -320,7 +322,41 @@ engines:
       modelName: "claude-3-sonnet-20240229"
       max_tokens: 4000
       temperature: 0.5
+
+  - name: "gemini-pro"
+    engine: "google_gemini"           # Can also use "googlegemini" (case-insensitive)
+    connection:
+      protocol: "https"
+      hostname: "generativelanguage.googleapis.com"
+      port: 443
+      request_path: "/v1/models/gemini-pro:generateContent"
+    parameters:
+      bearer_token: "${GOOGLE_API_KEY}"
+      modelName: "gemini-pro"
+      max_tokens: 2048
+      temperature: 0.7
 ```
+
+#### Supported Engine Types
+
+These are the valid values for the `engine` field in your configuration (case-insensitive):
+
+- `openai` - OpenAI GPT models
+- `anthropic` - Anthropic Claude models
+- `google_gemini` (or `googlegemini`) - Google Gemini models
+- `cohere` - Cohere language models
+- `mistral` - Mistral AI models
+- `groq_lpu` (or `groqlpu`) - Groq high-speed inference
+- `perplexity` - Perplexity AI models
+- `flowise_chain` (or `flowisechain`) - Flowise integration
+- `langflow_chain` (or `langflowchain`) - Langflow integration
+- `webhook` - Custom webhook endpoints
+- `stabilityai` - Stability AI image generation
+- `imagine_pro` (or `imaginepro`) - Imagine Pro models
+- `leonardo_ai` (or `leonardoai`) - Leonardo AI models
+- `dalle` - DALL-E image generation
+
+**Note**: Engine type names are case-insensitive. Underscores are optional for multi-word types (e.g., `google_gemini` = `googlegemini`).
 
 ### Pipeline Configuration
 
@@ -467,27 +503,43 @@ fluent openai agent --tool string_replace --file "app.rs" --old "HashMap" --new 
 
 ## 🛠️ Supported Engines
 
-### Available Providers
+### Available Engine Types
 
-- **OpenAI**: GPT-3.5, GPT-4, GPT-4 Turbo, GPT-4 Vision
-- **Anthropic**: Claude 3 (Haiku, Sonnet, Opus), Claude 2.1
-- **Google**: Gemini Pro, Gemini Pro Vision
-- **Cohere**: Command, Command Light, Command Nightly
-- **Mistral**: Mistral 7B, Mistral 8x7B, Mistral Large
-- **Perplexity**: Various models via API
-- **Groq**: Fast inference models
-- **Custom**: Webhook endpoints for local/custom models
+Fluent CLI supports multiple LLM providers through a unified interface. When configuring engines in your config file, use these engine type identifiers:
 
-### Configuration
+| Engine Type | Provider | Models | API Key Environment Variable |
+|------------|----------|--------|------------------------------|
+| `openai` | OpenAI | GPT-3.5, GPT-4, GPT-4 Turbo, GPT-4o | `OPENAI_API_KEY` |
+| `anthropic` | Anthropic | Claude 3 (Haiku, Sonnet, Opus), Claude 3.5, Claude 4 | `ANTHROPIC_API_KEY` |
+| `google_gemini` | Google | Gemini Pro, Gemini Pro Vision | `GOOGLE_API_KEY` |
+| `cohere` | Cohere | Command, Command Light, Command Nightly | `COHERE_API_KEY` |
+| `mistral` | Mistral AI | Mistral 7B, Mistral 8x7B, Mistral Large | `MISTRAL_API_KEY` |
+| `groq_lpu` | Groq | Fast inference models | `GROQ_API_KEY` |
+| `perplexity` | Perplexity | Sonar, Sonar Pro | `PERPLEXITY_API_KEY` |
+| `stabilityai` | Stability AI | Stable Diffusion, SDXL | `STABILITY_API_KEY` |
+| `dalle` | OpenAI | DALL-E 2, DALL-E 3 | `OPENAI_API_KEY` |
+| `leonardo_ai` | Leonardo AI | Creative models | `LEONARDO_API_KEY` |
+| `imagine_pro` | Imagine Pro | Image generation | `IMAGINE_PRO_API_KEY` |
+| `flowise_chain` | Flowise | Custom chains | N/A (configured per chain) |
+| `langflow_chain` | Langflow | Custom flows | N/A (configured per flow) |
+| `webhook` | Custom | Any HTTP/HTTPS endpoint | N/A (custom authentication) |
 
-Set API keys as environment variables:
+### Setting Up API Keys
+
+Set API keys as environment variables before using Fluent CLI:
 
 ```bash
-export OPENAI_API_KEY="your-key"
-export ANTHROPIC_API_KEY="your-key"
-export GOOGLE_API_KEY="your-key"
-# ... etc
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export GOOGLE_API_KEY="your-google-key"
+export COHERE_API_KEY="your-cohere-key"
+export MISTRAL_API_KEY="your-mistral-key"
+export GROQ_API_KEY="your-groq-key"
+export PERPLEXITY_API_KEY="your-perplexity-key"
+# Add other keys as needed
 ```
+
+You can reference these in your configuration file using `${VARIABLE_NAME}` syntax.
 
 ## Logging
 
@@ -512,6 +564,126 @@ fluent completions --shell bash > fluent.bash
 # Fish
 fluent completions --shell fish > fluent.fish
 ```
+
+## 🔍 Troubleshooting
+
+### Engine Not Found Error
+
+If you encounter an "engine not found" or "Unknown engine type" error, follow these steps:
+
+#### 1. Check Engine Type Spelling
+
+The `engine` field in your configuration must exactly match one of the supported engine types. Common mistakes:
+
+```yaml
+# ❌ WRONG - These will NOT work
+engines:
+  - name: "my-openai"
+    engine: "gpt4"           # Should be "openai"
+
+  - name: "claude"
+    engine: "claude"         # Should be "anthropic"
+
+  - name: "gemini"
+    engine: "google"         # Should be "google_gemini" or "googlegemini"
+
+  - name: "llama"
+    engine: "llama"          # Should be "groq_lpu" if using Groq
+
+# ✅ CORRECT - These will work
+engines:
+  - name: "my-openai"        # Name can be anything
+    engine: "openai"         # Engine type must be exact
+
+  - name: "claude"
+    engine: "anthropic"
+
+  - name: "gemini"
+    engine: "google_gemini"  # or "googlegemini"
+
+  - name: "fast-llm"
+    engine: "groq_lpu"       # or "groqlpu"
+```
+
+#### 2. List Available Engines
+
+To see all configured engines and verify their types:
+
+```bash
+# List all configured engines with details
+fluent engine list
+
+# Get JSON output for programmatic access
+fluent engine list --json
+```
+
+#### 3. Valid Engine Types Reference
+
+These are the **only** valid values for the `engine` field (case-insensitive):
+
+- Text Generation: `openai`, `anthropic`, `google_gemini`, `cohere`, `mistral`, `groq_lpu`, `perplexity`
+- Image Generation: `dalle`, `stabilityai`, `leonardo_ai`, `imagine_pro`
+- Integrations: `flowise_chain`, `langflow_chain`, `webhook`
+
+**Remember**:
+- The `name` field can be **anything you want** (this is what you use in CLI commands)
+- The `engine` field **must be one of the above types** (this determines which provider is used)
+
+#### 4. Test Engine Connectivity
+
+Once your engine is configured correctly, test the connection:
+
+```bash
+# Test a specific engine
+fluent engine test <engine-name>
+
+# Example
+fluent engine test openai-gpt4
+
+# Get JSON output
+fluent engine test openai-gpt4 --json
+```
+
+#### 5. Common Configuration Issues
+
+**Problem**: "Engine 'X' not found in configuration"
+- **Solution**: The engine name you're using doesn't exist in your config file. Check the `name` field in your engines list.
+
+**Problem**: "Unknown engine type: X"
+- **Solution**: The `engine` type field contains an invalid value. Use one of the supported engine types listed above.
+
+**Problem**: API errors or authentication failures
+- **Solution**:
+  - Verify your API key is set: `echo $OPENAI_API_KEY` (or relevant variable)
+  - Ensure the API key has proper permissions
+  - Check your API key is correctly referenced in config: `bearer_token: "${OPENAI_API_KEY}"`
+  - Test with `fluent engine test <engine-name>` to see detailed error messages
+
+#### 6. Configuration File Location
+
+Fluent CLI looks for configuration in this order:
+1. Path specified by `--config` flag
+2. `fluent_config.yaml` in current directory
+3. `fluent_config.toml` in current directory
+4. `config.yaml` in current directory
+
+Verify your config file is in the right location:
+
+```bash
+# Use specific config file
+fluent --config /path/to/my-config.yaml engine list
+
+# Check current directory
+ls -la fluent_config.yaml config.yaml fluent_config.toml
+```
+
+### Getting Help
+
+If you're still experiencing issues:
+
+1. **Enable verbose logging**: `fluent --verbose engine test <name>`
+2. **Check the GitHub Issues**: [Report bugs or request features](https://github.com/njfio/fluent_cli/issues)
+3. **Review examples**: Check the `config.yaml` and `fluent_config.yaml` files in the repository for working examples
 
 ## 🔧 Development Status
 
