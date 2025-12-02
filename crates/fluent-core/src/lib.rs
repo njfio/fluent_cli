@@ -42,6 +42,7 @@ pub mod config;
 pub mod cost_calculator;
 pub mod deadlock_prevention;
 pub mod error;
+pub mod http_client;
 pub mod input_validator;
 pub mod lock_timeout;
 pub mod memory_utils;
@@ -59,4 +60,5 @@ pub mod utils;
 mod voyageai_client;
 
 // Re-export commonly used types
+pub use http_client::{create_secure_client, create_client_with_timeout};
 pub use path_validator::SecurePathValidator;

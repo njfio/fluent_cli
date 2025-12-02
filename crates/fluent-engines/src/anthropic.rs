@@ -35,34 +35,12 @@ impl AnthropicEngine {
             None
         };
 
-        // Create reusable HTTP client with optimized settings
-        let mut client_builder = Client::builder()
-            .timeout(std::time::Duration::from_secs(600)) // Keep in sync with the per-request timeout
-            .connect_timeout(std::time::Duration::from_secs(30)) // Increased from 10 to 30 seconds
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60));
-
-        // Check for proxy settings from environment variables
-        if let Ok(proxy_url) =
-            std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
-        {
-            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-                client_builder = client_builder.proxy(proxy);
-                debug!("Using HTTPS proxy");
-            }
-        } else if let Ok(proxy_url) =
-            std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
-        {
-            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-                client_builder = client_builder.proxy(proxy);
-                debug!("Using HTTP proxy");
-            }
-        }
-
-        let client = client_builder
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create reusable HTTP client with extended timeouts for Anthropic's long responses
+        // Anthropic API can take a long time for large responses, so we use extended timeouts
+        let client = fluent_core::create_client_with_timeout(
+            std::time::Duration::from_secs(30), // 30s connect timeout
+            std::time::Duration::from_secs(600), // 10min request timeout for long responses
+        )?;
 
         // Initialize cache if enabled
         let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {

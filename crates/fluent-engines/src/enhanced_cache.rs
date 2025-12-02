@@ -1,3 +1,108 @@
+//! # Enhanced Cache System
+//!
+//! This module provides a high-performance two-tier caching system for LLM responses with
+//! automatic expiration, LRU eviction, and optional disk persistence.
+//!
+//! ## Cache Keying Strategy
+//!
+//! Cache keys are generated from multiple components to ensure accurate cache hits:
+//!
+//! - **Engine name**: The LLM provider (e.g., "openai", "anthropic", "cohere")
+//! - **Request payload**: SHA-256 hash of the prompt/content
+//! - **Model identifier**: Optional model name (e.g., "gpt-4", "claude-3")
+//! - **File hash**: Optional file path and modification time for file-based requests
+//! - **Parameters hash**: SHA-256 hash of model parameters (temperature, max_tokens, etc.)
+//!
+//! Keys are constructed as: `engine:payload_hash:model:model_name:params:params_hash`
+//!
+//! ### Example
+//! ```text
+//! openai:a3f2c1...:model:gpt-4:params:b7e4d2...
+//! ```
+//!
+//! ## TTL (Time-To-Live) Behavior
+//!
+//! - **Default TTL**: 3600 seconds (1 hour)
+//! - **Per-entry TTL**: Each cache entry stores its own TTL for flexible expiration
+//! - **Expiration check**: Entries are validated on access via `is_expired()` method
+//! - **Automatic removal**: Expired entries are evicted during:
+//!   - Cache lookups (lazy expiration)
+//!   - Background cleanup task (runs every 5 minutes)
+//!   - Manual cleanup via `cleanup_expired()`
+//!
+//! ## Invalidation Strategy
+//!
+//! The cache supports multiple invalidation mechanisms:
+//!
+//! ### Automatic Invalidation
+//! - **TTL expiration**: Entries automatically expire after their TTL period
+//! - **LRU eviction**: Least recently used entries are evicted when memory limit is reached
+//! - **Size-based eviction**: Entries exceeding `max_entry_size` are not cached
+//!
+//! ### Manual Invalidation
+//! - **Clear all**: `cache.clear()` removes all entries from both memory and disk
+//! - **Cleanup expired**: `cache.cleanup_expired()` removes only expired entries
+//!
+//! ## Size Limits and Eviction
+//!
+//! ### Memory Cache
+//! - **Maximum entries**: Configurable via `memory_cache_size` (default: 1000)
+//! - **Eviction policy**: LRU (Least Recently Used)
+//! - **Entry size limit**: Individual entries cannot exceed `max_entry_size` (default: 1MB)
+//!
+//! ### Disk Cache
+//! - **Optional persistence**: Enable/disable via `enable_disk_cache` (default: true)
+//! - **Compression**: Optional LZ4 compression via `enable_compression` (default: true)
+//! - **Storage location**: Configurable directory (default: "fluent_cache")
+//!
+//! ## Cache Statistics
+//!
+//! The cache tracks comprehensive metrics:
+//! - Memory hits/misses
+//! - Disk hits/misses
+//! - Total entries count
+//! - Memory and disk size usage
+//! - Eviction count
+//! - Error count
+//! - Hit rates (overall and memory-only)
+//!
+//! ## Usage Example
+//!
+//! ```rust,ignore
+//! use fluent_engines::enhanced_cache::{CacheConfig, CacheKey, EnhancedCache};
+//! use std::time::Duration;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! // Create cache with custom config
+//! let config = CacheConfig {
+//!     memory_cache_size: 500,
+//!     ttl: Duration::from_secs(1800), // 30 minutes
+//!     enable_disk_cache: true,
+//!     ..Default::default()
+//! };
+//! let cache = EnhancedCache::new(config)?;
+//!
+//! // Generate cache key
+//! let key = CacheKey::new("What is Rust?", "openai")
+//!     .with_model("gpt-4")
+//!     .with_parameters(&params);
+//!
+//! // Try to get from cache
+//! if let Some(response) = cache.get(&key).await? {
+//!     println!("Cache hit!");
+//! } else {
+//!     // Cache miss - make API call and cache result
+//!     let response = make_llm_request().await?;
+//!     cache.insert(&key, &response).await?;
+//! }
+//!
+//! // Get statistics
+//! let stats = cache.get_stats();
+//! println!("Hit rate: {:.2}%", stats.hit_rate() * 100.0);
+//! # Ok(())
+//! # }
+//! ```
+
 use anyhow::Result;
 use fluent_core::types::Response;
 use lru::LruCache;
@@ -45,6 +150,17 @@ impl Default for CacheConfig {
 }
 
 /// Cache entry with metadata
+///
+/// Stores a cached response along with tracking metadata for expiration,
+/// access patterns, and size information.
+///
+/// ## Fields
+/// - `response`: The cached LLM response
+/// - `created_at`: Unix timestamp when entry was created
+/// - `access_count`: Number of times this entry has been accessed
+/// - `last_accessed`: Unix timestamp of most recent access
+/// - `size_bytes`: Serialized size of the entry in bytes
+/// - `ttl_seconds`: Time-to-live duration in seconds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
     response: Response,
@@ -76,6 +192,10 @@ impl CacheEntry {
         }
     }
 
+    /// Check if this cache entry has expired based on its TTL
+    ///
+    /// Compares the current time against the creation time plus TTL duration.
+    /// Returns `true` if the entry should be evicted.
     pub fn is_expired(&self) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -95,6 +215,25 @@ impl CacheEntry {
 }
 
 /// Enhanced cache key with context
+///
+/// Represents a unique cache key that incorporates multiple dimensions
+/// to ensure accurate cache hits and misses.
+///
+/// ## Key Components
+/// - `engine`: The LLM provider (e.g., "openai", "anthropic")
+/// - `payload_hash`: SHA-256 hash of the request payload/prompt
+/// - `model`: Optional model identifier (e.g., "gpt-4")
+/// - `file_hash`: Optional hash of file path + modification time
+/// - `parameters_hash`: Optional SHA-256 hash of request parameters
+///
+/// ## Cache Key Format
+/// Keys are serialized as colon-separated strings:
+/// ```text
+/// engine:payload_hash[:model:model_name][:file:file_hash][:params:params_hash]
+/// ```
+///
+/// This ensures that requests with different parameters, models, or content
+/// generate distinct cache keys, preventing incorrect cache hits.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CacheKey {
     pub payload_hash: String,
@@ -458,6 +597,12 @@ impl EnhancedCache {
 }
 
 /// Start a background task to clean up expired cache entries
+///
+/// Spawns a tokio task that runs every 5 minutes to remove expired entries
+/// from both memory and disk caches. This prevents unbounded growth and
+/// ensures stale entries are eventually removed even if not accessed.
+///
+/// Returns a `JoinHandle` that can be used to cancel the cleanup task if needed.
 pub fn start_cache_cleanup_task(cache: Arc<EnhancedCache>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(300)); // Clean up every 5 minutes
@@ -524,8 +669,8 @@ mod tests {
     #[tokio::test]
     async fn test_cache_expiration() {
         let config = CacheConfig {
-            ttl: Duration::from_millis(50), // Short but reasonable TTL
-            enable_disk_cache: false,       // Disable disk cache for simpler test
+            ttl: Duration::from_secs(1), // 1 second TTL
+            enable_disk_cache: false,    // Disable disk cache for simpler test
             ..Default::default()
         };
 
@@ -540,8 +685,8 @@ mod tests {
         let retrieved = cache.get(&key).await.unwrap();
         assert!(retrieved.is_some());
 
-        // Wait for expiration (longer than TTL)
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Wait for expiration (2 seconds to be well past the 1s TTL)
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
         // The get() method should automatically remove expired entries
         let retrieved_after_expiry = cache.get(&key).await.unwrap();
@@ -575,5 +720,303 @@ mod tests {
         let stats = cache.get_stats();
         assert_eq!(stats.memory_hits, 1);
         assert_eq!(stats.memory_misses, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_rate_calculation() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            enable_disk_cache: false, // Disable disk for simpler calculation
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+        let response = create_test_response();
+
+        // Create 10 misses, then cache, then 5 hits
+        for i in 0..10 {
+            let key = CacheKey::new(&format!("test_{}", i), "openai");
+            let _ = cache.get(&key).await.unwrap(); // Miss
+            cache.insert(&key, &response).await.unwrap();
+        }
+
+        // Now get 5 hits
+        for i in 0..5 {
+            let key = CacheKey::new(&format!("test_{}", i), "openai");
+            let _ = cache.get(&key).await.unwrap(); // Hit
+        }
+
+        let stats = cache.get_stats();
+        assert_eq!(stats.memory_hits, 5);
+        assert_eq!(stats.memory_misses, 10);
+
+        // Hit rate should be 5 / (5 + 10) = 0.333...
+        let hit_rate = stats.memory_hit_rate();
+        assert!((hit_rate - 0.333).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_cache_size_limit_enforcement() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            max_entry_size: 100, // Very small limit
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+
+        // Create a large response that exceeds size limit
+        let large_response = Response {
+            content: "x".repeat(1000), // Much larger than 100 bytes
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            },
+            cost: Cost {
+                prompt_cost: 0.001,
+                completion_cost: 0.001,
+                total_cost: 0.002,
+            },
+            model: "test-model".to_string(),
+            finish_reason: Some("stop".to_string()),
+        };
+
+        let key = CacheKey::new("large_test", "openai");
+
+        // Insert should succeed but not actually cache due to size
+        cache.insert(&key, &large_response).await.unwrap();
+
+        // Should be cache miss since entry was too large
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_lru_eviction() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            memory_cache_size: 5, // Small cache to trigger eviction
+            enable_disk_cache: false,
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+        let response = create_test_response();
+
+        // Fill cache beyond capacity
+        for i in 0..10 {
+            let key = CacheKey::new(&format!("test_{}", i), "openai");
+            cache.insert(&key, &response).await.unwrap();
+        }
+
+        // First entries should be evicted due to LRU
+        let first_key = CacheKey::new("test_0", "openai");
+        let first_entry = cache.get(&first_key).await.unwrap();
+        assert!(first_entry.is_none()); // Should be evicted
+
+        // Recent entries should still be present
+        let recent_key = CacheKey::new("test_9", "openai");
+        let recent_entry = cache.get(&recent_key).await.unwrap();
+        assert!(recent_entry.is_some()); // Should still be cached
+    }
+
+    #[tokio::test]
+    async fn test_ttl_with_different_durations() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let short_ttl_config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            ttl: Duration::from_secs(1), // 1 second TTL
+            enable_disk_cache: false,
+            ..Default::default()
+        };
+
+        let cache = EnhancedCache::new(short_ttl_config).unwrap();
+        let key = CacheKey::new("ttl_test", "openai");
+        let response = create_test_response();
+
+        // Insert entry
+        cache.insert(&key, &response).await.unwrap();
+
+        // Should be cached immediately
+        assert!(cache.get(&key).await.unwrap().is_some());
+
+        // Wait for TTL to expire (2 seconds to be well past the 1s TTL)
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Should be expired
+        assert!(cache.get(&key).await.unwrap().is_none());
+
+        // Verify eviction was counted
+        let stats = cache.get_stats();
+        assert!(stats.evictions > 0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_error_response_handling() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            cache_errors: false, // Don't cache errors
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+
+        let error_response = Response {
+            content: "error: something went wrong".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            },
+            cost: Cost {
+                prompt_cost: 0.001,
+                completion_cost: 0.001,
+                total_cost: 0.002,
+            },
+            model: "test-model".to_string(),
+            finish_reason: Some("error".to_string()),
+        };
+
+        let key = CacheKey::new("error_test", "openai");
+
+        // Insert error response - should not be cached
+        cache.insert(&key, &error_response).await.unwrap();
+
+        // Should be cache miss
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_with_error_caching_enabled() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            cache_errors: true, // Cache errors
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+
+        let error_response = Response {
+            content: "error: something went wrong".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            },
+            cost: Cost {
+                prompt_cost: 0.001,
+                completion_cost: 0.001,
+                total_cost: 0.002,
+            },
+            model: "test-model".to_string(),
+            finish_reason: Some("error".to_string()),
+        };
+
+        let key = CacheKey::new("error_test_enabled", "openai");
+
+        // Insert error response - should be cached
+        cache.insert(&key, &error_response).await.unwrap();
+
+        // Should be cache hit
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_some());
+        assert!(retrieved.unwrap().content.contains("error"));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_expired_entries() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            ttl: Duration::from_secs(1), // 1 second TTL
+            enable_disk_cache: false,
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+        let response = create_test_response();
+
+        // Insert multiple entries
+        for i in 0..5 {
+            let key = CacheKey::new(&format!("cleanup_test_{}", i), "openai");
+            cache.insert(&key, &response).await.unwrap();
+        }
+
+        // Verify cache has entries
+        let (memory_size, _) = cache.get_size_info().await;
+        assert_eq!(memory_size, 5);
+
+        // Wait for expiration (2 seconds to be well past the 1s TTL)
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Run cleanup
+        cache.cleanup_expired().await.unwrap();
+
+        // Cache should be empty after cleanup
+        let (memory_size_after, _) = cache.get_size_info().await;
+        assert_eq!(memory_size_after, 0);
+
+        // Verify eviction count
+        let stats = cache.get_stats();
+        assert_eq!(stats.evictions, 5);
+    }
+
+    #[tokio::test]
+    async fn test_cache_clear_all() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+        let response = create_test_response();
+
+        // Insert entries
+        for i in 0..5 {
+            let key = CacheKey::new(&format!("clear_test_{}", i), "openai");
+            cache.insert(&key, &response).await.unwrap();
+        }
+
+        // Verify entries exist
+        let key = CacheKey::new("clear_test_0", "openai");
+        assert!(cache.get(&key).await.unwrap().is_some());
+
+        // Clear cache
+        cache.clear().await.unwrap();
+
+        // All entries should be gone
+        for i in 0..5 {
+            let key = CacheKey::new(&format!("clear_test_{}", i), "openai");
+            assert!(cache.get(&key).await.unwrap().is_none());
+        }
+
+        // Stats should be reset
+        let stats = cache.get_stats();
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_access_count_tracking() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = CacheConfig {
+            disk_cache_dir: Some(temp_dir.path().to_string_lossy().to_string()),
+            enable_disk_cache: false,
+            ..Default::default()
+        };
+        let cache = EnhancedCache::new(config).unwrap();
+        let key = CacheKey::new("access_count_test", "openai");
+        let response = create_test_response();
+
+        // Insert entry
+        cache.insert(&key, &response).await.unwrap();
+
+        // Access multiple times
+        for _ in 0..5 {
+            let _ = cache.get(&key).await.unwrap();
+        }
+
+        let stats = cache.get_stats();
+        assert_eq!(stats.memory_hits, 5);
     }
 }

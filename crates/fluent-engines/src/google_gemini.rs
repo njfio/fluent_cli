@@ -31,15 +31,8 @@ impl GoogleGeminiEngine {
             None
         };
 
-        // Create optimized HTTP client with connection pooling
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create optimized HTTP client with secure defaults
+        let client = fluent_core::create_secure_client()?;
 
         Ok(Self {
             config,

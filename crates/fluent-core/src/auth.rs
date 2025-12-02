@@ -244,16 +244,15 @@ impl AuthManager {
         let mut headers = HeaderMap::new();
         self.add_auth_headers(&mut headers)?;
 
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .user_agent("fluent-cli/0.1")
-            .no_proxy()
-            .timeout(std::time::Duration::from_secs(60))
-            .pool_max_idle_per_host(8)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Use the centralized secure HTTP client builder with extended timeout for LLM APIs
+        let client = crate::http_client::create_client_builder_with_timeout(
+            std::time::Duration::from_secs(10),  // 10s connect timeout
+            std::time::Duration::from_secs(60),  // 60s request timeout for API calls
+        )
+        .default_headers(headers)
+        .user_agent("fluent-cli/0.1")
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
 
         Ok(client)
     }

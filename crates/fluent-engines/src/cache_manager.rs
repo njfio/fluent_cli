@@ -1,3 +1,42 @@
+//! Cache Manager
+//!
+//! This module provides centralized cache management across multiple LLM engines.
+//! Each engine gets its own isolated cache instance with per-engine disk storage.
+//!
+//! ## Features
+//!
+//! - **Per-Engine Caching**: Each engine maintains a separate cache namespace
+//! - **Global Access**: Singleton pattern for application-wide cache management
+//! - **Environment Control**: Enable/disable via `FLUENT_CACHE=1` environment variable
+//! - **Background Maintenance**: Automatic cleanup of expired entries
+//! - **Statistics**: Per-engine cache metrics and hit rates
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! use fluent_engines::cache_manager::{get_cached_response, cache_response};
+//! use fluent_core::types::Request;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! // Enable caching
+//! std::env::set_var("FLUENT_CACHE", "1");
+//!
+//! let request = Request { /* ... */ };
+//!
+//! // Try to get from cache
+//! if let Some(response) = get_cached_response("openai", &request, Some("gpt-4"), None).await? {
+//!     return Ok(response);
+//! }
+//!
+//! // Cache miss - make API call
+//! let response = make_api_call().await?;
+//!
+//! // Cache the response
+//! cache_response("openai", &request, &response, Some("gpt-4"), None).await?;
+//! # Ok(())
+//! # }
+//! ```
+
 use crate::enhanced_cache::{CacheConfig, CacheKey, EnhancedCache};
 use anyhow::Result;
 use fluent_core::types::{Request, Response};
@@ -7,6 +46,22 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Centralized cache manager for all engines
+///
+/// Manages separate cache instances for each LLM engine, providing isolation
+/// and per-engine disk storage. Each engine's cache is created lazily on first use.
+///
+/// ## Cache Isolation
+///
+/// Each engine gets:
+/// - Separate in-memory LRU cache
+/// - Isolated disk cache directory (e.g., `fluent_cache_openai`)
+/// - Independent statistics tracking
+///
+/// ## Environment Control
+///
+/// Caching is controlled by the `FLUENT_CACHE` environment variable:
+/// - `FLUENT_CACHE=1`: Enable caching (default: disabled)
+/// - Any other value or unset: Disable caching
 #[derive(Clone)]
 pub struct CacheManager {
     caches: Arc<RwLock<HashMap<String, Arc<EnhancedCache>>>>,
