@@ -169,7 +169,19 @@ impl ToolsCommand {
         Self::with_tool_registry(config, |registry| {
             // Check if tool exists
             if !registry.is_tool_available(tool_name) {
-                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+                let available_tools: Vec<String> = registry
+                    .get_all_available_tools()
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect();
+                let error_msg = format!(
+                    "Tool '{}' not found.\n\n\
+                    Available tools:\n  {}\n\n\
+                    Use 'fluent tools list' to see all available tools.",
+                    tool_name,
+                    available_tools.join("\n  ")
+                );
+                return Err(CliError::Validation(error_msg).into());
             }
 
             // Get tool information from available tools
@@ -232,7 +244,19 @@ impl ToolsCommand {
                 .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
 
             if !registry.is_tool_available(tool_name) {
-                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+                let available_tools: Vec<String> = registry
+                    .get_all_available_tools()
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect();
+                let error_msg = format!(
+                    "Tool '{}' not found.\n\n\
+                    Available tools:\n  {}\n\n\
+                    Use 'fluent tools list' to see all available tools with descriptions.",
+                    tool_name,
+                    available_tools.join("\n  ")
+                );
+                return Err(CliError::Validation(error_msg).into());
             }
         }
 

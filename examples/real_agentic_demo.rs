@@ -296,6 +296,9 @@ async fn demo_config_system() -> Result<()> {
         config_path: None,
         max_iterations: Some(50),
         timeout_seconds: Some(300),
+        supervisor: None,
+        performance: None,
+        state_management: None,
     };
 
     // Validate configuration

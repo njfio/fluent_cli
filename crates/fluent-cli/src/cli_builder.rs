@@ -53,6 +53,22 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("pipeline")
                 .about("Execute a pipeline from a YAML file")
+                .after_help(r#"EXAMPLES:
+    # Execute a pipeline with input
+    fluent pipeline -f example_pipelines/test_pipeline.yaml -i "Hello world"
+
+    # Execute with a custom run ID
+    fluent pipeline -f pipeline.yaml --run-id my-test-run
+
+    # Get JSON output
+    fluent pipeline -f pipeline.yaml -i "test" --json
+
+    # Dry run to validate pipeline
+    fluent pipeline -f pipeline.yaml --dry-run
+
+    # Force fresh execution, ignoring cached state
+    fluent pipeline -f pipeline.yaml --force-fresh -i "test"
+"#)
                 .arg(
                     Arg::new("file")
                         .short('f')
@@ -106,6 +122,25 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("agent")
                 .about("Run agentic workflows")
+                .after_help(r#"EXAMPLES:
+    # Interactive agent mode with TUI
+    fluent agent --tui
+
+    # Run agent with a specific goal
+    fluent agent -g "Create a Tetris game in HTML"
+
+    # Use a goal file with success criteria
+    fluent agent --goal-file examples/goals/tetris.toml
+
+    # Enable tools and set max iterations
+    fluent agent -g "Analyze code" --enable-tools --max-iterations 20
+
+    # Run with reflection mode
+    fluent agent -g "Refactor code" --reflection --enable-tools
+
+    # Dry run to preview agent configuration
+    fluent agent -g "Test task" --dry-run
+"#)
                 .arg(
                     Arg::new("agentic")
                         .long("agentic")
@@ -195,12 +230,25 @@ pub fn build_cli() -> Command {
                          .value_parser(clap::value_parser!(u32))
                          .default_value("2000"),
                  )
-                 .arg(
-                     Arg::new("tui")
-                         .long("tui")
-                         .help("Enable terminal user interface for better monitoring")
-                         .action(ArgAction::SetTrue),
-                 )
+                .arg(
+                    Arg::new("tui")
+                        .long("tui")
+                        .help("Enable terminal user interface for better monitoring")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("tui-mode")
+                        .long("tui-mode")
+                        .value_name("MODE")
+                        .help("TUI mode: collab | simple | full | ascii")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("ascii")
+                        .long("ascii")
+                        .help("Force ASCII TUI (prints to stdout, no alternate screen)")
+                        .action(ArgAction::SetTrue),
+                )
                 .arg(
                     Arg::new("task")
                         .short('t')
@@ -213,6 +261,16 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("mcp")
                 .about("MCP server operations")
+                .after_help(r#"EXAMPLES:
+    # Start MCP server on default port 8080
+    fluent mcp server
+
+    # Start MCP server on custom port
+    fluent mcp server -p 9000
+
+    # Connect as MCP client to a server
+    fluent mcp client -s http://localhost:8080
+"#)
                 .subcommand(
                     Command::new("server")
                         .about("Start MCP server")
@@ -242,6 +300,16 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("neo4j")
                 .about("Neo4j database operations")
+                .after_help(r#"EXAMPLES:
+    # Generate Cypher query from natural language
+    fluent neo4j --generate-cypher -q "Find all users who purchased in the last month"
+
+    # Execute a direct Cypher query
+    fluent neo4j -q "MATCH (n:User) RETURN n LIMIT 10"
+
+    # Upsert data from a file
+    fluent neo4j --upsert-file data.json
+"#)
                 .arg(
                     Arg::new("generate-cypher")
                         .long("generate-cypher")
@@ -267,6 +335,19 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completion scripts")
+                .after_help(r#"EXAMPLES:
+    # Generate Zsh completions and save to file
+    fluent completions -s zsh -o _fluent
+
+    # Generate Bash completions to stdout
+    fluent completions -s bash
+
+    # Generate Fish completions
+    fluent completions -s fish -o ~/.config/fish/completions/fluent.fish
+
+    # Generate PowerShell completions
+    fluent completions -s powershell -o fluent.ps1
+"#)
                 .arg(
                     Arg::new("shell")
                         .short('s')
@@ -286,6 +367,28 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("tools")
                 .about("Direct tool access and management")
+                .after_help(r#"EXAMPLES:
+    # List all available tools
+    fluent tools list
+
+    # List tools in JSON format
+    fluent tools list --json
+
+    # Search for file-related tools
+    fluent tools list --search file
+
+    # Describe a specific tool
+    fluent tools describe read_file
+
+    # Get tool schema
+    fluent tools describe read_file --schema
+
+    # Execute a tool
+    fluent tools exec read_file --json '{"path": "README.md"}'
+
+    # List tool categories
+    fluent tools categories
+"#)
                 .subcommand(
                     Command::new("list")
                         .about("List available tools")
@@ -383,6 +486,19 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("engine")
                 .about("Engine management and configuration")
+                .after_help(r#"EXAMPLES:
+    # List all configured engines
+    fluent engine list
+
+    # List engines in JSON format
+    fluent engine list --json
+
+    # Test engine connectivity
+    fluent engine test openai
+
+    # Test engine with JSON output
+    fluent engine test anthropic --json
+"#)
                 .subcommand(
                     Command::new("list")
                         .about("List available engines")
@@ -400,6 +516,12 @@ pub fn build_cli() -> Command {
                             Arg::new("engine")
                                 .help("Engine name to test")
                                 .required(true),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output test results in JSON format")
+                                .action(ArgAction::SetTrue),
                         ),
                 ),
         )
