@@ -60,7 +60,9 @@ impl GroqLPUEngine {
             .parameters
             .get("bearer_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+            .ok_or_else(|| anyhow!(
+                "Groq API key not found in configuration. Set GROQ_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+            ))?;
 
         let response = self
             .client

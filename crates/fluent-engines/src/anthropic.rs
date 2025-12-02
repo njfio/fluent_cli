@@ -199,7 +199,9 @@ impl Engine for AnthropicEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Anthropic API key not found in configuration. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
 
             let res = timeout(
                 Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for API calls
@@ -370,7 +372,9 @@ impl Engine for AnthropicEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Anthropic API key not found in configuration. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
 
             let response = timeout(
                 Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for vision API calls

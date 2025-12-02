@@ -58,7 +58,26 @@ use serde::{Deserialize, Serialize};
 use stabilityai::StabilityAIEngine;
 use strum::{Display, EnumString};
 use webhook::WebhookEngine;
-// Plugin imports removed - plugins disabled for security
+
+// ============================================================================
+// PLUGIN SYSTEM STATUS: DISABLED
+// ============================================================================
+// The plugin system code exists in this crate (see plugin.rs and
+// secure_plugin_system.rs) but is NOT ENABLED in production builds.
+//
+// Reasons:
+// 1. Requires WASM runtime (wasmtime/wasmer) - adds 10-15MB to binary
+// 2. WASM execution layer not implemented (needs wasm-runtime feature)
+// 3. Requires PKI infrastructure for signature verification
+// 4. Security audit needed before production use
+// 5. Support and maintenance burden for plugin API
+//
+// The secure plugin architecture is fully designed and partially implemented,
+// but the actual WASM runtime execution is feature-gated and not included.
+//
+// See plugin.rs for complete documentation on enabling plugins for dev/test.
+// ============================================================================
+
 use anyhow;
 
 extern crate core;
@@ -200,13 +219,20 @@ pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<d
             EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
         },
         Err(_) => {
-            // Plugin support disabled for security reasons
+            // Plugin support disabled - see PLUGIN SYSTEM STATUS comment above for details
+            // Unknown engine types cannot be loaded as plugins because:
+            // - WASM runtime not included (wasm-runtime feature disabled)
+            // - No plugin loading infrastructure enabled
+            // - Security and trust infrastructure not configured
+            //
+            // Use built-in engines (OpenAI, Anthropic, Google, etc.) or Webhook engine
+            // to proxy to custom services.
             debug!(
                 "Unknown engine type '{}' - plugins are disabled",
                 engine_config.engine
             );
             return Err(anyhow::anyhow!(format!(
-                "Unknown engine type: {}",
+                "Unknown engine type: {}. Plugins are disabled. Available engines: openai, anthropic, google_gemini, cohere, mistral, groq_lpu, perplexity, flowise_chain, langflow_chain, webhook, stabilityai, imagine_pro, leonardo_ai, dalle",
                 engine_config.engine
             )));
         }

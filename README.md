@@ -538,7 +538,22 @@ fluent completions --shell fish > fluent.fish
 - Expanded tool ecosystem
 - Advanced workflow orchestration
 - Real-time collaboration features
-- Plugin system for custom tools
+- ~~Plugin system for custom tools~~ (Architecture complete but disabled - see below)
+
+### Plugin System Status
+
+**Note**: A secure WebAssembly-based plugin system architecture exists in the codebase but is **intentionally disabled** in production builds. Reasons include:
+
+- Requires WASM runtime (10-15MB binary size increase)
+- Needs PKI infrastructure for signature verification
+- Security audit required before production use
+- Maintenance burden for plugin API stability
+
+The plugin architecture is fully designed with Ed25519 signature verification, capability-based security, resource limits, and comprehensive audit logging. However, the WASM runtime execution layer is not implemented.
+
+**Alternatives**: Use built-in engines (OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, etc.) or the Webhook engine to proxy to custom services.
+
+For detailed documentation on the plugin system and how to enable it for development/testing, see `crates/fluent-engines/src/plugin.rs` or `CLAUDE.md`.
 
 ## 🧪 Development
 

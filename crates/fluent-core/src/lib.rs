@@ -49,6 +49,7 @@ pub mod neo4j;
 pub mod neo4j_client;
 pub mod output;
 pub mod output_processor;
+pub mod path_validator;
 pub mod poison_recovery;
 pub mod redaction;
 pub mod spinner_configuration;
@@ -56,3 +57,6 @@ pub mod traits;
 pub mod types;
 pub mod utils;
 mod voyageai_client;
+
+// Re-export commonly used types
+pub use path_validator::SecurePathValidator;

@@ -75,7 +75,9 @@ impl GoogleGeminiEngine {
             .parameters
             .get("bearer_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("API key not found in configuration"))?;
+            .ok_or_else(|| anyhow!(
+                "Google Gemini API key not found in configuration. Set GOOGLE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+            ))?;
 
         let model = self
             .config

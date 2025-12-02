@@ -17,13 +17,65 @@ use tokio::sync::{Mutex, RwLock};
 
 /// Secure plugin system using WebAssembly for sandboxing
 ///
-/// This system provides:
-/// - Memory isolation through WASM
-/// - Capability-based security
+/// ## ⚠️ CURRENT STATUS: WASM RUNTIME NOT IMPLEMENTED
+///
+/// This module provides a complete secure plugin architecture, but the actual
+/// WASM runtime execution is **NOT IMPLEMENTED** and requires the `wasm-runtime`
+/// feature flag to be enabled.
+///
+/// ### Why WASM Runtime is Not Included
+///
+/// 1. **Binary Size**: Adding wasmtime/wasmer adds 10-15MB to the binary
+/// 2. **Complexity**: WASM runtime requires careful integration and testing
+/// 3. **Dependencies**: Requires additional native dependencies
+/// 4. **Security Validation**: Needs thorough security audit before production use
+///
+/// ### What's Provided (Without WASM Runtime)
+///
+/// This module includes all the security infrastructure:
+/// - Memory isolation through WASM (architecture ready, runtime not included)
+/// - Capability-based security model
 /// - Resource limits and quotas
-/// - Cryptographic signature verification
+/// - Cryptographic signature verification (Ed25519)
 /// - Comprehensive audit logging
 /// - Permission-based access control
+///
+/// ### What's Missing (Requires wasm-runtime Feature)
+///
+/// The actual WASM module loading and execution in `SecurePluginEngine::execute()`:
+/// ```rust,ignore
+/// #[cfg(feature = "wasm-runtime")]
+/// {
+///     // WASM runtime execution (NOT IMPLEMENTED)
+///     // Would require: wasmtime::Engine, wasmtime::Module, etc.
+/// }
+/// ```
+///
+/// ### To Implement WASM Runtime
+///
+/// 1. Add wasmtime or wasmer dependency:
+///    ```toml
+///    wasmtime = { version = "16.0", optional = true }
+///    wasm-runtime = ["wasmtime"]
+///    ```
+///
+/// 2. Implement WASM execution in `SecurePluginEngine::execute()`:
+///    ```rust,ignore
+///    let engine = wasmtime::Engine::default();
+///    let module = wasmtime::Module::new(&engine, &wasm_bytes)?;
+///    let mut store = wasmtime::Store::new(&engine, context);
+///    // ... configure WASI, resource limits, etc.
+///    ```
+///
+/// 3. Set up WASI capabilities and sandboxing
+/// 4. Implement resource metering and limits
+/// 5. Test thoroughly with security tools
+///
+/// ### Security Note
+///
+/// Even with WASM runtime implemented, plugins should ONLY be loaded from
+/// trusted sources with valid cryptographic signatures. See documentation
+/// in `plugin.rs` for full security requirements.
 
 /// Plugin metadata and manifest
 #[derive(Debug, Clone, Serialize, Deserialize)]
