@@ -25,6 +25,8 @@ rmcp = { workspace = true }
 rusqlite = { workspace = true }
 tokio-rusqlite = { workspace = true }
 which = { workspace = true }
+schemars = { workspace = true }
+similar = { workspace = true }
 # Enhanced MCP Protocol Support
 tokio-tungstenite = { workspace = true }
 url = { workspace = true }

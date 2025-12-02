@@ -260,6 +260,159 @@ impl Default for ToolExecutionConfig {
     }
 }
 
+/// Configuration for tool capabilities and limits with JSON schema support
+///
+/// This struct provides comprehensive capability configuration for tool execution
+/// including file size limits, path restrictions, command allowlists, and resource limits.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ToolCapabilityConfig {
+    /// Maximum file size in bytes for file operations
+    #[serde(default = "default_max_file_size")]
+    #[schemars(description = "Maximum file size in bytes that can be read or written (default: 10MB)")]
+    pub max_file_size: usize,
+
+    /// Allowed root paths for file operations
+    #[serde(default)]
+    #[schemars(description = "List of allowed root paths for file operations. Paths outside these directories will be rejected.")]
+    pub allowed_paths: Vec<String>,
+
+    /// Command allowlist for shell operations
+    #[serde(default)]
+    #[schemars(description = "List of allowed commands for shell execution. Only commands in this list can be executed.")]
+    pub allowed_commands: Vec<String>,
+
+    /// Maximum output size in bytes
+    #[serde(default = "default_max_output_size")]
+    #[schemars(description = "Maximum output size in bytes for tool execution results (default: 1MB)")]
+    pub max_output_size: usize,
+
+    /// Timeout in seconds for tool execution
+    #[serde(default = "default_timeout")]
+    #[schemars(description = "Timeout in seconds for tool execution (default: 30s)")]
+    pub timeout_seconds: u64,
+
+    /// Whether the tool can make network requests
+    #[serde(default)]
+    #[schemars(description = "Whether the tool is allowed to make network requests (default: false)")]
+    pub allow_network: bool,
+
+    /// Whether file operations are read-only
+    #[serde(default)]
+    #[schemars(description = "Whether file operations are restricted to read-only mode (default: false)")]
+    pub read_only: bool,
+
+    /// Maximum number of concurrent tool executions
+    #[serde(default = "default_max_concurrent")]
+    #[schemars(description = "Maximum number of concurrent tool executions allowed (default: 5)")]
+    pub max_concurrent_executions: usize,
+}
+
+fn default_max_file_size() -> usize {
+    10 * 1024 * 1024 // 10MB
+}
+
+fn default_max_output_size() -> usize {
+    1024 * 1024 // 1MB
+}
+
+fn default_timeout() -> u64 {
+    30
+}
+
+fn default_max_concurrent() -> usize {
+    5
+}
+
+impl Default for ToolCapabilityConfig {
+    fn default() -> Self {
+        Self {
+            max_file_size: default_max_file_size(),
+            allowed_paths: vec![".".to_string()],
+            allowed_commands: vec![],
+            max_output_size: default_max_output_size(),
+            timeout_seconds: default_timeout(),
+            allow_network: false,
+            read_only: false,
+            max_concurrent_executions: default_max_concurrent(),
+        }
+    }
+}
+
+impl ToolCapabilityConfig {
+    /// Generate JSON Schema for this configuration
+    ///
+    /// Returns a pretty-printed JSON Schema string that can be used for
+    /// validation and documentation of tool capability configurations.
+    pub fn json_schema() -> String {
+        let schema = schemars::schema_for!(ToolCapabilityConfig);
+        serde_json::to_string_pretty(&schema).unwrap_or_default()
+    }
+
+    /// Create a new ToolCapabilityConfig with custom settings
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set maximum file size
+    pub fn with_max_file_size(mut self, max_file_size: usize) -> Self {
+        self.max_file_size = max_file_size;
+        self
+    }
+
+    /// Set allowed paths
+    pub fn with_allowed_paths(mut self, allowed_paths: Vec<String>) -> Self {
+        self.allowed_paths = allowed_paths;
+        self
+    }
+
+    /// Set allowed commands
+    pub fn with_allowed_commands(mut self, allowed_commands: Vec<String>) -> Self {
+        self.allowed_commands = allowed_commands;
+        self
+    }
+
+    /// Set maximum output size
+    pub fn with_max_output_size(mut self, max_output_size: usize) -> Self {
+        self.max_output_size = max_output_size;
+        self
+    }
+
+    /// Set timeout in seconds
+    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.timeout_seconds = timeout_seconds;
+        self
+    }
+
+    /// Enable or disable network access
+    pub fn with_network(mut self, allow_network: bool) -> Self {
+        self.allow_network = allow_network;
+        self
+    }
+
+    /// Set read-only mode
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    /// Set maximum concurrent executions
+    pub fn with_max_concurrent(mut self, max_concurrent: usize) -> Self {
+        self.max_concurrent_executions = max_concurrent;
+        self
+    }
+
+    /// Convert to ToolExecutionConfig for backward compatibility
+    pub fn to_execution_config(&self) -> ToolExecutionConfig {
+        ToolExecutionConfig {
+            timeout_seconds: self.timeout_seconds,
+            max_output_size: self.max_output_size,
+            allowed_paths: self.allowed_paths.clone(),
+            allowed_commands: self.allowed_commands.clone(),
+            read_only: self.read_only,
+        }
+    }
+}
+
 /// Utility functions for tool validation
 pub mod validation {
     use super::*;
@@ -450,5 +603,112 @@ mod tests {
         let sanitized = validation::sanitize_output(&long_output, 100);
         assert!(sanitized.len() < long_output.len());
         assert!(sanitized.contains("truncated"));
+    }
+
+    #[test]
+    fn test_tool_capability_config_default() {
+        let config = ToolCapabilityConfig::default();
+        assert_eq!(config.max_file_size, 10 * 1024 * 1024);
+        assert_eq!(config.timeout_seconds, 30);
+        assert_eq!(config.max_output_size, 1024 * 1024);
+        assert_eq!(config.max_concurrent_executions, 5);
+        assert!(!config.allow_network);
+        assert!(!config.read_only);
+        assert_eq!(config.allowed_paths, vec![".".to_string()]);
+        assert!(config.allowed_commands.is_empty());
+    }
+
+    #[test]
+    fn test_tool_capability_config_builder() {
+        let config = ToolCapabilityConfig::new()
+            .with_max_file_size(5 * 1024 * 1024)
+            .with_allowed_paths(vec!["./src".to_string(), "./tests".to_string()])
+            .with_allowed_commands(vec!["cargo".to_string(), "git".to_string()])
+            .with_max_output_size(512 * 1024)
+            .with_timeout(60)
+            .with_network(true)
+            .with_read_only(true)
+            .with_max_concurrent(10);
+
+        assert_eq!(config.max_file_size, 5 * 1024 * 1024);
+        assert_eq!(config.timeout_seconds, 60);
+        assert_eq!(config.max_output_size, 512 * 1024);
+        assert_eq!(config.max_concurrent_executions, 10);
+        assert!(config.allow_network);
+        assert!(config.read_only);
+        assert_eq!(config.allowed_paths.len(), 2);
+        assert_eq!(config.allowed_commands.len(), 2);
+    }
+
+    #[test]
+    fn test_tool_capability_config_json_schema_generation() {
+        let schema = ToolCapabilityConfig::json_schema();
+        assert!(schema.contains("max_file_size"));
+        assert!(schema.contains("allowed_paths"));
+        assert!(schema.contains("allowed_commands"));
+        assert!(schema.contains("max_output_size"));
+        assert!(schema.contains("timeout_seconds"));
+        assert!(schema.contains("allow_network"));
+        assert!(schema.contains("read_only"));
+        assert!(schema.contains("max_concurrent_executions"));
+
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&schema).expect("Schema should be valid JSON");
+        assert!(parsed.is_object());
+    }
+
+    #[test]
+    fn test_tool_capability_config_serialization() {
+        let config = ToolCapabilityConfig::new()
+            .with_max_file_size(5 * 1024 * 1024)
+            .with_allowed_paths(vec!["./src".to_string()])
+            .with_timeout(45);
+
+        // Test serialization
+        let json = serde_json::to_string(&config).expect("Should serialize to JSON");
+        assert!(json.contains("max_file_size"));
+        assert!(json.contains("5242880")); // 5MB in bytes
+
+        // Test deserialization
+        let deserialized: ToolCapabilityConfig =
+            serde_json::from_str(&json).expect("Should deserialize from JSON");
+        assert_eq!(deserialized.max_file_size, config.max_file_size);
+        assert_eq!(deserialized.timeout_seconds, config.timeout_seconds);
+        assert_eq!(deserialized.allowed_paths, config.allowed_paths);
+    }
+
+    #[test]
+    fn test_tool_capability_config_to_execution_config() {
+        let capability_config = ToolCapabilityConfig::new()
+            .with_max_output_size(2 * 1024 * 1024)
+            .with_allowed_paths(vec!["./src".to_string()])
+            .with_allowed_commands(vec!["cargo".to_string()])
+            .with_timeout(120)
+            .with_read_only(true);
+
+        let execution_config = capability_config.to_execution_config();
+
+        assert_eq!(execution_config.timeout_seconds, 120);
+        assert_eq!(execution_config.max_output_size, 2 * 1024 * 1024);
+        assert_eq!(execution_config.allowed_paths, vec!["./src".to_string()]);
+        assert_eq!(execution_config.allowed_commands, vec!["cargo".to_string()]);
+        assert!(execution_config.read_only);
+    }
+
+    #[test]
+    fn test_tool_capability_config_default_values() {
+        // Test that serde defaults work correctly
+        let json = "{}";
+        let config: ToolCapabilityConfig =
+            serde_json::from_str(json).expect("Should deserialize with defaults");
+
+        assert_eq!(config.max_file_size, 10 * 1024 * 1024);
+        assert_eq!(config.timeout_seconds, 30);
+        assert_eq!(config.max_output_size, 1024 * 1024);
+        assert_eq!(config.max_concurrent_executions, 5);
+        assert!(!config.allow_network);
+        assert!(!config.read_only);
+        assert!(config.allowed_paths.is_empty());
+        assert!(config.allowed_commands.is_empty());
     }
 }

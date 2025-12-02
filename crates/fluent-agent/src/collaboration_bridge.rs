@@ -4,6 +4,7 @@
 //! enabling real-time intervention, approvals, and collaborative decision-making.
 
 use anyhow::{anyhow, Result};
+use similar::{ChangeTag, TextDiff};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::{oneshot, RwLock};
@@ -17,9 +18,56 @@ use crate::orchestrator::{ActionType, AgentState, ReasoningResult};
 pub use crate::agent_control::{
     AgentControlChannel, AgentStatus as ControlAgentStatus, ApprovalContext, ApprovalRequest,
     ApprovalResponse, CodeDiff, ControlMessage, ControlMessageType, DefaultAction, DiffChangeType,
-    DiffLine, GuidanceRequest, GuidanceResponse, LogLevel, RiskLevel, StateUpdate,
-    StateUpdateType, StrategyUpdate,
+    DiffLine, GuidanceRequest, GuidanceResponse, LogLevel, RiskLevel, StateUpdate, StateUpdateType,
+    StrategyUpdate,
 };
+
+/// Generate a code diff between old and new content
+fn generate_code_diff(file_path: &str, old_content: &str, new_content: &str) -> CodeDiff {
+    let diff = TextDiff::from_lines(old_content, new_content);
+    let mut diff_lines = Vec::new();
+    let mut old_line_num = 1;
+    let mut new_line_num = 1;
+
+    for change in diff.iter_all_changes() {
+        let content = change.to_string();
+
+        match change.tag() {
+            ChangeTag::Delete => {
+                diff_lines.push(DiffLine {
+                    line_number: old_line_num,
+                    change_type: DiffChangeType::Removed,
+                    content: content.trim_end().to_string(),
+                });
+                old_line_num += 1;
+            }
+            ChangeTag::Insert => {
+                diff_lines.push(DiffLine {
+                    line_number: new_line_num,
+                    change_type: DiffChangeType::Added,
+                    content: content.trim_end().to_string(),
+                });
+                new_line_num += 1;
+            }
+            ChangeTag::Equal => {
+                diff_lines.push(DiffLine {
+                    line_number: old_line_num,
+                    change_type: DiffChangeType::Unchanged,
+                    content: content.trim_end().to_string(),
+                });
+                old_line_num += 1;
+                new_line_num += 1;
+            }
+        }
+    }
+
+    CodeDiff {
+        file_path: file_path.to_string(),
+        old_content: old_content.to_string(),
+        new_content: new_content.to_string(),
+        diff_lines,
+    }
+}
 
 /// Orchestrator with human-in-the-loop capabilities
 pub struct CollaborativeOrchestrator {
@@ -107,20 +155,16 @@ impl CollaborativeOrchestrator {
         match msg.message_type {
             ControlMessageType::Pause => {
                 *self.paused.write().await = true;
-                self.send_state_update(StateUpdate::status_change(
-                    ControlAgentStatus::Paused,
-                ))
-                .await?;
+                self.send_state_update(StateUpdate::status_change(ControlAgentStatus::Paused))
+                    .await?;
                 log::info!("Agent paused by human");
                 Ok(ControlAction::Pause)
             }
 
             ControlMessageType::Resume => {
                 *self.paused.write().await = false;
-                self.send_state_update(StateUpdate::status_change(
-                    ControlAgentStatus::Running,
-                ))
-                .await?;
+                self.send_state_update(StateUpdate::status_change(ControlAgentStatus::Running))
+                    .await?;
                 log::info!("Agent resumed by human");
                 Ok(ControlAction::Continue)
             }
@@ -333,10 +377,7 @@ impl CollaborativeOrchestrator {
             ActionType::FileOperation => self.approval_config.require_file_write_approval,
             ActionType::ToolExecution => {
                 // Check if it's a shell command
-                action_plan
-                    .description
-                    .to_lowercase()
-                    .contains("shell")
+                action_plan.description.to_lowercase().contains("shell")
                     || action_plan.description.to_lowercase().contains("command")
             }
             ActionType::CodeGeneration => self.approval_config.require_code_generation_approval,
@@ -351,8 +392,7 @@ impl CollaborativeOrchestrator {
 
         // File operations
         if action_plan.action_type == ActionType::FileOperation {
-            if action_plan.description.contains("delete")
-                || action_plan.description.contains("rm")
+            if action_plan.description.contains("delete") || action_plan.description.contains("rm")
             {
                 risk_score += 3;
             } else if action_plan.description.contains("write")
@@ -363,11 +403,7 @@ impl CollaborativeOrchestrator {
         }
 
         // Shell commands
-        if action_plan
-            .description
-            .to_lowercase()
-            .contains("shell")
-        {
+        if action_plan.description.to_lowercase().contains("shell") {
             risk_score += 2;
             if action_plan.description.contains("sudo") || action_plan.description.contains("rm") {
                 risk_score += 3;
@@ -421,10 +457,13 @@ impl CollaborativeOrchestrator {
             .map(|alt| alt.description.clone())
             .collect();
 
+        // Generate code diff if old and new content are available
+        let code_changes = self.extract_code_diff(action_plan);
+
         Ok(ApprovalContext {
             affected_files: self.extract_affected_files(action_plan),
             command: self.extract_command(action_plan),
-            code_changes: None, // TODO: Implement diff generation
+            code_changes,
             reasoning: action_plan.description.clone(),
             alternatives,
             agent_recommendation: format!(
@@ -432,6 +471,35 @@ impl CollaborativeOrchestrator {
                 action_plan.confidence_score * 100.0
             ),
         })
+    }
+
+    /// Extract and generate code diff from action plan parameters
+    fn extract_code_diff(&self, action_plan: &ActionPlan) -> Option<CodeDiff> {
+        // Extract file path
+        let file_path = if let Some(path) = action_plan.parameters.get("path") {
+            path.as_str()?.to_string()
+        } else if let Some(file) = action_plan.parameters.get("file") {
+            file.as_str()?.to_string()
+        } else {
+            return None;
+        };
+
+        // Extract old and new content
+        let old_content = action_plan
+            .parameters
+            .get("old_content")
+            .or_else(|| action_plan.parameters.get("previous_content"))
+            .or_else(|| action_plan.parameters.get("original_content"))
+            .and_then(|v| v.as_str())?;
+
+        let new_content = action_plan
+            .parameters
+            .get("new_content")
+            .or_else(|| action_plan.parameters.get("content"))
+            .and_then(|v| v.as_str())?;
+
+        // Generate and return the diff
+        Some(generate_code_diff(&file_path, old_content, new_content))
     }
 
     /// Extract affected files from action plan
@@ -599,5 +667,171 @@ mod tests {
         let orchestrator = CollaborativeOrchestrator::new(None, ApprovalConfig::default());
         let action = orchestrator.check_control_channel().await.unwrap();
         assert!(matches!(action, ControlAction::Continue));
+    }
+
+    #[test]
+    fn test_generate_code_diff_simple() {
+        let old = "line1\nline2\nline3";
+        let new = "line1\nmodified\nline3";
+
+        let diff = generate_code_diff("test.rs", old, new);
+
+        assert_eq!(diff.file_path, "test.rs");
+        assert_eq!(diff.old_content, old);
+        assert_eq!(diff.new_content, new);
+
+        // Check that we have the expected diff lines
+        let added_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| matches!(line.change_type, DiffChangeType::Added))
+            .collect();
+        let removed_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| matches!(line.change_type, DiffChangeType::Removed))
+            .collect();
+
+        assert_eq!(added_lines.len(), 1);
+        assert_eq!(removed_lines.len(), 1);
+        assert!(added_lines[0].content.contains("modified"));
+        assert!(removed_lines[0].content.contains("line2"));
+    }
+
+    #[test]
+    fn test_generate_code_diff_additions_only() {
+        let old = "line1\nline2\n";
+        let new = "line1\nline2\nline3\nline4\n";
+
+        let diff = generate_code_diff("test.rs", old, new);
+
+        let added_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| matches!(line.change_type, DiffChangeType::Added))
+            .collect();
+
+        assert_eq!(added_lines.len(), 2);
+        assert!(added_lines[0].content.contains("line3"));
+        assert!(added_lines[1].content.contains("line4"));
+    }
+
+    #[test]
+    fn test_generate_code_diff_deletions_only() {
+        let old = "line1\nline2\nline3\nline4\n";
+        let new = "line1\nline2\n";
+
+        let diff = generate_code_diff("test.rs", old, new);
+
+        let removed_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| matches!(line.change_type, DiffChangeType::Removed))
+            .collect();
+
+        assert_eq!(removed_lines.len(), 2);
+        assert!(removed_lines[0].content.contains("line3"));
+        assert!(removed_lines[1].content.contains("line4"));
+    }
+
+    #[test]
+    fn test_generate_code_diff_no_changes() {
+        let content = "line1\nline2\nline3";
+
+        let diff = generate_code_diff("test.rs", content, content);
+
+        let changed_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| !matches!(line.change_type, DiffChangeType::Unchanged))
+            .collect();
+
+        assert_eq!(changed_lines.len(), 0);
+
+        let unchanged_lines: Vec<_> = diff
+            .diff_lines
+            .iter()
+            .filter(|line| matches!(line.change_type, DiffChangeType::Unchanged))
+            .collect();
+
+        assert_eq!(unchanged_lines.len(), 3);
+    }
+
+    #[test]
+    fn test_extract_code_diff_with_parameters() {
+        use std::collections::HashMap;
+
+        let orchestrator = CollaborativeOrchestrator::new(None, ApprovalConfig::default());
+
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "path".to_string(),
+            serde_json::Value::String("test.rs".to_string()),
+        );
+        parameters.insert(
+            "old_content".to_string(),
+            serde_json::Value::String("old line".to_string()),
+        );
+        parameters.insert(
+            "new_content".to_string(),
+            serde_json::Value::String("new line".to_string()),
+        );
+
+        let action_plan = ActionPlan {
+            action_id: "test".to_string(),
+            action_type: ActionType::FileOperation,
+            description: "Test action".to_string(),
+            parameters,
+            expected_outcome: "Test".to_string(),
+            success_criteria: vec![],
+            confidence_score: 0.9,
+            estimated_duration: None,
+            risk_level: crate::action::RiskLevel::Low,
+            alternatives: vec![],
+            prerequisites: vec![],
+        };
+
+        let diff = orchestrator.extract_code_diff(&action_plan);
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        assert_eq!(diff.file_path, "test.rs");
+        assert_eq!(diff.old_content, "old line");
+        assert_eq!(diff.new_content, "new line");
+    }
+
+    #[test]
+    fn test_extract_code_diff_missing_parameters() {
+        use std::collections::HashMap;
+
+        let orchestrator = CollaborativeOrchestrator::new(None, ApprovalConfig::default());
+
+        // Test with missing old_content
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "path".to_string(),
+            serde_json::Value::String("test.rs".to_string()),
+        );
+        parameters.insert(
+            "new_content".to_string(),
+            serde_json::Value::String("new line".to_string()),
+        );
+
+        let action_plan = ActionPlan {
+            action_id: "test".to_string(),
+            action_type: ActionType::FileOperation,
+            description: "Test action".to_string(),
+            parameters,
+            expected_outcome: "Test".to_string(),
+            success_criteria: vec![],
+            confidence_score: 0.9,
+            estimated_duration: None,
+            risk_level: crate::action::RiskLevel::Low,
+            alternatives: vec![],
+            prerequisites: vec![],
+        };
+
+        let diff = orchestrator.extract_code_diff(&action_plan);
+        assert!(diff.is_none());
     }
 }

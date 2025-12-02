@@ -174,6 +174,8 @@ rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "serde_json"] 
 tokio-rusqlite = "0.5.1"
 # Executable finder - pin to exact version
 which = "6.0.3"
+# Text diff library - pin to exact version
+similar = "2.6.0"
 
 [dev-dependencies]
 # Testing utilities
