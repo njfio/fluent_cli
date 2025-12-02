@@ -16,3 +16,4 @@ serde_json = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
+once_cell = { workspace = true }
