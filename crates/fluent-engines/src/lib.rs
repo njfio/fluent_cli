@@ -78,8 +78,6 @@ use webhook::WebhookEngine;
 // See plugin.rs for complete documentation on enabling plugins for dev/test.
 // ============================================================================
 
-use anyhow;
-
 extern crate core;
 
 // crates/fluent-engines/src/lib.rs
@@ -122,6 +120,7 @@ pub mod pipeline_step_executors;
 pub mod plugin;
 pub mod plugin_cli;
 pub mod pooled_openai_example;
+pub mod rate_limiter;
 pub mod replicate;
 pub mod secure_plugin_system;
 pub mod shared;
@@ -129,6 +128,9 @@ pub mod simplified_engine;
 pub mod state_store_benchmark;
 pub mod streaming_engine;
 pub mod universal_base_engine;
+
+// Re-export commonly used types
+pub use rate_limiter::RateLimiter;
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {

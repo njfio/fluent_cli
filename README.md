@@ -737,6 +737,28 @@ cd fluent_cli
 cargo build --release
 ```
 
+### Pre-commit Hooks
+
+Install pre-commit hooks to ensure code quality:
+
+```bash
+# Install pre-commit (if not already installed)
+pip install pre-commit
+
+# Install the git hooks
+pre-commit install
+
+# Run on all files (optional)
+pre-commit run -a
+```
+
+The hooks will automatically run:
+- `cargo fmt` - Rust formatting
+- `cargo clippy` - Rust linting
+- YAML/TOML validation
+- Trailing whitespace fixes
+- Markdown linting
+
 ### Running Tests
 
 ```bash
