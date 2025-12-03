@@ -8,7 +8,7 @@ use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcesso
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
+use tracing::debug;
 use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -38,7 +38,7 @@ impl AnthropicEngine {
         // Create reusable HTTP client with extended timeouts for Anthropic's long responses
         // Anthropic API can take a long time for large responses, so we use extended timeouts
         let client = fluent_core::create_client_with_timeout(
-            std::time::Duration::from_secs(30), // 30s connect timeout
+            std::time::Duration::from_secs(30),  // 30s connect timeout
             std::time::Duration::from_secs(600), // 10min request timeout for long responses
         )?;
 
@@ -180,6 +180,13 @@ impl Engine for AnthropicEngine {
                 .ok_or_else(|| anyhow!(
                     "Anthropic API key not found in configuration. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
                 ))?;
+
+            // Validate the auth token isn't empty
+            if auth_token.is_empty() {
+                return Err(anyhow!(
+                    "Anthropic API key is empty. Please set ANTHROPIC_API_KEY environment variable with a valid API key."
+                ));
+            }
 
             let res = timeout(
                 Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for API calls

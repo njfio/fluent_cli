@@ -2,7 +2,7 @@ use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
 
 use anyhow::{anyhow, Context, Result};
-use log::debug;
+use tracing::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;
@@ -11,6 +11,93 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
 use std::{env, fs};
+
+/// Parse config content, auto-detecting format based on content or file extension hint
+/// Supports YAML, JSON, and TOML formats
+fn parse_config_content(content: &str, path_hint: Option<&str>) -> Result<Value> {
+    // Check file extension hint first
+    if let Some(path) = path_hint {
+        if path.ends_with(".toml") {
+            let toml_value: toml::Value = toml::from_str(content)
+                .context("Failed to parse TOML config")?;
+            return toml_to_json(toml_value);
+        }
+    }
+
+    // Try JSON first (valid JSON is also valid YAML, so check JSON first)
+    if content.trim_start().starts_with('{') || content.trim_start().starts_with('[') {
+        if let Ok(json) = serde_json::from_str::<Value>(content) {
+            return Ok(json);
+        }
+    }
+
+    // Try TOML if it looks like TOML (has [[engines]] or [engines] sections)
+    if content.contains("[[engines]]") || content.contains("[engines]")
+        || content.contains("[engines.") {
+        let toml_value: toml::Value = toml::from_str(content)
+            .context("Failed to parse TOML config")?;
+        return toml_to_json(toml_value);
+    }
+
+    // Fall back to YAML
+    serde_yaml::from_str(content).context("Failed to parse YAML config")
+}
+
+/// Convert TOML Value to JSON Value for uniform processing
+fn toml_to_json(toml_val: toml::Value) -> Result<Value> {
+    match toml_val {
+        toml::Value::String(s) => Ok(Value::String(s)),
+        toml::Value::Integer(i) => Ok(Value::Number(i.into())),
+        toml::Value::Float(f) => Ok(serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null)),
+        toml::Value::Boolean(b) => Ok(Value::Bool(b)),
+        toml::Value::Datetime(dt) => Ok(Value::String(dt.to_string())),
+        toml::Value::Array(arr) => {
+            let json_arr: Result<Vec<Value>> = arr.into_iter().map(toml_to_json).collect();
+            Ok(Value::Array(json_arr?))
+        }
+        toml::Value::Table(table) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in table {
+                map.insert(k, toml_to_json(v)?);
+            }
+            Ok(Value::Object(map))
+        }
+    }
+}
+
+/// Load credentials from environment variables
+/// This is used to resolve ${VAR} patterns in config files
+fn load_env_credentials() -> HashMap<String, String> {
+    let mut credentials = HashMap::new();
+    let credential_keys = [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "PERPLEXITY_API_KEY",
+        "COHERE_API_KEY",
+        "MISTRAL_API_KEY",
+    ];
+
+    for key in &credential_keys {
+        if let Ok(value) = env::var(key) {
+            credentials.insert(key.to_string(), value);
+        }
+    }
+
+    // Also load CREDENTIAL_ prefixed variables
+    for (key, value) in env::vars() {
+        if key.starts_with("CREDENTIAL_") {
+            let credential_key = &key[11..];
+            credentials.insert(credential_key.to_string(), value);
+        }
+    }
+
+    credentials
+}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
@@ -150,8 +237,19 @@ pub fn load_engine_config(
     overrides: &HashMap<String, Value>,
     credentials: &HashMap<String, String>,
 ) -> Result<EngineConfig> {
-    //Converts the YAML string into a json value to be manipulated
-    let mut config: Value = serde_yaml::from_str(config_content)?;
+    load_engine_config_with_path(config_content, engine_name, overrides, credentials, None)
+}
+
+/// Load engine config with optional path hint for format detection
+pub fn load_engine_config_with_path(
+    config_content: &str,
+    engine_name: &str,
+    overrides: &HashMap<String, Value>,
+    credentials: &HashMap<String, String>,
+    path_hint: Option<&str>,
+) -> Result<EngineConfig> {
+    // Parse config content, auto-detecting format (YAML, JSON, or TOML)
+    let mut config: Value = parse_config_content(config_content, path_hint)?;
 
     debug!("Loading config for engine: {}", engine_name);
 
@@ -263,13 +361,17 @@ pub fn load_config(
     // Read file once
     let file_contents = fs::read_to_string(config_path)?;
 
+    // Load credentials from environment for variable resolution
+    let credentials = load_env_credentials();
+
     // If no specific engine is requested, load all engines
     if engine_name.is_empty() {
         let mut engines = Vec::new();
-        let mut root: serde_json::Value = serde_yaml::from_str(&file_contents)?;
+        // Use format-aware parser (supports YAML, JSON, and TOML)
+        let mut root: serde_json::Value = parse_config_content(&file_contents, Some(config_path))?;
         if let Some(arr) = root["engines"].as_array_mut() {
             for engine_value in arr.iter_mut() {
-                apply_variable_resolver(engine_value, &HashMap::new())?;
+                apply_variable_resolver(engine_value, &credentials)?;
                 apply_variable_overrider(engine_value, &overrides)?;
                 let parsed: EngineConfig = serde_json::from_value(engine_value.clone())
                     .context("Could not parse engine config")?;
@@ -281,7 +383,7 @@ pub fn load_config(
 
     // Otherwise, load only the requested engine
     let engine_config =
-        load_engine_config(&file_contents, engine_name, &overrides, &HashMap::new())?;
+        load_engine_config_with_path(&file_contents, engine_name, &overrides, &credentials, Some(config_path))?;
     Ok(Config::new(vec![engine_config]))
 }
 
@@ -548,22 +650,52 @@ mod tests {
         println!("Debug output:\n{}", debug_output);
 
         // Verify secrets are redacted
-        assert!(!debug_output.contains("sk-secret-token-12345"), "Bearer token leaked in debug output!");
-        assert!(!debug_output.contains("super-secret-api-key"), "API key leaked in debug output!");
-        assert!(!debug_output.contains("openai-key-xyz"), "OpenAI API key leaked in debug output!");
-        assert!(!debug_output.contains("my-password-123"), "Password leaked in debug output!");
+        assert!(
+            !debug_output.contains("sk-secret-token-12345"),
+            "Bearer token leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("super-secret-api-key"),
+            "API key leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("openai-key-xyz"),
+            "OpenAI API key leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("my-password-123"),
+            "Password leaked in debug output!"
+        );
 
         // Verify redaction marker is present
-        assert!(debug_output.contains("[REDACTED]"), "Redaction marker not present!");
+        assert!(
+            debug_output.contains("[REDACTED]"),
+            "Redaction marker not present!"
+        );
 
         // Verify non-sensitive data is still visible
-        assert!(debug_output.contains("test-engine"), "Engine name should be visible");
-        assert!(debug_output.contains("gpt-4"), "Non-sensitive model name should be visible");
+        assert!(
+            debug_output.contains("test-engine"),
+            "Engine name should be visible"
+        );
+        assert!(
+            debug_output.contains("gpt-4"),
+            "Non-sensitive model name should be visible"
+        );
         // Note: Numeric values are formatted as JSON in the debug output (e.g., "Number(0.7)")
         // so we check for the parameter names instead
-        assert!(debug_output.contains("temperature"), "Temperature parameter should be visible");
-        assert!(debug_output.contains("max_tokens"), "max_tokens parameter should be visible");
-        assert!(debug_output.contains("session-123"), "Session ID should be visible");
+        assert!(
+            debug_output.contains("temperature"),
+            "Temperature parameter should be visible"
+        );
+        assert!(
+            debug_output.contains("max_tokens"),
+            "max_tokens parameter should be visible"
+        );
+        assert!(
+            debug_output.contains("session-123"),
+            "Session ID should be visible"
+        );
     }
 
     #[test]
