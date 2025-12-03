@@ -90,8 +90,7 @@ fn load_env_credentials() -> HashMap<String, String> {
 
     // Also load CREDENTIAL_ prefixed variables
     for (key, value) in env::vars() {
-        if key.starts_with("CREDENTIAL_") {
-            let credential_key = &key[11..];
+        if let Some(credential_key) = key.strip_prefix("CREDENTIAL_") {
             credentials.insert(credential_key.to_string(), value);
         }
     }

@@ -28,17 +28,15 @@
 //! ```rust,no_run
 //! use fluent_core::logging;
 //!
-//! fn main() {
-//!     // Initialize with default settings (human-readable)
-//!     logging::init_logging();
+//! // Initialize with default settings (human-readable)
+//! logging::init_logging();
 //!
-//!     // Or initialize with JSON output
-//!     logging::init_json_logging();
+//! // Or initialize with JSON output
+//! logging::init_json_logging();
 //!
-//!     // Now use tracing macros
-//!     tracing::info!("Application started");
-//!     tracing::debug!(key = "value", "Debug message");
-//! }
+//! // Now use tracing macros
+//! tracing::info!("Application started");
+//! tracing::debug!(key = "value", "Debug message");
 //! ```
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -133,10 +131,8 @@ pub fn init_logging_with_options(use_json: Option<bool>) {
 /// ```rust,no_run
 /// use fluent_core::logging;
 ///
-/// fn main() {
-///     let request_id = logging::init_cli_logging();
-///     tracing::info!(request_id = %request_id, "Application started");
-/// }
+/// let request_id = logging::init_cli_logging();
+/// tracing::info!(request_id = %request_id, "Application started");
 /// ```
 pub fn init_cli_logging() -> String {
     // Check for CLI flags in argv

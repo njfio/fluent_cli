@@ -706,13 +706,26 @@ impl act::CodeGenerator for LlmCodeGenerator {
         _context: &ExecutionContext,
     ) -> Result<String> {
         let prompt = format!(
-            "You are a senior engineer. Generate code meeting this specification.\n\nSpecification:\n{}\n\nReturn only the complete code in a single fenced block.",
+            r#"You are an expert software engineer. Complete the following task exactly as specified.
+
+## Task
+{}
+
+## Instructions
+1. Follow the request EXACTLY - do not substitute or change what was asked for
+2. Use the technology/language specified by the user
+3. Provide a complete, working implementation
+4. Return ONLY the code in a fenced code block with the appropriate language tag
+
+Do not include explanations outside the code block."#,
             specification
         );
+
         let req = Request {
             flowname: "codegen".to_string(),
             payload: prompt,
         };
+
         let resp = Pin::from(self.engine.execute(&req)).await?;
         Ok(resp.content)
     }
@@ -742,6 +755,7 @@ impl FsFileManager {
                 "./examples".to_string(),
                 "./docs".to_string(),
                 "./tests".to_string(),
+                "./outputs".to_string(),
             ],
         }
     }
@@ -776,11 +790,15 @@ impl act::FileManager for FsFileManager {
                 tokio::fs::create_dir_all(parent).await?;
             }
         }
-        tokio::fs::write(&validated_path, content).await.map_err(Into::into)
+        tokio::fs::write(&validated_path, content)
+            .await
+            .map_err(Into::into)
     }
     async fn create_directory(&self, path: &str) -> Result<()> {
         let validated_path = self.validate_path(path)?;
-        tokio::fs::create_dir_all(&validated_path).await.map_err(Into::into)
+        tokio::fs::create_dir_all(&validated_path)
+            .await
+            .map_err(Into::into)
     }
     async fn delete_file(&self, path: &str) -> Result<()> {
         let validated_path = self.validate_path(path)?;
@@ -883,10 +901,9 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
         let iteration = context.iteration_count();
 
         if iteration == 0 || context.get_latest_observation().is_none() {
-            // First step: generate code from the goal specification
+            // First step: generate code/content from the goal specification
             let mut params = HashMap::new();
-            let spec = format!("Create a complete solution for: {}\nReturn a single self-contained artifact (prefer a single HTML file with embedded JS/CSS if applicable).", goal_desc);
-            params.insert("specification".to_string(), serde_json::json!(spec));
+            params.insert("specification".to_string(), serde_json::json!(goal_desc));
 
             Ok(act::ActionPlan {
                 action_id: uuid::Uuid::new_v4().to_string(),
@@ -902,25 +919,27 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
                 success_criteria: vec!["Non-trivial code produced".to_string()],
             })
         } else {
-            // Next: persist the generated code to a file
+            // Next: persist the generated output to a file
             let output = context
                 .get_latest_observation()
                 .map(|o| o.content)
                 .unwrap_or_default();
-            let mut path = if goal_desc.to_lowercase().contains("html")
-                || goal_desc.to_lowercase().contains("javascript")
-                || goal_desc.to_lowercase().contains("web")
-            {
-                "examples/agent_output.html".to_string()
+
+            // Simple file extension detection from goal or content
+            let goal_lower = goal_desc.to_lowercase();
+            let path = if goal_lower.contains(".lua") || goal_lower.contains("love2d") || goal_lower.contains("lua") {
+                "outputs/agent_output.lua".to_string()
+            } else if goal_lower.contains(".py") || goal_lower.contains("python") {
+                "outputs/agent_output.py".to_string()
+            } else if goal_lower.contains(".html") || goal_lower.contains("html") || goal_lower.contains("web") {
+                "outputs/agent_output.html".to_string()
+            } else if goal_lower.contains(".rs") || goal_lower.contains("rust") {
+                "outputs/agent_output.rs".to_string()
+            } else if goal_lower.contains(".js") || goal_lower.contains("javascript") {
+                "outputs/agent_output.js".to_string()
             } else {
-                "examples/agent_output.txt".to_string()
+                "outputs/agent_output.txt".to_string()
             };
-            if goal_desc.to_lowercase().contains("tetris") {
-                path = "examples/web_tetris.html".to_string();
-            }
-            if goal_desc.to_lowercase().contains("snake") {
-                path = "examples/web_snake.html".to_string();
-            }
 
             let mut params = HashMap::new();
             params.insert("operation".to_string(), serde_json::json!("write"));
