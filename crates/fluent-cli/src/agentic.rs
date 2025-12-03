@@ -14,6 +14,72 @@ use std::sync::Arc;
 
 use crate::tui::{AgentStatus, TuiManager};
 
+/// Validate that generated game code matches the expected game type
+fn validate_game_output(code_lower: &str, expected_game: &str, file_extension: &str, min_size: usize) -> bool {
+    // Check minimum size
+    if code_lower.len() < min_size {
+        return false;
+    }
+
+    // Check for Love2D/Lua specific markers
+    let has_love2d_markers = if file_extension == "lua" {
+        code_lower.contains("love.load") || code_lower.contains("love.draw") || code_lower.contains("love.update")
+    } else {
+        true // Not Lua, skip this check
+    };
+
+    if !has_love2d_markers {
+        return false;
+    }
+
+    // Check for game-specific markers
+    match expected_game {
+        "solitaire" => {
+            // Must have card-game related terms
+            let has_cards = code_lower.contains("card") || code_lower.contains("deck") || code_lower.contains("suit");
+            let has_piles = code_lower.contains("pile") || code_lower.contains("tableau") || code_lower.contains("foundation") || code_lower.contains("stack");
+            let no_wrong_game = !code_lower.contains("tetromino") && !code_lower.contains("snake") && !code_lower.contains("shooter") && !code_lower.contains("space");
+            has_cards && has_piles && no_wrong_game
+        }
+        "tetris" => {
+            let has_tetromino = code_lower.contains("tetromino") || code_lower.contains("piece") || code_lower.contains("block");
+            let has_grid = code_lower.contains("grid") || code_lower.contains("board") || code_lower.contains("row");
+            let has_rotation = code_lower.contains("rotat") || code_lower.contains("spin");
+            has_tetromino && has_grid && has_rotation
+        }
+        "snake" => {
+            let has_snake = code_lower.contains("snake") || code_lower.contains("segment");
+            let has_food = code_lower.contains("food") || code_lower.contains("apple") || code_lower.contains("eat");
+            let has_direction = code_lower.contains("direction") || code_lower.contains("up") || code_lower.contains("down");
+            has_snake && has_food && has_direction
+        }
+        "pong" => {
+            let has_paddle = code_lower.contains("paddle") || code_lower.contains("player");
+            let has_ball = code_lower.contains("ball");
+            let has_bounce = code_lower.contains("bounce") || code_lower.contains("velocity") || code_lower.contains("speed");
+            has_paddle && has_ball && has_bounce
+        }
+        "breakout" => {
+            let has_paddle = code_lower.contains("paddle");
+            let has_ball = code_lower.contains("ball");
+            let has_bricks = code_lower.contains("brick") || code_lower.contains("block");
+            has_paddle && has_ball && has_bricks
+        }
+        "minesweeper" => {
+            let has_mines = code_lower.contains("mine") || code_lower.contains("bomb");
+            let has_grid = code_lower.contains("grid") || code_lower.contains("cell");
+            let has_reveal = code_lower.contains("reveal") || code_lower.contains("flag") || code_lower.contains("click");
+            has_mines && has_grid && has_reveal
+        }
+        _ => {
+            // Generic game - just check for basic game elements
+            let has_game_loop = code_lower.contains("update") || code_lower.contains("draw") || code_lower.contains("loop");
+            let has_input = code_lower.contains("key") || code_lower.contains("mouse") || code_lower.contains("input");
+            has_game_loop && has_input
+        }
+    }
+}
+
 /// Configuration for agentic mode execution
 ///
 /// Contains all the settings needed to run the fluent_cli in autonomous
@@ -206,8 +272,12 @@ impl AgenticExecutor {
             .await?;
         let goal = self.create_goal()?;
 
-        // Optional quick engine test
-        let _ = self.test_engines(&runtime_config).await;
+        // Engine test - fail fast if engines aren't working
+        if let Err(e) = self.test_engines(&runtime_config).await {
+            self.tui.add_log(format!("⚠️ Engine test failed: {}", e));
+            // Continue anyway but warn - user may want to abort
+            warn!("agent.engine.test_failed error='{}'", e);
+        }
 
         self.print_startup_info();
 
@@ -1634,6 +1704,63 @@ impl<'a> GameCreator<'a> {
     fn determine_game_type(goal_description: &str) -> (String, String, String) {
         let description = goal_description.to_lowercase();
 
+        /// Get game-specific requirements to help LLM produce correct game type
+        fn get_game_specific_requirements(game_name: &str) -> &'static str {
+            match game_name {
+                "solitaire" => "\
+                    - Implement Klondike Solitaire (the classic single-player card game)\n\
+                    - Use a standard 52-card deck with 4 suits (hearts, diamonds, clubs, spades)\n\
+                    - Create 7 tableau piles, 4 foundation piles, and a stock/waste pile\n\
+                    - Cards alternate red/black in tableau, same suit ascending in foundations\n\
+                    - Allow dragging cards between piles with mouse click/drag\n\
+                    - Deal 3 cards at a time from stock to waste\n\
+                    - Win condition: all cards moved to foundations (Ace to King)",
+                "tetris" => "\
+                    - Standard 10x20 playing field\n\
+                    - 7 tetromino pieces: I, O, T, S, Z, J, L\n\
+                    - Piece rotation with wall kicks\n\
+                    - Gravity/falling pieces with increasing speed\n\
+                    - Line clear detection and scoring\n\
+                    - Ghost piece showing where piece will land\n\
+                    - Next piece preview",
+                "snake" => "\
+                    - Snake that grows when eating food\n\
+                    - Arrow keys or WASD for direction control\n\
+                    - Random food spawning\n\
+                    - Game over on wall or self collision\n\
+                    - Score based on food eaten\n\
+                    - Increasing speed as snake grows",
+                "pong" => "\
+                    - Two paddles (left/right or top/bottom)\n\
+                    - Ball bouncing off paddles and walls\n\
+                    - Score tracking for both players\n\
+                    - Ball speed increases over time\n\
+                    - Player vs CPU or 2-player mode\n\
+                    - Win condition (first to score X points)",
+                "breakout" => "\
+                    - Paddle at bottom controlled by mouse/keyboard\n\
+                    - Ball bouncing off paddle, walls, and bricks\n\
+                    - Grid of breakable bricks\n\
+                    - Different brick types (colors, hit points)\n\
+                    - Power-ups dropping from bricks\n\
+                    - Multiple lives, score tracking",
+                "minesweeper" => "\
+                    - Grid of cells with hidden mines\n\
+                    - Left-click to reveal, right-click to flag\n\
+                    - Numbers showing adjacent mine count\n\
+                    - Cascade reveal for zero-adjacent cells\n\
+                    - Win by revealing all non-mine cells\n\
+                    - Lose by clicking a mine\n\
+                    - Timer and mine counter display",
+                _ => "\
+                    - Complete, playable game implementation\n\
+                    - Clear game mechanics and rules\n\
+                    - User input handling\n\
+                    - Score tracking and game over conditions\n\
+                    - Visual feedback for game state"
+            }
+        }
+
         // Detect target platform/language
         let wants_web = description.contains("javascript")
             || description.contains("html")
@@ -1674,70 +1801,81 @@ impl<'a> GameCreator<'a> {
             ("rs".to_string(), format!("outputs/{}_game.rs", game_name))
         };
 
+        // Get game-specific requirements to help LLM stay on track
+        let game_requirements = get_game_specific_requirements(game_name);
+
         // Generate appropriate code prompt based on platform and game
         let code_prompt = if wants_love2d {
             format!(
-                "Create a complete, working {} game using the LÖVE (Love2D) framework in Lua.\n\
-                Requirements:\n\
+                "IMPORTANT: You MUST create a {} game. Do NOT create any other type of game.\n\n\
+                Create a complete, working {} game using the LÖVE (Love2D) framework in Lua.\n\n\
+                Game-Specific Requirements for {}:\n\
+                {}\n\n\
+                Technical Requirements:\n\
                 - Create main.lua with all game logic\n\
-                - Implement proper love.load(), love.update(dt), love.draw(), and love.keypressed(key) callbacks\n\
-                - Include all necessary game mechanics for {}\n\
-                - Use love.graphics for rendering\n\
-                - Handle keyboard/mouse input appropriately\n\
+                - Implement proper love.load(), love.update(dt), love.draw(), and love.keypressed(key)/love.mousepressed(x,y,button) callbacks\n\
+                - Use love.graphics for rendering cards/pieces/game elements\n\
+                - Handle keyboard AND mouse input appropriately\n\
                 - Include scoring and game state management\n\
-                - Add comments explaining the code structure\n\
-                Provide ONLY the complete Lua code wrapped in:\n\
+                - Add comments explaining the code structure\n\n\
+                CRITICAL: This MUST be a {} game. Provide ONLY the complete Lua code wrapped in:\n\
                 ```lua\n\
-                ... full main.lua code ...\n\
+                ... full main.lua code for {} ...\n\
                 ```",
-                game_name, game_name
+                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
             )
         } else if wants_python {
             format!(
-                "Create a complete, working {} game using Python and Pygame.\n\
-                Requirements:\n\
+                "IMPORTANT: You MUST create a {} game. Do NOT create any other type of game.\n\n\
+                Create a complete, working {} game using Python and Pygame.\n\n\
+                Game-Specific Requirements for {}:\n\
+                {}\n\n\
+                Technical Requirements:\n\
                 - Single Python file with all game logic\n\
                 - Initialize pygame properly\n\
                 - Implement game loop with event handling, update, and draw phases\n\
-                - Include all necessary game mechanics for {}\n\
-                - Handle keyboard input appropriately\n\
-                - Include scoring and game state management\n\
-                Provide ONLY the complete Python code wrapped in:\n\
+                - Handle keyboard AND mouse input appropriately\n\
+                - Include scoring and game state management\n\n\
+                CRITICAL: This MUST be a {} game. Provide ONLY the complete Python code wrapped in:\n\
                 ```python\n\
-                ... full code ...\n\
+                ... full code for {} ...\n\
                 ```",
-                game_name, game_name
+                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
             )
         } else if wants_web {
             format!(
-                "Create a complete, working {} game using HTML5, CSS, and JavaScript.\n\
-                Requirements:\n\
+                "IMPORTANT: You MUST create a {} game. Do NOT create any other type of game.\n\n\
+                Create a complete, working {} game using HTML5, CSS, and JavaScript.\n\n\
+                Game-Specific Requirements for {}:\n\
+                {}\n\n\
+                Technical Requirements:\n\
                 - Single HTML file with embedded CSS and JavaScript\n\
                 - Use HTML5 Canvas for rendering\n\
-                - Implement all standard {} game mechanics\n\
-                - Keyboard controls for gameplay\n\
+                - Handle keyboard AND mouse input appropriately\n\
                 - Scoring system and game state management\n\
-                - Clean, well-structured code with comments\n\
-                Provide ONLY the complete HTML file wrapped in:\n\
+                - Clean, well-structured code with comments\n\n\
+                CRITICAL: This MUST be a {} game. Provide ONLY the complete HTML file wrapped in:\n\
                 ```html\n\
-                ... full HTML ...\n\
+                ... full HTML for {} ...\n\
                 ```",
-                game_name, game_name
+                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
             )
         } else {
             format!(
-                "Create a complete, working {} game in Rust.\n\
-                Requirements:\n\
+                "IMPORTANT: You MUST create a {} game. Do NOT create any other type of game.\n\n\
+                Create a complete, working {} game in Rust.\n\n\
+                Game-Specific Requirements for {}:\n\
+                {}\n\n\
+                Technical Requirements:\n\
                 - Terminal-based interface using crossterm crate\n\
-                - Implement all standard {} game mechanics\n\
                 - Keyboard controls for gameplay\n\
                 - Scoring system and game state management\n\
-                - Clean game loop with non-blocking input\n\
-                Provide ONLY the complete Rust code wrapped in:\n\
+                - Clean game loop with non-blocking input\n\n\
+                CRITICAL: This MUST be a {} game. Provide ONLY the complete Rust code wrapped in:\n\
                 ```rust\n\
-                ... full code ...\n\
+                ... full code for {} ...\n\
                 ```",
-                game_name, game_name
+                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
             )
         };
 
@@ -1816,47 +1954,65 @@ impl<'a> GameCreator<'a> {
             file_extension
         );
 
-        // Lightweight validation for Tetris deliverables
+        // Validate game output matches expected game type
         let desc = self.goal.description.to_lowercase();
-        let needs_tetris = desc.contains("tetris");
-        let mut valid = true;
-        if needs_tetris && file_extension == "html" {
-            let lc = game_code.to_lowercase();
-            let has_canvas = lc.contains("<canvas")
-                || lc.contains("getelementbyid('tetriscanvas'")
-                || lc.contains("getelementbyid(\"tetriscanvas\"");
-            let has_controls = lc.contains("keydown")
-                || lc.contains("addEventListener('keydown'")
-                || lc.contains("addEventListener(\"keydown\"");
-            let has_logic = lc.contains("tetromino")
-                || lc.contains("rotation")
-                || lc.contains("rotate(")
-                || lc.contains("lines")
-                || lc.contains("score");
-            let long_enough = game_code.len() > self.min_html_size; // require non-trivial output
-            debug!(
-                "agent.codegen.validate has_canvas={} has_controls={} has_logic={} long_enough={}",
-                has_canvas, has_controls, has_logic, long_enough
-            );
-            valid = has_canvas && has_controls && has_logic && long_enough;
-        }
+        let lc = game_code.to_lowercase();
+
+        // Detect expected game type
+        let expected_game = if desc.contains("solitaire") || desc.contains("klondike") {
+            "solitaire"
+        } else if desc.contains("tetris") {
+            "tetris"
+        } else if desc.contains("snake") {
+            "snake"
+        } else if desc.contains("pong") {
+            "pong"
+        } else if desc.contains("breakout") || desc.contains("arkanoid") {
+            "breakout"
+        } else if desc.contains("minesweeper") {
+            "minesweeper"
+        } else {
+            "game"
+        };
+
+        // Check if generated code matches expected game type
+        let valid = validate_game_output(&lc, expected_game, file_extension, self.min_html_size);
+        debug!(
+            "agent.codegen.validate expected='{}' ext='{}' valid={}",
+            expected_game, file_extension, valid
+        );
 
         if !valid {
-            self.tui.add_log(
-                "⚠️ Output seems incomplete. Requesting refined Tetris implementation..."
-                    .to_string(),
+            self.tui.add_log(format!(
+                "⚠️ Output doesn't match expected {} game. Requesting refinement...",
+                expected_game.to_uppercase()
+            ));
+            info!(
+                "agent.codegen.refine ext='{}' expected_game='{}'",
+                file_extension, expected_game
             );
-            info!("agent.codegen.refine ext='{}'", file_extension);
+
+            // Get the game-specific requirements for the refinement prompt
+            let game_requirements = Self::get_refinement_requirements(expected_game);
+            let lang_hint = match file_extension {
+                "lua" => "```lua```",
+                "html" => "```html```",
+                "py" | "python" => "```python```",
+                "rs" | "rust" => "```rust```",
+                _ => "```",
+            };
+
             let refine_prompt = format!(
-                "Your previous output was incomplete or generic. Regenerate the deliverable as a single, complete {} Tetris implementation with the following minimum features: \n\
-                 - 10x20 grid, 7 tetrominoes (I,O,T,S,Z,J,L) \n\
-                 - Rotation with wall kicks, gravity and lock delay \n\
-                 - Line clear detection and scoring with level progression \n\
-                 - Controls: arrows for move/rotate, space hard drop, shift hold \n\
-                 Provide ONLY the full source in one block, no prose. Wrap it in a fenced block with the correct language: \n\
-                 ```html``` for HTML or ```rust``` for Rust.\n\
-                 ",
-                if file_extension == "html" { "HTML (embedded JS/CSS)" } else { "Rust" }
+                "CRITICAL ERROR: Your previous output was NOT a {} game. You MUST regenerate as a {} game.\n\n\
+                 The output MUST be a {} game with these specific features:\n\
+                 {}\n\n\
+                 Do NOT create any other type of game (no shooters, no space games, no action games unless that is what was requested).\n\n\
+                 Provide ONLY the full source in one block, no prose. Wrap it in a fenced block: {}\n",
+                expected_game.to_uppercase(),
+                expected_game,
+                expected_game,
+                game_requirements,
+                lang_hint
             );
 
             let refine_request = Request {
@@ -1872,18 +2028,65 @@ impl<'a> GameCreator<'a> {
             .await?;
             game_code = crate::utils::extract_code(&code_response.content, file_extension);
 
-            // Re-validate refined output; if still clearly a placeholder, keep the raw content to aid debugging
-            if needs_tetris && file_extension == "html" {
-                let _lc2 = game_code.to_lowercase();
-                let still_placeholder = game_code.len() < self.min_html_size;
-                if still_placeholder {
-                    self.tui.add_log("⚠️ Refined output still looks insufficient. Writing raw response for inspection.".to_string());
-                    game_code = code_response.content;
-                }
+            // Re-validate refined output
+            let lc2 = game_code.to_lowercase();
+            let still_invalid = !validate_game_output(&lc2, expected_game, file_extension, self.min_html_size);
+            if still_invalid {
+                self.tui.add_log("⚠️ Refined output still doesn't match expected game. Writing raw response for inspection.".to_string());
+                warn!("agent.codegen.refine_failed expected_game='{}' writing_raw=true", expected_game);
+                game_code = code_response.content;
             }
         }
 
         Ok(game_code)
+    }
+
+    /// Get game-specific requirements for refinement prompt
+    fn get_refinement_requirements(game_name: &str) -> &'static str {
+        match game_name {
+            "solitaire" => "\
+                - Klondike Solitaire card game\n\
+                - 52-card deck, 4 suits (hearts, diamonds, clubs, spades)\n\
+                - 7 tableau piles, 4 foundation piles, stock and waste\n\
+                - Card dragging with mouse\n\
+                - Deal 3 cards from stock\n\
+                - Alternating colors in tableau, same suit in foundations",
+            "tetris" => "\
+                - 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
+                - Piece rotation with wall kicks\n\
+                - Gravity and lock delay\n\
+                - Line clear detection and scoring\n\
+                - Arrow keys for movement, up for rotate",
+            "snake" => "\
+                - Snake that grows when eating food\n\
+                - Arrow keys or WASD for direction\n\
+                - Random food spawning\n\
+                - Game over on wall or self collision\n\
+                - Score display",
+            "pong" => "\
+                - Two paddles, left and right\n\
+                - Ball bouncing off paddles and walls\n\
+                - Score tracking for both players\n\
+                - W/S and Up/Down for controls\n\
+                - AI opponent option",
+            "breakout" => "\
+                - Paddle at bottom\n\
+                - Ball bouncing\n\
+                - Grid of breakable bricks\n\
+                - Mouse or arrow keys for paddle\n\
+                - Multiple lives, score tracking",
+            "minesweeper" => "\
+                - Grid of cells with hidden mines\n\
+                - Left-click to reveal, right-click to flag\n\
+                - Numbers showing adjacent mine count\n\
+                - Cascade reveal for zero-adjacent cells\n\
+                - Win/lose conditions",
+            _ => "\
+                - Complete, playable game\n\
+                - Clear game mechanics\n\
+                - User input handling\n\
+                - Score tracking",
+        }
     }
 
     /// Write game code to file
