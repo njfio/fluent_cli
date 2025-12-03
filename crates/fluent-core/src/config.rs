@@ -44,7 +44,7 @@ fn parse_config_content(content: &str, path_hint: Option<&str>) -> Result<Value>
 }
 
 /// Convert TOML Value to JSON Value for uniform processing
-fn toml_to_json(toml_val: toml::Value) -> Result<Value> {
+pub fn toml_to_json(toml_val: toml::Value) -> Result<Value> {
     match toml_val {
         toml::Value::String(s) => Ok(Value::String(s)),
         toml::Value::Integer(i) => Ok(Value::Number(i.into())),

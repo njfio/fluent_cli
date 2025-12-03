@@ -463,7 +463,9 @@ impl AgenticExecutor {
         let root: Value = if content.trim_start().starts_with('{') {
             serde_json::from_str(&content)?
         } else {
-            serde_yaml::from_str(&content)?
+            // Parse as TOML and convert to JSON Value
+            let toml_value: toml::Value = toml::from_str(&content)?;
+            fluent_core::config::toml_to_json(toml_value)?
         };
 
         let servers = root

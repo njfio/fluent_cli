@@ -244,28 +244,64 @@ impl IntelligentActionPlanner {
         // Analyze reasoning output to determine appropriate action type
         let output = reasoning.reasoning_output.to_lowercase();
 
-        if output.contains("tool") || output.contains("execute") || output.contains("run") {
-            ActionType::ToolExecution
-        } else if output.contains("code")
-            || output.contains("implement")
-            || output.contains("write")
+        // Priority 1: Explicit shell/command execution - use tools, not code
+        if output.contains("shell")
+            || output.contains("command")
+            || output.contains("cargo test")
+            || output.contains("cargo build")
+            || output.contains("cargo run")
+            || output.contains("run the test")
+            || output.contains("execute the")
+            || output.contains("list file")
+            || output.contains("list dir")
         {
-            ActionType::CodeGeneration
-        } else if output.contains("file") || output.contains("read") || output.contains("write") {
-            ActionType::FileOperation
-        } else if output.contains("analyze")
+            return ActionType::ToolExecution;
+        }
+
+        // Priority 2: File operations (before generic "write" check)
+        if (output.contains("read") && output.contains("file"))
+            || (output.contains("write") && output.contains("file"))
+            || output.contains("file operation")
+            || output.contains("save to file")
+            || output.contains("load from file")
+        {
+            return ActionType::FileOperation;
+        }
+
+        // Priority 3: Generic tool/execute keywords
+        if output.contains("tool") || output.contains("execute") || output.contains("run") {
+            return ActionType::ToolExecution;
+        }
+
+        // Priority 4: Code generation only for explicit creation tasks
+        if output.contains("generate code")
+            || output.contains("implement")
+            || output.contains("create a program")
+            || output.contains("write code")
+            || (output.contains("code") && output.contains("new"))
+        {
+            return ActionType::CodeGeneration;
+        }
+
+        // Priority 5: Analysis
+        if output.contains("analyze")
             || output.contains("examine")
             || output.contains("review")
         {
-            ActionType::Analysis
-        } else if output.contains("communicate")
+            return ActionType::Analysis;
+        }
+
+        // Priority 6: Communication
+        if output.contains("communicate")
             || output.contains("message")
             || output.contains("notify")
         {
-            ActionType::Communication
-        } else {
-            ActionType::Planning // Default to planning if unclear
+            return ActionType::Communication;
         }
+
+        // Default: For unclear cases, try tool execution first as it's safer
+        // than generating unnecessary code
+        ActionType::ToolExecution
     }
 }
 
