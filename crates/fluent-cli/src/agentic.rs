@@ -7,7 +7,7 @@
 use anyhow::{anyhow, Result};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 use std::fs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -151,7 +151,8 @@ impl AgenticExecutor {
     /// Main entry point for agentic mode execution
     pub async fn run(&mut self, _fluent_config: &Config) -> Result<()> {
         if self.tui.enabled() {
-            self.tui.add_log("🚀 AgenticExecutor::run() called".to_string());
+            self.tui
+                .add_log("🚀 AgenticExecutor::run() called".to_string());
             self.tui.add_log("🔧 Initializing TUI...".to_string());
         } else {
             println!("🚀 AgenticExecutor::run() called");
@@ -159,8 +160,10 @@ impl AgenticExecutor {
         }
         if let Err(e) = self.tui.init() {
             if self.tui.enabled() {
-                self.tui.add_log(format!("❌ TUI initialization failed: {}", e));
-                self.tui.add_log("💡 Falling back to non-TUI mode".to_string());
+                self.tui
+                    .add_log(format!("❌ TUI initialization failed: {}", e));
+                self.tui
+                    .add_log("💡 Falling back to non-TUI mode".to_string());
             } else {
                 println!("❌ TUI initialization failed: {}", e);
                 println!("💡 Falling back to non-TUI mode");
@@ -173,12 +176,14 @@ impl AgenticExecutor {
             self.tui = TuiManager::new(false);
         } else {
             if self.tui.enabled() {
-                self.tui.add_log("✅ TUI initialized successfully".to_string());
+                self.tui
+                    .add_log("✅ TUI initialized successfully".to_string());
             } else {
                 println!("✅ TUI initialized successfully");
             }
             self.tui.set_goal(self.config.goal_description.clone());
-            self.tui.set_features(self.config.enable_tools, self.config.enable_reflection);
+            self.tui
+                .set_features(self.config.enable_tools, self.config.enable_reflection);
             self.tui.update_status(AgentStatus::Initializing);
             self.tui.add_log("🤖 Starting Agentic Mode".to_string());
         }
@@ -187,7 +192,8 @@ impl AgenticExecutor {
         let tui_handle = self.tui.spawn_simple_tui();
         if tui_handle.is_some() {
             if self.tui.enabled() {
-                self.tui.add_log("✅ SimpleTUI running in background - Press 'Q' to quit".to_string());
+                self.tui
+                    .add_log("✅ SimpleTUI running in background - Press 'Q' to quit".to_string());
             } else {
                 println!("✅ SimpleTUI running in background - Press 'Q' to quit");
             }
@@ -321,9 +327,47 @@ impl AgenticExecutor {
         ));
 
         // Memory and state
-        use fluent_agent::memory::MemoryConfig;
-        // TODO: Implement proper memory system once dependencies are resolved
-        let memory = MemorySystem::new(MemoryConfig::default()).await?;
+        use fluent_agent::memory::{
+            CompressorConfig, MemoryConfig, PersistenceConfig, WorkingMemoryConfig,
+        };
+
+        // Initialize comprehensive memory system with proper configuration
+        self.tui
+            .add_log("🧠 Initializing memory system...".to_string());
+
+        let memory_config = MemoryConfig {
+            working_config: WorkingMemoryConfig {
+                max_active_items: 50,
+                max_memory_size: 1024 * 1024 * 100, // 100MB
+                attention_refresh_interval: 60,     // 1 minute
+                relevance_decay_rate: 0.1,
+                enable_consolidation: true,
+                consolidation_threshold: 0.8,
+                enable_predictive_loading: true,
+            },
+            compressor_config: CompressorConfig {
+                max_context_size: 10 * 1024 * 1024, // 10MB
+                target_compression_ratio: 0.3,
+                enable_semantic_compression: true,
+                enable_temporal_compression: true,
+                min_information_retention: 0.8,
+                analysis_window_size: 100,
+            },
+            persistence_config: PersistenceConfig {
+                storage_path: std::path::PathBuf::from("./fluent_persistence"),
+                enable_automatic_save: true,
+                save_interval_secs: 300, // 5 minutes
+                max_session_history: 100,
+                enable_compression: true,
+                enable_learning_persistence: true,
+                backup_retention_days: 30,
+            },
+        };
+
+        let memory = MemorySystem::new(memory_config).await?;
+        self.tui
+            .add_log("✅ Memory system initialized with working memory, compression, and persistence".to_string());
+
         let state_mgr = StateManager::new(StateManagerConfig::default()).await?;
         let reflection = ReflectionEngine::new();
 
@@ -363,7 +407,8 @@ impl AgenticExecutor {
 
         // If TUI is enabled, run agent execution and TUI concurrently
         let result = if self.tui.enabled() {
-            self.run_with_tui(&goal, &runtime_config, timeout_secs).await
+            self.run_with_tui(&goal, &runtime_config, timeout_secs)
+                .await
         } else {
             // Run without TUI
             match tokio::time::timeout(
@@ -665,17 +710,34 @@ impl AgenticExecutor {
 
     /// Show a mock TUI for demonstration when real TUI is not available
     fn show_mock_tui(&self) {
-        println!("\n╔══════════════════════════════════════════════════════════════════════════════╗");
-        println!("║                              🤖 FLUENT AGENTIC MODE                              ║");
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "\n╔══════════════════════════════════════════════════════════════════════════════╗"
+        );
+        println!(
+            "║                              🤖 FLUENT AGENTIC MODE                              ║"
+        );
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
         println!("║ Goal: {:<68} ║", self.config.goal_description);
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
-        println!("║ Status: 🔄 Initializing                  │ Iter: 0/{} │ Elapsed: 00:00:00    ║", self.config.max_iterations);
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
+        println!(
+            "║ Status: 🔄 Initializing                  │ Iter: 0/{} │ Elapsed: 00:00:00    ║",
+            self.config.max_iterations
+        );
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
         println!("║ Progress: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ║");
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
         println!("║ Current Action: Initializing agentic framework...                          ║");
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
         println!("║ Logs:                                                                       ║");
         println!("║ 🤖 Starting Agentic Mode                                                   ║");
         println!("║ 🔧 Initializing LLM engines...                                             ║");
@@ -687,11 +749,29 @@ impl AgenticExecutor {
         println!("║                                                                             ║");
         println!("║                                                                             ║");
         println!("║                                                                             ║");
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
-        println!("║ Features: Tools: {} │ Reflection: {} │ Model: Default                        ║", if self.config.enable_tools { "✅" } else { "❌" }, if self.config.enable_reflection { "✅" } else { "❌" });
-        println!("╠══════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
+        println!(
+            "║ Features: Tools: {} │ Reflection: {} │ Model: Default                        ║",
+            if self.config.enable_tools {
+                "✅"
+            } else {
+                "❌"
+            },
+            if self.config.enable_reflection {
+                "✅"
+            } else {
+                "❌"
+            }
+        );
+        println!(
+            "╠══════════════════════════════════════════════════════════════════════════════╣"
+        );
         println!("║ Press 'q' to quit │ ↑/↓ scroll logs │ PgUp/PgDn for faster scrolling        ║");
-        println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
+        println!(
+            "╚══════════════════════════════════════════════════════════════════════════════╝\n"
+        );
     }
 
     /// Run agent execution with TUI concurrently
@@ -703,7 +783,8 @@ impl AgenticExecutor {
     ) -> Result<()> {
         // Update TUI to show we're starting execution
         self.tui.update_status(AgentStatus::Running);
-        self.tui.add_log("🚀 Starting agent execution...".to_string());
+        self.tui
+            .add_log("🚀 Starting agent execution...".to_string());
 
         // For ASCII TUI, display current state immediately
         if self.tui.is_fallback_mode() {
@@ -720,7 +801,8 @@ impl AgenticExecutor {
             Ok(Ok(())) => {
                 info!("agent.react.done success=true explicit_autonomous_loop=true");
                 self.tui.update_status(AgentStatus::Completed);
-                self.tui.add_log("✅ Goal execution finished. Success: true".to_string());
+                self.tui
+                    .add_log("✅ Goal execution finished. Success: true".to_string());
                 Ok(())
             }
             Ok(Err(e)) => {
@@ -747,7 +829,8 @@ impl AgenticExecutor {
         };
 
         // Show completion and allow user interaction
-        self.tui.add_log("🎯 Agent execution completed. Press 'q' to exit.".to_string());
+        self.tui
+            .add_log("🎯 Agent execution completed. Press 'q' to exit.".to_string());
 
         // For ASCII TUI, display final state immediately
         if self.tui.is_fallback_mode() {
@@ -759,8 +842,6 @@ impl AgenticExecutor {
 
         result
     }
-
-
 
     /// Run autonomous execution loop
     async fn run_autonomous_execution(
@@ -842,9 +923,19 @@ impl<'a> AutonomousExecutor<'a> {
             }
 
             if !self.queued_guidance.is_empty() {
-                for (idx, g) in std::mem::take(&mut self.queued_guidance).into_iter().enumerate() {
-                    context.set_variable(format!("queued_guidance_{}", idx + context.iteration_count() as usize), g.clone());
-                    self.tui.add_log(format!("💬 Queued guidance applied: {}", g));
+                for (idx, g) in std::mem::take(&mut self.queued_guidance)
+                    .into_iter()
+                    .enumerate()
+                {
+                    context.set_variable(
+                        format!(
+                            "queued_guidance_{}",
+                            idx + context.iteration_count() as usize
+                        ),
+                        g.clone(),
+                    );
+                    self.tui
+                        .add_log(format!("💬 Queued guidance applied: {}", g));
                 }
             }
             self.tui.update_iteration(iteration, max_iterations);
@@ -885,7 +976,10 @@ impl<'a> AutonomousExecutor<'a> {
         Ok(())
     }
 
-    async fn process_controls(&mut self, context: &mut fluent_agent::context::ExecutionContext) -> Result<()> {
+    async fn process_controls(
+        &mut self,
+        context: &mut fluent_agent::context::ExecutionContext,
+    ) -> Result<()> {
         if let Some(rx) = &self.control_rx {
             let mut msgs = Vec::new();
             loop {
@@ -919,16 +1013,25 @@ impl<'a> AutonomousExecutor<'a> {
                 self.tui.update_status(crate::tui::AgentStatus::Running);
                 self.tui.add_log("▶️ Resumed by user".to_string());
             }
-            ControlMessageType::Input { context: ctx, guidance, apply_to_future } => {
+            ControlMessageType::Input {
+                context: ctx,
+                guidance,
+                apply_to_future,
+            } => {
                 if apply_to_future {
                     self.queued_guidance.push(guidance.clone());
-                    self.tui.add_log(format!("💬 Guidance queued: {}", guidance));
+                    self.tui
+                        .add_log(format!("💬 Guidance queued: {}", guidance));
                 } else {
                     context.set_variable("human_guidance".to_string(), guidance.clone());
-                    self.tui.add_log(format!("💬 Guidance applied: {}", guidance));
+                    self.tui
+                        .add_log(format!("💬 Guidance applied: {}", guidance));
                 }
             }
-            ControlMessageType::ModifyGoal { new_goal, keep_context: _ } => {
+            ControlMessageType::ModifyGoal {
+                new_goal,
+                keep_context: _,
+            } => {
                 context.add_context_item("goal_modified".to_string(), new_goal.clone());
                 self.tui.set_goal(new_goal.clone());
                 self.tui.add_log(format!("🎯 Goal modified by user"));
@@ -1293,7 +1396,8 @@ impl<'a> AutonomousExecutor<'a> {
         // Ensure parent directories exist
         if let Some(parent) = std::path::Path::new(file_path).parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                self.tui.add_log(format!("⚠️ Could not create directory {:?}: {}", parent, e));
+                self.tui
+                    .add_log(format!("⚠️ Could not create directory {:?}: {}", parent, e));
             }
         }
 
@@ -1678,8 +1782,8 @@ impl<'a> GameCreator<'a> {
                             );
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             delay *= 2;
-    }
-}
+                        }
+                    }
                 }
             }
             Err(anyhow::anyhow!(format!(

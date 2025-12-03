@@ -14,6 +14,7 @@ use std::{
     io::{self, stdout, Write},
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Position {
@@ -324,7 +325,8 @@ fn handle_input(game: &mut Game) -> io::Result<bool> {
     Ok(true)
 }
 
-fn main() -> io::Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
@@ -348,7 +350,7 @@ fn main() -> io::Result<()> {
             break Err(e);
         }
 
-        std::thread::sleep(Duration::from_millis(10));
+        sleep(Duration::from_millis(10)).await;
     };
 
     execute!(stdout(), Show, LeaveAlternateScreen)?;

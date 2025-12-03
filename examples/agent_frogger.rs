@@ -10,6 +10,7 @@ use std::{
     io::stdout,
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 const WIDTH: u16 = 40;
 const HEIGHT: u16 = 20;
@@ -143,7 +144,8 @@ impl Game {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
     let mut game = Game::new();
@@ -179,7 +181,7 @@ fn main() -> Result<()> {
 
         let elapsed = frame_start.elapsed();
         if elapsed < frame_duration {
-            std::thread::sleep(frame_duration - elapsed);
+            sleep(frame_duration - elapsed).await;
         }
     }
 
