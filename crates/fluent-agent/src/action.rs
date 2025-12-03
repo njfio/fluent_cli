@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::info;
+use tracing::info;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -762,13 +762,43 @@ impl PlanningStrategy for ToolPlanningStrategy {
     async fn plan(
         &self,
         reasoning: &ReasoningResult,
-        _context: &ExecutionContext,
+        context: &ExecutionContext,
     ) -> Result<ActionPlan> {
+        let output = reasoning.reasoning_output.to_lowercase();
+
+        // Determine which tool to use based on reasoning output
+        let (tool_name, description) = if output.contains("shell") || output.contains("command") || output.contains("execute") && output.contains("run") {
+            ("run_command", "Execute shell command")
+        } else if output.contains("read") && output.contains("file") {
+            ("read_file", "Read file contents")
+        } else if output.contains("write") && output.contains("file") {
+            ("write_file", "Write content to file")
+        } else if output.contains("list") && (output.contains("dir") || output.contains("file")) {
+            ("list_directory", "List directory contents")
+        } else if output.contains("create") && output.contains("dir") {
+            ("create_directory", "Create directory")
+        } else if output.contains("cargo") || output.contains("rust") && output.contains("build") {
+            ("cargo_build", "Build Rust project")
+        } else if output.contains("test") && output.contains("rust") {
+            ("cargo_test", "Run Rust tests")
+        } else {
+            // Default to shell command for generic execution requests
+            ("run_command", "Execute command")
+        };
+
+        let mut parameters = HashMap::new();
+        parameters.insert("tool_name".to_string(), serde_json::json!(tool_name));
+
+        // Extract command/path from goal if available
+        if let Some(goal) = context.get_current_goal() {
+            parameters.insert("goal".to_string(), serde_json::json!(goal.description));
+        }
+
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::ToolExecution,
-            description: "Execute appropriate tool based on reasoning".to_string(),
-            parameters: HashMap::new(),
+            description: format!("{} based on reasoning", description),
+            parameters,
             expected_outcome: "Tool execution completed successfully".to_string(),
             confidence_score: reasoning.confidence_score,
             estimated_duration: Some(Duration::from_secs(30)),
@@ -785,13 +815,23 @@ impl PlanningStrategy for CodePlanningStrategy {
     async fn plan(
         &self,
         reasoning: &ReasoningResult,
-        _context: &ExecutionContext,
+        context: &ExecutionContext,
     ) -> Result<ActionPlan> {
+        let mut parameters = HashMap::new();
+
+        // Use goal description as the specification
+        if let Some(goal) = context.get_current_goal() {
+            parameters.insert("specification".to_string(), serde_json::json!(goal.description));
+        } else {
+            // Fallback to reasoning output
+            parameters.insert("specification".to_string(), serde_json::json!(reasoning.reasoning_output));
+        }
+
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::CodeGeneration,
-            description: "Generate code based on reasoning analysis".to_string(),
-            parameters: HashMap::new(),
+            description: "Generate code based on goal specification".to_string(),
+            parameters,
             expected_outcome: "Code generated successfully".to_string(),
             confidence_score: reasoning.confidence_score,
             estimated_duration: Some(Duration::from_secs(60)),
@@ -811,13 +851,36 @@ impl PlanningStrategy for FilePlanningStrategy {
     async fn plan(
         &self,
         reasoning: &ReasoningResult,
-        _context: &ExecutionContext,
+        context: &ExecutionContext,
     ) -> Result<ActionPlan> {
+        let output = reasoning.reasoning_output.to_lowercase();
+
+        // Determine file operation type
+        let operation = if output.contains("read") {
+            "read"
+        } else if output.contains("write") || output.contains("create") || output.contains("save") {
+            "write"
+        } else if output.contains("delete") || output.contains("remove") {
+            "delete"
+        } else if output.contains("list") || output.contains("dir") {
+            "list"
+        } else {
+            "read" // Default to read as it's safe
+        };
+
+        let mut parameters = HashMap::new();
+        parameters.insert("operation".to_string(), serde_json::json!(operation));
+
+        // Include goal for path extraction
+        if let Some(goal) = context.get_current_goal() {
+            parameters.insert("goal".to_string(), serde_json::json!(goal.description));
+        }
+
         Ok(ActionPlan {
             action_id: uuid::Uuid::new_v4().to_string(),
             action_type: ActionType::FileOperation,
-            description: "Perform file operation based on reasoning".to_string(),
-            parameters: HashMap::new(),
+            description: format!("Perform {} file operation", operation),
+            parameters,
             expected_outcome: "File operation completed successfully".to_string(),
             confidence_score: reasoning.confidence_score,
             estimated_duration: Some(Duration::from_secs(10)),
