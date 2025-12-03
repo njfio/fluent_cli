@@ -1585,11 +1585,13 @@ impl<'a> GameCreator<'a> {
     ) -> Result<()> {
         let (file_extension, code_prompt, file_path) =
             Self::determine_game_type(&self.goal.description);
-        if !self.goal.description.to_lowercase().contains("tetris")
-            && !self.goal.description.to_lowercase().contains("snake")
-        {
-            self.tui.add_log("⚠️ Unrecognized game type requested. Defaulting to Tetris as it's the most complex option.".to_string());
-        }
+
+        self.tui.add_log(format!(
+            "🎮 Creating {} game: {}",
+            file_extension.to_uppercase(),
+            file_path
+        ));
+
         info!(
             "agent.codegen.select type='{}' path='{}'",
             file_extension, file_path
@@ -1597,7 +1599,7 @@ impl<'a> GameCreator<'a> {
 
         // Generate game code
         let game_code = self
-            .generate_game_code(&code_prompt, file_extension)
+            .generate_game_code(&code_prompt, &file_extension)
             .await?;
         debug!(
             "agent.codegen.generated len={} ext='{}'",
@@ -1605,135 +1607,139 @@ impl<'a> GameCreator<'a> {
             file_extension
         );
 
+        // Ensure output directory exists
+        if let Some(parent) = std::path::Path::new(&file_path).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
         // Write game file
-        self.write_game_file(file_path, &game_code)?;
+        self.write_game_file(&file_path, &game_code)?;
 
         // Update context
-        self.update_context(context, file_path, file_extension);
+        self.update_context(context, &file_path, &file_extension);
 
         // Log success
         self.tui.add_log(format!(
-            "🎉 Goal achieved! {} game created successfully!",
-            file_extension.to_uppercase()
+            "🎉 Goal achieved! {} game created at {}!",
+            file_extension.to_uppercase(),
+            file_path
         ));
         Ok(())
     }
 
-    /// Determine what type of game to create
-    fn determine_game_type(goal_description: &str) -> (&str, String, &str) {
+    /// Determine what type of game to create based on goal description
+    /// Returns (file_extension, code_prompt, output_path)
+    fn determine_game_type(goal_description: &str) -> (String, String, String) {
         let description = goal_description.to_lowercase();
+
+        // Detect target platform/language
         let wants_web = description.contains("javascript")
             || description.contains("html")
-            || description.contains("web");
+            || description.contains("web")
+            || description.contains("browser");
+        let wants_love2d = description.contains("love2d")
+            || description.contains("löve")
+            || description.contains("love 2d");
+        let wants_lua = description.contains("lua") || wants_love2d;
+        let wants_python = description.contains("python") || description.contains("pygame");
 
-        // Check for specific game types in order of preference
-        if description.contains("tetris") {
-            if wants_web {
-                (
-                    "html",
-                    "Create a complete, working Tetris game using HTML5, CSS, and JavaScript. Requirements:\n\
-                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
-                        - Use HTML5 Canvas for rendering\n\
-                        - Implement standard Tetris rules: 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
-                        - Rotation system (clockwise), wall kicks, and gravity\n\
-                        - Piece hold, next piece queue, soft drop, and hard drop\n\
-                        - Line clear detection (single/double/triple/tetris) and scoring system\n\
-                        - Level progression (increase fall speed) and game over state\n\
-                        - Keyboard controls (arrow keys + space for hard drop, shift for hold)\n\
-                        - Cleanly structured code (Board, Piece, GameLoop) with comments\n\
-                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a single fenced block like:\n\
-                        ```html\n\
-                        ... your full HTML here ...\n\
-                        ```".to_string(),
-                    "examples/web_tetris.html"
-                )
-            } else {
-                (
-                    "rs",
-                    "Create a complete, working Tetris game in Rust. Requirements:\n\
-                        - Terminal-based interface using crossterm crate\n\
-                        - 10x20 grid, 7 tetrominoes, piece rotation and movement\n\
-                        - Gravity, line clear detection, scoring, and levels\n\
-                        - Controls: arrow keys to move/rotate, space hard drop, 'c' to hold\n\
-                        - Clean game loop with non-blocking input and rendering\n\
-                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
-                        ```rust\n\
-                        ... full program ...\n\
-                        ```".to_string(),
-                    "examples/agent_tetris.rs"
-                )
-            }
+        // Detect game type
+        let game_name = if description.contains("solitaire") || description.contains("klondike") {
+            "solitaire"
+        } else if description.contains("tetris") {
+            "tetris"
         } else if description.contains("snake") {
-            if wants_web {
-                (
-                    "html",
-                    "Create a complete, working Snake game using HTML5, CSS, and JavaScript. Requirements:\n\
-                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
-                        - Use HTML5 Canvas for rendering on a grid (e.g., 20x20 cells)\n\
-                        - Classic Snake mechanics: growing tail when eating food, collision with walls or self causes game over\n\
-                        - Food spawn at random empty cell; avoid spawning on snake\n\
-                        - Scoring system and increasing speed per level or every few foods\n\
-                        - Keyboard controls: arrow keys and WASD; include pause/resume and restart\n\
-                        - Clean structure with a main game loop, update, and render phases\n\
-                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a fenced block:\n\
-                        ```html\n\
-                        ... full HTML here ...\n\
-                        ```".to_string(),
-                    "examples/web_snake.html"
-                )
-            } else {
-                (
-                    "rs",
-                    "Create a complete, working Snake game in Rust. Requirements:\n\
-                        - Terminal-based interface using crossterm\n\
-                        - Grid-based snake movement, food spawn, self/wall collision detection\n\
-                        - Score tracking and increasing speed over time\n\
-                        - Controls: arrow keys / WASD, 'p' pause, 'r' restart\n\
-                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
-                        ```rust\n\
-                        ... full program ...\n\
-                        ```".to_string(),
-                    "examples/agent_snake.rs"
-                )
-            }
+            "snake"
+        } else if description.contains("pong") {
+            "pong"
+        } else if description.contains("breakout") || description.contains("arkanoid") {
+            "breakout"
+        } else if description.contains("minesweeper") {
+            "minesweeper"
         } else {
-            // For unrecognized game requests, default to Tetris as it's the most complex and requested
-            if wants_web {
-                (
-                    "html",
-                    "Create a complete, working Tetris game using HTML5, CSS, and JavaScript. Requirements:\n\
-                        - Single HTML file with embedded CSS and JavaScript (no external files)\n\
-                        - Use HTML5 Canvas for rendering\n\
-                        - Implement standard Tetris rules: 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
-                        - Rotation system (clockwise), wall kicks, and gravity\n\
-                        - Piece hold, next piece queue, soft drop, and hard drop\n\
-                        - Line clear detection (single/double/triple/tetris) and scoring system\n\
-                        - Level progression (increase fall speed) and game over state\n\
-                        - Keyboard controls (arrow keys + space for hard drop, shift for hold)\n\
-                        - Cleanly structured code (Board, Piece, GameLoop) with comments\n\
-                        Provide ONLY the complete HTML file with embedded CSS and JavaScript, wrapped in a single fenced block like:\n\
-                        ```html\n\
-                        ... your full HTML here ...\n\
-                        ```".to_string(),
-                    "examples/web_tetris.html"
-                )
-            } else {
-                (
-                    "rs",
-                    "Create a complete, working Tetris game in Rust. Requirements:\n\
-                        - Terminal-based interface using crossterm crate\n\
-                        - 10x20 grid, 7 tetrominoes, piece rotation and movement\n\
-                        - Gravity, line clear detection, scoring, and levels\n\
-                        - Controls: arrow keys to move/rotate, space hard drop, 'c' to hold\n\
-                        - Clean game loop with non-blocking input and rendering\n\
-                        Provide ONLY the complete, compilable Rust code with all necessary imports, wrapped in:\n\
-                        ```rust\n\
-                        ... full program ...\n\
-                        ```".to_string(),
-                    "examples/agent_tetris.rs"
-                )
-            }
-        }
+            // Extract game name from description if possible
+            "game"
+        };
+
+        // Determine file extension and output path based on platform
+        let (ext, output_path) = if wants_love2d || wants_lua {
+            ("lua".to_string(), format!("outputs/{}_love2d/main.lua", game_name))
+        } else if wants_python {
+            ("py".to_string(), format!("outputs/{}_pygame.py", game_name))
+        } else if wants_web {
+            ("html".to_string(), format!("outputs/{}_web.html", game_name))
+        } else {
+            ("rs".to_string(), format!("outputs/{}_game.rs", game_name))
+        };
+
+        // Generate appropriate code prompt based on platform and game
+        let code_prompt = if wants_love2d {
+            format!(
+                "Create a complete, working {} game using the LÖVE (Love2D) framework in Lua.\n\
+                Requirements:\n\
+                - Create main.lua with all game logic\n\
+                - Implement proper love.load(), love.update(dt), love.draw(), and love.keypressed(key) callbacks\n\
+                - Include all necessary game mechanics for {}\n\
+                - Use love.graphics for rendering\n\
+                - Handle keyboard/mouse input appropriately\n\
+                - Include scoring and game state management\n\
+                - Add comments explaining the code structure\n\
+                Provide ONLY the complete Lua code wrapped in:\n\
+                ```lua\n\
+                ... full main.lua code ...\n\
+                ```",
+                game_name, game_name
+            )
+        } else if wants_python {
+            format!(
+                "Create a complete, working {} game using Python and Pygame.\n\
+                Requirements:\n\
+                - Single Python file with all game logic\n\
+                - Initialize pygame properly\n\
+                - Implement game loop with event handling, update, and draw phases\n\
+                - Include all necessary game mechanics for {}\n\
+                - Handle keyboard input appropriately\n\
+                - Include scoring and game state management\n\
+                Provide ONLY the complete Python code wrapped in:\n\
+                ```python\n\
+                ... full code ...\n\
+                ```",
+                game_name, game_name
+            )
+        } else if wants_web {
+            format!(
+                "Create a complete, working {} game using HTML5, CSS, and JavaScript.\n\
+                Requirements:\n\
+                - Single HTML file with embedded CSS and JavaScript\n\
+                - Use HTML5 Canvas for rendering\n\
+                - Implement all standard {} game mechanics\n\
+                - Keyboard controls for gameplay\n\
+                - Scoring system and game state management\n\
+                - Clean, well-structured code with comments\n\
+                Provide ONLY the complete HTML file wrapped in:\n\
+                ```html\n\
+                ... full HTML ...\n\
+                ```",
+                game_name, game_name
+            )
+        } else {
+            format!(
+                "Create a complete, working {} game in Rust.\n\
+                Requirements:\n\
+                - Terminal-based interface using crossterm crate\n\
+                - Implement all standard {} game mechanics\n\
+                - Keyboard controls for gameplay\n\
+                - Scoring system and game state management\n\
+                - Clean game loop with non-blocking input\n\
+                Provide ONLY the complete Rust code wrapped in:\n\
+                ```rust\n\
+                ... full code ...\n\
+                ```",
+                game_name, game_name
+            )
+        };
+
+        (ext, code_prompt, output_path)
     }
 
     /// Generate game code using LLM

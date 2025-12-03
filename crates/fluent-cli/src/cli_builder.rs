@@ -198,7 +198,13 @@ pub fn build_cli() -> Command {
                 .arg(
                     Arg::new("enable-tools")
                         .long("enable-tools")
-                        .help("Enable tool usage (filesystem, compiler, shell)")
+                        .help("Enable tool usage (enabled by default in agentic mode)")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("no-tools")
+                        .long("no-tools")
+                        .help("Disable tool usage in agentic mode")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
