@@ -54,6 +54,8 @@ pub struct TuiState {
     pub paused: bool,
     pub awaiting_approval: bool,
     pub pending_approval_id: Option<uuid::Uuid>,
+    pub queued_guidance_count: usize,
+    pub default_delivery_queued: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -140,8 +142,12 @@ impl CollaborativeTui {
             StateUpdateType::StatusChange { status } => {
                 let mut state = self.state.write().await;
                 state.status = match status {
-                    fluent_agent::agent_control::AgentStatus::Initializing => AgentDisplayStatus::Initializing,
-                    fluent_agent::agent_control::AgentStatus::Running => AgentDisplayStatus::Running,
+                    fluent_agent::agent_control::AgentStatus::Initializing => {
+                        AgentDisplayStatus::Initializing
+                    }
+                    fluent_agent::agent_control::AgentStatus::Running => {
+                        AgentDisplayStatus::Running
+                    }
                     fluent_agent::agent_control::AgentStatus::Paused => {
                         state.paused = true;
                         AgentDisplayStatus::Paused
@@ -150,10 +156,18 @@ impl CollaborativeTui {
                         state.awaiting_approval = true;
                         AgentDisplayStatus::WaitingForApproval
                     }
-                    fluent_agent::agent_control::AgentStatus::WaitingForGuidance => AgentDisplayStatus::WaitingForGuidance,
-                    fluent_agent::agent_control::AgentStatus::Completed => AgentDisplayStatus::Completed,
-                    fluent_agent::agent_control::AgentStatus::Failed(msg) => AgentDisplayStatus::Failed(msg),
-                    fluent_agent::agent_control::AgentStatus::Timeout => AgentDisplayStatus::Failed("Timeout".to_string()),
+                    fluent_agent::agent_control::AgentStatus::WaitingForGuidance => {
+                        AgentDisplayStatus::WaitingForGuidance
+                    }
+                    fluent_agent::agent_control::AgentStatus::Completed => {
+                        AgentDisplayStatus::Completed
+                    }
+                    fluent_agent::agent_control::AgentStatus::Failed(msg) => {
+                        AgentDisplayStatus::Failed(msg)
+                    }
+                    fluent_agent::agent_control::AgentStatus::Timeout => {
+                        AgentDisplayStatus::Failed("Timeout".to_string())
+                    }
                 };
             }
 
@@ -169,8 +183,7 @@ impl CollaborativeTui {
             }
 
             StateUpdateType::ActionUpdate {
-                action_description,
-                ..
+                action_description, ..
             } => {
                 let mut state = self.state.write().await;
                 state.current_action = action_description.clone();
@@ -205,8 +218,7 @@ impl CollaborativeTui {
                 } else {
                     "Action rejected by human".to_string()
                 };
-                self.conversation_panel
-                    .add_system_message(msg);
+                self.conversation_panel.add_system_message(msg);
             }
 
             StateUpdateType::GuidanceRequested { request } => {
@@ -231,16 +243,25 @@ impl CollaborativeTui {
                 thought_process,
             } => {
                 self.conversation_panel.add_agent_message(
-                    format!("💭 {}\n   Confidence: {:.0}%\n   {}", step_description, confidence * 100.0, thought_process),
+                    format!(
+                        "💭 {}\n   Confidence: {:.0}%\n   {}",
+                        step_description,
+                        confidence * 100.0,
+                        thought_process
+                    ),
                     MessageType::Reasoning,
                 );
             }
 
             StateUpdateType::Error { error, .. } => {
-                self.conversation_panel.add_agent_message(error, MessageType::Error);
+                self.conversation_panel
+                    .add_agent_message(error, MessageType::Error);
             }
 
-            StateUpdateType::GoalProgress { completion_percentage, .. } => {
+            StateUpdateType::GoalProgress {
+                completion_percentage,
+                ..
+            } => {
                 let mut state = self.state.write().await;
                 state.progress_percentage = completion_percentage as u32;
             }
@@ -263,7 +284,8 @@ impl CollaborativeTui {
 
                 // Handle global keys
                 match (key.code, key.modifiers) {
-                    (KeyCode::Char('q'), KeyModifiers::NONE) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                    (KeyCode::Char('q'), KeyModifiers::NONE)
+                    | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                         return Ok(true); // Quit
                     }
 
@@ -280,6 +302,19 @@ impl CollaborativeTui {
                         let current_goal = state.goal_description.clone();
                         drop(state);
                         self.input_modal.activate_goal_modify(current_goal);
+                    }
+
+                    (KeyCode::Char('o'), KeyModifiers::NONE) => {
+                        let mut state = self.state.write().await;
+                        state.default_delivery_queued = !state.default_delivery_queued;
+                        let mode = if state.default_delivery_queued {
+                            "Queue"
+                        } else {
+                            "Interrupt"
+                        };
+                        drop(state);
+                        self.conversation_panel
+                            .add_system_message(format!("Delivery mode: {}", mode));
                     }
 
                     (KeyCode::Char('a'), KeyModifiers::NONE) => {
@@ -317,13 +352,16 @@ impl CollaborativeTui {
                 self.input_modal.deactivate();
             }
 
-            (KeyCode::Enter, KeyModifiers::CONTROL) => {
-                // Submit input
+            (KeyCode::Enter, mods) if mods.contains(KeyModifiers::CONTROL) => {
+                let state = self.state.read().await;
+                let default_queued = state.default_delivery_queued;
+                drop(state);
+                let queued = mods.contains(KeyModifiers::SHIFT) || default_queued;
                 let input = self.input_modal.get_input();
                 let mode = self.input_modal.mode.clone();
                 self.input_modal.deactivate();
 
-                self.handle_modal_submit(input, mode).await?;
+                self.handle_modal_submit(input, mode, queued).await?;
             }
 
             (KeyCode::Char(c), KeyModifiers::NONE) | (KeyCode::Char(c), KeyModifiers::SHIFT) => {
@@ -361,20 +399,31 @@ impl CollaborativeTui {
     }
 
     /// Handle modal submission
-    async fn handle_modal_submit(&mut self, input: String, mode: super::InputMode) -> Result<()> {
+    async fn handle_modal_submit(
+        &mut self,
+        input: String,
+        mode: super::InputMode,
+        queued: bool,
+    ) -> Result<()> {
         if input.is_empty() {
             return Ok(());
         }
 
         match mode {
             super::InputMode::Guidance => {
-                self.send_guidance(input.clone()).await?;
-                self.conversation_panel.add_human_message(format!("Guidance: {}", input));
+                self.send_guidance(input.clone(), queued).await?;
+                if queued {
+                    let mut state = self.state.write().await;
+                    state.queued_guidance_count += 1;
+                }
+                self.conversation_panel
+                    .add_human_message(format!("Guidance: {}", input));
             }
 
             super::InputMode::GoalModify => {
                 self.send_goal_modification(input.clone()).await?;
-                self.conversation_panel.add_human_message(format!("Modified goal: {}", input));
+                self.conversation_panel
+                    .add_human_message(format!("Modified goal: {}", input));
             }
 
             super::InputMode::Comment => {
@@ -382,8 +431,10 @@ impl CollaborativeTui {
             }
 
             super::InputMode::RejectReason => {
-                self.handle_approval_with_reason(false, input.clone()).await?;
-                self.conversation_panel.add_human_message(format!("Rejected: {}", input));
+                self.handle_approval_with_reason(false, input.clone())
+                    .await?;
+                self.conversation_panel
+                    .add_human_message(format!("Rejected: {}", input));
             }
 
             super::InputMode::Normal => {}
@@ -417,12 +468,12 @@ impl CollaborativeTui {
     }
 
     /// Send guidance to agent
-    async fn send_guidance(&mut self, guidance: String) -> Result<()> {
+    async fn send_guidance(&mut self, guidance: String, queued: bool) -> Result<()> {
         let Some(ref channel) = self.control_channel else {
             return Ok(());
         };
 
-        let message = ControlMessage::input("Current context".to_string(), guidance, false);
+        let message = ControlMessage::input("Current context".to_string(), guidance, queued);
         channel.send_control(message).await?;
 
         Ok(())
@@ -434,10 +485,12 @@ impl CollaborativeTui {
             return Ok(());
         };
 
-        let message = ControlMessage::new(fluent_agent::agent_control::ControlMessageType::ModifyGoal {
-            new_goal: new_goal.clone(),
-            keep_context: true,
-        });
+        let message = ControlMessage::new(
+            fluent_agent::agent_control::ControlMessageType::ModifyGoal {
+                new_goal: new_goal.clone(),
+                keep_context: true,
+            },
+        );
 
         channel.send_control(message).await?;
 
@@ -449,7 +502,8 @@ impl CollaborativeTui {
 
     /// Handle approval
     async fn handle_approval(&mut self, approved: bool) -> Result<()> {
-        self.handle_approval_with_reason(approved, String::new()).await
+        self.handle_approval_with_reason(approved, String::new())
+            .await
     }
 
     /// Handle approval with reason/comment
@@ -465,7 +519,14 @@ impl CollaborativeTui {
         drop(state);
 
         let message = if approved {
-            ControlMessage::approve(approval_id, if reason.is_empty() { None } else { Some(reason) })
+            ControlMessage::approve(
+                approval_id,
+                if reason.is_empty() {
+                    None
+                } else {
+                    Some(reason)
+                },
+            )
         } else {
             ControlMessage::reject(approval_id, reason, None)
         };
@@ -490,16 +551,48 @@ impl CollaborativeTui {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3),  // Header
-                    Constraint::Length(3),  // Progress
-                    Constraint::Min(10),    // Main content
-                    Constraint::Length(3),  // Controls
+                    Constraint::Length(3), // Header
+                    Constraint::Length(3), // Progress
+                    Constraint::Min(10),   // Main content
+                    Constraint::Length(3), // Controls
                 ])
                 .split(size);
 
-            // Render header - need to use a simpler approach
-            let header_text = "🤖 Fluent Agent - Collaborative Mode";
-            let header = Paragraph::new(header_text)
+            let s = self.state.blocking_read().clone();
+            let delivery = if s.default_delivery_queued {
+                "Queue"
+            } else {
+                "Interrupt"
+            };
+            let header_lines = vec![
+                Line::from(vec![
+                    Span::styled(
+                        "🤖 Fluent Agent",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" • Collaborative Mode"),
+                ]),
+                Line::from(vec![
+                    Span::styled("Delivery:", Style::default().fg(Color::White)),
+                    Span::styled(
+                        format!(" {}", delivery),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled("Queued:", Style::default().fg(Color::White)),
+                    Span::styled(
+                        format!(" {}", s.queued_guidance_count),
+                        Style::default()
+                            .fg(Color::Magenta)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+            ];
+            let header = Paragraph::new(header_lines)
                 .block(Block::default().borders(Borders::ALL))
                 .alignment(Alignment::Center);
             f.render_widget(header, chunks[0]);
@@ -512,14 +605,19 @@ impl CollaborativeTui {
             f.render_widget(progress, chunks[1]);
 
             // Render placeholder for main content
-            let content = Paragraph::new("Content will appear here")
-                .block(Block::default().borders(Borders::ALL).title("Agent Activity"));
+            let content = Paragraph::new("Content will appear here").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Agent Activity"),
+            );
             f.render_widget(content, chunks[2]);
 
             // Render controls
-            let controls = Paragraph::new("P=Pause I=Input G=Goal A=Approve R=Reject Q=Quit")
-                .block(Block::default().borders(Borders::ALL).title("Controls"))
-                .alignment(Alignment::Center);
+            let controls = Paragraph::new(
+                "P=Pause I=Input G=Goal O=Toggle Delivery A=Approve R=Reject Q=Quit",
+            )
+            .block(Block::default().borders(Borders::ALL).title("Controls"))
+            .alignment(Alignment::Center);
             f.render_widget(controls, chunks[3]);
         })?;
 
@@ -533,6 +631,7 @@ impl CollaborativeTui {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn render_header(&self, f: &mut Frame, area: Rect) {
         let state = self.state.blocking_read();
 
@@ -546,19 +645,28 @@ impl CollaborativeTui {
             AgentDisplayStatus::Failed(_msg) => ("Failed", Color::Red),
         };
 
-        let header = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("🤖 Fluent Agent", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(" - "),
-                Span::styled(status_text.0, Style::default().fg(status_text.1).add_modifier(Modifier::BOLD)),
-            ]),
-        ])
+        let header = Paragraph::new(vec![Line::from(vec![
+            Span::styled(
+                "🤖 Fluent Agent",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" - "),
+            Span::styled(
+                status_text.0,
+                Style::default()
+                    .fg(status_text.1)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])])
         .block(Block::default().borders(Borders::ALL))
         .alignment(Alignment::Center);
 
         f.render_widget(header, area);
     }
 
+    #[allow(dead_code)]
     fn render_progress(&self, f: &mut Frame, area: Rect) {
         let state = self.state.blocking_read();
 
@@ -573,6 +681,7 @@ impl CollaborativeTui {
         f.render_widget(progress, area);
     }
 
+    #[allow(dead_code)]
     fn render_main_content(&mut self, f: &mut Frame, area: Rect) {
         if self.approval_panel.has_pending_approval() {
             // Split screen: conversation + approval
@@ -589,19 +698,48 @@ impl CollaborativeTui {
         }
     }
 
+    #[allow(dead_code)]
     fn render_controls(&self, f: &mut Frame, area: Rect) {
         let controls = Paragraph::new(Line::from(vec![
-            Span::styled("P", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "P",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Pause "),
-            Span::styled("I", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "I",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Input "),
-            Span::styled("G", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "G",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Goal "),
-            Span::styled("A", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "A",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Approve "),
-            Span::styled("R", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "R",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Reject "),
-            Span::styled("Q", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Q",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw("=Quit"),
         ]))
         .block(Block::default().borders(Borders::ALL).title("Controls"))
@@ -638,6 +776,8 @@ impl Default for TuiState {
             paused: false,
             awaiting_approval: false,
             pending_approval_id: None,
+            queued_guidance_count: 0,
+            default_delivery_queued: false,
         }
     }
 }

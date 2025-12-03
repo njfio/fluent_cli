@@ -27,7 +27,6 @@ fluent-agent = { path = "crates/fluent-agent" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "fs", "io-util", "time", "sync", "signal"] }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
-env_logger = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 neo4rs = { workspace = true }
@@ -176,6 +175,9 @@ tokio-rusqlite = "0.5.1"
 which = "6.0.3"
 # Text diff library - pin to exact version
 similar = "2.6.0"
+# Testing utilities
+assert_cmd = "2.0"
+predicates = "3.0"
 
 [dev-dependencies]
 # Testing utilities

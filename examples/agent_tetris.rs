@@ -1,7 +1,7 @@
 // Tetris Game in Rust - Created by Agentic System
-use std::io::{self, stdout, Write};
+use std::io;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn main() -> io::Result<()> {
     println!("🎮 Tetris Game - Created by Agentic System");

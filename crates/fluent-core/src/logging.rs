@@ -55,7 +55,7 @@ pub fn init_logging() {
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
     let _ = tracing_subscriber::registry()
-        .with(fmt::layer().with_target(true))
+        .with(fmt::layer().with_target(true).with_writer(std::io::stderr))
         .with(filter)
         .try_init();
 }
@@ -72,7 +72,7 @@ pub fn init_json_logging() {
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
     let _ = tracing_subscriber::registry()
-        .with(fmt::layer().json())
+        .with(fmt::layer().json().with_writer(std::io::stderr))
         .with(filter)
         .try_init();
 }

@@ -21,11 +21,9 @@
 //! - Comprehensive logging and debugging output
 use anyhow::Result;
 use fluent_agent::{
-    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    memory::AsyncSqliteMemoryStore,
     tools::{FileSystemExecutor, ToolExecutionConfig, ToolRegistry},
 };
 use std::sync::Arc;

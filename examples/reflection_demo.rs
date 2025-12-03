@@ -14,7 +14,7 @@ struct MockReasoningEngine;
 
 #[async_trait]
 impl ReasoningEngine for MockReasoningEngine {
-    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
+    async fn reason(&self, prompt: &str, _context: &ExecutionContext) -> Result<String> {
         Ok(format!(
             "Mock reasoning analysis of current situation for prompt: {}",
             prompt

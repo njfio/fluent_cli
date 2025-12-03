@@ -89,7 +89,7 @@ async fn simulate_api_calls() {
     println!("  All calls completed in {:?}", start.elapsed());
 }
 
-async fn make_api_call(call_number: i32) {
+async fn make_api_call(_call_number: i32) {
     // Simulate some API processing time
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     // In a real scenario, this would be an actual HTTP request to an LLM API

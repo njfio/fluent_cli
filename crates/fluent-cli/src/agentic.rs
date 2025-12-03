@@ -709,6 +709,7 @@ impl AgenticExecutor {
     }
 
     /// Show a mock TUI for demonstration when real TUI is not available
+    #[allow(dead_code)]
     fn show_mock_tui(&self) {
         println!(
             "\n╔══════════════════════════════════════════════════════════════════════════════╗"
@@ -1014,7 +1015,7 @@ impl<'a> AutonomousExecutor<'a> {
                 self.tui.add_log("▶️ Resumed by user".to_string());
             }
             ControlMessageType::Input {
-                context: ctx,
+                context: _ctx,
                 guidance,
                 apply_to_future,
             } => {

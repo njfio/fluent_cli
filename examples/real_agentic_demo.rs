@@ -1,11 +1,9 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
 use fluent_agent::{
-    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig, ToolConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
 };
 

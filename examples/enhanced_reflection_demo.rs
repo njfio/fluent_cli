@@ -22,6 +22,7 @@ impl ProfiledReasoningEngine {
         }
     }
 
+    #[allow(dead_code)]
     fn get_profiler(&self) -> &ReflectionMemoryProfiler {
         &self.profiler
     }
@@ -29,7 +30,7 @@ impl ProfiledReasoningEngine {
 
 #[async_trait]
 impl ReasoningEngine for ProfiledReasoningEngine {
-    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
+    async fn reason(&self, prompt: &str, _context: &ExecutionContext) -> Result<String> {
         // Profile the reasoning operation
         let (result, profile) = self
             .profiler

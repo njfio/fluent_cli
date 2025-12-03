@@ -7,5 +7,8 @@ edition = "2021"
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 fluent-engines = { workspace = true }
-env_logger = { workspace = true }
+fluent-core = { workspace = true }
 
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
