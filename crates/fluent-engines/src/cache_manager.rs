@@ -40,7 +40,7 @@
 use crate::enhanced_cache::{CacheConfig, CacheKey, EnhancedCache};
 use anyhow::Result;
 use fluent_core::types::{Request, Response};
-use log::debug;
+use tracing::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -66,6 +66,8 @@ use tokio::sync::RwLock;
 pub struct CacheManager {
     caches: Arc<RwLock<HashMap<String, Arc<EnhancedCache>>>>,
     default_config: CacheConfig,
+    /// Force caching enabled regardless of FLUENT_CACHE env var (for testing)
+    force_enabled: bool,
 }
 
 impl CacheManager {
@@ -74,6 +76,7 @@ impl CacheManager {
         Self {
             caches: Arc::new(RwLock::new(HashMap::new())),
             default_config: CacheConfig::default(),
+            force_enabled: false,
         }
     }
 
@@ -82,12 +85,33 @@ impl CacheManager {
         Self {
             caches: Arc::new(RwLock::new(HashMap::new())),
             default_config: config,
+            force_enabled: false,
+        }
+    }
+
+    /// Create a cache manager that is always enabled (for testing)
+    #[cfg(test)]
+    pub fn new_enabled() -> Self {
+        Self {
+            caches: Arc::new(RwLock::new(HashMap::new())),
+            default_config: CacheConfig::default(),
+            force_enabled: true,
+        }
+    }
+
+    /// Create a cache manager with config that is always enabled (for testing)
+    #[cfg(test)]
+    pub fn with_config_enabled(config: CacheConfig) -> Self {
+        Self {
+            caches: Arc::new(RwLock::new(HashMap::new())),
+            default_config: config,
+            force_enabled: true,
         }
     }
 
     /// Get or create a cache for a specific engine
     pub async fn get_cache(&self, engine_name: &str) -> Result<Arc<EnhancedCache>> {
-        // Check if cache already exists
+        // First check with read lock (fast path)
         {
             let caches = self.caches.read().await;
             if let Some(cache) = caches.get(engine_name) {
@@ -95,17 +119,20 @@ impl CacheManager {
             }
         }
 
-        // Create new cache
+        // Acquire write lock and check again (handles race condition)
+        let mut caches = self.caches.write().await;
+
+        // Double-check after acquiring write lock - another thread may have inserted
+        if let Some(cache) = caches.get(engine_name) {
+            return Ok(cache.clone());
+        }
+
+        // Create new cache only if it doesn't exist
         let mut config = self.default_config.clone();
         config.disk_cache_dir = Some(format!("fluent_cache_{}", engine_name));
 
         let cache = Arc::new(EnhancedCache::new(config)?);
-
-        // Store in map
-        {
-            let mut caches = self.caches.write().await;
-            caches.insert(engine_name.to_string(), cache.clone());
-        }
+        caches.insert(engine_name.to_string(), cache.clone());
 
         debug!("Created cache for engine: {}", engine_name);
         Ok(cache)
@@ -188,7 +215,7 @@ impl CacheManager {
 
     /// Check if caching is enabled via environment variable
     fn is_caching_enabled(&self) -> bool {
-        std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1")
+        self.force_enabled || std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1")
     }
 
     /// Get cache statistics for all engines
@@ -335,9 +362,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_operations() {
-        std::env::set_var("FLUENT_CACHE", "1");
-
-        let manager = CacheManager::new();
+        // Use force-enabled manager to avoid env var race conditions
+        let manager = CacheManager::new_enabled();
         let request = create_test_request();
         let response = create_test_response();
         let engine_name = format!("test_engine_ops_{}", uuid::Uuid::new_v4());
@@ -362,8 +388,6 @@ mod tests {
             .unwrap();
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().content, "test response");
-
-        std::env::remove_var("FLUENT_CACHE");
     }
 }
 
