@@ -1772,18 +1772,18 @@ impl<'a> GameCreator<'a> {
         let wants_lua = description.contains("lua") || wants_love2d;
         let wants_python = description.contains("python") || description.contains("pygame");
 
-        // Detect game type
-        let game_name = if description.contains("solitaire") || description.contains("klondike") {
+        // Detect game type (with common typo tolerance)
+        let game_name = if description.contains("solitaire") || description.contains("solitare") || description.contains("klondike") {
             "solitaire"
-        } else if description.contains("tetris") {
+        } else if description.contains("tetris") || description.contains("tetros") {
             "tetris"
         } else if description.contains("snake") {
             "snake"
         } else if description.contains("pong") {
             "pong"
-        } else if description.contains("breakout") || description.contains("arkanoid") {
+        } else if description.contains("breakout") || description.contains("arkanoid") || description.contains("brick") {
             "breakout"
-        } else if description.contains("minesweeper") {
+        } else if description.contains("minesweeper") || description.contains("mine sweeper") {
             "minesweeper"
         } else {
             // Extract game name from description if possible
