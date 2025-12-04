@@ -1570,14 +1570,12 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Perform reasoning for current iteration
     async fn perform_reasoning(&mut self, iteration: u32, max_iterations: u32) -> Result<String> {
-        use fluent_agent::prompts::format_reasoning_prompt;
+        use fluent_agent::prompts::{format_reasoning_prompt, AGENT_SYSTEM_PROMPT, TOOL_DESCRIPTIONS};
 
         self.tui
             .set_current_action("Analyzing goal and determining next action...".to_string());
         self.tui
             .add_log("🧠 Analyzing goal and determining next action...".to_string());
-
-        let tools_available = "file operations, shell commands, code analysis";
 
         // Get the last 3-5 observations for context
         let observation_window = 5;
@@ -1588,17 +1586,25 @@ impl<'a> AutonomousExecutor<'a> {
         };
 
         // Use the centralized reasoning prompt with observation feedback
-        let reasoning_payload = format_reasoning_prompt(
+        let user_prompt = format_reasoning_prompt(
             &self.goal.description,
             iteration,
             max_iterations,
             recent_obs_slice,
-            tools_available,
+            TOOL_DESCRIPTIONS,
+        );
+
+        // CRITICAL: Include the full system prompt so the LLM knows HOW to reason
+        // The system prompt defines the ReAct algorithm and output format
+        let full_payload = format!(
+            "{}\n\n---\n\n{}",
+            AGENT_SYSTEM_PROMPT,
+            user_prompt
         );
 
         let reasoning_request = Request {
             flowname: "agentic_reasoning".to_string(),
-            payload: reasoning_payload,
+            payload: full_payload,
         };
 
         debug!(
