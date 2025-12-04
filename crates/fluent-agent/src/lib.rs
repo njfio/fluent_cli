@@ -71,6 +71,7 @@ pub mod performance;
 pub mod planning;
 pub mod production_mcp;
 pub mod profiling;
+pub mod prompts;
 pub mod reasoning;
 pub mod reflection;
 pub mod reflection_engine;
@@ -94,14 +95,12 @@ pub use agent_control::{
     AgentControlChannel, ApprovalRequest, ApprovalResponse, ControlMessage, ControlMessageType,
     StateUpdate, StateUpdateType,
 };
-pub use collaboration_bridge::{
-    ApprovalConfig, CollaborativeOrchestrator, ControlAction,
-};
 pub use autonomy::{
     AutonomySupervisor, AutonomySupervisorConfig, GuardrailDecision, RiskAssessment,
     SupervisorIncident, SupervisorStage,
 };
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
+pub use collaboration_bridge::{ApprovalConfig, CollaborativeOrchestrator, ControlAction};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
 pub use ethical_guardrails::{
     EthicalEvaluation, EthicalGuardrailsSystem, EthicalRecommendation, FilterResult, HarmCategory,
@@ -109,11 +108,12 @@ pub use ethical_guardrails::{
 };
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
 pub use human_collaboration::{
-    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent, CollaborationMessage,
-    CollaborationSession, CommunicationChannels, FeedbackEntry, FeedbackSystem, FeedbackType,
-    HumanCollaborationCoordinator, HumanCollaborationInterface, Intervention, InterventionManager,
-    InterventionOutcome, InterventionPriority, InterventionRequester, InterventionResponse,
-    InterventionStatus, InterventionType, MessageSender, MessageType, SessionStatus, UserProfile,
+    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent,
+    CollaborationMessage, CollaborationSession, CommunicationChannels, FeedbackEntry,
+    FeedbackSystem, FeedbackType, HumanCollaborationCoordinator, HumanCollaborationInterface,
+    Intervention, InterventionManager, InterventionOutcome, InterventionPriority,
+    InterventionRequester, InterventionResponse, InterventionStatus, InterventionType,
+    MessageSender, MessageType, SessionStatus, UserProfile,
 };
 pub use memory::{
     ContextCompressor, CrossSessionPersistence, IntegratedMemorySystem, MemoryConfig,
@@ -284,7 +284,6 @@ impl Agent {
 
         Ok(combined)
     }
-
 
     /// Commit changes in the current git repository.
     pub async fn git_commit(&self, message: &str) -> Result<()> {

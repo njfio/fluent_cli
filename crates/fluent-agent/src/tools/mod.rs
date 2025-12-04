@@ -1,3 +1,33 @@
+//! Tool Execution Framework with Behavioral Reminders
+//!
+//! This module provides a comprehensive tool execution framework for the fluent-agent system.
+//! A key feature is the automatic inclusion of **behavioral reminders** in tool outputs to guide
+//! the agent's next actions.
+//!
+//! ## Behavioral Reminders
+//!
+//! When tools are executed through the `ToolRegistry`, the results are automatically enhanced with
+//! contextual reminders that guide the agent based on:
+//! - The specific tool that was executed
+//! - Whether the execution succeeded or failed
+//!
+//! ### Success Reminders
+//! These guide the agent on what to do next after a successful operation:
+//! - After `read_file`: Analyze content before making changes
+//! - After `write_file`: Verify the file works by running tests
+//! - After `cargo_build`: Run tests to ensure functionality
+//! - After `cargo_test`: Review output and move forward if tests pass
+//!
+//! ### Failure Reminders
+//! These help the agent recover from errors:
+//! - After failed commands: Analyze errors and try alternatives
+//! - After compilation failures: Read error messages and fix specific issues
+//! - After file operation failures: Check paths and permissions
+//!
+//! ### Implementation
+//! Behavioral reminders are implemented in `validation::append_behavioral_reminder()` and
+//! automatically applied by `ToolRegistry::execute_tool()`.
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -62,6 +92,9 @@ impl ToolRegistry {
     }
 
     /// Execute a tool by finding the appropriate executor
+    ///
+    /// This method finds the appropriate executor, validates the request, executes the tool,
+    /// and appends behavioral reminders to guide the agent's next actions.
     pub async fn execute_tool(
         &self,
         tool_name: &str,
@@ -77,7 +110,27 @@ impl ToolRegistry {
                 executor.validate_tool_request(tool_name, parameters)?;
 
                 // Execute the tool
-                return executor.execute_tool(tool_name, parameters).await;
+                let result = executor.execute_tool(tool_name, parameters).await;
+
+                // Enhance the result with behavioral reminders
+                return match result {
+                    Ok(output) => {
+                        let enhanced_output =
+                            validation::append_behavioral_reminder(tool_name, output, true);
+                        Ok(enhanced_output)
+                    }
+                    Err(e) => {
+                        // Even for errors, provide a reminder to guide recovery
+                        let error_msg = e.to_string();
+                        let enhanced_error = validation::append_behavioral_reminder(
+                            tool_name,
+                            error_msg.clone(),
+                            false,
+                        );
+                        // Return the enhanced error message
+                        Err(anyhow::anyhow!("{}", enhanced_error))
+                    }
+                };
             }
         }
 
@@ -268,22 +321,30 @@ impl Default for ToolExecutionConfig {
 pub struct ToolCapabilityConfig {
     /// Maximum file size in bytes for file operations
     #[serde(default = "default_max_file_size")]
-    #[schemars(description = "Maximum file size in bytes that can be read or written (default: 10MB)")]
+    #[schemars(
+        description = "Maximum file size in bytes that can be read or written (default: 10MB)"
+    )]
     pub max_file_size: usize,
 
     /// Allowed root paths for file operations
     #[serde(default)]
-    #[schemars(description = "List of allowed root paths for file operations. Paths outside these directories will be rejected.")]
+    #[schemars(
+        description = "List of allowed root paths for file operations. Paths outside these directories will be rejected."
+    )]
     pub allowed_paths: Vec<String>,
 
     /// Command allowlist for shell operations
     #[serde(default)]
-    #[schemars(description = "List of allowed commands for shell execution. Only commands in this list can be executed.")]
+    #[schemars(
+        description = "List of allowed commands for shell execution. Only commands in this list can be executed."
+    )]
     pub allowed_commands: Vec<String>,
 
     /// Maximum output size in bytes
     #[serde(default = "default_max_output_size")]
-    #[schemars(description = "Maximum output size in bytes for tool execution results (default: 1MB)")]
+    #[schemars(
+        description = "Maximum output size in bytes for tool execution results (default: 1MB)"
+    )]
     pub max_output_size: usize,
 
     /// Timeout in seconds for tool execution
@@ -293,12 +354,16 @@ pub struct ToolCapabilityConfig {
 
     /// Whether the tool can make network requests
     #[serde(default)]
-    #[schemars(description = "Whether the tool is allowed to make network requests (default: false)")]
+    #[schemars(
+        description = "Whether the tool is allowed to make network requests (default: false)"
+    )]
     pub allow_network: bool,
 
     /// Whether file operations are read-only
     #[serde(default)]
-    #[schemars(description = "Whether file operations are restricted to read-only mode (default: false)")]
+    #[schemars(
+        description = "Whether file operations are restricted to read-only mode (default: false)"
+    )]
     pub read_only: bool,
 
     /// Maximum number of concurrent tool executions
@@ -413,10 +478,123 @@ impl ToolCapabilityConfig {
     }
 }
 
-/// Utility functions for tool validation
+/// Utility functions for tool validation and result enhancement
 pub mod validation {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    /// Append a behavioral reminder to a tool result output
+    ///
+    /// This enhances tool results with contextual reminders that guide the agent's
+    /// next actions based on the tool that was executed and whether it succeeded.
+    pub fn append_behavioral_reminder(tool_name: &str, output: String, success: bool) -> String {
+        let reminder = get_tool_reminder(tool_name, success);
+        if reminder.is_empty() {
+            output
+        } else {
+            format!("{}\n\n{}", output, reminder)
+        }
+    }
+
+    /// Get the behavioral reminder for a specific tool
+    fn get_tool_reminder(tool_name: &str, success: bool) -> String {
+        if !success {
+            // Common failure reminders
+            return match tool_name {
+                "run_command" | "run_script" => {
+                    "🔴 Remember: Analyze the error output carefully. Consider:\n\
+                     - Is the command syntax correct?\n\
+                     - Are all required files/dependencies present?\n\
+                     - Try an alternative approach or fix the underlying issue"
+                        .to_string()
+                }
+                "cargo_build" | "cargo_test" | "cargo_check" | "cargo_clippy" => {
+                    "🔴 Remember: Compilation/test failed. Next steps:\n\
+                     - Read the error messages carefully to identify the issue\n\
+                     - Fix the specific errors mentioned\n\
+                     - Re-run the command to verify the fix"
+                        .to_string()
+                }
+                "write_file" | "string_replace" => {
+                    "🔴 Remember: File operation failed. Consider:\n\
+                     - Does the directory exist?\n\
+                     - Are the file paths correct?\n\
+                     - Check permissions and path restrictions"
+                        .to_string()
+                }
+                _ => {
+                    "🔴 Remember: This operation failed. Analyze the error and try an alternative approach"
+                        .to_string()
+                }
+            };
+        }
+
+        // Success reminders - guide next actions
+        match tool_name {
+            "read_file" => "✓ Remember: Now that you've read the file:\n\
+                 - Analyze the content carefully before making changes\n\
+                 - Plan your modifications to preserve existing functionality\n\
+                 - Use surgical edits (string_replace) when possible"
+                .to_string(),
+            "write_file" => "✓ Remember: File written successfully. Next steps:\n\
+                 - Verify the file works by running relevant tests\n\
+                 - Check for syntax errors if it's code\n\
+                 - Consider if any other files need updating"
+                .to_string(),
+            "string_replace" => "✓ Remember: Edit applied successfully. Validate the change:\n\
+                 - Run tests to ensure nothing broke\n\
+                 - Check if related code needs similar updates\n\
+                 - Verify the logic is still correct"
+                .to_string(),
+            "run_command" | "run_script" => {
+                "✓ Remember: Command executed successfully. Review the output:\n\
+                 - Check if the output matches expectations\n\
+                 - Look for warnings or issues in the output\n\
+                 - Determine if follow-up actions are needed"
+                    .to_string()
+            }
+            "cargo_build" => "✓ Remember: Build succeeded. Recommended next steps:\n\
+                 - Run tests to ensure functionality works: cargo_test\n\
+                 - Consider running clippy for code quality: cargo_clippy\n\
+                 - Verify the binary works as expected"
+                .to_string(),
+            "cargo_test" => "✓ Remember: Tests passed. Good progress!\n\
+                 - Review test output for any warnings\n\
+                 - Consider if more tests are needed\n\
+                 - Move on to the next task if tests cover your changes"
+                .to_string(),
+            "cargo_check" => "✓ Remember: Check passed (no compilation errors).\n\
+                 - This only checks compilation, not functionality\n\
+                 - Run tests to verify behavior: cargo_test\n\
+                 - Consider running clippy for code quality"
+                .to_string(),
+            "cargo_clippy" => "✓ Remember: Clippy analysis complete.\n\
+                 - Address any warnings or suggestions shown\n\
+                 - Some warnings indicate potential bugs or bad practices\n\
+                 - Run tests after fixing issues"
+                .to_string(),
+            "cargo_fmt" => "✓ Remember: Code formatting complete.\n\
+                 - Code style is now consistent\n\
+                 - Continue with building or testing\n\
+                 - This doesn't affect functionality"
+                .to_string(),
+            "list_directory" => "✓ Remember: Directory listing retrieved.\n\
+                 - Use this information to understand the project structure\n\
+                 - Identify which files you need to read or modify\n\
+                 - Check for files you might have missed"
+                .to_string(),
+            "create_directory" => "✓ Remember: Directory created successfully.\n\
+                 - You can now create files in this directory\n\
+                 - Ensure parent modules/configs reference this directory if needed"
+                .to_string(),
+            "file_exists" => "✓ Remember: File existence checked.\n\
+                 - Use this information to decide next actions\n\
+                 - If file doesn't exist, you may need to create it\n\
+                 - If it exists, you may need to read it first"
+                .to_string(),
+            _ => String::new(), // No reminder for tools not listed
+        }
+    }
 
     /// Validate that a path is within allowed directories
     pub fn validate_path(path: &str, allowed_paths: &[String]) -> Result<PathBuf> {
@@ -653,7 +831,8 @@ mod tests {
         assert!(schema.contains("max_concurrent_executions"));
 
         // Verify it's valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&schema).expect("Schema should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&schema).expect("Schema should be valid JSON");
         assert!(parsed.is_object());
     }
 
@@ -710,5 +889,87 @@ mod tests {
         assert!(!config.read_only);
         assert!(config.allowed_paths.is_empty());
         assert!(config.allowed_commands.is_empty());
+    }
+
+    #[test]
+    fn test_behavioral_reminders_success() {
+        // Test success reminders for different tools
+        let read_reminder =
+            validation::append_behavioral_reminder("read_file", "file contents".to_string(), true);
+        assert!(read_reminder.contains("file contents"));
+        assert!(read_reminder.contains("Remember"));
+        assert!(read_reminder.contains("Analyze the content"));
+
+        let write_reminder =
+            validation::append_behavioral_reminder("write_file", "File written".to_string(), true);
+        assert!(write_reminder.contains("Remember"));
+        assert!(write_reminder.contains("running relevant tests"));
+
+        let build_reminder = validation::append_behavioral_reminder(
+            "cargo_build",
+            "Build successful".to_string(),
+            true,
+        );
+        assert!(build_reminder.contains("Remember"));
+        assert!(build_reminder.contains("cargo_test"));
+    }
+
+    #[test]
+    fn test_behavioral_reminders_failure() {
+        // Test failure reminders for different tools
+        let cmd_reminder = validation::append_behavioral_reminder(
+            "run_command",
+            "Command failed".to_string(),
+            false,
+        );
+        assert!(cmd_reminder.contains("Remember"));
+        assert!(cmd_reminder.contains("🔴"));
+        assert!(cmd_reminder.contains("alternative approach"));
+
+        let build_reminder = validation::append_behavioral_reminder(
+            "cargo_build",
+            "Build failed".to_string(),
+            false,
+        );
+        assert!(build_reminder.contains("Remember"));
+        assert!(build_reminder.contains("error messages"));
+
+        let file_reminder =
+            validation::append_behavioral_reminder("write_file", "Write failed".to_string(), false);
+        assert!(file_reminder.contains("Remember"));
+        assert!(file_reminder.contains("permissions"));
+    }
+
+    #[test]
+    fn test_behavioral_reminders_unknown_tool() {
+        // Unknown tools should still get base reminders
+        let unknown_success =
+            validation::append_behavioral_reminder("unknown_tool", "output".to_string(), true);
+        // Should just return output unchanged for unknown tools
+        assert_eq!(unknown_success, "output");
+
+        let unknown_failure =
+            validation::append_behavioral_reminder("unknown_tool", "error".to_string(), false);
+        assert!(unknown_failure.contains("Remember"));
+        assert!(unknown_failure.contains("alternative approach"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_registry_with_reminders() {
+        let mut registry = ToolRegistry::new();
+
+        let executor = Arc::new(MockToolExecutor {
+            tools: vec!["test_tool".to_string()],
+        });
+
+        registry.register("mock".to_string(), executor);
+
+        let result = registry.execute_tool("test_tool", &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        // The result should contain the original output but won't have a reminder
+        // since "test_tool" is not in our reminder list
+        let output = result.unwrap();
+        assert!(output.contains("Executed test_tool"));
     }
 }

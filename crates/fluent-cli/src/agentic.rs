@@ -7,15 +7,187 @@
 use anyhow::{anyhow, Result};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
-use tracing::{debug, error, info, warn};
 use std::fs;
 use std::pin::Pin;
+use std::process::Command;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{debug, error, info, warn};
 
 use crate::tui::{AgentStatus, TuiManager};
 
+/// Status of a todo item
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodoStatus {
+    /// Task is pending and hasn't been started yet
+    Pending,
+    /// Task is currently in progress
+    InProgress,
+    /// Task has been completed successfully
+    Completed,
+    /// Task has failed
+    Failed,
+}
+
+impl TodoStatus {
+    /// Get a display string with emoji prefix for the status
+    pub fn display(&self) -> &'static str {
+        match self {
+            TodoStatus::Pending => "⏳ Pending",
+            TodoStatus::InProgress => "🔄 In Progress",
+            TodoStatus::Completed => "✅ Completed",
+            TodoStatus::Failed => "❌ Failed",
+        }
+    }
+}
+
+/// A todo item tracking a specific task
+#[derive(Debug, Clone)]
+pub struct TodoItem {
+    /// Description of the task to complete
+    pub task: String,
+    /// Current status of the task
+    pub status: TodoStatus,
+    /// When this todo was created
+    pub created_at: Instant,
+}
+
+impl TodoItem {
+    /// Create a new todo item
+    pub fn new(task: String) -> Self {
+        Self {
+            task,
+            status: TodoStatus::Pending,
+            created_at: Instant::now(),
+        }
+    }
+
+    /// Format the todo item for display
+    pub fn display(&self) -> String {
+        format!("{} - {}", self.status.display(), self.task)
+    }
+}
+
+/// Goal completion criteria for structured validation
+///
+/// Defines what "done" looks like for a goal with specific validation rules
+#[derive(Debug, Clone)]
+pub struct GoalCompletionCriteria {
+    /// Files that must exist for goal completion
+    pub required_files: Vec<String>,
+    /// Whether tests must pass for completion
+    pub required_tests_pass: bool,
+    /// Minimum code size in bytes (for non-empty file validation)
+    pub min_code_size: Option<usize>,
+    /// Whether code must compile/lint clean
+    pub must_compile_clean: bool,
+    /// Custom validation strings to look for in outputs
+    pub custom_checks: Vec<String>,
+    /// Required keywords that must appear in created files (game-specific, research keywords, etc.)
+    pub required_keywords: Vec<String>,
+}
+
+impl GoalCompletionCriteria {
+    /// Create default criteria for game goals
+    pub fn for_game_goal(game_type: &str, file_path: &str, file_extension: &str) -> Self {
+        let required_keywords = match game_type {
+            "solitaire" => vec!["card", "deck", "pile", "tableau", "foundation"],
+            "tetris" => vec!["tetromino", "grid", "rotate", "block"],
+            "snake" => vec!["snake", "food", "direction"],
+            "pong" => vec!["paddle", "ball", "bounce"],
+            "breakout" => vec!["paddle", "ball", "brick"],
+            "minesweeper" => vec!["mine", "grid", "reveal", "flag"],
+            _ => vec!["game", "update", "draw"],
+        }
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let min_size = if file_extension == "html" {
+            2000
+        } else if file_extension == "lua" {
+            1000
+        } else {
+            800
+        };
+
+        Self {
+            required_files: vec![file_path.to_string()],
+            required_tests_pass: false, // Games typically don't need tests to pass
+            min_code_size: Some(min_size),
+            must_compile_clean: false, // Not all game languages can be compiled easily
+            custom_checks: vec![],
+            required_keywords,
+        }
+    }
+
+    /// Create default criteria for code goals
+    pub fn for_code_goal(files: Vec<String>, needs_tests: bool) -> Self {
+        Self {
+            required_files: files,
+            required_tests_pass: needs_tests,
+            min_code_size: Some(100), // At least some code content
+            must_compile_clean: true,
+            custom_checks: vec![],
+            required_keywords: vec![],
+        }
+    }
+
+    /// Create default criteria for research goals
+    pub fn for_research_goal(output_files: Vec<String>) -> Self {
+        Self {
+            required_files: output_files,
+            required_tests_pass: false,
+            min_code_size: Some(1000), // At least 1KB of research content
+            must_compile_clean: false,
+            custom_checks: vec![],
+            required_keywords: vec![],
+        }
+    }
+}
+
+/// Result of goal completion check
+#[derive(Debug, Clone)]
+pub struct CompletionResult {
+    /// Whether the goal is complete
+    pub is_complete: bool,
+    /// Progress percentage (0-100)
+    pub progress_percentage: u8,
+    /// Items that are still missing or incomplete
+    pub missing_items: Vec<String>,
+    /// Items that were successfully completed
+    pub completed_items: Vec<String>,
+}
+
+impl CompletionResult {
+    /// Create a complete result
+    pub fn complete() -> Self {
+        Self {
+            is_complete: true,
+            progress_percentage: 100,
+            missing_items: vec![],
+            completed_items: vec![],
+        }
+    }
+
+    /// Create an incomplete result with specific missing items
+    pub fn incomplete(progress: u8, missing: Vec<String>, completed: Vec<String>) -> Self {
+        Self {
+            is_complete: false,
+            progress_percentage: progress,
+            missing_items: missing,
+            completed_items: completed,
+        }
+    }
+}
+
 /// Validate that generated game code matches the expected game type
-fn validate_game_output(code_lower: &str, expected_game: &str, file_extension: &str, min_size: usize) -> bool {
+fn validate_game_output(
+    code_lower: &str,
+    expected_game: &str,
+    file_extension: &str,
+    min_size: usize,
+) -> bool {
     // Check minimum size
     if code_lower.len() < min_size {
         return false;
@@ -23,7 +195,9 @@ fn validate_game_output(code_lower: &str, expected_game: &str, file_extension: &
 
     // Check for Love2D/Lua specific markers
     let has_love2d_markers = if file_extension == "lua" {
-        code_lower.contains("love.load") || code_lower.contains("love.draw") || code_lower.contains("love.update")
+        code_lower.contains("love.load")
+            || code_lower.contains("love.draw")
+            || code_lower.contains("love.update")
     } else {
         true // Not Lua, skip this check
     };
@@ -36,27 +210,45 @@ fn validate_game_output(code_lower: &str, expected_game: &str, file_extension: &
     match expected_game {
         "solitaire" => {
             // Must have card-game related terms
-            let has_cards = code_lower.contains("card") || code_lower.contains("deck") || code_lower.contains("suit");
-            let has_piles = code_lower.contains("pile") || code_lower.contains("tableau") || code_lower.contains("foundation") || code_lower.contains("stack");
-            let no_wrong_game = !code_lower.contains("tetromino") && !code_lower.contains("snake") && !code_lower.contains("shooter") && !code_lower.contains("space");
+            let has_cards = code_lower.contains("card")
+                || code_lower.contains("deck")
+                || code_lower.contains("suit");
+            let has_piles = code_lower.contains("pile")
+                || code_lower.contains("tableau")
+                || code_lower.contains("foundation")
+                || code_lower.contains("stack");
+            let no_wrong_game = !code_lower.contains("tetromino")
+                && !code_lower.contains("snake")
+                && !code_lower.contains("shooter")
+                && !code_lower.contains("space");
             has_cards && has_piles && no_wrong_game
         }
         "tetris" => {
-            let has_tetromino = code_lower.contains("tetromino") || code_lower.contains("piece") || code_lower.contains("block");
-            let has_grid = code_lower.contains("grid") || code_lower.contains("board") || code_lower.contains("row");
+            let has_tetromino = code_lower.contains("tetromino")
+                || code_lower.contains("piece")
+                || code_lower.contains("block");
+            let has_grid = code_lower.contains("grid")
+                || code_lower.contains("board")
+                || code_lower.contains("row");
             let has_rotation = code_lower.contains("rotat") || code_lower.contains("spin");
             has_tetromino && has_grid && has_rotation
         }
         "snake" => {
             let has_snake = code_lower.contains("snake") || code_lower.contains("segment");
-            let has_food = code_lower.contains("food") || code_lower.contains("apple") || code_lower.contains("eat");
-            let has_direction = code_lower.contains("direction") || code_lower.contains("up") || code_lower.contains("down");
+            let has_food = code_lower.contains("food")
+                || code_lower.contains("apple")
+                || code_lower.contains("eat");
+            let has_direction = code_lower.contains("direction")
+                || code_lower.contains("up")
+                || code_lower.contains("down");
             has_snake && has_food && has_direction
         }
         "pong" => {
             let has_paddle = code_lower.contains("paddle") || code_lower.contains("player");
             let has_ball = code_lower.contains("ball");
-            let has_bounce = code_lower.contains("bounce") || code_lower.contains("velocity") || code_lower.contains("speed");
+            let has_bounce = code_lower.contains("bounce")
+                || code_lower.contains("velocity")
+                || code_lower.contains("speed");
             has_paddle && has_ball && has_bounce
         }
         "breakout" => {
@@ -68,13 +260,19 @@ fn validate_game_output(code_lower: &str, expected_game: &str, file_extension: &
         "minesweeper" => {
             let has_mines = code_lower.contains("mine") || code_lower.contains("bomb");
             let has_grid = code_lower.contains("grid") || code_lower.contains("cell");
-            let has_reveal = code_lower.contains("reveal") || code_lower.contains("flag") || code_lower.contains("click");
+            let has_reveal = code_lower.contains("reveal")
+                || code_lower.contains("flag")
+                || code_lower.contains("click");
             has_mines && has_grid && has_reveal
         }
         _ => {
             // Generic game - just check for basic game elements
-            let has_game_loop = code_lower.contains("update") || code_lower.contains("draw") || code_lower.contains("loop");
-            let has_input = code_lower.contains("key") || code_lower.contains("mouse") || code_lower.contains("input");
+            let has_game_loop = code_lower.contains("update")
+                || code_lower.contains("draw")
+                || code_lower.contains("loop");
+            let has_input = code_lower.contains("key")
+                || code_lower.contains("mouse")
+                || code_lower.contains("input");
             has_game_loop && has_input
         }
     }
@@ -194,6 +392,8 @@ impl AgenticConfig {
 pub struct AgenticExecutor {
     config: AgenticConfig,
     tui: TuiManager,
+    /// Recent observations for feedback into reasoning loop
+    recent_observations: Vec<String>,
 }
 
 impl AgenticExecutor {
@@ -211,7 +411,21 @@ impl AgenticExecutor {
         Self {
             config,
             tui: TuiManager::new(enable_tui),
+            recent_observations: Vec::new(),
         }
+    }
+
+    /// Store an observation for feedback into reasoning
+    fn store_observation(&mut self, observation: String) {
+        // Keep only last 5 observations
+        if self.recent_observations.len() >= 5 {
+            self.recent_observations.remove(0);
+        }
+        self.recent_observations.push(observation);
+        debug!(
+            "Stored observation, total: {}",
+            self.recent_observations.len()
+        );
     }
 
     /// Main entry point for agentic mode execution
@@ -435,8 +649,10 @@ impl AgenticExecutor {
         };
 
         let memory = MemorySystem::new(memory_config).await?;
-        self.tui
-            .add_log("✅ Memory system initialized with working memory, compression, and persistence".to_string());
+        self.tui.add_log(
+            "✅ Memory system initialized with working memory, compression, and persistence"
+                .to_string(),
+        );
 
         let state_mgr = StateManager::new(StateManagerConfig::default()).await?;
         let reflection = ReflectionEngine::new();
@@ -946,6 +1162,10 @@ pub struct AutonomousExecutor<'a> {
     control_rx: Option<fluent_agent::agent_control::ControlRxHandle>,
     paused: bool,
     queued_guidance: Vec<String>,
+    /// Recent observations from the last 3-5 iterations to feed back into reasoning
+    recent_observations: Vec<String>,
+    /// List of todos tracking progress toward the goal
+    todo_list: Vec<TodoItem>,
 }
 
 impl<'a> AutonomousExecutor<'a> {
@@ -966,7 +1186,140 @@ impl<'a> AutonomousExecutor<'a> {
             control_rx: crx,
             paused: false,
             queued_guidance: Vec::new(),
+            recent_observations: Vec::new(),
+            todo_list: Vec::new(),
         }
+    }
+
+    /// Add a new todo item
+    pub fn add_todo(&mut self, task: String) {
+        let todo = TodoItem::new(task.clone());
+        self.todo_list.push(todo);
+        self.tui.add_log(format!("📋 Todo added: {}", task));
+        debug!("agent.todo.added task='{}'", task);
+    }
+
+    /// Update the status of a todo item by index
+    pub fn update_todo_status(&mut self, index: usize, status: TodoStatus) -> Result<()> {
+        if index >= self.todo_list.len() {
+            return Err(anyhow!("Todo index {} out of bounds", index));
+        }
+
+        let todo = &mut self.todo_list[index];
+        let old_status = todo.status;
+        todo.status = status;
+
+        self.tui.add_log(format!(
+            "📋 Todo updated: {} -> {}",
+            todo.task,
+            status.display()
+        ));
+        debug!(
+            "agent.todo.updated index={} task='{}' old_status={:?} new_status={:?}",
+            index, todo.task, old_status, status
+        );
+
+        Ok(())
+    }
+
+    /// Get all pending todos
+    pub fn get_pending_todos(&self) -> Vec<&TodoItem> {
+        self.todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Pending)
+            .collect()
+    }
+
+    /// Display todo list summary to TUI
+    pub fn display_todo_summary(&mut self) {
+        let total = self.todo_list.len();
+        let completed = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Completed)
+            .count();
+        let in_progress = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::InProgress)
+            .count();
+        let pending = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Pending)
+            .count();
+        let failed = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Failed)
+            .count();
+
+        self.tui.add_log(format!(
+            "📊 Todo Summary: {} total | ✅ {} completed | 🔄 {} in progress | ⏳ {} pending | ❌ {} failed",
+            total, completed, in_progress, pending, failed
+        ));
+    }
+
+    /// Display all todos to TUI
+    pub fn display_todos(&mut self) {
+        if self.todo_list.is_empty() {
+            self.tui.add_log("📋 No todos yet".to_string());
+            return;
+        }
+
+        self.tui.add_log("📋 Current Todos:".to_string());
+        for (idx, todo) in self.todo_list.iter().enumerate() {
+            self.tui
+                .add_log(format!("  {}. {}", idx + 1, todo.display()));
+        }
+    }
+
+    /// Parse the goal description into initial todos
+    fn parse_goal_into_todos(&mut self) {
+        let description = self.goal.description.to_lowercase();
+
+        // Detect goal type and create appropriate todos
+        if description.contains("game") {
+            if description.contains("tetris") {
+                self.add_todo("Generate Tetris game code".to_string());
+                self.add_todo("Validate game has tetromino pieces".to_string());
+                self.add_todo("Validate game has grid/board".to_string());
+                self.add_todo("Write game to output file".to_string());
+            } else if description.contains("solitaire") {
+                self.add_todo("Generate Solitaire game code".to_string());
+                self.add_todo("Validate game has card deck and piles".to_string());
+                self.add_todo("Write game to output file".to_string());
+            } else if description.contains("snake") {
+                self.add_todo("Generate Snake game code".to_string());
+                self.add_todo("Validate game has snake and food mechanics".to_string());
+                self.add_todo("Write game to output file".to_string());
+            } else {
+                self.add_todo("Determine game type to create".to_string());
+                self.add_todo("Generate game code".to_string());
+                self.add_todo("Validate game mechanics".to_string());
+                self.add_todo("Write game to output file".to_string());
+            }
+        } else if description.contains("reflection") || description.contains("analysis") {
+            self.add_todo("Analyze target system".to_string());
+            self.add_todo("Generate comprehensive report".to_string());
+            self.add_todo("Write analysis to file".to_string());
+        } else if description.contains("research") {
+            self.add_todo("Determine research scope".to_string());
+            self.add_todo("Generate research content".to_string());
+            self.add_todo("Write research to file".to_string());
+        } else {
+            // Generic goal breakdown
+            self.add_todo("Analyze goal requirements".to_string());
+            self.add_todo("Plan approach".to_string());
+            self.add_todo("Execute planned actions".to_string());
+            self.add_todo("Validate results".to_string());
+        }
+
+        self.tui.add_log(format!(
+            "📋 Created {} initial todos from goal",
+            self.todo_list.len()
+        ));
+        self.display_todos();
     }
 
     /// Execute autonomous loop
@@ -981,6 +1334,10 @@ impl<'a> AutonomousExecutor<'a> {
             "agent.loop.begin goal='{}' max_iterations={}",
             self.goal.description, max_iterations
         );
+
+        // Parse goal into initial todos
+        self.parse_goal_into_todos();
+        self.display_todo_summary();
 
         let mut context = ExecutionContext::new(self.goal.clone());
 
@@ -1025,17 +1382,96 @@ impl<'a> AutonomousExecutor<'a> {
 
             if self.is_game_goal() {
                 info!("agent.loop.path game=true");
-                self.handle_game_creation(&mut context).await?;
-                return Ok(());
+
+                // Update todo: start game creation
+                if let Some(idx) = self.todo_list.iter().position(|t| {
+                    t.task.to_lowercase().contains("generate") && t.status == TodoStatus::Pending
+                }) {
+                    let _ = self.update_todo_status(idx, TodoStatus::InProgress);
+                }
+
+                let result = self.handle_game_creation(&mut context).await;
+
+                // Update todos based on result
+                if result.is_ok() {
+                    // Mark game-related todos as completed
+                    for idx in 0..self.todo_list.len() {
+                        if self.todo_list[idx].status == TodoStatus::InProgress
+                            || self.todo_list[idx].status == TodoStatus::Pending
+                        {
+                            let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                        }
+                    }
+                } else {
+                    // Mark in-progress todos as failed
+                    for idx in 0..self.todo_list.len() {
+                        if self.todo_list[idx].status == TodoStatus::InProgress {
+                            let _ = self.update_todo_status(idx, TodoStatus::Failed);
+                        }
+                    }
+                }
+
+                self.display_todo_summary();
+
+                // Store observation for game creation
+                let obs = format!(
+                    "Iteration {}: Game creation attempted. Type: game, Status: {:?}",
+                    iteration,
+                    result.is_ok()
+                );
+                self.store_observation(obs);
+
+                return result;
             } else {
                 info!("agent.loop.path game=false");
-                self.handle_general_goal(
-                    &mut context,
-                    &reasoning_response,
+
+                // Mark first pending todo as in progress
+                if let Some(idx) = self
+                    .todo_list
+                    .iter()
+                    .position(|t| t.status == TodoStatus::Pending)
+                {
+                    let _ = self.update_todo_status(idx, TodoStatus::InProgress);
+                }
+
+                let result = self
+                    .handle_general_goal(
+                        &mut context,
+                        &reasoning_response,
+                        iteration,
+                        max_iterations,
+                    )
+                    .await;
+
+                // Update todo status based on result
+                if result.is_ok() {
+                    // Mark in-progress todos as completed
+                    for idx in 0..self.todo_list.len() {
+                        if self.todo_list[idx].status == TodoStatus::InProgress {
+                            let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                            break; // Only complete the first one per iteration
+                        }
+                    }
+                } else {
+                    // Mark in-progress todos as failed
+                    for idx in 0..self.todo_list.len() {
+                        if self.todo_list[idx].status == TodoStatus::InProgress {
+                            let _ = self.update_todo_status(idx, TodoStatus::Failed);
+                        }
+                    }
+                }
+
+                self.display_todo_summary();
+
+                // Store observation after general goal handling
+                let obs = format!(
+                    "Iteration {}: General goal processing completed. Reasoning: {}",
                     iteration,
-                    max_iterations,
-                )
-                .await?;
+                    reasoning_response.chars().take(200).collect::<String>()
+                );
+                self.store_observation(obs);
+
+                result?;
 
                 if self.should_complete_goal(iteration, max_iterations) {
                     info!("agent.loop.complete iter={}", iteration);
@@ -1046,6 +1482,7 @@ impl<'a> AutonomousExecutor<'a> {
 
         self.tui
             .add_log("⚠️ Reached maximum iterations without completing goal".to_string());
+        self.display_todo_summary();
         Ok(())
     }
 
@@ -1114,37 +1551,61 @@ impl<'a> AutonomousExecutor<'a> {
         Ok(())
     }
 
+    /// Store observation with sliding window (keep last 5)
+    fn store_observation(&mut self, observation: String) {
+        const MAX_OBSERVATIONS: usize = 5;
+        self.recent_observations.push(observation);
+
+        // Keep only the last MAX_OBSERVATIONS
+        if self.recent_observations.len() > MAX_OBSERVATIONS {
+            self.recent_observations.remove(0);
+        }
+
+        debug!(
+            "agent.observations.stored count={} total_stored={}",
+            self.recent_observations.len(),
+            self.recent_observations.len()
+        );
+    }
+
     /// Perform reasoning for current iteration
     async fn perform_reasoning(&mut self, iteration: u32, max_iterations: u32) -> Result<String> {
+        use fluent_agent::prompts::format_reasoning_prompt;
+
         self.tui
             .set_current_action("Analyzing goal and determining next action...".to_string());
         self.tui
             .add_log("🧠 Analyzing goal and determining next action...".to_string());
 
         let tools_available = "file operations, shell commands, code analysis";
+
+        // Get the last 3-5 observations for context
+        let observation_window = 5;
+        let recent_obs_slice = if self.recent_observations.len() > observation_window {
+            &self.recent_observations[self.recent_observations.len() - observation_window..]
+        } else {
+            &self.recent_observations[..]
+        };
+
+        // Use the centralized reasoning prompt with observation feedback
+        let reasoning_payload = format_reasoning_prompt(
+            &self.goal.description,
+            iteration,
+            max_iterations,
+            recent_obs_slice,
+            tools_available,
+        );
+
         let reasoning_request = Request {
             flowname: "agentic_reasoning".to_string(),
-            payload: format!(
-                "You are an autonomous AI agent. Analyze this goal and determine the next specific action to take:\n\n\
-                Goal: {}\n\n\
-                Current iteration: {}/{}\n\
-                Tools available: {}\n\n\
-                Based on this goal, what is the most logical next step? Respond with:\n\
-                1. A brief analysis of what the goal requires\n\
-                2. The specific next action to take\n\
-                3. Why this action moves us toward the goal\n\n\
-                Be specific and actionable. Focus on the actual goal, not creating games unless the goal specifically asks for a game.",
-                self.goal.description,
-                iteration,
-                max_iterations,
-                tools_available
-            ),
+            payload: reasoning_payload,
         };
 
         debug!(
-            "agent.reasoning.request flow='{}' len={}",
+            "agent.reasoning.request flow='{}' len={} observations={}",
             reasoning_request.flowname,
-            reasoning_request.payload.len()
+            reasoning_request.payload.len(),
+            recent_obs_slice.len()
         );
         match Pin::from(
             self.runtime_config
@@ -1309,6 +1770,16 @@ impl<'a> AutonomousExecutor<'a> {
             iteration,
         )
         .await?;
+
+        // Store observation for reflection analysis
+        let obs = format!(
+            "Reflection analysis completed: iteration {}/{} - File: {} - Preview: {}",
+            iteration,
+            max_iterations,
+            analysis_file,
+            analysis_response.chars().take(150).collect::<String>()
+        );
+        self.store_observation(obs);
 
         // Update context with progress
         context.set_variable("analysis_iteration".to_string(), iteration.to_string());
@@ -1478,6 +1949,11 @@ impl<'a> AutonomousExecutor<'a> {
         if let Err(e) = fs::write(file_path, &content) {
             self.tui
                 .add_log(format!("❌ Failed to write file {}: {}", file_path, e));
+
+            // Store failure observation
+            let obs = format!("File creation FAILED: {} - Error: {}", file_path, e);
+            self.store_observation(obs);
+
             return Err(anyhow!("Failed to write research file: {}", e));
         }
 
@@ -1486,6 +1962,16 @@ impl<'a> AutonomousExecutor<'a> {
             file_path,
             content.len()
         ));
+
+        // Store success observation
+        let obs = format!(
+            "File created SUCCESS: {} ({} characters) - {}",
+            file_path,
+            content.len(),
+            description
+        );
+        self.store_observation(obs);
+
         Ok(())
     }
 
@@ -1543,10 +2029,27 @@ impl<'a> AutonomousExecutor<'a> {
                 // Generate analysis
                 let analysis = self.analyze_content(&content, description).await?;
                 self.tui.add_log(format!("📊 Analysis: {}", analysis));
+
+                // Store observation
+                let obs = format!(
+                    "File analysis SUCCESS: {} ({} chars) - Analysis: {}",
+                    file_path,
+                    content.len(),
+                    analysis.chars().take(150).collect::<String>()
+                );
+                self.store_observation(obs);
             }
             Err(e) => {
                 self.tui
                     .add_log(format!("⚠️ Could not read file {}: {}", file_path, e));
+
+                // Store observation for file not found
+                let obs = format!(
+                    "File read FAILED: {} - Error: {} - Creating new file",
+                    file_path, e
+                );
+                self.store_observation(obs);
+
                 // Create the file if it doesn't exist
                 self.create_research_file(
                     file_path,
@@ -1590,11 +2093,258 @@ impl<'a> AutonomousExecutor<'a> {
         }
     }
 
+    /// Check goal completion against structured criteria
+    ///
+    /// This is the main structured goal completion checker that evaluates:
+    /// - Required files exist and have minimum size
+    /// - Required keywords appear in files
+    /// - Tests pass (if required)
+    /// - Code compiles clean (if required)
+    /// - Custom validation checks pass
+    fn check_goal_completion(&mut self, criteria: &GoalCompletionCriteria) -> CompletionResult {
+        let mut missing_items = Vec::new();
+        let mut completed_items = Vec::new();
+        let mut total_checks = 0;
+        let mut passed_checks = 0;
+
+        // Check 1: Required files exist and have minimum size
+        total_checks += criteria.required_files.len();
+        for file_path in &criteria.required_files {
+            if let Ok(metadata) = fs::metadata(file_path) {
+                let file_size = metadata.len() as usize;
+
+                // Check minimum size if specified
+                if let Some(min_size) = criteria.min_code_size {
+                    if file_size >= min_size {
+                        passed_checks += 1;
+                        completed_items.push(format!(
+                            "File exists with sufficient size: {} ({} bytes)",
+                            file_path, file_size
+                        ));
+                    } else {
+                        missing_items.push(format!(
+                            "File too small: {} ({} bytes, need {} bytes)",
+                            file_path, file_size, min_size
+                        ));
+                    }
+                } else {
+                    passed_checks += 1;
+                    completed_items.push(format!("File exists: {}", file_path));
+                }
+            } else {
+                missing_items.push(format!("File does not exist: {}", file_path));
+            }
+        }
+
+        // Check 2: Required keywords in files (for games, research, etc.)
+        if !criteria.required_keywords.is_empty() {
+            total_checks += 1;
+            let mut found_keywords = 0;
+            let keywords_needed = (criteria.required_keywords.len() as f32 * 0.6).ceil() as usize; // Need 60% of keywords
+
+            for file_path in &criteria.required_files {
+                if let Ok(content) = fs::read_to_string(file_path) {
+                    let content_lower = content.to_lowercase();
+                    for keyword in &criteria.required_keywords {
+                        if content_lower.contains(&keyword.to_lowercase()) {
+                            found_keywords += 1;
+                        }
+                    }
+                }
+            }
+
+            if found_keywords >= keywords_needed {
+                passed_checks += 1;
+                completed_items.push(format!(
+                    "Keywords found: {}/{} (needed {})",
+                    found_keywords,
+                    criteria.required_keywords.len(),
+                    keywords_needed
+                ));
+            } else {
+                missing_items.push(format!(
+                    "Insufficient keywords: {}/{} (need {})",
+                    found_keywords,
+                    criteria.required_keywords.len(),
+                    keywords_needed
+                ));
+            }
+        }
+
+        // Check 3: Tests pass (if required)
+        if criteria.required_tests_pass {
+            total_checks += 1;
+            self.tui
+                .add_log("🧪 Running tests to verify completion...".to_string());
+
+            match Command::new("cargo").args(&["test", "--quiet"]).output() {
+                Ok(output) if output.status.success() => {
+                    passed_checks += 1;
+                    completed_items.push("Tests pass".to_string());
+                    self.tui.add_log("✅ Tests passed successfully".to_string());
+                }
+                Ok(_) => {
+                    missing_items.push("Tests are failing".to_string());
+                    self.tui.add_log("❌ Tests failed".to_string());
+                }
+                Err(e) => {
+                    missing_items.push(format!("Could not run tests: {}", e));
+                    self.tui.add_log(format!("⚠️ Could not run tests: {}", e));
+                }
+            }
+        }
+
+        // Check 4: Code compiles clean (if required)
+        if criteria.must_compile_clean {
+            total_checks += 1;
+            self.tui
+                .add_log("🔧 Checking if code compiles cleanly...".to_string());
+
+            match Command::new("cargo").args(&["check", "--quiet"]).output() {
+                Ok(output) if output.status.success() => {
+                    passed_checks += 1;
+                    completed_items.push("Code compiles cleanly".to_string());
+                    self.tui
+                        .add_log("✅ Code compiles successfully".to_string());
+                }
+                Ok(_) => {
+                    missing_items.push("Code does not compile".to_string());
+                    self.tui.add_log("❌ Code compilation failed".to_string());
+                }
+                Err(e) => {
+                    missing_items.push(format!("Could not check compilation: {}", e));
+                    self.tui
+                        .add_log(format!("⚠️ Could not check compilation: {}", e));
+                }
+            }
+        }
+
+        // Check 5: Custom validation checks
+        for custom_check in &criteria.custom_checks {
+            total_checks += 1;
+            // Custom checks can be arbitrary validation logic
+            // For now, we'll just log them as requirements
+            missing_items.push(format!("Custom check pending: {}", custom_check));
+        }
+
+        // Calculate progress percentage
+        let progress_percentage = if total_checks > 0 {
+            ((passed_checks as f32 / total_checks as f32) * 100.0) as u8
+        } else {
+            0
+        };
+
+        let is_complete = missing_items.is_empty();
+
+        if is_complete {
+            self.tui.add_log(format!(
+                "✅ Goal completion criteria met: {}/{} checks passed",
+                passed_checks, total_checks
+            ));
+        } else {
+            self.tui.add_log(format!(
+                "⏳ Goal progress: {}/{} checks passed ({}%)",
+                passed_checks, total_checks, progress_percentage
+            ));
+            self.tui
+                .add_log(format!("📋 Missing: {}", missing_items.join(", ")));
+        }
+
+        CompletionResult {
+            is_complete,
+            progress_percentage,
+            missing_items,
+            completed_items,
+        }
+    }
+
     /// Check if goal should be completed
+    ///
+    /// This method uses structured criteria when possible, falling back to heuristics
     fn should_complete_goal(&mut self, iteration: u32, max_iterations: u32) -> bool {
-        if self.goal.description.to_lowercase().contains("reflection")
-            && iteration >= max_iterations / 2
+        let description_lower = self.goal.description.to_lowercase();
+
+        // Try to determine goal type and create appropriate criteria
+        let criteria = if description_lower.contains("game") {
+            // For game goals, extract game type and expected file
+            let game_type = if description_lower.contains("solitaire") {
+                "solitaire"
+            } else if description_lower.contains("tetris") {
+                "tetris"
+            } else if description_lower.contains("snake") {
+                "snake"
+            } else if description_lower.contains("pong") {
+                "pong"
+            } else if description_lower.contains("breakout") {
+                "breakout"
+            } else if description_lower.contains("minesweeper") {
+                "minesweeper"
+            } else {
+                "game"
+            };
+
+            // Determine file extension and path
+            let (file_ext, file_path) = if description_lower.contains("html")
+                || description_lower.contains("javascript")
+            {
+                ("html", format!("outputs/{}_web.html", game_type))
+            } else if description_lower.contains("lua") || description_lower.contains("love2d") {
+                ("lua", format!("outputs/{}_love2d/main.lua", game_type))
+            } else if description_lower.contains("python") {
+                ("py", format!("outputs/{}_pygame.py", game_type))
+            } else {
+                ("rs", format!("outputs/{}_game.rs", game_type))
+            };
+
+            Some(GoalCompletionCriteria::for_game_goal(
+                game_type, &file_path, file_ext,
+            ))
+        } else if description_lower.contains("research")
+            || description_lower.contains("write about")
+            || description_lower.contains("analyze")
         {
+            // For research/analysis goals, check for output files
+            let output_files = if description_lower.contains("grilled cheese") {
+                vec!["grilled_cheese_research.md".to_string()]
+            } else {
+                vec!["research_output.md".to_string()]
+            };
+            Some(GoalCompletionCriteria::for_research_goal(output_files))
+        } else if description_lower.contains("code")
+            || description_lower.contains("implement")
+            || description_lower.contains("create")
+        {
+            // For code goals, we might need to infer file names from context
+            // For now, use a basic check
+            let needs_tests = description_lower.contains("test");
+            Some(GoalCompletionCriteria::for_code_goal(vec![], needs_tests))
+        } else {
+            None
+        };
+
+        // Use structured criteria if available
+        if let Some(criteria) = criteria {
+            let result = self.check_goal_completion(&criteria);
+
+            // Log progress details
+            if !result.completed_items.is_empty() {
+                debug!(
+                    "goal.completion.completed items={}",
+                    result.completed_items.len()
+                );
+            }
+            if !result.missing_items.is_empty() {
+                debug!(
+                    "goal.completion.missing items={}",
+                    result.missing_items.len()
+                );
+            }
+
+            return result.is_complete;
+        }
+
+        // Fallback to legacy heuristics for goals we can't categorize
+        if description_lower.contains("reflection") && iteration >= max_iterations / 2 {
             self.tui.add_log(format!(
                 "🎯 Comprehensive analysis completed across {} iterations!",
                 iteration
@@ -1707,57 +2457,71 @@ impl<'a> GameCreator<'a> {
         /// Get game-specific requirements to help LLM produce correct game type
         fn get_game_specific_requirements(game_name: &str) -> &'static str {
             match game_name {
-                "solitaire" => "\
+                "solitaire" => {
+                    "\
                     - Implement Klondike Solitaire (the classic single-player card game)\n\
                     - Use a standard 52-card deck with 4 suits (hearts, diamonds, clubs, spades)\n\
                     - Create 7 tableau piles, 4 foundation piles, and a stock/waste pile\n\
                     - Cards alternate red/black in tableau, same suit ascending in foundations\n\
                     - Allow dragging cards between piles with mouse click/drag\n\
                     - Deal 3 cards at a time from stock to waste\n\
-                    - Win condition: all cards moved to foundations (Ace to King)",
-                "tetris" => "\
+                    - Win condition: all cards moved to foundations (Ace to King)"
+                }
+                "tetris" => {
+                    "\
                     - Standard 10x20 playing field\n\
                     - 7 tetromino pieces: I, O, T, S, Z, J, L\n\
                     - Piece rotation with wall kicks\n\
                     - Gravity/falling pieces with increasing speed\n\
                     - Line clear detection and scoring\n\
                     - Ghost piece showing where piece will land\n\
-                    - Next piece preview",
-                "snake" => "\
+                    - Next piece preview"
+                }
+                "snake" => {
+                    "\
                     - Snake that grows when eating food\n\
                     - Arrow keys or WASD for direction control\n\
                     - Random food spawning\n\
                     - Game over on wall or self collision\n\
                     - Score based on food eaten\n\
-                    - Increasing speed as snake grows",
-                "pong" => "\
+                    - Increasing speed as snake grows"
+                }
+                "pong" => {
+                    "\
                     - Two paddles (left/right or top/bottom)\n\
                     - Ball bouncing off paddles and walls\n\
                     - Score tracking for both players\n\
                     - Ball speed increases over time\n\
                     - Player vs CPU or 2-player mode\n\
-                    - Win condition (first to score X points)",
-                "breakout" => "\
+                    - Win condition (first to score X points)"
+                }
+                "breakout" => {
+                    "\
                     - Paddle at bottom controlled by mouse/keyboard\n\
                     - Ball bouncing off paddle, walls, and bricks\n\
                     - Grid of breakable bricks\n\
                     - Different brick types (colors, hit points)\n\
                     - Power-ups dropping from bricks\n\
-                    - Multiple lives, score tracking",
-                "minesweeper" => "\
+                    - Multiple lives, score tracking"
+                }
+                "minesweeper" => {
+                    "\
                     - Grid of cells with hidden mines\n\
                     - Left-click to reveal, right-click to flag\n\
                     - Numbers showing adjacent mine count\n\
                     - Cascade reveal for zero-adjacent cells\n\
                     - Win by revealing all non-mine cells\n\
                     - Lose by clicking a mine\n\
-                    - Timer and mine counter display",
-                _ => "\
+                    - Timer and mine counter display"
+                }
+                _ => {
+                    "\
                     - Complete, playable game implementation\n\
                     - Clear game mechanics and rules\n\
                     - User input handling\n\
                     - Score tracking and game over conditions\n\
                     - Visual feedback for game state"
+                }
             }
         }
 
@@ -1773,7 +2537,10 @@ impl<'a> GameCreator<'a> {
         let wants_python = description.contains("python") || description.contains("pygame");
 
         // Detect game type (with common typo tolerance)
-        let game_name = if description.contains("solitaire") || description.contains("solitare") || description.contains("klondike") {
+        let game_name = if description.contains("solitaire")
+            || description.contains("solitare")
+            || description.contains("klondike")
+        {
             "solitaire"
         } else if description.contains("tetris") || description.contains("tetros") {
             "tetris"
@@ -1781,7 +2548,10 @@ impl<'a> GameCreator<'a> {
             "snake"
         } else if description.contains("pong") {
             "pong"
-        } else if description.contains("breakout") || description.contains("arkanoid") || description.contains("brick") {
+        } else if description.contains("breakout")
+            || description.contains("arkanoid")
+            || description.contains("brick")
+        {
             "breakout"
         } else if description.contains("minesweeper") || description.contains("mine sweeper") {
             "minesweeper"
@@ -1792,11 +2562,17 @@ impl<'a> GameCreator<'a> {
 
         // Determine file extension and output path based on platform
         let (ext, output_path) = if wants_love2d || wants_lua {
-            ("lua".to_string(), format!("outputs/{}_love2d/main.lua", game_name))
+            (
+                "lua".to_string(),
+                format!("outputs/{}_love2d/main.lua", game_name),
+            )
         } else if wants_python {
             ("py".to_string(), format!("outputs/{}_pygame.py", game_name))
         } else if wants_web {
-            ("html".to_string(), format!("outputs/{}_web.html", game_name))
+            (
+                "html".to_string(),
+                format!("outputs/{}_web.html", game_name),
+            )
         } else {
             ("rs".to_string(), format!("outputs/{}_game.rs", game_name))
         };
@@ -1858,7 +2634,12 @@ impl<'a> GameCreator<'a> {
                 ```html\n\
                 ... full HTML for {} ...\n\
                 ```",
-                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
+                game_name.to_uppercase(),
+                game_name,
+                game_name,
+                game_requirements,
+                game_name,
+                game_name
             )
         } else {
             format!(
@@ -1875,7 +2656,12 @@ impl<'a> GameCreator<'a> {
                 ```rust\n\
                 ... full code for {} ...\n\
                 ```",
-                game_name.to_uppercase(), game_name, game_name, game_requirements, game_name, game_name
+                game_name.to_uppercase(),
+                game_name,
+                game_name,
+                game_requirements,
+                game_name,
+                game_name
             )
         };
 
@@ -2030,10 +2816,14 @@ impl<'a> GameCreator<'a> {
 
             // Re-validate refined output
             let lc2 = game_code.to_lowercase();
-            let still_invalid = !validate_game_output(&lc2, expected_game, file_extension, self.min_html_size);
+            let still_invalid =
+                !validate_game_output(&lc2, expected_game, file_extension, self.min_html_size);
             if still_invalid {
                 self.tui.add_log("⚠️ Refined output still doesn't match expected game. Writing raw response for inspection.".to_string());
-                warn!("agent.codegen.refine_failed expected_game='{}' writing_raw=true", expected_game);
+                warn!(
+                    "agent.codegen.refine_failed expected_game='{}' writing_raw=true",
+                    expected_game
+                );
                 game_code = code_response.content;
             }
         }
@@ -2044,48 +2834,62 @@ impl<'a> GameCreator<'a> {
     /// Get game-specific requirements for refinement prompt
     fn get_refinement_requirements(game_name: &str) -> &'static str {
         match game_name {
-            "solitaire" => "\
+            "solitaire" => {
+                "\
                 - Klondike Solitaire card game\n\
                 - 52-card deck, 4 suits (hearts, diamonds, clubs, spades)\n\
                 - 7 tableau piles, 4 foundation piles, stock and waste\n\
                 - Card dragging with mouse\n\
                 - Deal 3 cards from stock\n\
-                - Alternating colors in tableau, same suit in foundations",
-            "tetris" => "\
+                - Alternating colors in tableau, same suit in foundations"
+            }
+            "tetris" => {
+                "\
                 - 10x20 grid, 7 tetrominoes (I, O, T, S, Z, J, L)\n\
                 - Piece rotation with wall kicks\n\
                 - Gravity and lock delay\n\
                 - Line clear detection and scoring\n\
-                - Arrow keys for movement, up for rotate",
-            "snake" => "\
+                - Arrow keys for movement, up for rotate"
+            }
+            "snake" => {
+                "\
                 - Snake that grows when eating food\n\
                 - Arrow keys or WASD for direction\n\
                 - Random food spawning\n\
                 - Game over on wall or self collision\n\
-                - Score display",
-            "pong" => "\
+                - Score display"
+            }
+            "pong" => {
+                "\
                 - Two paddles, left and right\n\
                 - Ball bouncing off paddles and walls\n\
                 - Score tracking for both players\n\
                 - W/S and Up/Down for controls\n\
-                - AI opponent option",
-            "breakout" => "\
+                - AI opponent option"
+            }
+            "breakout" => {
+                "\
                 - Paddle at bottom\n\
                 - Ball bouncing\n\
                 - Grid of breakable bricks\n\
                 - Mouse or arrow keys for paddle\n\
-                - Multiple lives, score tracking",
-            "minesweeper" => "\
+                - Multiple lives, score tracking"
+            }
+            "minesweeper" => {
+                "\
                 - Grid of cells with hidden mines\n\
                 - Left-click to reveal, right-click to flag\n\
                 - Numbers showing adjacent mine count\n\
                 - Cascade reveal for zero-adjacent cells\n\
-                - Win/lose conditions",
-            _ => "\
+                - Win/lose conditions"
+            }
+            _ => {
+                "\
                 - Complete, playable game\n\
                 - Clear game mechanics\n\
                 - User input handling\n\
-                - Score tracking",
+                - Score tracking"
+            }
         }
     }
 

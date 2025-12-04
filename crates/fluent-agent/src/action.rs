@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use tracing::info;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
+use tracing::{debug, info, warn};
 
 use crate::context::ExecutionContext;
 use crate::orchestrator::{ActionType, ReasoningResult};
@@ -41,6 +41,42 @@ pub trait ActionExecutor: Send + Sync {
 
     /// Validate if this executor can handle the given action type
     fn can_execute(&self, action_type: &ActionType) -> bool;
+}
+
+/// Structured action format for JSON parsing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredAction {
+    pub action_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    pub parameters: HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+}
+
+impl StructuredAction {
+    /// Parse action type string into ActionType enum
+    pub fn parse_action_type(&self) -> Result<ActionType> {
+        match self.action_type.to_lowercase().as_str() {
+            "toolexecution" | "tool_execution" | "tool" => Ok(ActionType::ToolExecution),
+            "codegeneration" | "code_generation" | "code" => Ok(ActionType::CodeGeneration),
+            "fileoperation" | "file_operation" | "file" => Ok(ActionType::FileOperation),
+            "analysis" | "analyze" => Ok(ActionType::Analysis),
+            "communication" | "communicate" => Ok(ActionType::Communication),
+            "planning" | "plan" => Ok(ActionType::Planning),
+            _ => Err(anyhow!("Unknown action type: {}", self.action_type)),
+        }
+    }
+
+    /// Extract tool name from the structured action
+    pub fn get_tool_name(&self) -> Option<String> {
+        self.tool.clone().or_else(|| {
+            self.parameters
+                .get("tool_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+    }
 }
 
 /// Capabilities that an action planner can provide
@@ -113,6 +149,15 @@ pub struct ActionResult {
     pub error: Option<String>,
     pub metadata: HashMap<String, serde_json::Value>,
     pub side_effects: Vec<SideEffect>,
+    pub verification: Option<VerificationResult>,
+}
+
+/// Result of action verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationResult {
+    pub verified: bool,
+    pub issues: Vec<String>,
+    pub suggestions: Vec<String>,
 }
 
 /// Side effects produced by action execution
@@ -239,9 +284,63 @@ impl IntelligentActionPlanner {
         self.planning_strategies.insert(action_type, strategy);
     }
 
+    /// Parse structured action from JSON format in reasoning output
+    fn parse_structured_action(&self, reasoning_output: &str) -> Result<StructuredAction> {
+        // Try to find JSON block in the output (could be wrapped in markdown code blocks)
+        let json_str = if let Some(start) = reasoning_output.find("```json") {
+            // Extract from markdown code block
+            let after_start = &reasoning_output[start + 7..];
+            if let Some(end) = after_start.find("```") {
+                after_start[..end].trim()
+            } else {
+                return Err(anyhow!("Unclosed JSON code block"));
+            }
+        } else if let Some(start) = reasoning_output.find('{') {
+            // Try to extract raw JSON
+            let after_start = &reasoning_output[start..];
+            if let Some(end) = after_start.rfind('}') {
+                &after_start[..=end]
+            } else {
+                return Err(anyhow!("Malformed JSON: missing closing brace"));
+            }
+        } else {
+            return Err(anyhow!("No JSON found in reasoning output"));
+        };
+
+        // Parse the JSON
+        let structured: StructuredAction = serde_json::from_str(json_str)
+            .map_err(|e| anyhow!("Failed to parse structured action JSON: {}", e))?;
+
+        debug!("Successfully parsed structured action: {:?}", structured);
+        Ok(structured)
+    }
+
     /// Determine the best action type based on reasoning results
+    /// First tries JSON parsing, falls back to keyword matching
     fn determine_action_type(&self, reasoning: &ReasoningResult) -> ActionType {
-        // Analyze reasoning output to determine appropriate action type
+        // Try structured JSON parsing first
+        match self.parse_structured_action(&reasoning.reasoning_output) {
+            Ok(structured) => match structured.parse_action_type() {
+                Ok(action_type) => {
+                    info!(
+                        "Determined action type from structured format: {:?}",
+                        action_type
+                    );
+                    return action_type;
+                }
+                Err(e) => {
+                    warn!(
+                            "Failed to parse action type from structured format: {}. Falling back to keyword matching.",
+                            e
+                        );
+                }
+            },
+            Err(e) => {
+                debug!("No structured action found ({}), using keyword matching", e);
+            }
+        }
+
+        // Fallback: Analyze reasoning output using keyword matching
         let output = reasoning.reasoning_output.to_lowercase();
 
         // Priority 1: Explicit shell/command execution - use tools, not code
@@ -284,17 +383,12 @@ impl IntelligentActionPlanner {
         }
 
         // Priority 5: Analysis
-        if output.contains("analyze")
-            || output.contains("examine")
-            || output.contains("review")
-        {
+        if output.contains("analyze") || output.contains("examine") || output.contains("review") {
             return ActionType::Analysis;
         }
 
         // Priority 6: Communication
-        if output.contains("communicate")
-            || output.contains("message")
-            || output.contains("notify")
+        if output.contains("communicate") || output.contains("message") || output.contains("notify")
         {
             return ActionType::Communication;
         }
@@ -525,18 +619,27 @@ impl ActionExecutor for ComprehensiveActionExecutor {
         let execution_time = start_time.elapsed().unwrap_or_default();
 
         match execution_result {
-            Ok((output, metadata, side_effects)) => Ok(ActionResult {
-                action_id: plan.action_id,
-                action_type: plan.action_type,
-                parameters: plan.parameters,
-                result: serde_json::Value::Null,
-                execution_time,
-                success: true,
-                output,
-                error: None,
-                metadata,
-                side_effects,
-            }),
+            Ok((output, metadata, side_effects)) => {
+                let mut result = ActionResult {
+                    action_id: plan.action_id.clone(),
+                    action_type: plan.action_type.clone(),
+                    parameters: plan.parameters.clone(),
+                    result: serde_json::Value::Null,
+                    execution_time,
+                    success: true,
+                    output: output.clone(),
+                    error: None,
+                    metadata: metadata.clone(),
+                    side_effects: side_effects.clone(),
+                    verification: None,
+                };
+
+                // Perform verification
+                let verification = self.verify_action_result(&result, &plan).await;
+                result.verification = Some(verification);
+
+                Ok(result)
+            }
             Err(e) => Ok(ActionResult {
                 action_id: plan.action_id,
                 action_type: plan.action_type,
@@ -548,6 +651,7 @@ impl ActionExecutor for ComprehensiveActionExecutor {
                 error: Some(e.to_string()),
                 metadata: HashMap::new(),
                 side_effects: Vec::new(),
+                verification: None,
             }),
         }
     }
@@ -570,6 +674,245 @@ impl ActionExecutor for ComprehensiveActionExecutor {
 }
 
 impl ComprehensiveActionExecutor {
+    /// Verify the result of an executed action
+    async fn verify_action_result(
+        &self,
+        result: &ActionResult,
+        plan: &ActionPlan,
+    ) -> VerificationResult {
+        let mut issues = Vec::new();
+        let mut suggestions = Vec::new();
+        let mut verified = true;
+
+        match result.action_type {
+            ActionType::FileOperation => {
+                // For file write operations, verify file exists and has content
+                if let Some(operation) = result.parameters.get("operation").and_then(|v| v.as_str())
+                {
+                    if operation == "write" {
+                        if let Some(path) = result.parameters.get("path").and_then(|v| v.as_str()) {
+                            // Check if file exists
+                            match self.file_manager.read_file(path).await {
+                                Ok(content) => {
+                                    if content.is_empty() {
+                                        issues.push(format!(
+                                            "File '{}' was created but is empty",
+                                            path
+                                        ));
+                                        suggestions.push(
+                                            "Ensure content was provided in write operation"
+                                                .to_string(),
+                                        );
+                                        verified = false;
+                                    } else {
+                                        // Check if content matches what was intended
+                                        if let Some(expected_content) = result
+                                            .parameters
+                                            .get("content")
+                                            .and_then(|v| v.as_str())
+                                        {
+                                            if content != expected_content {
+                                                issues.push(format!(
+                                                    "File '{}' content does not match expected content",
+                                                    path
+                                                ));
+                                                suggestions.push(
+                                                    "Verify write operation completed successfully"
+                                                        .to_string(),
+                                                );
+                                                verified = false;
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    issues.push(format!(
+                                        "Failed to verify file '{}' exists: {}",
+                                        path, e
+                                    ));
+                                    suggestions.push(format!(
+                                        "Check file permissions and path validity for '{}'",
+                                        path
+                                    ));
+                                    verified = false;
+                                }
+                            }
+                        }
+                    } else if operation == "delete" {
+                        if let Some(path) = result.parameters.get("path").and_then(|v| v.as_str()) {
+                            // Verify file no longer exists
+                            if self.file_manager.read_file(path).await.is_ok() {
+                                issues.push(format!("File '{}' still exists after delete", path));
+                                suggestions.push(
+                                    "Retry delete operation or check permissions".to_string(),
+                                );
+                                verified = false;
+                            }
+                        }
+                    }
+                }
+            }
+            ActionType::ToolExecution => {
+                // For cargo test execution, check if tests passed
+                if let Some(tool_name) = result.parameters.get("tool_name").and_then(|v| v.as_str())
+                {
+                    if tool_name.contains("test") || tool_name == "cargo_test" {
+                        if let Some(output) = &result.output {
+                            let output_lower = output.to_lowercase();
+
+                            // Check for test failure indicators
+                            if output_lower.contains("failed")
+                                || output_lower.contains("error")
+                                || output_lower.contains("compilation failed")
+                            {
+                                issues.push("Tests failed or encountered errors".to_string());
+                                suggestions.push(
+                                    "Review test output to identify failing tests".to_string(),
+                                );
+                                verified = false;
+                            } else if output_lower.contains("test result: ok")
+                                || output_lower.contains("passing")
+                                || output_lower.contains("success")
+                            {
+                                // Tests passed - good
+                            } else {
+                                // Ambiguous output
+                                issues.push(
+                                    "Unable to determine test status from output".to_string(),
+                                );
+                                suggestions.push(
+                                    "Check output manually to verify test results".to_string(),
+                                );
+                                verified = false;
+                            }
+                        } else {
+                            issues.push("No output captured from test execution".to_string());
+                            suggestions.push("Ensure test tool produces output".to_string());
+                            verified = false;
+                        }
+                    } else if tool_name.contains("build") || tool_name == "cargo_build" {
+                        // For build commands, check for successful compilation
+                        if let Some(output) = &result.output {
+                            let output_lower = output.to_lowercase();
+
+                            if output_lower.contains("error")
+                                || output_lower.contains("failed")
+                                || output_lower.contains("could not compile")
+                            {
+                                issues.push("Build failed with errors".to_string());
+                                suggestions.push(
+                                    "Review compilation errors and fix code issues".to_string(),
+                                );
+                                verified = false;
+                            }
+                        }
+                    }
+                }
+            }
+            ActionType::CodeGeneration => {
+                // For code generation, check if code contains expected elements
+                if let Some(output) = &result.output {
+                    let output_lower = output.to_lowercase();
+
+                    // Check for basic code structure elements
+                    let has_function = output_lower.contains("fn ")
+                        || output_lower.contains("function")
+                        || output_lower.contains("def ");
+                    let has_struct_or_class = output_lower.contains("struct ")
+                        || output_lower.contains("class ")
+                        || output_lower.contains("impl ");
+
+                    // Look for specification keywords in the generated code
+                    if let Some(spec) = result
+                        .parameters
+                        .get("specification")
+                        .and_then(|v| v.as_str())
+                    {
+                        let spec_lower = spec.to_lowercase();
+
+                        // Check if generated code addresses the specification
+                        if spec_lower.contains("function") && !has_function {
+                            issues.push(
+                                "Specification required function but none found in generated code"
+                                    .to_string(),
+                            );
+                            suggestions.push(
+                                "Regenerate code with proper function definitions".to_string(),
+                            );
+                            verified = false;
+                        }
+
+                        if (spec_lower.contains("struct") || spec_lower.contains("class"))
+                            && !has_struct_or_class
+                        {
+                            issues.push("Specification required struct/class but none found in generated code".to_string());
+                            suggestions
+                                .push("Regenerate code with proper type definitions".to_string());
+                            verified = false;
+                        }
+                    }
+
+                    // Check for basic code validity (at least some code-like content)
+                    if output.trim().is_empty() {
+                        issues.push("Generated code is empty".to_string());
+                        suggestions
+                            .push("Retry code generation with clearer specification".to_string());
+                        verified = false;
+                    } else if output.len() < 20 {
+                        issues.push("Generated code is suspiciously short".to_string());
+                        suggestions.push("Verify that complete code was generated".to_string());
+                        verified = false;
+                    }
+                } else {
+                    issues.push("No code output generated".to_string());
+                    suggestions.push("Retry code generation".to_string());
+                    verified = false;
+                }
+            }
+            ActionType::Analysis => {
+                // For analysis, check if output provides insights
+                if let Some(output) = &result.output {
+                    if output.len() < 50 {
+                        issues.push("Analysis output is very brief".to_string());
+                        suggestions.push("Consider deeper analysis with more detail".to_string());
+                        verified = false;
+                    }
+                } else {
+                    issues.push("No analysis output generated".to_string());
+                    suggestions.push("Retry analysis".to_string());
+                    verified = false;
+                }
+            }
+            ActionType::Communication | ActionType::Planning => {
+                // These are generally verified by successful execution
+                // No additional verification needed
+            }
+        }
+
+        // Check against success criteria in the plan
+        if !plan.success_criteria.is_empty() {
+            for criterion in &plan.success_criteria {
+                // This is a simple heuristic check
+                // In a real system, you'd want more sophisticated verification
+                if let Some(output) = &result.output {
+                    let criterion_lower = criterion.to_lowercase();
+                    let output_lower = output.to_lowercase();
+
+                    if criterion_lower.contains("success") && !output_lower.contains("success") {
+                        suggestions
+                            .push(format!("Success criterion not clearly met: {}", criterion));
+                    }
+                }
+            }
+        }
+
+        VerificationResult {
+            verified,
+            issues,
+            suggestions,
+        }
+    }
+
     /// Execute tool-based actions
     async fn execute_tool_action(
         &self,
@@ -674,8 +1017,20 @@ impl ComprehensiveActionExecutor {
                     .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("File content not specified for write operation"))?;
+
+                // Pre-read existing file for context (if exists)
+                let existing_content = self.file_manager.read_file(path).await.ok();
+                let had_existing = existing_content.is_some();
+
+                // Write the new content
                 self.file_manager.write_file(path, content).await?;
-                Some(format!("Successfully wrote to {}", path))
+
+                let msg = if had_existing {
+                    format!("Successfully updated {} (replaced existing content)", path)
+                } else {
+                    format!("Successfully created {}", path)
+                };
+                Some(msg)
             }
             "delete" => {
                 self.file_manager.delete_file(path).await?;
@@ -803,7 +1158,10 @@ impl PlanningStrategy for ToolPlanningStrategy {
         let output = reasoning.reasoning_output.to_lowercase();
 
         // Determine which tool to use based on reasoning output
-        let (tool_name, description) = if output.contains("shell") || output.contains("command") || output.contains("execute") && output.contains("run") {
+        let (tool_name, description) = if output.contains("shell")
+            || output.contains("command")
+            || output.contains("execute") && output.contains("run")
+        {
             ("run_command", "Execute shell command")
         } else if output.contains("read") && output.contains("file") {
             ("read_file", "Read file contents")
@@ -857,10 +1215,16 @@ impl PlanningStrategy for CodePlanningStrategy {
 
         // Use goal description as the specification
         if let Some(goal) = context.get_current_goal() {
-            parameters.insert("specification".to_string(), serde_json::json!(goal.description));
+            parameters.insert(
+                "specification".to_string(),
+                serde_json::json!(goal.description),
+            );
         } else {
             // Fallback to reasoning output
-            parameters.insert("specification".to_string(), serde_json::json!(reasoning.reasoning_output));
+            parameters.insert(
+                "specification".to_string(),
+                serde_json::json!(reasoning.reasoning_output),
+            );
         }
 
         Ok(ActionPlan {
@@ -980,5 +1344,212 @@ mod tests {
     fn test_risk_level_ordering() {
         assert!(matches!(RiskLevel::Low, RiskLevel::Low));
         assert!(matches!(RiskLevel::Critical, RiskLevel::Critical));
+    }
+
+    #[test]
+    fn test_structured_action_parse_action_type() {
+        let mut params = HashMap::new();
+        params.insert("test".to_string(), serde_json::json!("value"));
+
+        // Test all action type variants
+        let test_cases = vec![
+            ("ToolExecution", ActionType::ToolExecution),
+            ("tool_execution", ActionType::ToolExecution),
+            ("tool", ActionType::ToolExecution),
+            ("CodeGeneration", ActionType::CodeGeneration),
+            ("code_generation", ActionType::CodeGeneration),
+            ("code", ActionType::CodeGeneration),
+            ("FileOperation", ActionType::FileOperation),
+            ("file_operation", ActionType::FileOperation),
+            ("file", ActionType::FileOperation),
+            ("Analysis", ActionType::Analysis),
+            ("analyze", ActionType::Analysis),
+            ("Communication", ActionType::Communication),
+            ("communicate", ActionType::Communication),
+            ("Planning", ActionType::Planning),
+            ("plan", ActionType::Planning),
+        ];
+
+        for (action_str, expected_type) in test_cases {
+            let action = StructuredAction {
+                action_type: action_str.to_string(),
+                tool: None,
+                parameters: params.clone(),
+                rationale: None,
+            };
+
+            let result = action.parse_action_type();
+            assert!(result.is_ok(), "Failed to parse: {}", action_str);
+            assert!(matches!(result.unwrap(), expected_type));
+        }
+
+        // Test invalid action type
+        let invalid_action = StructuredAction {
+            action_type: "InvalidAction".to_string(),
+            tool: None,
+            parameters: params,
+            rationale: None,
+        };
+        assert!(invalid_action.parse_action_type().is_err());
+    }
+
+    #[test]
+    fn test_structured_action_get_tool_name() {
+        let mut params = HashMap::new();
+        params.insert("other".to_string(), serde_json::json!("value"));
+
+        // Test direct tool field
+        let action1 = StructuredAction {
+            action_type: "tool".to_string(),
+            tool: Some("read_file".to_string()),
+            parameters: params.clone(),
+            rationale: None,
+        };
+        assert_eq!(action1.get_tool_name(), Some("read_file".to_string()));
+
+        // Test tool_name in parameters
+        params.insert("tool_name".to_string(), serde_json::json!("write_file"));
+        let action2 = StructuredAction {
+            action_type: "tool".to_string(),
+            tool: None,
+            parameters: params.clone(),
+            rationale: None,
+        };
+        assert_eq!(action2.get_tool_name(), Some("write_file".to_string()));
+
+        // Test direct tool field takes precedence
+        let action3 = StructuredAction {
+            action_type: "tool".to_string(),
+            tool: Some("read_file".to_string()),
+            parameters: params.clone(),
+            rationale: None,
+        };
+        assert_eq!(action3.get_tool_name(), Some("read_file".to_string()));
+
+        // Test no tool name
+        params.remove("tool_name");
+        let action4 = StructuredAction {
+            action_type: "tool".to_string(),
+            tool: None,
+            parameters: params,
+            rationale: None,
+        };
+        assert_eq!(action4.get_tool_name(), None);
+    }
+
+    #[test]
+    fn test_parse_structured_action_from_json() {
+        // Create a simple mock risk assessor for testing
+        struct MockRiskAssessor;
+
+        #[async_trait]
+        impl RiskAssessor for MockRiskAssessor {
+            async fn assess_risk(
+                &self,
+                _plan: &ActionPlan,
+                _context: &ExecutionContext,
+            ) -> Result<RiskLevel> {
+                Ok(RiskLevel::Low)
+            }
+        }
+
+        let risk_assessor = Box::new(MockRiskAssessor);
+        let planner = IntelligentActionPlanner::new(risk_assessor);
+
+        // Test valid JSON in markdown code block
+        let json_output = r#"Here is my planned action:
+```json
+{
+    "action_type": "ToolExecution",
+    "tool": "read_file",
+    "parameters": {
+        "path": "/tmp/test.txt"
+    },
+    "rationale": "Need to read the file contents"
+}
+```
+And that's the plan."#;
+
+        let result = planner.parse_structured_action(json_output);
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert_eq!(action.action_type, "ToolExecution");
+        assert_eq!(action.tool, Some("read_file".to_string()));
+        assert_eq!(
+            action.rationale,
+            Some("Need to read the file contents".to_string())
+        );
+
+        // Test valid raw JSON
+        let raw_json = r#"{"action_type": "Analysis", "parameters": {"type": "code_review"}, "rationale": "Check code quality"}"#;
+        let result = planner.parse_structured_action(raw_json);
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert_eq!(action.action_type, "Analysis");
+
+        // Test invalid JSON
+        let invalid_json = r#"This is not JSON at all"#;
+        let result = planner.parse_structured_action(invalid_json);
+        assert!(result.is_err());
+
+        // Test malformed JSON
+        let malformed_json = r#"{"action_type": "ToolExecution", "parameters": {}"#;
+        let result = planner.parse_structured_action(malformed_json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_determine_action_type_with_structured() {
+        use crate::orchestrator::ReasoningResult;
+
+        // Create a simple mock risk assessor for testing
+        struct MockRiskAssessor;
+
+        #[async_trait]
+        impl RiskAssessor for MockRiskAssessor {
+            async fn assess_risk(
+                &self,
+                _plan: &ActionPlan,
+                _context: &ExecutionContext,
+            ) -> Result<RiskLevel> {
+                Ok(RiskLevel::Low)
+            }
+        }
+
+        let risk_assessor = Box::new(MockRiskAssessor);
+        let planner = IntelligentActionPlanner::new(risk_assessor);
+
+        // Test structured action takes precedence
+        let reasoning = ReasoningResult {
+            reasoning_output: r#"
+I will execute a tool. Here's the structured action:
+```json
+{
+    "action_type": "FileOperation",
+    "parameters": {"operation": "read", "path": "/tmp/file.txt"},
+    "rationale": "Read configuration"
+}
+```
+            "#
+            .to_string(),
+            confidence_score: 0.9,
+            goal_achieved_confidence: 0.8,
+            next_actions: vec![],
+        };
+
+        let action_type = planner.determine_action_type(&reasoning);
+        // Should use structured FileOperation, not keyword "execute" -> ToolExecution
+        assert!(matches!(action_type, ActionType::FileOperation));
+
+        // Test fallback to keyword matching
+        let reasoning2 = ReasoningResult {
+            reasoning_output: "I need to run cargo test to check if it works".to_string(),
+            confidence_score: 0.8,
+            goal_achieved_confidence: 0.7,
+            next_actions: vec![],
+        };
+
+        let action_type2 = planner.determine_action_type(&reasoning2);
+        assert!(matches!(action_type2, ActionType::ToolExecution));
     }
 }

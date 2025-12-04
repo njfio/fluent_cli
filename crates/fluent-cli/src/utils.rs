@@ -228,10 +228,43 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
 fn strip_language_marker(code: &str) -> String {
     // Common language identifiers that might appear on the first line
     const LANG_MARKERS: &[&str] = &[
-        "lua", "python", "py", "rust", "rs", "javascript", "js", "typescript", "ts",
-        "go", "golang", "c", "cpp", "c++", "java", "ruby", "rb", "php", "swift",
-        "kotlin", "scala", "r", "perl", "shell", "bash", "sh", "zsh", "powershell",
-        "sql", "html", "css", "xml", "json", "yaml", "toml", "markdown", "md",
+        "lua",
+        "python",
+        "py",
+        "rust",
+        "rs",
+        "javascript",
+        "js",
+        "typescript",
+        "ts",
+        "go",
+        "golang",
+        "c",
+        "cpp",
+        "c++",
+        "java",
+        "ruby",
+        "rb",
+        "php",
+        "swift",
+        "kotlin",
+        "scala",
+        "r",
+        "perl",
+        "shell",
+        "bash",
+        "sh",
+        "zsh",
+        "powershell",
+        "sql",
+        "html",
+        "css",
+        "xml",
+        "json",
+        "yaml",
+        "toml",
+        "markdown",
+        "md",
     ];
 
     // Check if first line is just a language identifier
@@ -420,24 +453,22 @@ mod tests {
     #[test]
     fn test_extract_code_lua() {
         // Test that Lua code extraction works with ```lua blocks
-        let response = "Here's a Love2D game:\n```lua\nfunction love.load()\n  print('Hello')\nend\n```";
+        let response =
+            "Here's a Love2D game:\n```lua\nfunction love.load()\n  print('Hello')\nend\n```";
         let result = extract_code(response, "lua");
         assert!(result.contains("function love.load()"));
         assert!(result.contains("print('Hello')"));
-        assert!(!result.contains("lua"), "Should not contain the language marker");
+        assert!(
+            !result.contains("lua"),
+            "Should not contain the language marker"
+        );
     }
 
     #[test]
     fn test_strip_language_marker() {
         // Test stripping language marker from first line
-        assert_eq!(
-            strip_language_marker("lua\n-- comment"),
-            "-- comment"
-        );
-        assert_eq!(
-            strip_language_marker("python\nimport os"),
-            "import os"
-        );
+        assert_eq!(strip_language_marker("lua\n-- comment"), "-- comment");
+        assert_eq!(strip_language_marker("python\nimport os"), "import os");
         // Should not strip if first line is not just a language marker
         assert_eq!(
             strip_language_marker("-- This is lua code\nlocal x = 1"),
