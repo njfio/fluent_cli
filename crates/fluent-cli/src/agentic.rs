@@ -1775,7 +1775,15 @@ impl<'a> AutonomousExecutor<'a> {
             self.min_html_size,
             self.tui,
         );
-        game_creator.create_game(context).await
+        let file_path = game_creator.create_game(context).await?;
+
+        // Track the created file for completion checking
+        if !self.files_created_this_session.contains(&file_path) {
+            self.files_created_this_session.push(file_path.clone());
+            debug!("agent.session.file_created path='{}' (via legacy game creator)", file_path);
+        }
+
+        Ok(())
     }
 
     /// Handle general (non-game) goals
@@ -2330,10 +2338,11 @@ impl<'a> GameCreator<'a> {
     }
 
     /// Create game based on goal description
+    /// Create the game and return the file path where it was written
     pub async fn create_game(
         &mut self,
         context: &mut fluent_agent::context::ExecutionContext,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let (file_extension, code_prompt, file_path) =
             Self::determine_game_type(&self.goal.description);
 
@@ -2375,7 +2384,7 @@ impl<'a> GameCreator<'a> {
             file_extension.to_uppercase(),
             file_path
         ));
-        Ok(())
+        Ok(file_path)
     }
 
     /// Determine what type of game to create based on goal description
