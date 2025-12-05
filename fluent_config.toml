@@ -12,5 +12,5 @@ request_path = "/v1/messages"
 bearer_token = "${ANTHROPIC_API_KEY}"
 modelName = "claude-3-7-sonnet-20250219"
 temperature = 0.1
-max_tokens = 4000
-system = "You are an expert Rust programmer and game developer. You create complete, working code with proper error handling."
+max_tokens = 16000
+system = "You are an expert programmer and game developer. Output ONLY code in fenced code blocks. No explanations, no preamble. Complete, working code with proper error handling."

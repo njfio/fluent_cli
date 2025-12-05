@@ -145,6 +145,14 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
         if let Some(end_pos) = response[code_start..].find("```") {
             let code_end = code_start + end_pos;
             return response[code_start..code_end].trim().to_string();
+        } else {
+            // No closing fence found (truncated response) - take everything after the opening
+            // Skip the language identifier line if present
+            let content = &response[code_start..];
+            if let Some(newline) = content.find('\n') {
+                return content[newline + 1..].trim().to_string();
+            }
+            return content.trim().to_string();
         }
     }
 
@@ -162,6 +170,10 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
             let code_end = actual_start + end_pos;
             let code = response[actual_start..code_end].trim();
             // Double-check: if first line is just a language identifier, skip it
+            return strip_language_marker(code).to_string();
+        } else {
+            // No closing fence (truncated) - take everything after language identifier line
+            let code = response[actual_start..].trim();
             return strip_language_marker(code).to_string();
         }
     }
