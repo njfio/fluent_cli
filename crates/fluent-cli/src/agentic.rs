@@ -99,6 +99,8 @@ impl GoalCompletionCriteria {
             "pong" => vec!["paddle", "ball", "bounce"],
             "breakout" => vec!["paddle", "ball", "brick"],
             "minesweeper" => vec!["mine", "grid", "reveal", "flag"],
+            "tower" => vec!["tower", "enemy", "wave", "path", "projectile"],
+            "space" | "shooter" => vec!["player", "enemy", "bullet", "shoot", "score"],
             _ => vec!["game", "update", "draw"],
         }
         .into_iter()
@@ -2387,6 +2389,10 @@ impl<'a> AutonomousExecutor<'a> {
                 "breakout"
             } else if description_lower.contains("minesweeper") {
                 "minesweeper"
+            } else if description_lower.contains("tower") {
+                "tower"
+            } else if description_lower.contains("space") || description_lower.contains("shooter") {
+                "space"
             } else {
                 "game"
             };
@@ -2622,6 +2628,26 @@ impl<'a> GameCreator<'a> {
                     - Lose by clicking a mine\n\
                     - Timer and mine counter display"
                 }
+                "tower" => {
+                    "\
+                    - Tower defense game with waves of enemies\n\
+                    - Path that enemies follow from start to end\n\
+                    - Multiple tower types with different stats (damage, range, fire rate)\n\
+                    - Tower placement system using mouse click\n\
+                    - Projectiles that towers fire at enemies\n\
+                    - Money system for buying towers, earned from kills\n\
+                    - Lives that decrease when enemies reach the end\n\
+                    - Wave system with increasing difficulty"
+                }
+                "space" | "shooter" => {
+                    "\
+                    - Player-controlled ship or character\n\
+                    - Shooting mechanics with projectiles\n\
+                    - Enemies that spawn and move\n\
+                    - Collision detection for bullets and enemies\n\
+                    - Score tracking and lives system\n\
+                    - Increasing difficulty over time"
+                }
                 _ => {
                     "\
                     - Complete, playable game implementation\n\
@@ -2663,6 +2689,10 @@ impl<'a> GameCreator<'a> {
             "breakout"
         } else if description.contains("minesweeper") || description.contains("mine sweeper") {
             "minesweeper"
+        } else if description.contains("tower") || description.contains("defense") {
+            "tower"
+        } else if description.contains("space") || description.contains("shooter") {
+            "space"
         } else {
             // Extract game name from description if possible
             "game"
