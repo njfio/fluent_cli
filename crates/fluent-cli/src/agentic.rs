@@ -573,30 +573,40 @@ impl AgenticExecutor {
 
         self.tui
             .add_log("🔁 Orchestrator constructed. Entering autonomous loop…".to_string());
-        let timeout_secs: u64 = std::env::var("FLUENT_AGENT_TIMEOUT_SECS")
+
+        // Max total runtime - safety limit (default 1 hour)
+        // The real timeout is activity-based: agent times out after inactivity, not total time
+        let max_runtime_secs: u64 = std::env::var("FLUENT_AGENT_MAX_RUNTIME_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(600); // Increased from 180s to 600s (10 minutes) for research tasks
+            .unwrap_or(3600); // 1 hour max total runtime
+
+        // Inactivity timeout - resets on each LLM response/tool execution
+        let inactivity_secs: u64 = std::env::var("FLUENT_AGENT_INACTIVITY_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120); // 2 min of no activity = timeout
+
         self.tui.add_log(format!(
-            "🕒 Watchdog active ({}s). Running ReAct pipeline…",
-            timeout_secs
+            "🕒 Activity watchdog: {}s inactivity timeout, {}s max runtime",
+            inactivity_secs, max_runtime_secs
         ));
 
         info!(
-            "agent.react.start goal='{}' timeout_secs={}",
-            self.config.goal_description, timeout_secs
+            "agent.react.start goal='{}' max_runtime={}s inactivity_timeout={}s",
+            self.config.goal_description, max_runtime_secs, inactivity_secs
         );
 
         self.tui.update_status(AgentStatus::Running);
 
         // If TUI is enabled, run agent execution and TUI concurrently
         let result = if self.tui.enabled() {
-            self.run_with_tui(&goal, &runtime_config, timeout_secs)
+            self.run_with_tui(&goal, &runtime_config, max_runtime_secs)
                 .await
         } else {
-            // Run without TUI
+            // Run without TUI - max_runtime is safety limit, inactivity handles real timeout
             match tokio::time::timeout(
-                std::time::Duration::from_secs(timeout_secs),
+                std::time::Duration::from_secs(max_runtime_secs),
                 self.run_autonomous_execution(&goal, &runtime_config),
             )
             .await
@@ -611,12 +621,12 @@ impl AgenticExecutor {
                 }
                 Err(_) => {
                     error!(
-                        "agent.react.timeout secs={} goal='{}'",
-                        timeout_secs, self.config.goal_description
+                        "agent.react.max_runtime_exceeded secs={} goal='{}'",
+                        max_runtime_secs, self.config.goal_description
                     );
                     Err(anyhow::anyhow!(format!(
-                        "Agent timed out after {}s while executing the goal",
-                        timeout_secs
+                        "Agent exceeded max runtime of {}s (this is a safety limit, not inactivity)",
+                        max_runtime_secs
                     )))
                 }
             }
@@ -1000,16 +1010,16 @@ impl AgenticExecutor {
             }
             Err(_) => {
                 error!(
-                    "agent.react.timeout secs={} goal='{}'",
+                    "agent.react.max_runtime_exceeded secs={} goal='{}'",
                     timeout_secs, self.config.goal_description
                 );
                 self.tui.update_status(AgentStatus::Timeout);
                 self.tui.add_log(format!(
-                    "⏳ Agent timed out after {}s. Aborting.",
+                    "⏳ Agent exceeded max runtime of {}s (safety limit). Aborting.",
                     timeout_secs
                 ));
                 Err(anyhow::anyhow!(format!(
-                    "Agent timed out after {}s while executing the goal",
+                    "Agent exceeded max runtime of {}s (safety limit, not inactivity)",
                     timeout_secs
                 )))
             }
@@ -1075,6 +1085,10 @@ pub struct AutonomousExecutor<'a> {
     tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
     /// Files created during this session (for completion tracking)
     files_created_this_session: Vec<String>,
+    /// Last time the agent made progress (for activity-based watchdog)
+    last_activity: Instant,
+    /// Inactivity timeout in seconds (watchdog resets on each LLM response)
+    inactivity_timeout_secs: u64,
 }
 
 /// Result of executing a structured action
@@ -1093,6 +1107,13 @@ impl<'a> AutonomousExecutor<'a> {
         tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
     ) -> Self {
         let crx = tui.control_receiver();
+        // Inactivity timeout - agent times out if no progress for this duration
+        // Default 120s (2 min) of inactivity, not total runtime
+        let inactivity_timeout_secs: u64 = std::env::var("FLUENT_AGENT_INACTIVITY_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120);
+
         Self {
             goal,
             runtime_config,
@@ -1106,7 +1127,19 @@ impl<'a> AutonomousExecutor<'a> {
             todo_list: Vec::new(),
             tool_registry,
             files_created_this_session: Vec::new(),
+            last_activity: Instant::now(),
+            inactivity_timeout_secs,
         }
+    }
+
+    /// Reset the activity timer - call this on every LLM response or tool completion
+    fn reset_activity_timer(&mut self) {
+        self.last_activity = Instant::now();
+    }
+
+    /// Check if the agent has been inactive for too long
+    fn is_inactive_timeout(&self) -> bool {
+        self.last_activity.elapsed().as_secs() > self.inactivity_timeout_secs
     }
 
     /// Execute a structured action using the tool registry
@@ -1438,7 +1471,24 @@ impl<'a> AutonomousExecutor<'a> {
                 .add_log(format!("🔄 Iteration {}/{}", iteration, max_iterations));
             debug!("agent.loop.iteration start iter={}", iteration);
 
+            // Check for inactivity timeout before proceeding
+            if self.is_inactive_timeout() {
+                error!(
+                    "agent.loop.inactivity_timeout secs={} last_activity={}s ago",
+                    self.inactivity_timeout_secs,
+                    self.last_activity.elapsed().as_secs()
+                );
+                return Err(anyhow!(
+                    "Agent timed out after {}s of inactivity (no LLM response or tool execution)",
+                    self.inactivity_timeout_secs
+                ));
+            }
+
             let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
+
+            // Reset activity timer - we got an LLM response
+            self.reset_activity_timer();
+
             debug!(
                 "agent.loop.reasoning.done len={} preview='{}'",
                 reasoning_response.len(),
@@ -1472,6 +1522,9 @@ impl<'a> AutonomousExecutor<'a> {
 
                     // Execute the structured action via tool registry
                     let result = self.execute_structured_action(&action).await;
+
+                    // Reset activity timer - tool execution completed
+                    self.reset_activity_timer();
 
                     // Update todo status based on actual success/failure
                     // Only update the todo we marked in-progress (if any)
