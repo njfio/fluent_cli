@@ -1184,6 +1184,12 @@ pub struct AutonomousExecutor<'a> {
     tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
 }
 
+/// Result of executing a structured action
+struct ActionExecutionResult {
+    observation: String,
+    success: bool,
+}
+
 impl<'a> AutonomousExecutor<'a> {
     pub fn new(
         goal: fluent_agent::goal::Goal,
@@ -1211,8 +1217,8 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Execute a structured action using the tool registry
     ///
-    /// Returns an observation string describing the result of the action.
-    async fn execute_structured_action(&mut self, action: &StructuredAction) -> Result<String> {
+    /// Returns the observation and whether it succeeded.
+    async fn execute_structured_action(&mut self, action: &StructuredAction) -> ActionExecutionResult {
         use fluent_agent::prompts::format_observation;
 
         let tool_name = action.get_tool_name().unwrap_or_else(|| {
@@ -1257,7 +1263,7 @@ impl<'a> AutonomousExecutor<'a> {
                 );
                 self.tui.add_log(format!("✅ Tool {} succeeded", tool_name));
                 info!("agent.tool.success tool='{}' output_len={}", tool_name, output.len());
-                Ok(observation)
+                ActionExecutionResult { observation, success: true }
             }
             Err(e) => {
                 let error_msg = e.to_string();
@@ -1270,7 +1276,7 @@ impl<'a> AutonomousExecutor<'a> {
                 );
                 self.tui.add_log(format!("❌ Tool {} failed: {}", tool_name, e));
                 warn!("agent.tool.error tool='{}' error={}", tool_name, e);
-                Ok(observation) // Return observation even on failure so agent can learn
+                ActionExecutionResult { observation, success: false }
             }
         }
     }
@@ -1485,28 +1491,21 @@ impl<'a> AutonomousExecutor<'a> {
                     }
 
                     // Execute the structured action via tool registry
-                    match self.execute_structured_action(&action).await {
-                        Ok(obs) => {
-                            // Mark in-progress todo as complete
-                            for idx in 0..self.todo_list.len() {
-                                if self.todo_list[idx].status == TodoStatus::InProgress {
-                                    let _ = self.update_todo_status(idx, TodoStatus::Completed);
-                                    break;
-                                }
+                    let result = self.execute_structured_action(&action).await;
+
+                    // Update todo status based on actual success/failure
+                    for idx in 0..self.todo_list.len() {
+                        if self.todo_list[idx].status == TodoStatus::InProgress {
+                            if result.success {
+                                let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                            } else {
+                                let _ = self.update_todo_status(idx, TodoStatus::Failed);
                             }
-                            obs
-                        }
-                        Err(e) => {
-                            // Mark in-progress todo as failed
-                            for idx in 0..self.todo_list.len() {
-                                if self.todo_list[idx].status == TodoStatus::InProgress {
-                                    let _ = self.update_todo_status(idx, TodoStatus::Failed);
-                                    break;
-                                }
-                            }
-                            format!("Action execution failed: {}", e)
+                            break;
                         }
                     }
+
+                    result.observation
                 }
                 Err(_) => {
                     // Fallback: No structured action parsed, use legacy paths
