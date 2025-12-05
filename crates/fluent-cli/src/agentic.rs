@@ -1454,23 +1454,9 @@ impl<'a> AutonomousExecutor<'a> {
             self.store_observation(observation.clone());
             self.display_todo_summary();
 
-            // Check if all todos are complete
-            let completed_count = self.todo_list.iter().filter(|t| t.status == TodoStatus::Completed).count();
-            let total_count = self.todo_list.len();
-            let all_complete = completed_count == total_count && total_count > 0;
-
-            info!(
-                "agent.loop.todos completed={}/{} all_complete={}",
-                completed_count, total_count, all_complete
-            );
-
-            if all_complete {
-                info!("agent.loop.complete all_todos_done iter={}", iteration);
-                self.tui.add_log("✅ All tasks completed!".to_string());
-                return Ok(());
-            }
-
-            // Check goal completion criteria
+            // Check goal completion (todos + file verification)
+            // Note: We don't early-exit on "all todos complete" because we need to verify
+            // that files were actually created for file-producing goals
             let goal_met = self.should_complete_goal(iteration, max_iterations);
             info!("agent.loop.goal_check goal_met={} iter={}", goal_met, iteration);
 
@@ -2156,14 +2142,31 @@ impl<'a> AutonomousExecutor<'a> {
                 debug!("agent.completion.blocked reason='files_not_verified'");
                 return false;
             } else {
-                // No files created but todos complete - might be a non-file-producing goal
-                // Complete if we've done at least 2 iterations of work
-                if iteration >= 2 {
-                    self.tui.add_log(format!(
-                        "✅ Goal complete: All {} todos done (no files required)",
-                        total_todos
-                    ));
-                    return true;
+                // No files created - check if this is a file-producing goal
+                let goal_lower = self.goal.description.to_lowercase();
+                let requires_files = goal_lower.contains("create")
+                    || goal_lower.contains("write")
+                    || goal_lower.contains("build")
+                    || goal_lower.contains("make")
+                    || goal_lower.contains("implement")
+                    || goal_lower.contains("game")
+                    || goal_lower.contains("code");
+
+                if requires_files {
+                    // Goal requires files but none were created - not complete
+                    debug!("agent.completion.blocked reason='file_producing_goal_no_files' goal='{}'", self.goal.description);
+                    self.tui.add_log("⏳ Waiting for file creation...".to_string());
+                    return false;
+                } else {
+                    // Non-file-producing goal (analysis, research, etc.)
+                    // Complete if we've done at least 2 iterations of work
+                    if iteration >= 2 {
+                        self.tui.add_log(format!(
+                            "✅ Goal complete: All {} todos done (no files required)",
+                            total_todos
+                        ));
+                        return true;
+                    }
                 }
             }
         }
