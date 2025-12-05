@@ -1216,6 +1216,77 @@ impl<'a> AutonomousExecutor<'a> {
         Ok(())
     }
 
+    /// Find a todo that matches the given action
+    /// Returns the index of a matching pending todo, or None if no match
+    fn find_matching_todo(&self, action: &StructuredAction) -> Option<usize> {
+        let tool_name = action.get_tool_name().unwrap_or_default().to_lowercase();
+        let action_type = action.action_type.to_lowercase();
+
+        // Extract file path if present
+        let file_path = action.parameters.get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        for (idx, todo) in self.todo_list.iter().enumerate() {
+            if todo.status != TodoStatus::Pending {
+                continue;
+            }
+
+            let task_lower = todo.task.to_lowercase();
+
+            // Match write_file to "write" or "create" todos
+            if tool_name == "write_file" || (tool_name == "file_system" && action.parameters.contains_key("content")) {
+                if task_lower.contains("write")
+                    || task_lower.contains("create")
+                    || task_lower.contains("generate")
+                    || task_lower.contains("output")
+                    || task_lower.contains("save") {
+                    return Some(idx);
+                }
+            }
+
+            // Match read_file to "read" or "examine" or "understand" todos
+            if tool_name == "read_file" || (tool_name == "file_system" && !action.parameters.contains_key("content")) {
+                if task_lower.contains("read")
+                    || task_lower.contains("examine")
+                    || task_lower.contains("understand")
+                    || task_lower.contains("analyze")
+                    || task_lower.contains("check")
+                    || task_lower.contains("review") {
+                    return Some(idx);
+                }
+            }
+
+            // Match create_directory to "directory" or "folder" todos
+            if tool_name == "create_directory" || tool_name.contains("mkdir") {
+                if task_lower.contains("directory")
+                    || task_lower.contains("folder")
+                    || task_lower.contains("structure") {
+                    return Some(idx);
+                }
+            }
+
+            // Match shell/run_command to "run" or "execute" or "build" or "test" todos
+            if tool_name == "shell" || tool_name == "run_command" || action_type.contains("shell") {
+                if task_lower.contains("run")
+                    || task_lower.contains("execute")
+                    || task_lower.contains("build")
+                    || task_lower.contains("test")
+                    || task_lower.contains("compile") {
+                    return Some(idx);
+                }
+            }
+
+            // Match based on file path appearing in todo
+            if !file_path.is_empty() && task_lower.contains(&file_path.to_lowercase()) {
+                return Some(idx);
+            }
+        }
+
+        // No semantic match found - return None (don't mark any todo)
+        None
+    }
+
     /// Get all pending todos
     pub fn get_pending_todos(&self) -> Vec<&TodoItem> {
         self.todo_list
@@ -1385,27 +1456,30 @@ impl<'a> AutonomousExecutor<'a> {
                         action.action_type
                     );
 
-                    // Mark relevant todo as in-progress
-                    if let Some(idx) = self
-                        .todo_list
-                        .iter()
-                        .position(|t| t.status == TodoStatus::Pending)
-                    {
+                    // Find a todo that semantically matches this action
+                    let matching_todo_idx = self.find_matching_todo(&action);
+
+                    // Mark matching todo as in-progress (if found)
+                    if let Some(idx) = matching_todo_idx {
                         let _ = self.update_todo_status(idx, TodoStatus::InProgress);
+                    } else {
+                        // No matching todo - log but continue (action may still be useful)
+                        debug!(
+                            "agent.todo.no_match tool={:?} - action doesn't match any pending todo",
+                            action.get_tool_name()
+                        );
                     }
 
                     // Execute the structured action via tool registry
                     let result = self.execute_structured_action(&action).await;
 
                     // Update todo status based on actual success/failure
-                    for idx in 0..self.todo_list.len() {
-                        if self.todo_list[idx].status == TodoStatus::InProgress {
-                            if result.success {
-                                let _ = self.update_todo_status(idx, TodoStatus::Completed);
-                            } else {
-                                let _ = self.update_todo_status(idx, TodoStatus::Failed);
-                            }
-                            break;
+                    // Only update the todo we marked in-progress (if any)
+                    if let Some(idx) = matching_todo_idx {
+                        if result.success {
+                            let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                        } else {
+                            let _ = self.update_todo_status(idx, TodoStatus::Failed);
                         }
                     }
 
