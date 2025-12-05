@@ -169,6 +169,34 @@ ACTION:
 5. **Explain your reasoning** - Every THOUGHT should be clear
 6. **Recover from failures** - Analyze errors and try alternatives
 7. **Stay focused on the goal** - Every action should make progress
+
+# INCREMENTAL BUILDING
+
+When creating programs or games, work incrementally:
+
+1. **Start with a skeleton** - Create a minimal working file first
+   - For Lua/Love2D: Basic love.load(), love.update(), love.draw()
+   - For HTML/JS: Basic HTML structure with empty script
+   - For Rust: Basic main() with minimal logic
+
+2. **Add one feature at a time** - Each action should add one logical component
+   - Add data structures
+   - Add initialization logic
+   - Add input handling
+   - Add game logic
+   - Add rendering
+
+3. **Test after each addition** - Verify the file is still valid
+   - Run the program if possible
+   - Check for syntax errors
+   - Verify the new feature works
+
+4. **Use string_replace to extend** - Don't rewrite entire files
+   - Insert new functions before closing braces
+   - Add new code after existing code
+   - Keep previous work intact
+
+**NEVER try to generate an entire complex program in one action.** Break it into 5-10 iterations of building blocks.
 "#;
 
 /// Tool descriptions for inclusion in prompts

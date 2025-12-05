@@ -79,6 +79,59 @@ impl StructuredAction {
     }
 }
 
+/// Parse a structured action from LLM reasoning output
+///
+/// Attempts to extract JSON from the output, supporting:
+/// - Markdown code blocks (```json ... ```)
+/// - Raw JSON objects ({ ... })
+///
+/// Returns the parsed StructuredAction or an error if parsing fails.
+pub fn parse_structured_action(reasoning_output: &str) -> Result<StructuredAction> {
+    // Try to find JSON block in the output (could be wrapped in markdown code blocks)
+    let json_str = if let Some(start) = reasoning_output.find("```json") {
+        // Extract from markdown code block
+        let after_start = &reasoning_output[start + 7..];
+        if let Some(end) = after_start.find("```") {
+            after_start[..end].trim()
+        } else {
+            return Err(anyhow!("Unclosed JSON code block"));
+        }
+    } else if let Some(start) = reasoning_output.find('{') {
+        // Try to extract raw JSON
+        let after_start = &reasoning_output[start..];
+        // Find matching closing brace (handle nested objects)
+        let mut depth = 0;
+        let mut end_idx = None;
+        for (i, c) in after_start.chars().enumerate() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_idx = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(end) = end_idx {
+            &after_start[..=end]
+        } else {
+            return Err(anyhow!("Malformed JSON: missing closing brace"));
+        }
+    } else {
+        return Err(anyhow!("No JSON found in reasoning output"));
+    };
+
+    // Parse the JSON
+    let structured: StructuredAction = serde_json::from_str(json_str)
+        .map_err(|e| anyhow!("Failed to parse structured action JSON: {}", e))?;
+
+    debug!("Parsed structured action: {:?}", structured);
+    Ok(structured)
+}
+
 /// Capabilities that an action planner can provide
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlanningCapability {

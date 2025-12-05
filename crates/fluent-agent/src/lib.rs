@@ -86,7 +86,8 @@ pub mod workflow;
 
 // Re-export advanced agentic types
 pub use action::{
-    ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
+    parse_structured_action, ActionExecutor, ActionPlanner, ComprehensiveActionExecutor,
+    IntelligentActionPlanner, StructuredAction,
 };
 pub use advanced_tools::{
     AdvancedTool, AdvancedToolRegistry, ToolCategory, ToolParameters, ToolPriority, ToolResult,

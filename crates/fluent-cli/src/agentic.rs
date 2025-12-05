@@ -5,8 +5,10 @@
 //! and MCP integration.
 
 use anyhow::{anyhow, Result};
+use fluent_agent::{parse_structured_action, StructuredAction};
 use fluent_core::config::Config;
 use fluent_core::types::Request;
+use std::collections::HashMap;
 use std::fs;
 use std::pin::Pin;
 use std::process::Command;
@@ -394,6 +396,8 @@ pub struct AgenticExecutor {
     tui: TuiManager,
     /// Recent observations for feedback into reasoning loop
     recent_observations: Vec<String>,
+    /// Tool registry for structured action execution (set during init)
+    tool_registry: Option<Arc<fluent_agent::tools::ToolRegistry>>,
 }
 
 impl AgenticExecutor {
@@ -412,6 +416,7 @@ impl AgenticExecutor {
             config,
             tui: TuiManager::new(enable_tui),
             recent_observations: Vec::new(),
+            tool_registry: None,
         }
     }
 
@@ -578,6 +583,8 @@ impl AgenticExecutor {
 
         // Finalize registry, then create shared Arc for adapters/planners
         let arc_registry = Arc::new(tool_registry);
+        // Store for use in AutonomousExecutor
+        self.tool_registry = Some(arc_registry.clone());
         let tool_adapter = Box::new(RegistryToolAdapter::new(arc_registry.clone()));
         let codegen = Box::new(LlmCodeGenerator::new(
             runtime_config.reasoning_engine.clone(),
@@ -1141,12 +1148,19 @@ impl AgenticExecutor {
         self.tui
             .add_log("🚀 Starting autonomous execution...".to_string());
 
+        // Get tool registry, falling back to empty if not initialized
+        let registry = self
+            .tool_registry
+            .clone()
+            .unwrap_or_else(|| Arc::new(fluent_agent::tools::ToolRegistry::new()));
+
         let mut executor = AutonomousExecutor::new(
             goal.clone(),
             runtime_config,
             self.config.gen_retries.unwrap_or(3),
             self.config.min_html_size.unwrap_or(2000) as usize,
             &mut self.tui,
+            registry,
         );
         executor.execute(self.config.max_iterations).await
     }
@@ -1166,6 +1180,8 @@ pub struct AutonomousExecutor<'a> {
     recent_observations: Vec<String>,
     /// List of todos tracking progress toward the goal
     todo_list: Vec<TodoItem>,
+    /// Tool registry for executing structured actions
+    tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
 }
 
 impl<'a> AutonomousExecutor<'a> {
@@ -1175,6 +1191,7 @@ impl<'a> AutonomousExecutor<'a> {
         gen_retries: u32,
         min_html_size: usize,
         tui: &'a mut TuiManager,
+        tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
     ) -> Self {
         let crx = tui.control_receiver();
         Self {
@@ -1188,6 +1205,73 @@ impl<'a> AutonomousExecutor<'a> {
             queued_guidance: Vec::new(),
             recent_observations: Vec::new(),
             todo_list: Vec::new(),
+            tool_registry,
+        }
+    }
+
+    /// Execute a structured action using the tool registry
+    ///
+    /// Returns an observation string describing the result of the action.
+    async fn execute_structured_action(&mut self, action: &StructuredAction) -> Result<String> {
+        use fluent_agent::prompts::format_observation;
+
+        let tool_name = action.get_tool_name().unwrap_or_else(|| {
+            // Infer tool from action type
+            match action.action_type.to_lowercase().as_str() {
+                "file" | "fileoperation" | "file_operation" => "file_system".to_string(),
+                "shell" | "command" | "run" => "shell".to_string(),
+                "code" | "codegeneration" | "code_generation" => "file_system".to_string(),
+                _ => "file_system".to_string(),
+            }
+        });
+
+        self.tui.add_log(format!(
+            "🔧 Executing tool: {} with {} parameters",
+            tool_name,
+            action.parameters.len()
+        ));
+
+        debug!(
+            "agent.tool.execute tool='{}' params={:?}",
+            tool_name, action.parameters
+        );
+
+        // Execute via tool registry
+        match self
+            .tool_registry
+            .execute_tool(&tool_name, &action.parameters)
+            .await
+        {
+            Ok(output) => {
+                let truncated_output = if output.len() > 1000 {
+                    format!("{}... (truncated {} chars)", &output[..1000], output.len() - 1000)
+                } else {
+                    output.clone()
+                };
+                let observation = format_observation(
+                    &action.action_type,
+                    &tool_name,
+                    true,
+                    &truncated_output,
+                    None,
+                );
+                self.tui.add_log(format!("✅ Tool {} succeeded", tool_name));
+                info!("agent.tool.success tool='{}' output_len={}", tool_name, output.len());
+                Ok(observation)
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                let observation = format_observation(
+                    &action.action_type,
+                    &tool_name,
+                    false,
+                    "",
+                    Some(&error_msg),
+                );
+                self.tui.add_log(format!("❌ Tool {} failed: {}", tool_name, e));
+                warn!("agent.tool.error tool='{}' error={}", tool_name, e);
+                Ok(observation) // Return observation even on failure so agent can learn
+            }
         }
     }
 
@@ -1380,103 +1464,105 @@ impl<'a> AutonomousExecutor<'a> {
                 &reasoning_response.chars().take(160).collect::<String>()
             );
 
-            if self.is_game_goal() {
-                info!("agent.loop.path game=true");
+            // Try to parse structured action from reasoning response
+            let action_result = parse_structured_action(&reasoning_response);
 
-                // Update todo: start game creation
-                if let Some(idx) = self.todo_list.iter().position(|t| {
-                    t.task.to_lowercase().contains("generate") && t.status == TodoStatus::Pending
-                }) {
-                    let _ = self.update_todo_status(idx, TodoStatus::InProgress);
+            let observation = match action_result {
+                Ok(action) => {
+                    info!(
+                        "agent.loop.structured_action tool={:?} type='{}'",
+                        action.get_tool_name(),
+                        action.action_type
+                    );
+
+                    // Mark relevant todo as in-progress
+                    if let Some(idx) = self
+                        .todo_list
+                        .iter()
+                        .position(|t| t.status == TodoStatus::Pending)
+                    {
+                        let _ = self.update_todo_status(idx, TodoStatus::InProgress);
+                    }
+
+                    // Execute the structured action via tool registry
+                    match self.execute_structured_action(&action).await {
+                        Ok(obs) => {
+                            // Mark in-progress todo as complete
+                            for idx in 0..self.todo_list.len() {
+                                if self.todo_list[idx].status == TodoStatus::InProgress {
+                                    let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                                    break;
+                                }
+                            }
+                            obs
+                        }
+                        Err(e) => {
+                            // Mark in-progress todo as failed
+                            for idx in 0..self.todo_list.len() {
+                                if self.todo_list[idx].status == TodoStatus::InProgress {
+                                    let _ = self.update_todo_status(idx, TodoStatus::Failed);
+                                    break;
+                                }
+                            }
+                            format!("Action execution failed: {}", e)
+                        }
+                    }
                 }
+                Err(_) => {
+                    // Fallback: No structured action parsed, use legacy paths
+                    debug!("agent.loop.fallback no_structured_action");
 
-                let result = self.handle_game_creation(&mut context).await;
-
-                // Update todos based on result
-                if result.is_ok() {
-                    // Mark game-related todos as completed
-                    for idx in 0..self.todo_list.len() {
-                        if self.todo_list[idx].status == TodoStatus::InProgress
-                            || self.todo_list[idx].status == TodoStatus::Pending
+                    if self.is_game_goal() {
+                        info!("agent.loop.path game=true (legacy)");
+                        // Legacy game handling - but now continues loop instead of returning
+                        match self.handle_game_creation(&mut context).await {
+                            Ok(()) => {
+                                // Mark todos complete and check if we should exit
+                                for idx in 0..self.todo_list.len() {
+                                    if self.todo_list[idx].status != TodoStatus::Completed {
+                                        let _ = self.update_todo_status(idx, TodoStatus::Completed);
+                                    }
+                                }
+                                format!("Iteration {}: Game creation completed successfully", iteration)
+                            }
+                            Err(e) => {
+                                format!("Iteration {}: Game creation failed: {}", iteration, e)
+                            }
+                        }
+                    } else {
+                        info!("agent.loop.path general=true (legacy)");
+                        // Legacy general goal handling
+                        match self
+                            .handle_general_goal(&mut context, &reasoning_response, iteration, max_iterations)
+                            .await
                         {
-                            let _ = self.update_todo_status(idx, TodoStatus::Completed);
-                        }
-                    }
-                } else {
-                    // Mark in-progress todos as failed
-                    for idx in 0..self.todo_list.len() {
-                        if self.todo_list[idx].status == TodoStatus::InProgress {
-                            let _ = self.update_todo_status(idx, TodoStatus::Failed);
-                        }
-                    }
-                }
-
-                self.display_todo_summary();
-
-                // Store observation for game creation
-                let obs = format!(
-                    "Iteration {}: Game creation attempted. Type: game, Status: {:?}",
-                    iteration,
-                    result.is_ok()
-                );
-                self.store_observation(obs);
-
-                return result;
-            } else {
-                info!("agent.loop.path game=false");
-
-                // Mark first pending todo as in progress
-                if let Some(idx) = self
-                    .todo_list
-                    .iter()
-                    .position(|t| t.status == TodoStatus::Pending)
-                {
-                    let _ = self.update_todo_status(idx, TodoStatus::InProgress);
-                }
-
-                let result = self
-                    .handle_general_goal(
-                        &mut context,
-                        &reasoning_response,
-                        iteration,
-                        max_iterations,
-                    )
-                    .await;
-
-                // Update todo status based on result
-                if result.is_ok() {
-                    // Mark in-progress todos as completed
-                    for idx in 0..self.todo_list.len() {
-                        if self.todo_list[idx].status == TodoStatus::InProgress {
-                            let _ = self.update_todo_status(idx, TodoStatus::Completed);
-                            break; // Only complete the first one per iteration
-                        }
-                    }
-                } else {
-                    // Mark in-progress todos as failed
-                    for idx in 0..self.todo_list.len() {
-                        if self.todo_list[idx].status == TodoStatus::InProgress {
-                            let _ = self.update_todo_status(idx, TodoStatus::Failed);
+                            Ok(()) => {
+                                format!("Iteration {}: General goal step completed", iteration)
+                            }
+                            Err(e) => {
+                                format!("Iteration {}: General goal step failed: {}", iteration, e)
+                            }
                         }
                     }
                 }
+            };
 
-                self.display_todo_summary();
+            // Store the observation from this iteration
+            self.store_observation(observation.clone());
+            self.display_todo_summary();
 
-                // Store observation after general goal handling
-                let obs = format!(
-                    "Iteration {}: General goal processing completed. Reasoning: {}",
-                    iteration,
-                    reasoning_response.chars().take(200).collect::<String>()
-                );
-                self.store_observation(obs);
+            // Check if all todos are complete
+            let all_complete = self.todo_list.iter().all(|t| t.status == TodoStatus::Completed);
+            if all_complete && !self.todo_list.is_empty() {
+                info!("agent.loop.complete all_todos_done iter={}", iteration);
+                self.tui.add_log("✅ All tasks completed!".to_string());
+                return Ok(());
+            }
 
-                result?;
-
-                if self.should_complete_goal(iteration, max_iterations) {
-                    info!("agent.loop.complete iter={}", iteration);
-                    return Ok(());
-                }
+            // Check goal completion criteria
+            if self.should_complete_goal(iteration, max_iterations) {
+                info!("agent.loop.complete criteria_met iter={}", iteration);
+                return Ok(());
             }
         }
 
