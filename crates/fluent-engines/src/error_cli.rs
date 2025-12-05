@@ -229,7 +229,7 @@ impl ErrorCli {
                 "{} {} [{}] {}",
                 severity_icon,
                 category_icon,
-                error.context.error_id[..8].to_string(),
+                &error.context.error_id[..8],
                 error.context.component
             );
             println!("   Time: {}", error.context.timestamp);

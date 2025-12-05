@@ -210,7 +210,7 @@ Context: {}
 
 Assess:
 1. How effective is this reasoning approach? (0.0-1.0)
-2. Is this approach appropriate for the problem type? (0.0-1.0)  
+2. Is this approach appropriate for the problem type? (0.0-1.0)
 3. What improvement potential exists? (0.0-1.0)
 4. What alternative approaches could work better?
 

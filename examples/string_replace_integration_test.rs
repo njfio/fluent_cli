@@ -102,10 +102,10 @@ fn main() {
     let mut data = HashMap::new();
     data.insert("key1", "value1");
     data.insert("key2", "value2");
-    
+
     println!("Hello, world!");
     println!("Testing string replacement");
-    
+
     // TODO: Add more functionality
     let result = calculate_sum(10, 20);
     println!("Result: {}", result);

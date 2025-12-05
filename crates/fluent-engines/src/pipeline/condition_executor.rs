@@ -4,9 +4,9 @@
 //! evaluating conditions and executing appropriate branches.
 
 use anyhow::{anyhow, Error};
-use log::debug;
 use std::collections::HashMap;
 use tokio::process::Command as TokioCommand;
+use tracing::debug;
 
 /// Handles execution of conditional pipeline steps
 pub struct ConditionExecutor;

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use log::{debug, warn};
 use regex::Regex;
 use std::path::PathBuf;
+use tracing::{debug, warn};
 use url::Url;
 use uuid;
 

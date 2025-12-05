@@ -927,11 +927,17 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
 
             // Simple file extension detection from goal or content
             let goal_lower = goal_desc.to_lowercase();
-            let path = if goal_lower.contains(".lua") || goal_lower.contains("love2d") || goal_lower.contains("lua") {
+            let path = if goal_lower.contains(".lua")
+                || goal_lower.contains("love2d")
+                || goal_lower.contains("lua")
+            {
                 "outputs/agent_output.lua".to_string()
             } else if goal_lower.contains(".py") || goal_lower.contains("python") {
                 "outputs/agent_output.py".to_string()
-            } else if goal_lower.contains(".html") || goal_lower.contains("html") || goal_lower.contains("web") {
+            } else if goal_lower.contains(".html")
+                || goal_lower.contains("html")
+                || goal_lower.contains("web")
+            {
                 "outputs/agent_output.html".to_string()
             } else if goal_lower.contains(".rs") || goal_lower.contains("rust") {
                 "outputs/agent_output.rs".to_string()
@@ -1047,6 +1053,7 @@ impl act::ActionExecutor for DryRunActionExecutor {
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         })
     }
 

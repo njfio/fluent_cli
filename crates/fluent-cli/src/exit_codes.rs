@@ -121,9 +121,15 @@ pub fn anyhow_error_to_exit_code(error: &anyhow::Error) -> i32 {
 
     if error_msg.contains("config") || error_msg.contains("configuration") {
         CONFIG_ERROR
-    } else if error_msg.contains("api key") || error_msg.contains("authentication") || error_msg.contains("unauthorized") {
+    } else if error_msg.contains("api key")
+        || error_msg.contains("authentication")
+        || error_msg.contains("unauthorized")
+    {
         AUTH_ERROR
-    } else if error_msg.contains("network") || error_msg.contains("connection") || error_msg.contains("timeout") {
+    } else if error_msg.contains("network")
+        || error_msg.contains("connection")
+        || error_msg.contains("timeout")
+    {
         NETWORK_ERROR
     } else if error_msg.contains("validation") || error_msg.contains("invalid") {
         VALIDATION_ERROR

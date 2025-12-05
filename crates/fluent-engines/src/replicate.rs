@@ -6,7 +6,6 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::Value;
 use std::future::Future;
@@ -14,6 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tracing::debug;
 
 pub struct ReplicateEngine {
     config: EngineConfig,

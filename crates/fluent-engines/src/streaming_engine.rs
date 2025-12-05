@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use fluent_core::cost_calculator::CostCalculator;
 use fluent_core::types::{Cost, Usage};
 use futures::stream::{Stream, StreamExt};
-use log::{debug, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, warn};
 
 /// Streaming response chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,7 +165,7 @@ impl OpenAIStreaming {
             .expect("Failed to acquire cost calculator lock");
         calculator
             .calculate_cost("openai", model, usage)
-            .unwrap_or_else(|_| Cost {
+            .unwrap_or(Cost {
                 prompt_cost: 0.0,
                 completion_cost: 0.0,
                 total_cost: 0.0,
@@ -494,7 +494,7 @@ impl StreamingUtils {
         let mut calculator = CostCalculator::new();
         calculator
             .calculate_cost("openai", model, usage)
-            .unwrap_or_else(|_| Cost {
+            .unwrap_or(Cost {
                 prompt_cost: 0.0,
                 completion_cost: 0.0,
                 total_cost: 0.0,

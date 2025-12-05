@@ -75,7 +75,7 @@ mod tests {
     fn test_payload_builder_chat() {
         let request = create_test_request();
         let payload = PayloadBuilder::build_chat_payload(&request, Some("gpt-4"));
-        
+
         assert_eq!(payload["model"], "gpt-4");
         assert_eq!(payload["messages"][0]["role"], "user");
         assert_eq!(payload["messages"][0]["content"], "Hello, world!");
@@ -86,7 +86,7 @@ mod tests {
         let request = create_test_request();
         let config = create_test_config();
         let payload = PayloadBuilder::build_chat_payload_with_config(&request, &config, None);
-        
+
         assert_eq!(payload["temperature"], 0.7);
         assert_eq!(payload["max_tokens"], 100);
         assert_eq!(payload["messages"][0]["content"], "Hello, world!");
@@ -96,7 +96,7 @@ mod tests {
     fn test_payload_builder_image() {
         let config = create_test_config();
         let payload = PayloadBuilder::build_image_payload("A beautiful sunset", &config);
-        
+
         assert_eq!(payload["prompt"], "A beautiful sunset");
     }
 
@@ -107,7 +107,7 @@ mod tests {
             "base64data",
             "jpeg"
         );
-        
+
         assert_eq!(payload["messages"][0]["content"][0]["text"], "What's in this image?");
         assert_eq!(
             payload["messages"][0]["content"][1]["image_url"]["url"],
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn test_file_extension() {
         use std::path::PathBuf;
-        
+
         let path = PathBuf::from("test.jpg");
         assert_eq!(FileHandler::get_file_extension(&path), Some("jpg".to_string()));
 
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn test_mime_type() {
         use std::path::PathBuf;
-        
+
         let path = PathBuf::from("test.jpg");
         assert_eq!(FileHandler::get_mime_type(&path), "image/jpeg");
 
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn test_file_type_detection() {
         use std::path::PathBuf;
-        
+
         assert!(FileHandler::is_image_file(&PathBuf::from("test.jpg")));
         assert!(FileHandler::is_image_file(&PathBuf::from("test.png")));
         assert!(!FileHandler::is_image_file(&PathBuf::from("test.pdf")));
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_image_format() {
         use std::path::PathBuf;
-        
+
         assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.jpg")), "jpeg");
         assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.png")), "png");
         assert_eq!(FileHandler::get_image_format(&PathBuf::from("test.unknown")), "png");
@@ -187,12 +187,12 @@ mod tests {
     async fn test_file_validation() {
         let temp_file = NamedTempFile::new().unwrap();
         let file_path = temp_file.path();
-        
+
         // Write some test content (small file)
         let mut file = File::create(file_path).await.unwrap();
         file.write_all(b"test content").await.unwrap();
         file.flush().await.unwrap();
-        
+
         assert!(FileHandler::validate_file_size(file_path, 1).await.is_ok());
         // File is very small (12 bytes), so 0 MB limit should fail
         // But our implementation might round down, so let's test with a more reasonable limit
@@ -217,8 +217,8 @@ mod tests {
         });
 
         let result = ResponseParser::parse_openai_chat_response(
-            &response, 
-            "gpt-3.5-turbo", 
+            &response,
+            "gpt-3.5-turbo",
             Some((0.001, 0.002))
         ).unwrap();
 
@@ -244,8 +244,8 @@ mod tests {
         });
 
         let result = ResponseParser::parse_anthropic_response(
-            &response, 
-            "claude-3-sonnet", 
+            &response,
+            "claude-3-sonnet",
             Some((0.003, 0.015))
         ).unwrap();
 
@@ -275,8 +275,8 @@ mod tests {
         });
 
         let result = ResponseParser::parse_gemini_response(
-            &response, 
-            "gemini-pro", 
+            &response,
+            "gemini-pro",
             Some((0.0005, 0.0015))
         ).unwrap();
 

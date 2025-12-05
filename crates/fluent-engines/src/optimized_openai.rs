@@ -405,17 +405,15 @@ impl Engine for OptimizedOpenAIEngine {
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
         // Extract content from OpenAI response format
-        if let Some(content) = value["choices"][0]["message"]["content"].as_str() {
-            Some(ExtractedContent {
+        value["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|content| ExtractedContent {
                 main_content: content.to_string(),
                 sentiment: None,
                 clusters: None,
                 themes: None,
                 keywords: None,
             })
-        } else {
-            None
-        }
     }
 }
 

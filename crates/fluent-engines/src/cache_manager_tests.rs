@@ -252,14 +252,7 @@ mod comprehensive_cache_tests {
         let engine = format!("global_test_engine_{}", uuid::Uuid::new_v4());
 
         // Test global cache function
-        let result = cache_response(
-            &engine,
-            &request,
-            &response,
-            Some("test-model"),
-            None,
-        )
-        .await;
+        let result = cache_response(&engine, &request, &response, Some("test-model"), None).await;
         assert!(result.is_ok());
 
         // Test global get function

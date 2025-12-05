@@ -32,11 +32,11 @@ Tic-tac-toe is a solved game where perfect play from both players always results
 ### Center Opening Strategy
 ```
 X plays center:
- 1 | 2 | 3 
+ 1 | 2 | 3
 -----------
- 4 | X | 6 
+ 4 | X | 6
 -----------
- 7 | 8 | 9 
+ 7 | 8 | 9
 ```
 
 **Optimal responses to O's moves:**
@@ -47,11 +47,11 @@ X plays center:
 ### Corner Opening Strategy
 ```
 X plays corner (example: position 1):
- X | 2 | 3 
+ X | 2 | 3
 -----------
- 4 | 5 | 6 
+ 4 | 5 | 6
 -----------
- 7 | 8 | 9 
+ 7 | 8 | 9
 ```
 
 **Key responses:**

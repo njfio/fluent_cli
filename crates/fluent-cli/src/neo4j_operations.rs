@@ -10,11 +10,11 @@ use fluent_core::config::{EngineConfig, Neo4jConfig};
 use fluent_core::neo4j_client::Neo4jClient;
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
-use log::debug;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::fs;
+use tracing::debug;
 
 /// Handle document upsert operations for Neo4j
 pub async fn handle_upsert(engine_config: &EngineConfig, matches: &ArgMatches) -> Result<()> {

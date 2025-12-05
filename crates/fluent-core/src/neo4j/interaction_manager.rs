@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use neo4rs::{query, BoltFloat, BoltList, BoltMap, BoltString, BoltType, Graph};
 
-use log::debug;
+use tracing::debug;
 
 use crate::neo4j::query_executor::QueryExecutor;
 use crate::neo4j_client::{Neo4jModel, Neo4jQuestion, Neo4jResponse, Neo4jTokenUsage};

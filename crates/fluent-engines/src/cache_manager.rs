@@ -40,10 +40,10 @@
 use crate::enhanced_cache::{CacheConfig, CacheKey, EnhancedCache};
 use anyhow::Result;
 use fluent_core::types::{Request, Response};
-use tracing::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::debug;
 
 /// Centralized cache manager for all engines
 ///

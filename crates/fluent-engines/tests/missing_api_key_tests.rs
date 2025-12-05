@@ -2,7 +2,6 @@
 ///
 /// This test suite validates that all engines produce clear, user-friendly error messages
 /// when API keys are missing from the configuration.
-
 use fluent_core::config::{ConnectionConfig, EngineConfig};
 use fluent_engines::*;
 use std::collections::HashMap;
@@ -48,7 +47,8 @@ async fn test_openai_missing_api_key() {
         err_msg
     );
     assert!(
-        err_msg.contains("OPENAI_API_KEY") || err_msg.to_lowercase().contains("environment variable"),
+        err_msg.contains("OPENAI_API_KEY")
+            || err_msg.to_lowercase().contains("environment variable"),
         "Error message should mention environment variable or OPENAI_API_KEY: {}",
         err_msg
     );
@@ -58,7 +58,10 @@ async fn test_openai_missing_api_key() {
 async fn test_anthropic_missing_api_key() {
     let mut config = create_config_without_api_key("anthropic");
     // Anthropic requires a modelName parameter
-    config.parameters.insert("modelName".to_string(), serde_json::json!("claude-sonnet-4-20250514"));
+    config.parameters.insert(
+        "modelName".to_string(),
+        serde_json::json!("claude-sonnet-4-20250514"),
+    );
 
     // Anthropic doesn't fail on initialization, so create engine first
     let engine = anthropic::AnthropicEngine::new(config).await;
@@ -86,7 +89,8 @@ async fn test_anthropic_missing_api_key() {
             err_msg
         );
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -128,7 +132,8 @@ async fn test_google_gemini_missing_api_key() {
             Ok(_) => panic!("Expected error but got success"),
         };
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -162,7 +167,8 @@ async fn test_cohere_missing_api_key() {
             err_msg
         );
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -196,7 +202,8 @@ async fn test_mistral_missing_api_key() {
             err_msg
         );
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -230,7 +237,8 @@ async fn test_perplexity_missing_api_key() {
             err_msg
         );
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -264,7 +272,8 @@ async fn test_groq_missing_api_key() {
             err_msg
         );
         assert!(
-            err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("api_key"),
+            err_msg.to_lowercase().contains("api key")
+                || err_msg.to_lowercase().contains("api_key"),
             "Error message should mention 'API key': {}",
             err_msg
         );
@@ -284,12 +293,11 @@ async fn test_error_messages_contain_helpful_guidance() {
     };
 
     // Error should mention at least one of these helpful terms
-    let has_helpful_info =
-        err_msg.to_lowercase().contains("environment variable") ||
-        err_msg.to_lowercase().contains("config") ||
-        err_msg.contains("bearer_token") ||
-        err_msg.contains("api_key") ||
-        err_msg.contains("OPENAI_API_KEY");
+    let has_helpful_info = err_msg.to_lowercase().contains("environment variable")
+        || err_msg.to_lowercase().contains("config")
+        || err_msg.contains("bearer_token")
+        || err_msg.contains("api_key")
+        || err_msg.contains("OPENAI_API_KEY");
 
     assert!(
         has_helpful_info,

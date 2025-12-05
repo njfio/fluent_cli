@@ -626,4 +626,23 @@ mod tests {
             .get_available_tools()
             .contains(&"create_directory".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_behavioral_reminders_integration() {
+        use crate::tools::validation;
+
+        // Test that behavioral reminders are properly appended
+        let output = "File contents here".to_string();
+        let enhanced = validation::append_behavioral_reminder("read_file", output.clone(), true);
+
+        assert!(enhanced.contains("File contents here"));
+        assert!(enhanced.contains("Remember"));
+        assert!(enhanced.contains("Analyze the content"));
+
+        // Test failure reminder
+        let error = "File not found".to_string();
+        let enhanced_error = validation::append_behavioral_reminder("read_file", error, false);
+        assert!(enhanced_error.contains("File not found"));
+        assert!(enhanced_error.contains("Remember"));
+    }
 }

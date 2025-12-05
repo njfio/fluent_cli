@@ -116,14 +116,14 @@ fn parse_command(&self, command_str: &str) -> Result<(String, Vec<String>)> {
     if command_str.len() > 1000 {
         return Err(anyhow!("Command too long"));
     }
-    
+
     // Check for suspicious characters
-    if command_str.contains("$(") || command_str.contains("`") || 
-       command_str.contains(";") || command_str.contains("&&") || 
+    if command_str.contains("$(") || command_str.contains("`") ||
+       command_str.contains(";") || command_str.contains("&&") ||
        command_str.contains("||") || command_str.contains("|") {
         return Err(anyhow!("Command contains potentially dangerous characters"));
     }
-    
+
     let parts: Vec<&str> = command_str.split_whitespace().collect();
 ```
 
@@ -151,14 +151,14 @@ pub fn validate_path(path: &str, allowed_paths: &[String]) -> Result<PathBuf> {
     if path.contains('\0') || path.contains("..") {
         return Err(anyhow::anyhow!("Path contains dangerous characters: {}", path));
     }
-    
+
     // Prevent excessively long paths
     if path.len() > 4096 {
         return Err(anyhow::anyhow!("Path too long: {} characters", path.len()));
     }
-    
+
     let path = Path::new(path);
-    
+
     // Rest of existing validation logic...
 }
 ```
@@ -171,7 +171,7 @@ async fn read_file_safe(&self, path: &Path) -> Result<String> {
     if !path.is_absolute() {
         return Err(anyhow!("Path must be absolute after canonicalization"));
     }
-    
+
     // Check for symlinks pointing outside allowed directories
     if path.is_symlink() {
         let target = fs::read_link(path).await?;
@@ -179,7 +179,7 @@ async fn read_file_safe(&self, path: &Path) -> Result<String> {
             self.validate_path(&target.to_string_lossy())?;
         }
     }
-    
+
     // Rest of existing logic...
 }
 ```
@@ -221,7 +221,7 @@ Add comprehensive input validation:
 // Add to all parameter parsing locations:
 fn validate_input_length(input: &str, max_len: usize, field_name: &str) -> Result<()> {
     if input.len() > max_len {
-        return Err(anyhow!("{} too long: {} characters (max: {})", 
+        return Err(anyhow!("{} too long: {} characters (max: {})",
                           field_name, input.len(), max_len));
     }
     Ok(())

@@ -85,7 +85,7 @@ impl PooledClient {
 
     fn should_health_check(&self) -> bool {
         // Health check every 5 minutes or after 10 uses
-        self.last_used.elapsed() > Duration::from_secs(300) || self.use_count % 10 == 0
+        self.last_used.elapsed() > Duration::from_secs(300) || self.use_count.is_multiple_of(10)
     }
 }
 
@@ -361,13 +361,13 @@ impl ConnectionPool {
         F: FnOnce(&mut PoolStats),
     {
         let mut stats = self.stats.lock().await;
-        update_fn(&mut *stats);
+        update_fn(&mut stats);
     }
 }
 
 /// Global connection pool instance
 static GLOBAL_POOL: once_cell::sync::Lazy<ConnectionPool> =
-    once_cell::sync::Lazy::new(|| ConnectionPool::with_defaults());
+    once_cell::sync::Lazy::new(ConnectionPool::with_defaults);
 
 /// Get the global connection pool instance
 pub fn global_pool() -> &'static ConnectionPool {

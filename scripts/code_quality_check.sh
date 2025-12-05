@@ -56,14 +56,14 @@ fi
 # 3. Check for large functions (>50 lines)
 echo -e "\n${BLUE}3. Checking function sizes...${NC}"
 LARGE_FUNCTIONS=$(find crates/ -name "*.rs" -exec awk '
-    /^[[:space:]]*fn / { 
-        func_start = NR; 
-        func_name = $0; 
-        brace_count = 0; 
+    /^[[:space:]]*fn / {
+        func_start = NR;
+        func_name = $0;
+        brace_count = 0;
         in_function = 1;
     }
     in_function && /{/ { brace_count += gsub(/{/, "") }
-    in_function && /}/ { 
+    in_function && /}/ {
         brace_count -= gsub(/}/, "");
         if (brace_count == 0) {
             func_length = NR - func_start + 1;
@@ -216,7 +216,7 @@ BUILD_START=$(date +%s)
 if cargo check --quiet >/dev/null 2>&1; then
     BUILD_END=$(date +%s)
     BUILD_TIME=$((BUILD_END - BUILD_START))
-    
+
     if [ "$BUILD_TIME" -lt 30 ]; then
         log_pass "Fast build time (${BUILD_TIME}s)"
     elif [ "$BUILD_TIME" -lt 60 ]; then
@@ -240,7 +240,7 @@ TOTAL_CHECKS=$((CHECKS_PASSED + ISSUES_FOUND))
 if [ "$TOTAL_CHECKS" -gt 0 ]; then
     QUALITY_SCORE=$((CHECKS_PASSED * 100 / TOTAL_CHECKS))
     echo -e "Quality score: ${BLUE}$QUALITY_SCORE%${NC}"
-    
+
     if [ "$QUALITY_SCORE" -gt 80 ]; then
         echo -e "\n${GREEN}🎉 Excellent code quality!${NC}"
         exit 0

@@ -12,12 +12,12 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::{debug, info};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 pub struct ImagineProEngine {

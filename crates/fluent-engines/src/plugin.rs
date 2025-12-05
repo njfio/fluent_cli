@@ -122,12 +122,12 @@
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 use crate::secure_plugin_system::{PluginRuntime, SecurePluginEngine};
 use fluent_core::config::EngineConfig;
@@ -193,7 +193,7 @@ impl SecurePluginManager {
     }
 
     /// Load a plugin from the specified path with security validation
-    pub async fn load_plugin(&self, plugin_path: &PathBuf) -> Result<String> {
+    pub async fn load_plugin(&self, plugin_path: &Path) -> Result<String> {
         // Check if we've reached the maximum number of plugins
         {
             let plugins = self.loaded_plugins.read().await;
@@ -353,7 +353,6 @@ pub trait EnginePlugin: Send + Sync {
 ///
 /// ⚠️  Note: While this implementation includes comprehensive security measures,
 /// thorough testing in your specific environment is recommended before production use.
-
 /// Secure plugin factory for creating engines from validated plugins
 pub struct SecurePluginFactory {
     manager: Arc<SecurePluginManager>,
@@ -420,9 +419,7 @@ pub struct PluginSecurityValidator;
 
 impl PluginSecurityValidator {
     /// Perform comprehensive security validation on a plugin
-    pub async fn validate_plugin_security(
-        plugin_path: &PathBuf,
-    ) -> Result<SecurityValidationReport> {
+    pub async fn validate_plugin_security(plugin_path: &Path) -> Result<SecurityValidationReport> {
         let mut report = SecurityValidationReport::new();
 
         // Check manifest exists and is valid

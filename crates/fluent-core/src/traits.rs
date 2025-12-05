@@ -9,7 +9,6 @@ use crate::neo4j_client::Neo4jClient;
 use crate::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::debug;
 use pdf_extract::extract_text;
 use serde_json::{json, Value};
 use std::future::Future;
@@ -17,6 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 
 /// Trait for handling file uploads and processing
 ///

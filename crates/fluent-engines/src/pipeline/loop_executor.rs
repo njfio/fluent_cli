@@ -7,8 +7,8 @@ use crate::pipeline::condition_executor::ConditionExecutor;
 use crate::pipeline::step_executor::StepExecutor;
 use crate::pipeline_executor::{PipelineState, PipelineStep};
 use anyhow::Error;
-use log::debug;
 use std::collections::HashMap;
+use tracing::debug;
 
 /// Handles execution of loop-based pipeline steps
 pub struct LoopExecutor;

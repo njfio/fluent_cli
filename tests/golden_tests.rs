@@ -129,10 +129,7 @@ fn test_engine_list_json_format() {
     let output = cmd.args(["engine", "list", "--json"]).output().unwrap();
 
     // Should succeed
-    assert!(
-        output.status.success(),
-        "Engine list --json should succeed"
-    );
+    assert!(output.status.success(), "Engine list --json should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -184,19 +181,13 @@ fn test_tools_list_format() {
     let output = cmd.args(["tools", "list"]).output().unwrap();
 
     // Should succeed
-    assert!(
-        output.status.success(),
-        "Tools list should succeed"
-    );
+    assert!(output.status.success(), "Tools list should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Tools list should show tools in some structured format
     // Looking for common tool names that should always be available
-    assert!(
-        stdout.len() > 0,
-        "Tools list should produce output"
-    );
+    assert!(stdout.len() > 0, "Tools list should produce output");
 }
 
 /// Test tools list JSON output format
@@ -206,10 +197,7 @@ fn test_tools_list_json_format() {
     let output = cmd.args(["tools", "list", "--json"]).output().unwrap();
 
     // Should succeed
-    assert!(
-        output.status.success(),
-        "Tools list --json should succeed"
-    );
+    assert!(output.status.success(), "Tools list --json should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -413,10 +401,7 @@ fn test_schema_output_format() {
 
         // Should be a JSON Schema object
         if let Ok(json) = parsed {
-            assert!(
-                json.is_object(),
-                "Schema output should be a JSON object"
-            );
+            assert!(json.is_object(), "Schema output should be a JSON object");
         }
     }
 }
@@ -491,7 +476,10 @@ fn test_completions_zsh_format() {
 #[test]
 fn test_error_format_invalid_command() {
     let mut cmd = Command::cargo_bin("fluent").unwrap();
-    let output = cmd.args(["invalid-command-that-doesnt-exist"]).output().unwrap();
+    let output = cmd
+        .args(["invalid-command-that-doesnt-exist"])
+        .output()
+        .unwrap();
 
     // Should fail
     assert!(

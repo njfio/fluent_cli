@@ -183,19 +183,19 @@ Create a proper error hierarchy:
 pub enum AgentError {
     #[error("Configuration error: {0}")]
     Configuration(#[from] ConfigError),
-    
+
     #[error("Reasoning failed: {0}")]
     Reasoning(#[from] ReasoningError),
-    
+
     #[error("Action execution failed: {0}")]
     ActionExecution(#[from] ActionError),
-    
+
     #[error("Memory system error: {0}")]
     Memory(#[from] MemoryError),
-    
+
     #[error("Tool execution failed: {tool}: {error}")]
     ToolExecution { tool: String, error: String },
-    
+
     #[error("Transient error (retryable): {0}")]
     Transient(String),
 }

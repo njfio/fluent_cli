@@ -48,7 +48,7 @@ steps:
   - !ShellCommand
       name: extract_summary
       command: |
-        fluent sonnet3.5 'summarize the sentiment of this text in less than 3 words.  Only output the words.' <<EOT & 
+        fluent sonnet3.5 'summarize the sentiment of this text in less than 3 words.  Only output the words.' <<EOT &
         ${raw_data}
         EOT
       save_output: sentiment_data
@@ -112,7 +112,7 @@ steps:
       command: |
         echo <<"""EOT"""
           raw_data: ${raw_data}
-        
+
           theme_data: ${theme_data}
         EOT
       save_output: debug_output_data

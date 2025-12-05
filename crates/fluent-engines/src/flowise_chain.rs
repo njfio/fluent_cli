@@ -7,7 +7,6 @@ use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::{debug, warn};
 use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -17,6 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::{debug, warn};
 
 pub struct FlowiseChainEngine {
     config: EngineConfig,
@@ -320,7 +320,7 @@ impl Engine for FlowiseChainEngine {
             if response_body.get("error").is_some()
                 || response_body["text"]
                     .as_str()
-                    .map_or(false, |s| s.contains("no image provided"))
+                    .is_some_and(|s| s.contains("no image provided"))
             {
                 warn!(
                     "FlowiseAI did not process the image. Full response: {:?}",

@@ -1020,14 +1020,15 @@ mod tests {
         }
 
         // Search for items related to "programming"
-        let results = memory
-            .search_relevant("programming", 10)
-            .await
-            .unwrap();
+        let results = memory.search_relevant("programming", 10).await.unwrap();
 
         assert!(results.len() >= 2); // Should find at least Rust and Python items
         for item in &results {
-            assert!(item.content.text_summary.to_lowercase().contains("programming"));
+            assert!(item
+                .content
+                .text_summary
+                .to_lowercase()
+                .contains("programming"));
         }
     }
 
@@ -1097,9 +1098,7 @@ mod tests {
 
         // Some items should be consolidated or archived
         assert!(
-            result.consolidated_items > 0
-                || result.archived_items > 0
-                || result.deleted_items > 0
+            result.consolidated_items > 0 || result.archived_items > 0 || result.deleted_items > 0
         );
     }
 
@@ -1333,7 +1332,8 @@ mod tests {
         ];
 
         for priority in priorities {
-            let content = create_test_memory_content(&format!("Content with {:?} priority", priority));
+            let content =
+                create_test_memory_content(&format!("Content with {:?} priority", priority));
             let metadata = create_test_metadata(priority.clone());
             let item_id = memory.store_item(content, metadata).await.unwrap();
 

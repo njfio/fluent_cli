@@ -190,7 +190,7 @@ async fn execute_complex_project() -> Result<()> {
     // Create orchestrator with enhanced capabilities
     let memory_system = MemorySystem::new(MemoryConfig::default()).await?;
     let orchestrator = AgentOrchestrator::new(engine, memory_system, Default::default()).await?;
-    
+
     // Define complex goal
     let complex_goal = Goal {
         goal_id: "ai_platform".to_string(),
@@ -199,7 +199,7 @@ async fn execute_complex_project() -> Result<()> {
         priority: GoalPriority::Critical,
         // ... other fields
     };
-    
+
     // Execute with full autonomous capabilities
     let result = orchestrator.execute_goal(&complex_goal, &context).await?;
     Ok(())
@@ -216,19 +216,19 @@ async fn long_running_session() -> Result<()> {
     let working_memory = WorkingMemory::new(WorkingMemoryConfig::default());
     let context_compressor = ContextCompressor::new(engine, CompressorConfig::default());
     let persistence = CrossSessionPersistence::new(PersistenceConfig::default());
-    
+
     // Create checkpoints for recovery
     let checkpoint_id = persistence.create_checkpoint(
         CheckpointType::Automatic,
         &context
     ).await?;
-    
+
     // Process with compression when needed
     if context.context_data.len() > 10000 {
         let compressed = context_compressor.compress_context(&context).await?;
         // Continue with compressed context
     }
-    
+
     Ok(())
 }
 ```
@@ -242,20 +242,20 @@ async fn adaptive_execution() -> Result<()> {
     // Set up monitoring and adaptation
     let monitor = PerformanceMonitor::new(PerformanceConfig::default());
     let adaptive_system = AdaptiveStrategySystem::new(StrategyConfig::default());
-    
+
     monitor.start_monitoring().await?;
-    
+
     loop {
         // Execute tasks
         let task_result = execute_task().await?;
-        
+
         // Record performance
         monitor.record_task_execution(&task, &task_result, &context).await?;
-        
+
         // Adapt strategy based on performance
         let metrics = monitor.get_current_metrics().await?;
         adaptive_system.evaluate_and_adapt(&metrics, &context).await?;
-        
+
         // Continue with optimized strategy
     }
 }
@@ -269,7 +269,7 @@ For mission-critical applications requiring high reliability:
 async fn resilient_execution() -> Result<()> {
     let error_recovery = ErrorRecoverySystem::new(engine, RecoveryConfig::default());
     error_recovery.initialize_strategies().await?;
-    
+
     loop {
         match execute_critical_task().await {
             Ok(result) => {
@@ -285,7 +285,7 @@ async fn resilient_execution() -> Result<()> {
                     description: error.to_string(),
                     // ... other fields
                 };
-                
+
                 let recovery = error_recovery.handle_error(error_instance, &context).await?;
                 if !recovery.success {
                     // Escalate or fail gracefully
@@ -294,7 +294,7 @@ async fn resilient_execution() -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 ```
@@ -337,7 +337,7 @@ let tot_config = ToTConfig {
     enable_pruning: true,
 };
 
-// Memory configuration  
+// Memory configuration
 let memory_config = WorkingMemoryConfig {
     max_items: 1000,
     attention_threshold: 0.5,
@@ -406,7 +406,7 @@ Roadmap for continued development:
 The enhanced agentic system excels at:
 
 - **Software Development**: Full-stack application development with testing
-- **Research Projects**: Literature review, analysis, and report generation  
+- **Research Projects**: Literature review, analysis, and report generation
 - **Business Process Automation**: Complex workflow automation and optimization
 - **Data Analysis**: Large-scale data processing and insight generation
 - **System Administration**: Automated infrastructure management and optimization
@@ -415,7 +415,7 @@ The enhanced agentic system excels at:
 ## 🎓 Best Practices
 
 1. **Goal Definition**: Define clear, measurable success criteria
-2. **Context Management**: Regularly compress context in long-running sessions  
+2. **Context Management**: Regularly compress context in long-running sessions
 3. **Performance Monitoring**: Enable monitoring for production deployments
 4. **Error Handling**: Configure appropriate error recovery strategies
 5. **Resource Management**: Monitor memory and CPU usage for optimization

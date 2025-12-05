@@ -51,6 +51,7 @@
 //! ```
 
 pub mod agentic;
+pub mod code_validation;
 pub mod commands;
 pub mod memory;
 pub mod neo4j_operations;
@@ -75,6 +76,7 @@ pub mod utils; // Added utils module
 
 // Re-export commonly used functions
 // Updated to use the local utils module instead of trying to import from a non-existent path
+pub use code_validation::{validate_generated_code, ValidationResult};
 pub use fluent_engines::create_engine;
 pub use memory::MemoryManager;
 pub use utils::{extract_code, extract_cypher_query, format_as_csv, is_valid_cypher};

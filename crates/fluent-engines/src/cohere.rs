@@ -8,7 +8,6 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
@@ -17,6 +16,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 
 pub struct CohereEngine {
     config: EngineConfig,

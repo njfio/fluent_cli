@@ -57,7 +57,7 @@ impl Default for PerformanceConfig {
 #[derive(Debug, Default)]
 pub struct MultiLevelCacheManager {
     l1_cache: LRUCache<String, CacheEntry>, // Memory - hot data
-    l2_cache: LRUCache<String, CacheEntry>, // Memory - warm data  
+    l2_cache: LRUCache<String, CacheEntry>, // Memory - warm data
     l3_cache: LRUCache<String, CacheEntry>, // Disk - cold data
     cache_stats: CacheStatistics,
     eviction_policies: HashMap<CacheLevel, EvictionPolicy>,
@@ -646,7 +646,7 @@ impl PerformanceOptimizationSystem {
         }
 
         let mut cache_manager = self.cache_manager.write().await;
-        
+
         // Check L1 cache first
         if let Some(entry) = cache_manager.l1_cache.get(&key.to_string()) {
             cache_manager.cache_stats.l1_hits += 1;
@@ -730,7 +730,7 @@ impl PerformanceOptimizationSystem {
         // Parallel execution with resource management
         let parallel_executor = self.parallel_executor.read().await;
         let semaphore = parallel_executor.semaphore.clone();
-        
+
         let handles: Vec<_> = tasks.into_iter().map(|task| {
             let semaphore = semaphore.clone();
             tokio::spawn(async move {

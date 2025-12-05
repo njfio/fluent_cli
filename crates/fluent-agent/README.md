@@ -72,7 +72,7 @@ The framework follows a modular architecture with clear separation of concerns:
 ```rust
 use fluent_agent::{
     AgentOrchestrator, Goal, GoalType, GoalTemplates,
-    LLMReasoningEngine, IntelligentActionPlanner, 
+    LLMReasoningEngine, IntelligentActionPlanner,
     ComprehensiveActionExecutor, ComprehensiveObservationProcessor,
     MemorySystem, MemoryConfig,
 };
@@ -82,7 +82,7 @@ use std::sync::Arc;
 async fn main() -> anyhow::Result<()> {
     // Create engine (OpenAI, Claude, etc.)
     let engine = create_your_engine().await?;
-    
+
     // Set up agent components
     let reasoning_engine = Arc::new(LLMReasoningEngine::new(engine));
     let action_planner = Arc::new(IntelligentActionPlanner::new(risk_assessor));
@@ -95,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
     let memory_system = Arc::new(MemorySystem::new(
         long_term_memory, episodic_memory, semantic_memory, MemoryConfig::default()
     ));
-    
+
     // Create agent orchestrator
     let mut agent = AgentOrchestrator::new(
         reasoning_engine,
@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         observation_processor,
         memory_system,
     );
-    
+
     // Create a goal
     let goal = GoalTemplates::code_generation(
         "Create a REST API server in Rust".to_string(),
@@ -115,13 +115,13 @@ async fn main() -> anyhow::Result<()> {
             "Add comprehensive tests".to_string(),
         ],
     );
-    
+
     // Execute the goal
     let result = agent.execute_goal(goal).await?;
-    
+
     println!("Success: {}", result.success);
     println!("Final output: {:?}", result.final_output);
-    
+
     Ok(())
 }
 ```
@@ -173,11 +173,11 @@ impl ReasoningEngine for CustomReasoningEngine {
     async fn reason(&self, context: &ExecutionContext) -> Result<ReasoningResult> {
         // Your custom reasoning logic
     }
-    
+
     fn get_capabilities(&self) -> Vec<ReasoningCapability> {
         // Define your capabilities
     }
-    
+
     fn can_handle(&self, reasoning_type: &ReasoningType) -> bool {
         // Define what reasoning types you support
     }
@@ -198,11 +198,11 @@ impl ActionExecutor for CustomActionExecutor {
     async fn execute(&self, plan: ActionPlan, context: &mut ExecutionContext) -> Result<ActionResult> {
         // Your custom action execution logic
     }
-    
+
     fn get_capabilities(&self) -> Vec<ExecutionCapability> {
         // Define your capabilities
     }
-    
+
     fn can_execute(&self, action_type: &ActionType) -> bool {
         // Define what action types you support
     }

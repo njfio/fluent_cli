@@ -279,7 +279,7 @@ impl AgentOrchestrator {
         let mut iteration_count = 0;
         let max_iterations = goal.max_iterations.unwrap_or(50);
 
-        log::info!(
+        tracing::info!(
             "react.loop.begin goal='{}' max_iterations={}",
             goal.description,
             max_iterations
@@ -287,7 +287,7 @@ impl AgentOrchestrator {
         loop {
             // Track iterations locally and in the execution context
             iteration_count += 1;
-            log::debug!("react.iteration.start iter={}", iteration_count);
+            tracing::debug!("react.iteration.start iter={}", iteration_count);
             context.increment_iteration();
 
             // Safety check to prevent infinite loops
@@ -301,7 +301,7 @@ impl AgentOrchestrator {
 
             // Reasoning Phase: Analyze current state and plan next action
             let reasoning_start = SystemTime::now();
-            log::debug!(
+            tracing::debug!(
                 "react.reasoning.begin context_len={}",
                 context.get_summary().len()
             );
@@ -324,7 +324,7 @@ impl AgentOrchestrator {
                 next_actions: vec!["Continue with planned action".to_string()],
             };
 
-            log::debug!(
+            tracing::debug!(
                 "react.reasoning.end output_len={} conf={:.2} next_actions={}",
                 reasoning_result.reasoning_output.len(),
                 reasoning_result.confidence_score,
@@ -338,7 +338,7 @@ impl AgentOrchestrator {
 
             // Check if goal is achieved
             if self.is_goal_achieved(&context, &reasoning_result).await? {
-                log::info!(
+                tracing::info!(
                     "react.goal_achieved iter={} conf={:.2}",
                     iteration_count,
                     reasoning_result.goal_achieved_confidence
@@ -442,7 +442,7 @@ impl AgentOrchestrator {
                 }
 
                 // Log reflection insights
-                log::info!(
+                tracing::info!(
                     "Reflection completed: {} insights, {} adjustments, confidence: {:.2}",
                     reflection_result.learning_insights.len(),
                     reflection_result.strategy_adjustments.len(),
@@ -582,7 +582,7 @@ impl AgentOrchestrator {
             context.add_strategy_adjustment(vec![adjustment_description]);
 
             // Log the adjustment
-            log::info!(
+            tracing::info!(
                 "Applied strategy adjustment: {} - {}",
                 adjustment.adjustment_id,
                 adjustment.description
@@ -661,6 +661,7 @@ impl AgentOrchestrator {
                 error: action.error.clone(),
                 metadata: action.metadata.clone(),
                 side_effects: Vec::new(),
+                verification: None,
             }),
             duration: Some(duration),
         };

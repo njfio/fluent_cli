@@ -142,7 +142,7 @@ pub struct ResourceAllocation {
 pub enum DependencyType {
     /// Task B must complete before Task A starts
     FinishToStart,
-    /// Task B must start before Task A starts  
+    /// Task B must start before Task A starts
     StartToStart,
     /// Task B must finish before Task A finishes
     FinishToFinish,

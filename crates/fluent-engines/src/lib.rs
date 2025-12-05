@@ -39,8 +39,8 @@
 //! # }
 //! ```
 
-use log::debug;
 use std::str::FromStr;
+use tracing::debug;
 
 use anthropic::AnthropicEngine;
 use cohere::CohereEngine;

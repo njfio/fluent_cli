@@ -20,7 +20,7 @@ use crate::pipeline::{
     VariableExpander,
 };
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use schemars::JsonSchema;
 use uuid::Uuid;

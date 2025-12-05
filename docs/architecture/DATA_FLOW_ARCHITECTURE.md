@@ -90,12 +90,12 @@ steps:
     type: "llm"
     engine: "openai"
     prompt: "Research {{topic}} and provide key points"
-    
+
   - name: "outline"
     type: "llm"
     engine: "anthropic"
     prompt: "Create an outline for {{topic}} using: {{research.content}}"
-    
+
   - name: "content"
     type: "parallel"
     steps:
@@ -289,13 +289,13 @@ pub struct EngineConfig {
 pub enum FluentError {
     #[error("Configuration error: {message}")]
     Configuration { message: String },
-    
+
     #[error("Engine error: {engine} - {message}")]
     Engine { engine: String, message: String },
-    
+
     #[error("Network error: {message}")]
     Network { message: String },
-    
+
     #[error("Validation error: {field} - {message}")]
     Validation { field: String, message: String },
 }

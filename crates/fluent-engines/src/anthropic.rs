@@ -8,7 +8,6 @@ use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcesso
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use tracing::debug;
 use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -18,6 +17,7 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::time::{timeout, Duration};
+use tracing::debug;
 
 pub struct AnthropicEngine {
     config: EngineConfig,

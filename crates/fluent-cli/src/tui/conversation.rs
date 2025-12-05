@@ -61,7 +61,8 @@ impl ConversationPanel {
 
         // Keep only recent messages
         if self.messages.len() > self.max_messages {
-            self.messages.drain(0..self.messages.len() - self.max_messages);
+            self.messages
+                .drain(0..self.messages.len() - self.max_messages);
         }
 
         // Auto-scroll to bottom
@@ -166,12 +167,11 @@ impl ConversationPanel {
             }
         }
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!("Conversation ({} messages)", self.messages.len())),
-            );
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Conversation ({} messages)", self.messages.len())),
+        );
 
         f.render_widget(list, area);
     }
@@ -195,16 +195,16 @@ impl ConversationPanel {
         match (sender, msg_type) {
             (MessageSender::Human, _) => (
                 "👤 [You]".to_string(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
-            (MessageSender::Agent, MessageType::Text) => (
-                "🤖 [Agent]".to_string(),
-                Style::default().fg(Color::Green),
-            ),
-            (MessageSender::Agent, MessageType::Action) => (
-                "🔧 [Agent]".to_string(),
-                Style::default().fg(Color::Yellow),
-            ),
+            (MessageSender::Agent, MessageType::Text) => {
+                ("🤖 [Agent]".to_string(), Style::default().fg(Color::Green))
+            }
+            (MessageSender::Agent, MessageType::Action) => {
+                ("🔧 [Agent]".to_string(), Style::default().fg(Color::Yellow))
+            }
             (MessageSender::Agent, MessageType::Reasoning) => (
                 "💭 [Agent]".to_string(),
                 Style::default().fg(Color::Magenta),
@@ -213,18 +213,18 @@ impl ConversationPanel {
                 "⚠️  [Agent]".to_string(),
                 Style::default().fg(Color::LightRed),
             ),
-            (MessageSender::Agent, MessageType::Error) => (
-                "❌ [Agent]".to_string(),
-                Style::default().fg(Color::Red),
-            ),
+            (MessageSender::Agent, MessageType::Error) => {
+                ("❌ [Agent]".to_string(), Style::default().fg(Color::Red))
+            }
             (MessageSender::Agent, MessageType::Success) => (
                 "✅ [Agent]".to_string(),
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             ),
-            (MessageSender::System, _) => (
-                "ℹ️  [System]".to_string(),
-                Style::default().fg(Color::Gray),
-            ),
+            (MessageSender::System, _) => {
+                ("ℹ️  [System]".to_string(), Style::default().fg(Color::Gray))
+            }
         }
     }
 

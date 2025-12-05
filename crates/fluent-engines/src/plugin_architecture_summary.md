@@ -11,7 +11,7 @@ This document summarizes the complete redesign of the Fluent CLI plugin system, 
 // DANGEROUS: Unsafe dynamic library loading
 unsafe {
     let lib = libloading::Library::new(plugin_path)?;
-    let create_engine: Symbol<unsafe extern fn() -> *mut dyn Engine> = 
+    let create_engine: Symbol<unsafe extern fn() -> *mut dyn Engine> =
         lib.get(b"create_engine")?;
     let engine = create_engine(); // Memory safety violations possible
 }

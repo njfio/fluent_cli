@@ -46,11 +46,17 @@ async fn main() {
         limiter.acquire().await;
     }
 
-    println!("  After 5 requests: {:.2}", limiter.available_tokens().await);
+    println!(
+        "  After 5 requests: {:.2}",
+        limiter.available_tokens().await
+    );
 
     // Wait for refill
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    println!("  After 500ms wait: {:.2}", limiter.available_tokens().await);
+    println!(
+        "  After 500ms wait: {:.2}",
+        limiter.available_tokens().await
+    );
     println!();
 
     // Example 4: Slow rate (1 request every 2 seconds)

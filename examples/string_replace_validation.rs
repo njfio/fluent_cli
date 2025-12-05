@@ -25,13 +25,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.insert("debug", "false");
     config.insert("log_level", "info");
     config.insert("max_connections", "100");
-    
+
     println!("Starting application...");
     println!("Configuration loaded: {:?}", config);
-    
+
     let result = process_data("input.txt")?;
     println!("Processing complete: {}", result);
-    
+
     Ok(())
 }
 

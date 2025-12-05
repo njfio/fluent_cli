@@ -1,10 +1,10 @@
 // Lock timeout utilities and monitoring
 use crate::error::{FluentError, LockTimeoutConfig};
-use log::warn;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
+use tracing::warn;
 
 /// Lock contention monitor for tracking lock performance
 #[derive(Debug)]

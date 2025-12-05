@@ -76,7 +76,6 @@ use tokio::sync::{Mutex, RwLock};
 /// Even with WASM runtime implemented, plugins should ONLY be loaded from
 /// trusted sources with valid cryptographic signatures. See documentation
 /// in `plugin.rs` for full security requirements.
-
 /// Plugin metadata and manifest
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
@@ -279,13 +278,13 @@ impl SignatureVerifier for DefaultSignatureVerifier {
                     return Ok(keys);
                 }
                 Err(e) => {
-                    log::warn!("Failed to read trusted keys from {:?}: {}", config_path, e);
+                    tracing::warn!("Failed to read trusted keys from {:?}: {}", config_path, e);
                 }
             }
         }
 
         // 3. Default: no trusted keys (secure by default)
-        log::warn!("No trusted keys configured. All plugins will be rejected.");
+        tracing::warn!("No trusted keys configured. All plugins will be rejected.");
         Ok(vec![])
     }
 }

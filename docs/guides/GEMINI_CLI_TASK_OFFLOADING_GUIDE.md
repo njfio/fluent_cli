@@ -58,7 +58,7 @@ gemini
 
 # Available commands in session:
 # /memory - View conversation memory
-# /stats - Show usage statistics  
+# /stats - Show usage statistics
 # /tools - List available tools
 # /mcp - Manage MCP servers
 # /theme - Change color theme
@@ -199,7 +199,7 @@ cat > ~/.config/gemini-cli/mcp.json << EOF
       "env": {}
     },
     "github": {
-      "command": "npx", 
+      "command": "npx",
       "args": ["@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_TOKEN": "your-token-here"
@@ -273,7 +273,7 @@ echo "Starting automated code review..."
 # Security analysis
 gemini -p "perform comprehensive security audit" > security-report.txt
 
-# Performance analysis  
+# Performance analysis
 gemini -p "analyze performance and suggest optimizations" > performance-report.txt
 
 # Code quality check

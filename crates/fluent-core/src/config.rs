@@ -2,10 +2,10 @@ use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
 
 use anyhow::{anyhow, Context, Result};
-use tracing::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;
+use tracing::debug;
 
 use std::collections::HashMap;
 use std::process::Command;
@@ -18,8 +18,8 @@ fn parse_config_content(content: &str, path_hint: Option<&str>) -> Result<Value>
     // Check file extension hint first
     if let Some(path) = path_hint {
         if path.ends_with(".toml") {
-            let toml_value: toml::Value = toml::from_str(content)
-                .context("Failed to parse TOML config")?;
+            let toml_value: toml::Value =
+                toml::from_str(content).context("Failed to parse TOML config")?;
             return toml_to_json(toml_value);
         }
     }
@@ -32,10 +32,12 @@ fn parse_config_content(content: &str, path_hint: Option<&str>) -> Result<Value>
     }
 
     // Try TOML if it looks like TOML (has [[engines]] or [engines] sections)
-    if content.contains("[[engines]]") || content.contains("[engines]")
-        || content.contains("[engines.") {
-        let toml_value: toml::Value = toml::from_str(content)
-            .context("Failed to parse TOML config")?;
+    if content.contains("[[engines]]")
+        || content.contains("[engines]")
+        || content.contains("[engines.")
+    {
+        let toml_value: toml::Value =
+            toml::from_str(content).context("Failed to parse TOML config")?;
         return toml_to_json(toml_value);
     }
 
@@ -381,8 +383,13 @@ pub fn load_config(
     }
 
     // Otherwise, load only the requested engine
-    let engine_config =
-        load_engine_config_with_path(&file_contents, engine_name, &overrides, &credentials, Some(config_path))?;
+    let engine_config = load_engine_config_with_path(
+        &file_contents,
+        engine_name,
+        &overrides,
+        &credentials,
+        Some(config_path),
+    )?;
     Ok(Config::new(vec![engine_config]))
 }
 

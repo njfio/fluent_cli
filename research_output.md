@@ -1,190 +1,167 @@
-# Tic-Tac-Toe Winning Strategy Guide
+# Directory Listing Program in Rust
 
-## Overview
+I'll create a comprehensive Rust program that lists files in the current directory with detailed information.
 
-Tic-tac-toe is a solved game, meaning optimal play from both players will always result in a draw. However, understanding the winning strategy allows you to capitalize on opponent mistakes and never lose when playing optimally.
+```rust
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::time::{UNIX_EPOCH, SystemTime};
+use std::os::unix::fs::PermissionsExt;
 
-## Fundamental Principles
+fn format_file_size(size: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
 
-### 1. Perfect Play Results
-- **Both players optimal**: Always a draw
-- **One player optimal**: The optimal player never loses
-- **Both players suboptimal**: First player has advantage
+    if size >= GB {
+        format!("{:.2} GB", size as f64 / GB as f64)
+    } else if size >= MB {
+        format!("{:.2} MB", size as f64 / MB as f64)
+    } else if size >= KB {
+        format!("{:.2} KB", size as f64 / KB as f64)
+    } else {
+        format!("{} bytes", size)
+    }
+}
 
-### 2. Win Conditions
-A player wins by getting three marks in a row:
-- Horizontally (rows 1, 2, or 3)
-- Vertically (columns 1, 2, or 3)
-- Diagonally (main diagonal or anti-diagonal)
+fn format_permissions(mode: u32) -> String {
+    let user = [(mode & 0o400) >> 8, (mode & 0o200) >> 7, (mode & 0o100) >> 6];
+    let group = [(mode & 0o40) >> 5, (mode & 0o20) >> 4, (mode & 0o10) >> 3];
+    let other = [(mode & 0o4) >> 2, (mode & 0o2) >> 1, mode & 0o1];
+    
+    let mut result = String::new();
+    
+    for bits in [user, group, other] {
+        result.push(if bits[0] != 0 { 'r' } else { '-' });
+        result.push(if bits[1] != 0 { 'w' } else { '-' });
+        result.push(if bits[2] != 0 { 'x' } else { '-' });
+    }
+    
+    result
+}
 
-## Optimal Strategy Framework
+fn format_time(time: SystemTime) -> String {
+    let duration = time.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = duration.as_secs();
+    
+    // Simple formatting - in a real app you might want to use chrono crate
+    let seconds = secs % 60;
+    let minutes = (secs / 60) % 60;
+    let hours = (secs / 3600) % 24;
+    let days = secs / 86400;
+    
+    format!("{} days, {:02}:{:02}:{:02}", days, hours, minutes, seconds)
+}
 
-### Move Priority System
+fn list_directory_contents(path: &Path) -> io::Result<()> {
+    let mut entries = Vec::new();
+    let mut total_size = 0;
+    let mut file_count = 0;
+    let mut dir_count = 0;
+    
+    println!("Contents of directory: {}", path.display());
+    println!("{:-<80}", "");
+    
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        let file_type = if metadata.is_dir() {
+            dir_count += 1;
+            "Directory"
+        } else if metadata.is_file() {
+            file_count += 1;
+            total_size += metadata.len();
+            "File"
+        } else if metadata.is_symlink() {
+            "Symlink"
+        } else {
+            "Other"
+        };
+        
+        let size = format_file_size(metadata.len());
+        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let modified_str = format_time(modified);
+        
+        #[cfg(unix)]
+        let permissions = format_permissions(metadata.permissions().mode());
+        #[cfg(not(unix))]
+        let permissions = if metadata.permissions().readonly() {
+            "read-only"
+        } else {
+            "read-write"
+        };
+        
+        entries.push((
+            entry.file_name().to_string_lossy().to_string(),
+            file_type.to_string(),
+            size,
+            modified_str,
+            permissions,
+        ));
+    }
+    
+    // Sort entries by name
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    
+    // Print header
+    println!("{:<30} {:<10} {:<15} {:<25} {:<10}", 
+             "Name", "Type", "Size", "Modified", "Permissions");
+    println!("{:-<80}", "");
+    
+    // Print entries
+    for (name, file_type, size, modified, permissions) in entries {
+        println!("{:<30} {:<10} {:<15} {:<25} {:<10}", 
+                 name, file_type, size, modified, permissions);
+    }
+    
+    println!("{:-<80}", "");
+    println!("Summary: {} files, {} directories, Total size: {}", 
+             file_count, dir_count, format_file_size(total_size));
+    
+    Ok(())
+}
 
-Follow this priority order for each move:
-
-1. **WIN**: If you can win in one move, take it
-2. **BLOCK**: If opponent can win in one move, block them
-3. **FORK**: Create a position where you have two ways to win
-4. **BLOCK FORK**: Prevent opponent from creating a fork
-5. **CENTER**: Take the center square if available
-6. **OPPOSITE CORNER**: If opponent is in a corner, take the opposite corner
-7. **EMPTY CORNER**: Take any available corner
-8. **EMPTY SIDE**: Take any available side square
-
-### Strategic Positioning Rules
-
-#### Corner Strategy
-- **Corners are strongest**: Control more winning lines (3 each)
-- **Center is second best**: Controls 4 winning lines
-- **Sides are weakest**: Control only 2 winning lines each
-
-#### Fork Creation
-A fork gives you two ways to win on your next turn:
-- **Corner-Center-Corner**: Most common fork pattern
-- **Two corners + center**: Creates multiple threats
-- **Side-corner combinations**: Less common but effective
-
-## Detailed Move Analysis
-
-### Opening Moves (First Player)
-
-#### Best Opening: Corner
+fn main() -> io::Result<()> {
+    let current_dir = std::env::current_dir()?;
+    list_directory_contents(&current_dir)?;
+    Ok(())
+}
 ```
-X | _ | _
----------
-_ | _ | _
----------
-_ | _ | _
-```
-- Forces opponent into defensive play
-- Creates most winning opportunities
-- Leads to fork possibilities
 
-#### Alternative Opening: Center
-```
-_ | _ | _
----------
-_ | X | _
----------
-_ | _ | _
-```
-- Solid defensive position
-- Controls center lines
-- Harder for opponent to create forks
+## How to Use This Program
 
-### Response Strategies (Second Player)
+1. Save the code above to a file named `list_files.rs`
+2. Compile it with: `rustc list_files.rs`
+3. Run the resulting executable: `./list_files`
 
-#### Against Corner Opening
-**Best Response: Center**
-```
-X | _ | _
----------
-_ | O | _
----------
-_ | _ | _
-```
+## Features
 
-**Avoid: Adjacent corner or side**
-- Creates immediate fork opportunities for opponent
+- Lists all files and directories in the current working directory
+- Shows file type (file, directory, symlink)
+- Displays file size in human-readable format (bytes, KB, MB, GB)
+- Shows file modification time
+- Displays file permissions in Unix-style format on Unix systems
+- Provides a summary with total file count, directory count, and total size
+- Sorts entries alphabetically by name
+- Handles errors gracefully
 
-#### Against Center Opening
-**Best Response: Corner**
+## Sample Output
+
+When run, the program will produce output similar to:
+
 ```
-_ | _ | _
----------
-_ | X | _
----------
-_ | _ | O
+Contents of directory: /path/to/current/directory
+--------------------------------------------------------------------------------
+Name                           Type       Size            Modified                  Permissions
+--------------------------------------------------------------------------------
+.gitignore                     File       124 bytes       0 days, 12:34:56         rw-r--r--
+Cargo.toml                     File       342 bytes       1 days, 08:15:30         rw-r--r--
+README.md                      File       1.25 KB         0 days, 14:22:18         rw-r--r--
+src                            Directory  0 bytes         2 days, 09:45:12         rwxr-xr-x
+target                         Directory  0 bytes         0 days, 10:30:45         rwxr-xr-x
+--------------------------------------------------------------------------------
+Summary: 3 files, 2 directories, Total size: 1.72 KB
 ```
 
-## Common Winning Patterns
-
-### 1. The Fork Trap
-```
-Turn 1: X takes corner
-Turn 2: O takes side (mistake)
-Turn 3: X takes opposite corner
-Result: X has guaranteed win
-```
-
-### 2. Center Control
-```
-X | _ | O
----------
-_ | X | _
----------
-O | _ | _
-```
-X wins by taking bottom-right corner
-
-### 3. Double Threat
-```
-X | X | _
----------
-O | O | X
----------
-_ | _ | O
-```
-X wins by taking top-right (completes row and diagonal threat)
-
-## Defensive Techniques
-
-### Fork Prevention
-- **Recognize fork setups**: Two corners + center attempts
-- **Force opponent's hand**: Create your own threats to disrupt their plans
-- **Control key squares**: Prevent opponent from accessing critical positions
-
-### Blocking Priorities
-1. **Immediate threats**: Block any two-in-a-row
-2. **Fork threats**: Prevent fork creation
-3. **Strategic squares**: Control center and corners
-
-## Advanced Tactics
-
-### Tempo Control
-- Force opponent to respond to your threats
-- Create multiple simultaneous threats
-- Use blocking moves that also advance your position
-
-### Psychological Elements
-- **Consistency**: Always play optimally regardless of opponent skill
-- **Pattern recognition**: Identify opponent's weaknesses
-- **Endgame awareness**: Recognize when draw is inevitable
-
-## Practice Scenarios
-
-### Scenario 1: Fork Creation
-```
-Your turn as X:
-_ | O | _
----------
-_ | X | _
----------
-_ | _ | _
-```
-**Solution**: Take any corner to create fork threat
-
-### Scenario 2: Fork Defense
-```
-Your turn as O:
-X | _ | _
----------
-_ | _ | _
----------
-_ | _ | X
-```
-**Solution**: Take center to prevent fork
-
-## Key Takeaways
-
-1. **Perfect play guarantees at least a draw**
-2. **Corner openings create most opportunities**
-3. **Center control is crucial for defense**
-4. **Fork creation/prevention determines most games**
-5. **Side squares are generally weakest positions**
-6. **Always prioritize immediate wins and blocks**
-
-## Conclusion
-
-While you cannot guarantee a win against a perfect opponent, following this strategy ensures you'll never lose and will capitalize on any mistakes your opponent makes. The key is consistent application of the priority system and understanding the underlying positional principles.
+This program provides a comprehensive view of the current directory's contents with detailed information about each file and directory.

@@ -48,9 +48,9 @@ async fn test_agentic_run_function_exists() -> Result<()> {
         true,
         false, // enable_reflection
         "test_config.toml",
-        None, // model_override
-        None, // gen_retries
-        None, // min_html_size
+        None,  // model_override
+        None,  // gen_retries
+        None,  // min_html_size
         false, // enable_tui
     )
     .await;
@@ -145,9 +145,9 @@ async fn test_complete_agentic_workflow() -> Result<()> {
         true,
         false, // enable_reflection
         "test_config.toml",
-        None, // model_override
-        None, // gen_retries
-        None, // min_html_size
+        None,  // model_override
+        None,  // gen_retries
+        None,  // min_html_size
         false, // enable_tui
     )
     .await;

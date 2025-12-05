@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use fluent_core::centralized_config::ConfigManager;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::time::Duration;
 
@@ -177,7 +177,7 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn show_pipeline(pipeline_dir: &PathBuf, name: &str) -> Result<()> {
+    async fn show_pipeline(pipeline_dir: &Path, name: &str) -> Result<()> {
         let pipeline = Self::load_pipeline(pipeline_dir, name).await?;
 
         println!("🔧 Pipeline: {}", pipeline.name);
@@ -226,8 +226,8 @@ impl PipelineCli {
     }
 
     async fn execute_pipeline(
-        pipeline_dir: &PathBuf,
-        state_dir: &PathBuf,
+        pipeline_dir: &Path,
+        state_dir: &Path,
         name: &str,
         variables: Vec<String>,
         resume: Option<String>,
@@ -254,7 +254,7 @@ impl PipelineCli {
         }
 
         let (builder, metrics_listener) = PipelineExecutorBuilder::new()
-            .with_file_state_store(state_dir.clone())
+            .with_file_state_store(state_dir.to_path_buf())
             .with_simple_variable_expander()
             .with_console_logging()
             .with_file_logging(log_file)
@@ -317,7 +317,7 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn validate_pipeline(pipeline_dir: &PathBuf, name: &str) -> Result<()> {
+    async fn validate_pipeline(pipeline_dir: &Path, name: &str) -> Result<()> {
         println!("🔍 Validating pipeline: {}", name);
 
         let pipeline = Self::load_pipeline(pipeline_dir, name).await?;
@@ -370,7 +370,7 @@ impl PipelineCli {
     }
 
     async fn create_pipeline(
-        pipeline_dir: &PathBuf,
+        pipeline_dir: &Path,
         name: &str,
         description: Option<&str>,
     ) -> Result<()> {
@@ -517,7 +517,7 @@ impl PipelineCli {
 
             println!(
                 "  • {} - {} ({})",
-                context.run_id[..8].to_string(),
+                &context.run_id[..8],
                 context.pipeline_name,
                 status
             );
@@ -532,7 +532,7 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn monitor_execution(state_dir: &PathBuf, run_id: &str, interval: u64) -> Result<()> {
+    async fn monitor_execution(state_dir: &Path, run_id: &str, interval: u64) -> Result<()> {
         println!(
             "👁️  Monitoring execution: {} (refresh every {}s)",
             run_id, interval
@@ -615,7 +615,7 @@ impl PipelineCli {
         Ok(())
     }
 
-    async fn load_pipeline(pipeline_dir: &PathBuf, name: &str) -> Result<Pipeline> {
+    async fn load_pipeline(pipeline_dir: &Path, name: &str) -> Result<Pipeline> {
         let pipeline_file = pipeline_dir.join(format!("{}.json", name));
 
         if !pipeline_file.exists() {

@@ -49,8 +49,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 ///
 /// This function will silently ignore errors if logging is already initialized.
 pub fn init_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let _ = tracing_subscriber::registry()
         .with(fmt::layer().with_target(true).with_writer(std::io::stderr))
@@ -66,8 +65,7 @@ pub fn init_logging() {
 ///
 /// This function will silently ignore errors if logging is already initialized.
 pub fn init_json_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let _ = tracing_subscriber::registry()
         .with(fmt::layer().json().with_writer(std::io::stderr))
@@ -183,9 +181,6 @@ mod tests {
     fn test_cli_logging_generates_request_id() {
         let request_id = init_cli_logging();
         assert!(!request_id.is_empty());
-        assert_eq!(
-            std::env::var("FLUENT_REQUEST_ID").unwrap(),
-            request_id
-        );
+        assert_eq!(std::env::var("FLUENT_REQUEST_ID").unwrap(), request_id);
     }
 }

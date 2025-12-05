@@ -29,7 +29,7 @@ let result = self.execute_command_safe("sh", &["-c".to_string(), script.to_strin
 
 **Risk**: An attacker could inject shell metacharacters like `;`, `|`, `&&`, `||`, backticks, or `$()` to execute arbitrary commands.
 
-**Recommendation**: 
+**Recommendation**:
 - Use proper shell parsing library or implement robust command parsing
 - Consider using structured commands instead of raw shell strings
 - Implement strict input sanitization for shell metacharacters
@@ -71,7 +71,7 @@ let search_term = format!("%{}%", reference.content.split_whitespace().next().un
 
 **Risk**: Special characters in content (%, _, [, ]) could alter query behavior.
 
-**Recommendation**: 
+**Recommendation**:
 - Escape LIKE pattern special characters
 - Consider using full-text search instead of LIKE
 
@@ -96,7 +96,7 @@ tags: serde_json::from_str(&tags_str).unwrap_or_default(),
 
 **Risk**: Malicious JSON could cause resource exhaustion or unexpected behavior.
 
-**Recommendation**: 
+**Recommendation**:
 - Implement size limits on JSON input
 - Add schema validation for configuration files
 - Use timeouts for deserialization operations
@@ -116,7 +116,7 @@ tags: serde_json::from_str(&tags_str).unwrap_or_default(),
 - File paths could contain Unicode tricks or extremely long names
 - No validation of content size before operations
 
-**Recommendation**: 
+**Recommendation**:
 - Implement comprehensive input validation for all user inputs
 - Add length limits and character whitelists
 - Validate against known attack patterns
@@ -135,7 +135,7 @@ tags: serde_json::from_str(&tags_str).unwrap_or_default(),
 - No credential rotation mechanism
 - Error messages might leak credential key names
 
-**Recommendation**: 
+**Recommendation**:
 - Consider using secure string types that zero memory on drop
 - Implement credential rotation support
 - Sanitize error messages to avoid leaking sensitive information
@@ -159,7 +159,7 @@ if path.exists() { /* check */
 
 **Risk**: Low in current implementation but could lead to race conditions.
 
-**Recommendation**: 
+**Recommendation**:
 - Use atomic operations where possible
 - Handle file operation errors gracefully instead of pre-checking
 
@@ -177,7 +177,7 @@ if path.exists() { /* check */
 - File read operations check size but after metadata read
 - No rate limiting for operations
 
-**Recommendation**: 
+**Recommendation**:
 - Implement operation rate limiting
 - Add concurrent operation limits
 - Check file sizes before attempting to read metadata
@@ -192,7 +192,7 @@ if path.exists() { /* check */
 3. **File paths** are validated but special characters aren't filtered
 4. **SQL LIKE patterns** aren't escaped
 
-**Recommendation**: 
+**Recommendation**:
 - Never pass user input directly to shell commands
 - Implement proper escaping for all contexts (shell, SQL, filesystem)
 - Use allowlists instead of denylists for validation
@@ -209,7 +209,7 @@ if path.exists() { /* check */
 
 **Risk**: Any user with access to the agent can perform all configured operations.
 
-**Recommendation**: 
+**Recommendation**:
 - Implement user authentication
 - Add role-based access control (RBAC)
 - Create audit logs for all operations

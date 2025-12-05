@@ -33,7 +33,10 @@ fn main() {
     println!("  Timeout: {} seconds", custom_config.timeout_seconds);
     println!("  Allow network: {}", custom_config.allow_network);
     println!("  Allowed paths: {:?}", custom_config.allowed_paths);
-    println!("  Max concurrent executions: {}", custom_config.max_concurrent_executions);
+    println!(
+        "  Max concurrent executions: {}",
+        custom_config.max_concurrent_executions
+    );
     println!();
 
     // Example 3: Serialize to JSON
@@ -46,7 +49,10 @@ fn main() {
     let execution_config = custom_config.to_execution_config();
     println!("Converted to ToolExecutionConfig:");
     println!("  Timeout: {} seconds", execution_config.timeout_seconds);
-    println!("  Max output size: {} bytes", execution_config.max_output_size);
+    println!(
+        "  Max output size: {} bytes",
+        execution_config.max_output_size
+    );
     println!("  Read only: {}", execution_config.read_only);
     println!();
 
@@ -67,5 +73,8 @@ fn main() {
     println!("Loaded configuration from JSON:");
     println!("  Max file size: {} bytes", loaded_config.max_file_size);
     println!("  Read only: {}", loaded_config.read_only);
-    println!("  Max concurrent: {}", loaded_config.max_concurrent_executions);
+    println!(
+        "  Max concurrent: {}",
+        loaded_config.max_concurrent_executions
+    );
 }

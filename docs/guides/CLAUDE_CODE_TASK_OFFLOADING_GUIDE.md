@@ -299,7 +299,7 @@ claude update
 ### Performance Optimization
 ```bash
 # Use specific file references instead of scanning entire codebase
-claude -p "review @specific/file.rs" 
+claude -p "review @specific/file.rs"
 
 # Break large tasks into smaller chunks
 claude -p "first, analyze the architecture, then we'll look at specific modules"

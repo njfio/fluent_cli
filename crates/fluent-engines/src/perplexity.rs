@@ -11,8 +11,8 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
+use tracing::debug;
 
 pub struct PerplexityEngine {
     config: EngineConfig,

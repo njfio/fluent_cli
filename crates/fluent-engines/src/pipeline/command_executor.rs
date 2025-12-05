@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::process::Command as TokioCommand;
 
-use log::{debug, error, warn};
 use std::collections::HashSet;
 use std::io::Write;
 use std::time::Duration;
+use tracing::{debug, error, warn};
 
 /// Handles execution of command and shell command steps
 pub struct CommandExecutor;
@@ -102,7 +102,7 @@ impl CommandExecutor {
         }
 
         // Extract the first word (command name) and validate against whitelist
-        let command_parts: Vec<&str> = command.trim().split_whitespace().collect();
+        let command_parts: Vec<&str> = command.split_whitespace().collect();
         if let Some(cmd_name) = command_parts.first() {
             if !config.allowed_commands.contains(*cmd_name) {
                 return Err(anyhow!(

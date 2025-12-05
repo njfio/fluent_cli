@@ -581,6 +581,7 @@ mod tests {
             error: None,
             metadata: HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         };
 
         let context = ExecutionContext::default();

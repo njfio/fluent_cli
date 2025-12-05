@@ -230,8 +230,7 @@ mod tests {
 
     #[test]
     fn test_openai_validate_missing_prompt() {
-        let builder = FluentOpenAIChatRequestBuilder::default()
-            .openai_key("test-key".to_string());
+        let builder = FluentOpenAIChatRequestBuilder::default().openai_key("test-key".to_string());
         let result = builder.validate();
         assert!(matches!(
             result,
@@ -241,8 +240,7 @@ mod tests {
 
     #[test]
     fn test_openai_validate_missing_key() {
-        let builder = FluentOpenAIChatRequestBuilder::default()
-            .prompt("test prompt".to_string());
+        let builder = FluentOpenAIChatRequestBuilder::default().prompt("test prompt".to_string());
         let result = builder.validate();
         assert!(matches!(
             result,

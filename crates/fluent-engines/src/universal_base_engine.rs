@@ -7,13 +7,13 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::debug;
 
 /// Universal base engine that provides common functionality for all engines
 pub struct UniversalBaseEngine {

@@ -19,9 +19,9 @@
 //! ```
 
 use anyhow::{anyhow, Result};
-use log::debug; // Using log instead of tracing for compatibility
 use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
+use tracing::debug; // Using log instead of tracing for compatibility
 
 /// Default timeout for establishing HTTP connections (10 seconds)
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -113,8 +113,7 @@ pub fn create_client_with_timeout(
 
     // Support proxy configuration via environment variables
     // Check HTTPS_PROXY first, then HTTP_PROXY
-    if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
-    {
+    if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
         if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
             builder = builder.proxy(proxy);
             debug!("Using HTTPS proxy from environment: {}", proxy_url);
@@ -198,8 +197,7 @@ pub fn create_client_builder_with_timeout(
         .tcp_keepalive(DEFAULT_TCP_KEEPALIVE);
 
     // Support proxy configuration
-    if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
-    {
+    if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {
         if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
             builder = builder.proxy(proxy);
             debug!("Using HTTPS proxy from environment: {}", proxy_url);
@@ -228,10 +226,7 @@ mod tests {
 
     #[test]
     fn test_create_client_with_custom_timeouts() {
-        let client = create_client_with_timeout(
-            Duration::from_secs(5),
-            Duration::from_secs(15),
-        );
+        let client = create_client_with_timeout(Duration::from_secs(5), Duration::from_secs(15));
         assert!(client.is_ok(), "Should create client with custom timeouts");
     }
 

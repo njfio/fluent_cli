@@ -847,14 +847,14 @@ impl EnhancedConfigurationSystem {
     /// Get configuration with adaptive optimization
     pub async fn get_configuration(&self, config_id: &str) -> Result<Configuration> {
         let config_manager = self.config_manager.read().await;
-        
+
         if let Some(config) = config_manager.configurations.get(config_id) {
             // Apply adaptive optimizations if enabled
             if self.config.enable_adaptive_config {
                 let optimized_config = self.apply_adaptive_optimizations(config.clone()).await?;
                 return Ok(optimized_config);
             }
-            
+
             Ok(config.clone())
         } else {
             // Try fallback configurations
@@ -873,7 +873,7 @@ impl EnhancedConfigurationSystem {
         }
 
         let capability_negotiator = self.capability_negotiator.read().await;
-        
+
         // Find best matching provider
         let mut best_provider = None;
         let mut best_score = 0.0;
@@ -892,7 +892,7 @@ impl EnhancedConfigurationSystem {
     /// Validate configuration
     pub async fn validate_configuration(&self, config: &Configuration) -> Result<ValidationResult> {
         let validation_engine = self.validation_engine.read().await;
-        
+
         let mut overall_status = ValidationStatus::Valid;
         let mut validation_errors = Vec::new();
         let mut validation_warnings = Vec::new();
@@ -943,7 +943,7 @@ impl EnhancedConfigurationSystem {
 
     async fn try_fallback_configuration(&self, config_id: &str) -> Result<Configuration> {
         let fallback_manager = self.fallback_manager.read().await;
-        
+
         // Try fallback configurations
         for (_, chain) in &fallback_manager.fallback_chains {
             if chain.primary_config == config_id {
@@ -954,7 +954,7 @@ impl EnhancedConfigurationSystem {
                 }
             }
         }
-        
+
         Err(anyhow::anyhow!("No fallback configuration available for: {}", config_id))
     }
 
@@ -965,14 +965,14 @@ impl EnhancedConfigurationSystem {
         let required_match = requirements.required_capabilities
             .intersection(&capabilities.capabilities)
             .count() as f64 / requirements.required_capabilities.len() as f64;
-        
+
         score += required_match * 0.6;
 
         // Score based on preferred capabilities
         let preferred_match = requirements.preferred_capabilities
             .intersection(&capabilities.capabilities)
             .count() as f64 / requirements.preferred_capabilities.len().max(1) as f64;
-        
+
         score += preferred_match * 0.2;
 
         // Score based on reliability

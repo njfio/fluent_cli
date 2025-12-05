@@ -16,8 +16,8 @@ use uuid::Uuid;
 /// - Plugin-based step execution
 /// - Comprehensive error handling and recovery
 /// - Performance monitoring and metrics
-
-/// Pipeline execution context with rich metadata
+///
+///   Pipeline execution context with rich metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionContext {
     pub run_id: String,

@@ -4,12 +4,12 @@
 //! for various file types including PDF, text files, and DOCX documents.
 
 use anyhow::{anyhow, Result};
-use log::debug;
 use neo4rs::{query, BoltInteger, BoltNull, BoltString, BoltType, Graph};
 use pdf_extract::extract_text;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::neo4j_client::VoyageAIConfig;

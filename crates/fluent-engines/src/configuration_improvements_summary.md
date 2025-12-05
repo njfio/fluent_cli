@@ -26,13 +26,13 @@ pub struct EngineConfig {
 pub struct EnhancedEngineConfig {
     #[serde(flatten)]
     pub base: EngineConfig,
-    
+
     /// Configuration metadata for tracking
     pub metadata: ConfigMetadata,
-    
+
     /// Validation rules for parameters
     pub validation: ValidationRules,
-    
+
     /// Environment-specific overrides
     pub environments: HashMap<String, EnvironmentOverrides>,
 }

@@ -48,7 +48,7 @@ impl Engine for OpenAIEngine {
         // - Error handling
         // - Cache storage
     }
-    
+
     // Similar repetition for other methods...
 }
 ```
@@ -109,7 +109,7 @@ impl CustomEngine {
             default_model: "custom-model".to_string(),
             pricing_rates: None,
         };
-        
+
         let base = BaseEngine::new(config, base_config).await?;
         Ok(Self { base })
     }
@@ -252,8 +252,8 @@ println!("Cache hit rate: {:.2}%", stats.hit_rate() * 100.0);
 
 // Check connection pool statistics
 let pool_stats = global_pool().get_stats();
-println!("Pool hit rate: {:.2}%", 
-         pool_stats.cache_hits as f64 / 
+println!("Pool hit rate: {:.2}%",
+         pool_stats.cache_hits as f64 /
          (pool_stats.cache_hits + pool_stats.cache_misses) as f64 * 100.0);
 ```
 

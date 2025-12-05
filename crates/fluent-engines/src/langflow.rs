@@ -5,12 +5,12 @@ use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::debug;
 
 pub struct LangflowEngine {
     config: EngineConfig,

@@ -2,11 +2,11 @@ use anyhow::{anyhow, Result};
 use fluent_core::config::load_engine_config;
 use fluent_core::traits::Engine;
 use fluent_engines::create_engine;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::warn;
 // use std::time::Duration;
 
 use crate::autonomy::AutonomySupervisorConfig;

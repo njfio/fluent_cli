@@ -21,7 +21,7 @@ use fluent_core::config::{EngineConfig, load_engine_config};
 use fluent_engines::create_engine;
 
 pub struct AgentEngineConfig {
-    pub reasoning_engine: String,    // "sonnet3.5" 
+    pub reasoning_engine: String,    // "sonnet3.5"
     pub action_engine: String,       // "gpt-4o"
     pub reflection_engine: String,   // "gemini-flash"
     pub config_path: String,
@@ -36,7 +36,7 @@ impl AgentEngineConfig {
             &HashMap::new(),
             &self.credentials,
         )?;
-        
+
         fluent_engines::create_engine(config).await
     }
 }
@@ -139,19 +139,19 @@ CREATE INDEX idx_episodes_success ON episodes(success);
 #[derive(Parser, Debug)]
 pub struct FluentArgs {
     // ... existing args ...
-    
+
     #[arg(long, help = "Enable agentic mode with goal-oriented execution")]
     agentic: bool,
-    
+
     #[arg(long, help = "Goal for the agent to achieve")]
     goal: Option<String>,
-    
+
     #[arg(long, help = "Agent configuration file", default_value = "agent_config.json")]
     agent_config: String,
-    
+
     #[arg(long, help = "Maximum iterations for goal achievement", default_value = "50")]
     max_iterations: u32,
-    
+
     #[arg(long, help = "Enable tool execution (file operations, shell commands)")]
     enable_tools: bool,
 }
@@ -167,7 +167,7 @@ pub struct FluentArgs {
 
 ### Phase 2: Tool Integration ✅
 - [ ] Implement FileSystemExecutor
-- [ ] Implement ShellExecutor  
+- [ ] Implement ShellExecutor
 - [ ] Implement RustCompilerExecutor
 - [ ] Add safety validations and sandboxing
 - [ ] Create tool registry system

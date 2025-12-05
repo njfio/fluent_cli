@@ -11,9 +11,9 @@ steps:
     command: |
       fluent perplexity '' <<"""EOT"""
         Break down the problem into 5 logical steps that would help solve it. Only list the steps, don't solve them.
-      
+
         Problem: ${problem}
-      
+
         Output the steps in a numbered list.
       EOT
     save_output: steps
@@ -36,14 +36,14 @@ steps:
     command: |
       fluent  perplexity '' <<"""EOT"""
         Solve the following step of our problem. Provide a concise answer (max 75 words).
-      
+
         Overall Problem: ${problem}
-      
+
         All Steps:
         ${steps}
-      
+
         Solve Step ${ITEM}. Use relevant data or estimates where necessary. If you make any assumptions, state them clearly.
-      
+
         Your solution for Step ${ITEM}:
       EOT
     save_output: step_solutions
@@ -54,7 +54,7 @@ steps:
     command: |
       echo <<"""EOT"""
         ${solutions}
-      
+
         Step-by-step solutions:
         ${step_solutions}
       EOT
@@ -66,12 +66,12 @@ steps:
     command: |
       fluent mistral-large2 '' <<"""EOT"""
         Based on the step-by-step solutions, provide a final, comprehensive answer to the original problem. Be concise but thorough (max 150 words).
-      
+
         Original Problem: ${problem}
-      
+
         Detailed Solutions:
         ${detailed_solution}
-      
+
         Final Answer:
       EOT
     save_output: final_answer

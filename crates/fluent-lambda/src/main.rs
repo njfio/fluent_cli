@@ -71,11 +71,7 @@ async fn lambda_handler(event: LambdaEvent<FluentRequest>) -> Result<Response, E
     };
 
     if payload_size > MAX_INPUT_SIZE {
-        tracing::warn!(
-            payload_size,
-            max_size = MAX_INPUT_SIZE,
-            "Payload too large"
-        );
+        tracing::warn!(payload_size, max_size = MAX_INPUT_SIZE, "Payload too large");
 
         let error_body = PayloadTooLargeResponse {
             error: "Payload too large".to_string(),

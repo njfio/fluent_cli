@@ -168,9 +168,7 @@ impl CommandValidator {
         }
 
         if cmd.starts_with('-') || cmd.starts_with('.') {
-            return Err(anyhow!(
-                "Command cannot start with '-' or '.'"
-            ));
+            return Err(anyhow!("Command cannot start with '-' or '.'"));
         }
 
         Ok(())
@@ -246,24 +244,86 @@ impl CommandValidator {
     fn get_dangerous_patterns() -> Vec<&'static str> {
         vec![
             // Command injection patterns
-            "$(", "`", ";", "&&", "||", "|", ">", ">>", "<", "<<",
+            "$(",
+            "`",
+            ";",
+            "&&",
+            "||",
+            "|",
+            ">",
+            ">>",
+            "<",
+            "<<",
             // Path traversal patterns
-            "../", "./", "~", "/etc/", "/proc/", "/sys/", "/dev/",
+            "../",
+            "./",
+            "~",
+            "/etc/",
+            "/proc/",
+            "/sys/",
+            "/dev/",
             // Privilege escalation (checking for both with and without space for robustness)
-            "sudo", "su ", "doas", "pkexec",
+            "sudo",
+            "su ",
+            "doas",
+            "pkexec",
             // Network operations
-            "curl", "wget", "nc", "netcat", "telnet", "ssh", "scp", "ftp",
+            "curl",
+            "wget",
+            "nc",
+            "netcat",
+            "telnet",
+            "ssh",
+            "scp",
+            "ftp",
             // File destruction - check arguments for these flags
-            "rm ", "rm\t", "rmdir", "del ", "format", "mkfs", "dd ", "dd\t",
-            "-rf", "-fr", // Common dangerous rm flags
+            "rm ",
+            "rm\t",
+            "rmdir",
+            "del ",
+            "format",
+            "mkfs",
+            "dd ",
+            "dd\t",
+            "-rf",
+            "-fr", // Common dangerous rm flags
             // Process control
-            "kill", "killall", "pkill", "&", "nohup",
+            "kill",
+            "killall",
+            "pkill",
+            "&",
+            "nohup",
             // Script execution
-            "bash", "sh ", "sh\t", "zsh", "python", "perl", "ruby", "node",
-            "eval", "exec", "source", ". ",
+            "bash",
+            "sh ",
+            "sh\t",
+            "zsh",
+            "python",
+            "perl",
+            "ruby",
+            "node",
+            "eval",
+            "exec",
+            "source",
+            ". ",
             // Additional dangerous patterns
-            "\n", "\r", "\t", "//", "/.", "/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/",
-            "*", "?", "[", "]", "{", "}", "(", ")",
+            "\n",
+            "\r",
+            "\t",
+            "//",
+            "/.",
+            "/bin/",
+            "/sbin/",
+            "/usr/bin/",
+            "/usr/sbin/",
+            "*",
+            "?",
+            "[",
+            "]",
+            "{",
+            "}",
+            "(",
+            ")",
         ]
     }
 
@@ -271,7 +331,10 @@ impl CommandValidator {
     fn get_allowed_commands_from_env() -> Vec<String> {
         // Check for custom allowed commands
         if let Ok(custom_commands) = env::var("FLUENT_ALLOWED_COMMANDS") {
-            log::info!("Custom allowed commands from environment: {}", custom_commands);
+            tracing::info!(
+                "Custom allowed commands from environment: {}",
+                custom_commands
+            );
 
             let parsed_commands: Vec<String> = custom_commands
                 .split(',')
@@ -280,10 +343,12 @@ impl CommandValidator {
                 .collect();
 
             if !parsed_commands.is_empty() {
-                log::info!("Using {} custom allowed commands", parsed_commands.len());
+                tracing::info!("Using {} custom allowed commands", parsed_commands.len());
                 return parsed_commands;
             } else {
-                log::warn!("No valid commands found in FLUENT_ALLOWED_COMMANDS, using defaults");
+                tracing::warn!(
+                    "No valid commands found in FLUENT_ALLOWED_COMMANDS, using defaults"
+                );
             }
         }
 
@@ -291,7 +356,7 @@ impl CommandValidator {
         if let Ok(context) = env::var("FLUENT_AGENT_CONTEXT") {
             match context.as_str() {
                 "development" => {
-                    log::info!("Using development context command allowlist");
+                    tracing::info!("Using development context command allowlist");
                     return vec![
                         "cargo".to_string(),
                         "rustc".to_string(),
@@ -308,7 +373,7 @@ impl CommandValidator {
                     ];
                 }
                 "testing" => {
-                    log::info!("Using testing context command allowlist");
+                    tracing::info!("Using testing context command allowlist");
                     return vec![
                         "cargo".to_string(),
                         "rustc".to_string(),
@@ -323,7 +388,7 @@ impl CommandValidator {
                     ];
                 }
                 _ => {
-                    log::info!("Using production context command allowlist");
+                    tracing::info!("Using production context command allowlist");
                 }
             }
         }
@@ -394,7 +459,10 @@ mod tests {
         // Disallowed command should fail
         let result = validator.validate("rm", &[]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not in allowed list"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not in allowed list"));
     }
 
     #[test]
@@ -402,41 +470,79 @@ mod tests {
         let validator = CommandValidator::new(vec!["echo".to_string()]);
 
         // Command injection patterns
-        assert!(validator.validate("echo", &["$(whoami)".to_string()]).is_err());
-        assert!(validator.validate("echo", &["`whoami`".to_string()]).is_err());
-        assert!(validator.validate("echo", &["test; rm -rf /".to_string()]).is_err());
-        assert!(validator.validate("echo", &["test && rm file".to_string()]).is_err());
-        assert!(validator.validate("echo", &["test || rm file".to_string()]).is_err());
+        assert!(validator
+            .validate("echo", &["$(whoami)".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["`whoami`".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["test; rm -rf /".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["test && rm file".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["test || rm file".to_string()])
+            .is_err());
 
         // Redirection
-        assert!(validator.validate("echo", &["test > file".to_string()]).is_err());
-        assert!(validator.validate("echo", &["test >> file".to_string()]).is_err());
-        assert!(validator.validate("echo", &["test < file".to_string()]).is_err());
+        assert!(validator
+            .validate("echo", &["test > file".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["test >> file".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["test < file".to_string()])
+            .is_err());
 
         // Path traversal
-        assert!(validator.validate("echo", &["../etc/passwd".to_string()]).is_err());
-        assert!(validator.validate("echo", &["~/secrets".to_string()]).is_err());
-        assert!(validator.validate("echo", &["/etc/shadow".to_string()]).is_err());
+        assert!(validator
+            .validate("echo", &["../etc/passwd".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["~/secrets".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("echo", &["/etc/shadow".to_string()])
+            .is_err());
     }
 
     #[test]
     fn test_validate_privilege_escalation() {
         let validator = CommandValidator::new(vec!["test".to_string()]);
 
-        assert!(validator.validate("test", &["sudo rm".to_string()]).is_err());
-        assert!(validator.validate("test", &["su root".to_string()]).is_err());
-        assert!(validator.validate("test", &["doas command".to_string()]).is_err());
-        assert!(validator.validate("test", &["pkexec cmd".to_string()]).is_err());
+        assert!(validator
+            .validate("test", &["sudo rm".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["su root".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["doas command".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["pkexec cmd".to_string()])
+            .is_err());
     }
 
     #[test]
     fn test_validate_network_operations() {
         let validator = CommandValidator::new(vec!["test".to_string()]);
 
-        assert!(validator.validate("test", &["curl http://evil.com".to_string()]).is_err());
-        assert!(validator.validate("test", &["wget http://evil.com".to_string()]).is_err());
-        assert!(validator.validate("test", &["nc 127.0.0.1".to_string()]).is_err());
-        assert!(validator.validate("test", &["ssh user@host".to_string()]).is_err());
+        assert!(validator
+            .validate("test", &["curl http://evil.com".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["wget http://evil.com".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["nc 127.0.0.1".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["ssh user@host".to_string()])
+            .is_err());
     }
 
     #[test]
@@ -444,8 +550,12 @@ mod tests {
         let validator = CommandValidator::new(vec!["test".to_string()]);
 
         assert!(validator.validate("test", &["rm -rf".to_string()]).is_err());
-        assert!(validator.validate("test", &["rmdir dir".to_string()]).is_err());
-        assert!(validator.validate("test", &["dd if=/dev/zero".to_string()]).is_err());
+        assert!(validator
+            .validate("test", &["rmdir dir".to_string()])
+            .is_err());
+        assert!(validator
+            .validate("test", &["dd if=/dev/zero".to_string()])
+            .is_err());
     }
 
     #[test]
@@ -516,7 +626,9 @@ mod tests {
         assert!(CommandValidator::is_valid_command_name("my_command"));
 
         assert!(!CommandValidator::is_valid_command_name(""));
-        assert!(!CommandValidator::is_valid_command_name("a".repeat(100).as_str()));
+        assert!(!CommandValidator::is_valid_command_name(
+            "a".repeat(100).as_str()
+        ));
         assert!(!CommandValidator::is_valid_command_name("/bin/ls"));
         assert!(!CommandValidator::is_valid_command_name("test cmd"));
         assert!(!CommandValidator::is_valid_command_name("-test"));

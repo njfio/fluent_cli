@@ -5,7 +5,6 @@ use super::{
 };
 use crate::tools::ToolRegistry;
 use anyhow::Result;
-use log::warn;
 use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
 use std::collections::{HashMap, VecDeque};
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
+use tracing::warn;
 use uuid::Uuid;
 
 /// Workflow execution engine with DAG-based execution

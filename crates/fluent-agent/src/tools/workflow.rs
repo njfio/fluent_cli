@@ -76,9 +76,9 @@ impl WorkflowExecutor {
             let validated_path = self.validate_path(p)?;
 
             // Check file size before reading
-            let metadata = tokio::fs::metadata(&validated_path).await.map_err(|e| {
-                anyhow!("Failed to get metadata for '{}': {}", p, e)
-            })?;
+            let metadata = tokio::fs::metadata(&validated_path)
+                .await
+                .map_err(|e| anyhow!("Failed to get metadata for '{}': {}", p, e))?;
 
             if metadata.len() > self.config.max_output_size as u64 {
                 return Err(anyhow!(

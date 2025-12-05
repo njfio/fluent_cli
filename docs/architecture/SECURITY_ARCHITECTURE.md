@@ -82,25 +82,25 @@ impl InputValidator {
         if input.len() > self.max_input_length {
             return Err(ValidationError::InputTooLong);
         }
-        
+
         // Character validation
         for ch in input.chars() {
             if !self.allowed_characters.contains(&ch) {
                 return Err(ValidationError::InvalidCharacter(ch));
             }
         }
-        
+
         // Pattern validation (detect injection attempts)
         for pattern in &self.blocked_patterns {
             if pattern.is_match(input) {
                 return Err(ValidationError::SuspiciousPattern);
             }
         }
-        
+
         // Sanitize and return
         Ok(self.sanitize_input(input))
     }
-    
+
     fn sanitize_input(&self, input: &str) -> String {
         // Remove potentially dangerous sequences
         input
@@ -130,21 +130,21 @@ impl ApiKeyManager {
         store.insert(provider.to_string(), encrypted_key);
         Ok(())
     }
-    
+
     pub fn get_api_key(&self, provider: &str) -> Result<String> {
         let store = self.key_store.lock().unwrap();
         let encrypted_key = store.get(provider)
             .ok_or(SecurityError::ApiKeyNotFound)?;
         self.decrypt_key(encrypted_key)
     }
-    
+
     fn encrypt_key(&self, key: &str) -> Result<EncryptedApiKey> {
         // Use AES-256-GCM for encryption
         let cipher = Aes256Gcm::new(Key::from_slice(&self.encryption_key));
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher.encrypt(&nonce, key.as_bytes())
             .map_err(|_| SecurityError::EncryptionFailed)?;
-        
+
         Ok(EncryptedApiKey {
             ciphertext,
             nonce: nonce.to_vec(),
@@ -180,7 +180,7 @@ pub struct AccessControl {
 impl AccessControl {
     pub fn check_permission(&self, user: &str, permission: Permission) -> bool {
         let user_roles = self.user_roles.get(user).unwrap_or(&vec![]);
-        
+
         for role_name in user_roles {
             if let Some(role) = self.roles.get(role_name) {
                 if role.permissions.contains(&permission) {
@@ -188,7 +188,7 @@ impl AccessControl {
                 }
             }
         }
-        
+
         false
     }
 }
@@ -207,23 +207,23 @@ impl SecureStorage {
     pub async fn store_sensitive_data(&self, key: &str, data: &[u8]) -> Result<()> {
         let encrypted_data = self.encrypt_data(data)?;
         let conn = self.database.lock().unwrap();
-        
+
         conn.execute(
             "INSERT OR REPLACE INTO secure_storage (key, encrypted_data, created_at) VALUES (?1, ?2, ?3)",
             params![key, encrypted_data, Utc::now().timestamp()],
         )?;
-        
+
         Ok(())
     }
-    
+
     pub async fn retrieve_sensitive_data(&self, key: &str) -> Result<Vec<u8>> {
         let conn = self.database.lock().unwrap();
         let mut stmt = conn.prepare("SELECT encrypted_data FROM secure_storage WHERE key = ?1")?;
-        
+
         let encrypted_data: Vec<u8> = stmt.query_row(params![key], |row| {
             Ok(row.get(0)?)
         })?;
-        
+
         self.decrypt_data(&encrypted_data)
     }
 }
@@ -249,37 +249,37 @@ impl SecureToolExecutor {
     pub async fn execute_tool(&self, tool: &Tool, params: &ToolParameters) -> Result<ToolResult> {
         // Validate tool permissions
         self.validate_tool_permissions(tool)?;
-        
+
         // Create sandboxed environment
         let sandbox = self.create_sandbox()?;
-        
+
         // Set resource limits
         sandbox.set_memory_limit(self.resource_limits.max_memory)?;
         sandbox.set_cpu_limit(self.resource_limits.max_cpu_time)?;
         sandbox.set_network_access(tool.requires_network())?;
-        
+
         // Execute with timeout
         let result = timeout(self.execution_timeout, async {
             sandbox.execute(tool, params).await
         }).await??;
-        
+
         // Audit the execution
         self.audit_tool_execution(tool, params, &result).await?;
-        
+
         Ok(result)
     }
-    
+
     fn validate_tool_permissions(&self, tool: &Tool) -> Result<()> {
         // Check if tool is in allowed list
         if !self.allowed_commands.contains(tool.name()) {
             return Err(SecurityError::UnauthorizedTool);
         }
-        
+
         // Validate tool signature if available
         if let Some(signature) = tool.signature() {
             self.verify_tool_signature(tool, signature)?;
         }
-        
+
         Ok(())
     }
 }
@@ -322,15 +322,15 @@ impl SecurityAuditor {
         let log_entry = serde_json::to_string(&event).unwrap();
         let mut writer = self.log_writer.lock().unwrap();
         writeln!(writer, "{}", log_entry).unwrap();
-        
+
         // Check for alert conditions
         self.check_alert_thresholds(&event).await;
-        
+
         // Update event counts
         let mut counts = self.event_counts.lock().unwrap();
         *counts.entry(event.event_type).or_insert(0) += 1;
     }
-    
+
     async fn check_alert_thresholds(&self, event: &SecurityEvent) {
         if let Some(&threshold) = self.alert_thresholds.get(&event.event_type) {
             let counts = self.event_counts.lock().unwrap();
@@ -397,17 +397,17 @@ security:
       - "(?i)script.*src"
       - "(?i)javascript:"
       - "(?i)data:.*base64"
-    
+
   authentication:
     api_key_rotation_days: 90
     session_timeout_minutes: 60
     max_failed_attempts: 5
-    
+
   encryption:
     algorithm: "AES-256-GCM"
     key_derivation: "PBKDF2"
     iterations: 100000
-    
+
   audit:
     log_level: "INFO"
     retention_days: 365

@@ -191,7 +191,7 @@ impl ProductionMcpClientManager {
 
         for (_, client) in clients.drain() {
             if let Err(e) = client.disconnect().await {
-                log::warn!("Error disconnecting client: {}", e);
+                tracing::warn!("Error disconnecting client: {}", e);
             }
         }
 
@@ -258,7 +258,7 @@ impl ProductionMcpClientManager {
 
                 for client in clients_guard.values() {
                     if let Err(e) = client.maintain_connection().await {
-                        log::warn!("Connection maintenance failed: {}", e);
+                        tracing::warn!("Connection maintenance failed: {}", e);
                     }
                 }
             }

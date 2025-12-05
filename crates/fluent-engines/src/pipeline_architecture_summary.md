@@ -181,7 +181,7 @@ impl VariableExpander for SimpleVariableExpander {
         // Support for ${variable} and $variable patterns
         // Advanced templating with condition evaluation
     }
-    
+
     async fn evaluate_condition(&self, condition: &str, variables: &HashMap<String, String>) -> Result<bool> {
         // Support for ==, !=, >, < comparisons
         // Boolean logic evaluation
@@ -324,7 +324,7 @@ async fn test_command_step_executor() {
     let executor = CommandStepExecutor;
     let step = create_test_step();
     let mut context = create_test_context();
-    
+
     let result = executor.execute(&step, &mut context).await.unwrap();
     assert!(result.output.is_some());
     assert!(result.variables.contains_key("result"));
@@ -339,7 +339,7 @@ async fn test_pipeline_execution() {
         .with_memory_state_store()
         .with_simple_variable_expander()
         .build().unwrap();
-    
+
     let pipeline = create_test_pipeline();
     let result = executor.execute_pipeline(&pipeline, HashMap::new(), None).await;
     assert!(result.is_ok());

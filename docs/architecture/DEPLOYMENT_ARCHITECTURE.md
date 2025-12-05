@@ -101,15 +101,15 @@ server:
   transport: "http"
   port: 8080
   host: "0.0.0.0"
-  
+
 database:
   type: "postgresql"
   url: "postgresql://user:pass@localhost:5432/fluent"
-  
+
 cache:
   type: "redis"
   url: "redis://localhost:6379"
-  
+
 security:
   tls_enabled: true
   cert_file: "/etc/ssl/certs/fluent.crt"
@@ -270,10 +270,10 @@ struct Response {
 
 async fn function_handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
     let (event, _context) = event.into_parts();
-    
+
     // Execute fluent CLI logic
     let result = cli::execute_request(&event.engine, &event.prompt, event.config).await?;
-    
+
     Ok(Response {
         content: result.content,
         usage: serde_json::to_value(result.usage)?,
@@ -379,7 +379,7 @@ logging:
       path: "/var/log/fluent/app.log"
     - type: "stdout"
       format: "human"
-  
+
 metrics:
   enabled: true
   endpoint: "http://prometheus:9090"

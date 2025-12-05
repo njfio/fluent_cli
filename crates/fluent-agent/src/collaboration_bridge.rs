@@ -139,12 +139,12 @@ impl CollaborativeOrchestrator {
         // Check for pending control messages
         match channel.control_receiver().try_recv().await {
             Ok(Some(msg)) => {
-                log::info!("Received control message: {:?}", msg.message_type);
+                tracing::info!("Received control message: {:?}", msg.message_type);
                 self.handle_control_message(msg).await
             }
             Ok(None) => Ok(ControlAction::Continue),
             Err(e) => {
-                log::error!("Error receiving control message: {:?}", e);
+                tracing::error!("Error receiving control message: {:?}", e);
                 Ok(ControlAction::Continue)
             }
         }
@@ -157,7 +157,7 @@ impl CollaborativeOrchestrator {
                 *self.paused.write().await = true;
                 self.send_state_update(StateUpdate::status_change(ControlAgentStatus::Paused))
                     .await?;
-                log::info!("Agent paused by human");
+                tracing::info!("Agent paused by human");
                 Ok(ControlAction::Pause)
             }
 
@@ -165,7 +165,7 @@ impl CollaborativeOrchestrator {
                 *self.paused.write().await = false;
                 self.send_state_update(StateUpdate::status_change(ControlAgentStatus::Running))
                     .await?;
-                log::info!("Agent resumed by human");
+                tracing::info!("Agent resumed by human");
                 Ok(ControlAction::Continue)
             }
 
@@ -193,7 +193,7 @@ impl CollaborativeOrchestrator {
                 guidance,
                 apply_to_future,
             } => {
-                log::info!(
+                tracing::info!(
                     "Received human guidance: {} (apply_to_future: {})",
                     guidance,
                     apply_to_future
@@ -209,7 +209,7 @@ impl CollaborativeOrchestrator {
                 new_goal,
                 keep_context,
             } => {
-                log::info!("Goal modification requested: {}", new_goal);
+                tracing::info!("Goal modification requested: {}", new_goal);
                 Ok(ControlAction::ModifyGoal {
                     new_goal,
                     keep_context,
@@ -217,27 +217,27 @@ impl CollaborativeOrchestrator {
             }
 
             ControlMessageType::ModifyStrategy { strategy_update } => {
-                log::info!("Strategy modification requested");
+                tracing::info!("Strategy modification requested");
                 Ok(ControlAction::ModifyStrategy(strategy_update))
             }
 
             ControlMessageType::EmergencyStop { reason } => {
-                log::warn!("Emergency stop requested: {}", reason);
+                tracing::warn!("Emergency stop requested: {}", reason);
                 Ok(ControlAction::EmergencyStop(reason))
             }
 
             ControlMessageType::RequestExplanation { context } => {
-                log::info!("Explanation requested for: {}", context);
+                tracing::info!("Explanation requested for: {}", context);
                 Ok(ControlAction::ProvideExplanation(context))
             }
 
             ControlMessageType::RequestStateSnapshot => {
-                log::info!("State snapshot requested");
+                tracing::info!("State snapshot requested");
                 Ok(ControlAction::SendStateSnapshot)
             }
 
             ControlMessageType::CreateCheckpoint { name } => {
-                log::info!("Checkpoint creation requested: {}", name);
+                tracing::info!("Checkpoint creation requested: {}", name);
                 Ok(ControlAction::CreateCheckpoint(name))
             }
         }
@@ -266,7 +266,7 @@ impl CollaborativeOrchestrator {
                 };
 
                 if tx.send(response).is_err() {
-                    log::error!("Failed to send approval response");
+                    tracing::error!("Failed to send approval response");
                 }
             }
 
@@ -277,14 +277,14 @@ impl CollaborativeOrchestrator {
             }))
             .await?;
 
-            log::info!(
+            tracing::info!(
                 "Approval {} {}: {:?}",
                 approval_id,
                 if approved { "approved" } else { "rejected" },
                 comment
             );
         } else {
-            log::warn!("Approval {} not found in pending list", approval_id);
+            tracing::warn!("Approval {} not found in pending list", approval_id);
         }
 
         Ok(())
@@ -357,12 +357,12 @@ impl CollaborativeOrchestrator {
             }
             Ok(Err(_)) => {
                 // Channel closed without response
-                log::warn!("Approval channel closed without response");
+                tracing::warn!("Approval channel closed without response");
                 Ok(self.apply_default_action(&approval_request.default_action))
             }
             Err(_) => {
                 // Timeout
-                log::warn!(
+                tracing::warn!(
                     "Approval timeout after {:?}, using default action",
                     self.approval_config.approval_timeout
                 );

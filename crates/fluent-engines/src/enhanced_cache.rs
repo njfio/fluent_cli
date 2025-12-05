@@ -281,7 +281,8 @@ impl CacheKey {
         format!("{:x}", hasher.finalize())
     }
 
-    pub fn to_string(&self) -> String {
+    /// Generate a unique string representation of this cache key
+    pub fn generate(&self) -> String {
         let mut parts = vec![self.engine.clone(), self.payload_hash.clone()];
 
         if let Some(model) = &self.model {
@@ -298,10 +299,11 @@ impl CacheKey {
 
         parts.join(":")
     }
+}
 
-    /// Generate a unique string representation of this cache key
-    pub fn generate(&self) -> String {
-        self.to_string()
+impl std::fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.generate())
     }
 }
 
@@ -523,12 +525,10 @@ impl EnhancedCache {
         if let Some(disk_cache) = &self.disk_cache {
             let mut keys_to_remove = Vec::new();
 
-            for item in disk_cache.iter() {
-                if let Ok((key, data)) = item {
-                    if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
-                        if entry.is_expired() {
-                            keys_to_remove.push(key);
-                        }
+            for (key, data) in disk_cache.iter().flatten() {
+                if let Ok(entry) = serde_json::from_slice::<CacheEntry>(&data) {
+                    if entry.is_expired() {
+                        keys_to_remove.push(key);
                     }
                 }
             }
@@ -591,7 +591,7 @@ impl EnhancedCache {
         F: FnOnce(&mut CacheStats),
     {
         if let Ok(mut stats) = self.stats.lock() {
-            update_fn(&mut *stats);
+            update_fn(&mut stats);
         }
     }
 }

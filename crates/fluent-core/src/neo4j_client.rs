@@ -6,12 +6,12 @@ use neo4rs::{
 use chrono::Duration as ChronoDuration;
 
 use chrono::{DateTime, Utc};
-use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::RwLock;
 use std::time::Duration;
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use rust_stemmers::{Algorithm, Stemmer};
@@ -1569,16 +1569,10 @@ mod tests {
         assert!(timeout_err.to_string().contains("30s"));
 
         let transient_err = Neo4jError::Transient("network issue".to_string());
-        assert_eq!(
-            transient_err.to_string(),
-            "Transient error: network issue"
-        );
+        assert_eq!(transient_err.to_string(), "Transient error: network issue");
 
         let config_err = Neo4jError::Configuration("invalid URI".to_string());
-        assert_eq!(
-            config_err.to_string(),
-            "Configuration error: invalid URI"
-        );
+        assert_eq!(config_err.to_string(), "Configuration error: invalid URI");
     }
 
     #[test]

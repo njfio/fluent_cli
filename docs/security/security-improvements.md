@@ -71,13 +71,13 @@ pub fn validate_command_args(args: &[String]) -> Result<()> {
 pub fn validate_path(&self, path: &Path) -> Result<PathBuf> {
     let canonical = path.canonicalize()
         .map_err(|_| anyhow::anyhow!("Invalid path"))?;
-    
+
     for allowed in &self.allowed_paths {
         if canonical.starts_with(allowed) {
             return Ok(canonical);
         }
     }
-    
+
     Err(anyhow::anyhow!("Path not allowed"))
 }
 ```
@@ -245,9 +245,9 @@ fn test_path_traversal_prevention() {
         allowed_paths: vec!["/safe/path".to_string()],
         ..Default::default()
     };
-    
+
     let editor = StringReplaceEditor::with_config(config);
-    
+
     // Should reject path traversal attempts
     assert!(editor.validate_path(Path::new("../../../etc/passwd")).is_err());
     assert!(editor.validate_path(Path::new("/safe/path/../../../etc/passwd")).is_err());

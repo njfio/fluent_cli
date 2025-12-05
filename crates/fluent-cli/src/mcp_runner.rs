@@ -64,7 +64,10 @@ pub async fn run_mcp_server(sub_matches: &ArgMatches) -> Result<()> {
 
     // Extract server configuration from arguments
     let port = sub_matches.get_one::<u16>("port").copied();
-    let stdio = sub_matches.get_one::<bool>("stdio").copied().unwrap_or(false);
+    let stdio = sub_matches
+        .get_one::<bool>("stdio")
+        .copied()
+        .unwrap_or(false);
 
     // Load default MCP configuration
     let mut mcp_config = ProductionMcpConfig::default();

@@ -287,6 +287,7 @@ impl ActionExecutor for MockActionExecutor {
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         })
     }
 

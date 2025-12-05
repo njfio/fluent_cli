@@ -16,8 +16,8 @@ use tokio::sync::RwLock;
 /// - Performance impact tracking
 /// - User-friendly error messages
 /// - Debugging and troubleshooting information
-
-/// Error context with detailed metadata
+///
+///   Error context with detailed metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorContext {
     pub error_id: String,
@@ -273,6 +273,12 @@ impl EnhancedError {
             resolved: self.resolved_at.is_some(),
             resolution_notes: self.resolution_notes.clone(),
         }
+    }
+}
+
+impl Default for ErrorAggregator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

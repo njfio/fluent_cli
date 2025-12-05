@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
-use tracing::info;
 use std::io::IsTerminal;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tracing::info;
 
 // Import minimal agentic framework components for type checking
 // The actual implementation uses the existing agentic infrastructure from lib.rs

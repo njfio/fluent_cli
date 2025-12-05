@@ -1,8 +1,8 @@
 // Mutex poison recovery utilities
 use crate::error::{FluentError, PoisonHandlingConfig, PoisonRecoveryStrategy};
-use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::warn;
 
 /// Utility functions for common mutex poison recovery patterns
 pub struct PoisonRecoveryUtils;

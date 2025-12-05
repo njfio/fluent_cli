@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
-use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio::task::JoinSet;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::pipeline_executor::{Pipeline, PipelineState, PipelineStep, StateStore};
@@ -103,6 +103,12 @@ pub struct ResourceMonitor {
     cpu_usage: Arc<RwLock<f64>>,
     memory_usage_mb: Arc<RwLock<usize>>,
     active_tasks: Arc<RwLock<usize>>,
+}
+
+impl Default for ResourceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceMonitor {
@@ -481,9 +487,8 @@ impl<S: StateStore + Clone + Send + Sync + 'static> EnhancedPipelineExecutor<S> 
                     m.total_steps += 1;
                     m.parallel_steps += 1;
 
-                    match &result {
-                        Ok(Ok(_)) => m.successful_pipelines += 1,
-                        _ => {}
+                    if let Ok(Ok(_)) = &result {
+                        m.successful_pipelines += 1;
                     }
                 }
 

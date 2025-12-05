@@ -598,7 +598,10 @@ impl StringReplaceEditor {
             let count = if self.config.case_sensitive {
                 content.matches(&pr.pattern).count()
             } else {
-                content.to_lowercase().matches(&pr.pattern.to_lowercase()).count()
+                content
+                    .to_lowercase()
+                    .matches(&pr.pattern.to_lowercase())
+                    .count()
             };
 
             content = if self.config.case_sensitive {
@@ -962,11 +965,7 @@ mod tests {
 
         // Test dry_run_json method
         let result = editor
-            .dry_run_json(
-                &file_path.to_string_lossy(),
-                "foo",
-                "bar",
-            )
+            .dry_run_json(&file_path.to_string_lossy(), "foo", "bar")
             .await
             .unwrap();
 
@@ -1009,11 +1008,7 @@ mod tests {
         let editor = StringReplaceEditor::with_config(config);
 
         let result = editor
-            .dry_run_json(
-                &file_path.to_string_lossy(),
-                "nonexistent",
-                "replacement",
-            )
+            .dry_run_json(&file_path.to_string_lossy(), "nonexistent", "replacement")
             .await
             .unwrap();
 

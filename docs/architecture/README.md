@@ -10,7 +10,7 @@ This directory contains comprehensive architecture documentation for the Fluent 
 **High-level system overview and design principles**
 
 - Overall system architecture and layered design
-- Core components and their responsibilities  
+- Core components and their responsibilities
 - Key design patterns and architectural decisions
 - Integration points and extensibility mechanisms
 - Performance considerations and scalability

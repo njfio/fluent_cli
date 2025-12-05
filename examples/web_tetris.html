@@ -17,44 +17,44 @@
             align-items: center;
             min-height: 100vh;
         }
-        
+
         .game-container {
             display: flex;
             gap: 20px;
             align-items: flex-start;
         }
-        
+
         .game-board {
             border: 2px solid #fff;
             background: #000;
         }
-        
+
         .side-panel {
             display: flex;
             flex-direction: column;
             gap: 20px;
             width: 150px;
         }
-        
+
         .info-box {
             background: #333;
             padding: 15px;
             border-radius: 5px;
             text-align: center;
         }
-        
+
         .preview-canvas {
             border: 1px solid #666;
             background: #111;
             margin: 10px auto;
             display: block;
         }
-        
+
         .controls {
             font-size: 12px;
             line-height: 1.4;
         }
-        
+
         .game-over {
             position: fixed;
             top: 50%;
@@ -66,7 +66,7 @@
             text-align: center;
             display: none;
         }
-        
+
         button {
             background: #555;
             color: white;
@@ -76,7 +76,7 @@
             cursor: pointer;
             margin-top: 10px;
         }
-        
+
         button:hover {
             background: #777;
         }
@@ -116,7 +116,7 @@
             </div>
         </div>
     </div>
-    
+
     <div id="gameOver" class="game-over">
         <h2>Game Over!</h2>
         <div>Final Score: <span id="finalScore">0</span></div>
@@ -204,14 +204,14 @@
             rotate() {
                 const newShape = [];
                 const size = this.shape.length;
-                
+
                 for (let i = 0; i < size; i++) {
                     newShape[i] = [];
                     for (let j = 0; j < size; j++) {
                         newShape[i][j] = this.shape[size - 1 - j][i];
                     }
                 }
-                
+
                 return new Piece(this.type, this.x, this.y);
             }
 
@@ -250,26 +250,26 @@
             // Check if a position is valid for a piece
             isValidPosition(piece) {
                 const positions = piece.getFilledPositions();
-                
+
                 for (const pos of positions) {
                     // Check boundaries
                     if (pos.x < 0 || pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT) {
                         return false;
                     }
-                    
+
                     // Check collision with existing blocks (ignore negative y for spawning)
                     if (pos.y >= 0 && this.grid[pos.y][pos.x] !== null) {
                         return false;
                     }
                 }
-                
+
                 return true;
             }
 
             // Place a piece on the board
             placePiece(piece) {
                 const positions = piece.getFilledPositions();
-                
+
                 for (const pos of positions) {
                     if (pos.y >= 0) {
                         this.grid[pos.y][pos.x] = piece.color;
@@ -280,7 +280,7 @@
             // Check and clear completed lines
             clearLines() {
                 let linesCleared = 0;
-                
+
                 for (let row = BOARD_HEIGHT - 1; row >= 0; row--) {
                     if (this.grid[row].every(cell => cell !== null)) {
                         this.grid.splice(row, 1);
@@ -289,7 +289,7 @@
                         row++; // Check the same row again
                     }
                 }
-                
+
                 return linesCleared;
             }
 
@@ -307,14 +307,14 @@
                 // Draw grid lines
                 this.ctx.strokeStyle = '#333';
                 this.ctx.lineWidth = 1;
-                
+
                 for (let x = 0; x <= BOARD_WIDTH; x++) {
                     this.ctx.beginPath();
                     this.ctx.moveTo(x * CELL_SIZE, 0);
                     this.ctx.lineTo(x * CELL_SIZE, BOARD_HEIGHT * CELL_SIZE);
                     this.ctx.stroke();
                 }
-                
+
                 for (let y = 0; y <= BOARD_HEIGHT; y++) {
                     this.ctx.beginPath();
                     this.ctx.moveTo(0, y * CELL_SIZE);
@@ -346,7 +346,7 @@
             drawCell(x, y, color) {
                 this.ctx.fillStyle = color;
                 this.ctx.fillRect(x * CELL_SIZE + 1, y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
-                
+
                 // Add highlight effect
                 this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
                 this.ctx.fillRect(x * CELL_SIZE + 1, y * CELL_SIZE + 1, CELL_SIZE - 2, 3);
@@ -369,15 +369,15 @@
                 this.lastFallTime = 0;
                 this.gameOver = false;
                 this.paused = false;
-                
+
                 this.nextCanvas = document.getElementById('nextCanvas');
                 this.nextCtx = this.nextCanvas.getContext('2d');
                 this.holdCanvas = document.getElementById('holdCanvas');
                 this.holdCtx = this.holdCanvas.getContext('2d');
-                
+
                 this.pieceTypes = Object.keys(TETROMINOES);
                 this.bag = [];
-                
+
                 this.setupEventListeners();
                 this.spawnPiece();
                 this.gameLoop();
@@ -401,43 +401,43 @@
                 if (!this.nextPiece) {
                     this.nextPiece = new Piece(this.getNextPieceType());
                 }
-                
+
                 this.currentPiece = this.nextPiece;
                 this.nextPiece = new Piece(this.getNextPieceType());
                 this.canHold = true;
-                
+
                 // Check game over
                 if (!this.board.isValidPosition(this.currentPiece)) {
                     this.endGame();
                     return;
                 }
-                
+
                 this.renderPreviews();
             }
 
             // Move piece with wall kick attempts
             movePiece(dx, dy) {
                 if (!this.currentPiece || this.gameOver) return false;
-                
+
                 const newPiece = this.currentPiece.copy();
                 newPiece.x += dx;
                 newPiece.y += dy;
-                
+
                 if (this.board.isValidPosition(newPiece)) {
                     this.currentPiece = newPiece;
                     return true;
                 }
-                
+
                 return false;
             }
 
             // Rotate piece with wall kicks
             rotatePiece() {
                 if (!this.currentPiece || this.gameOver) return;
-                
+
                 const rotatedPiece = this.currentPiece.copy();
                 const size = rotatedPiece.shape.length;
-                
+
                 // Perform rotation
                 for (let i = 0; i < size; i++) {
                     for (let j = 0; j < size; j++) {

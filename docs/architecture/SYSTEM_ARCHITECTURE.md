@@ -165,7 +165,7 @@ Pipeline Definition → YAML Parser → Step Executor → Engine Calls → Resul
 
 ### 3. Agentic Execution Flow
 ```
-Goal Definition → Reasoning Engine → Action Planning → Tool Execution → Observation → 
+Goal Definition → Reasoning Engine → Action Planning → Tool Execution → Observation →
 Memory Update → Goal Assessment → [Loop until complete]
 ```
 

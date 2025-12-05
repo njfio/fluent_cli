@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
-use log::{debug, warn};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
 /// Secure string that clears memory on drop
 #[derive(Clone)]
@@ -246,8 +246,8 @@ impl AuthManager {
 
         // Use the centralized secure HTTP client builder with extended timeout for LLM APIs
         let client = crate::http_client::create_client_builder_with_timeout(
-            std::time::Duration::from_secs(10),  // 10s connect timeout
-            std::time::Duration::from_secs(60),  // 60s request timeout for API calls
+            std::time::Duration::from_secs(10), // 10s connect timeout
+            std::time::Duration::from_secs(60), // 60s request timeout for API calls
         )
         .default_headers(headers)
         .user_agent("fluent-cli/0.1")
@@ -382,7 +382,8 @@ mod tests {
         if let Err(e) = result {
             let err_msg = e.to_string();
             assert!(
-                err_msg.to_lowercase().contains("api key") || err_msg.to_lowercase().contains("token"),
+                err_msg.to_lowercase().contains("api key")
+                    || err_msg.to_lowercase().contains("token"),
                 "Error message should mention API key or token: {}",
                 err_msg
             );
@@ -442,7 +443,8 @@ mod tests {
                 err_msg
             );
             assert!(
-                err_msg.contains("OPENAI_API_KEY") || err_msg.to_lowercase().contains("environment variable"),
+                err_msg.contains("OPENAI_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
                 "Error should mention OPENAI_API_KEY or environment variable: {}",
                 err_msg
             );
@@ -463,7 +465,8 @@ mod tests {
                 err_msg
             );
             assert!(
-                err_msg.contains("ANTHROPIC_API_KEY") || err_msg.to_lowercase().contains("environment variable"),
+                err_msg.contains("ANTHROPIC_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
                 "Error should mention ANTHROPIC_API_KEY or environment variable: {}",
                 err_msg
             );
@@ -484,7 +487,8 @@ mod tests {
                 err_msg
             );
             assert!(
-                err_msg.contains("GOOGLE_API_KEY") || err_msg.to_lowercase().contains("environment variable"),
+                err_msg.contains("GOOGLE_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
                 "Error should mention GOOGLE_API_KEY or environment variable: {}",
                 err_msg
             );

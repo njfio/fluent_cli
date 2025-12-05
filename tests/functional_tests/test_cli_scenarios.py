@@ -15,12 +15,12 @@ from pathlib import Path
 
 class CLITestRunner:
     """Test runner for Fluent CLI scenarios"""
-    
+
     def __init__(self):
         self.temp_dir = tempfile.mkdtemp()
         self.test_files = {}
         print(f"Using temporary directory: {self.temp_dir}")
-        
+
     def create_test_file(self, filename, content):
         """Create a test file in the temporary directory"""
         filepath = os.path.join(self.temp_dir, filename)
@@ -28,7 +28,7 @@ class CLITestRunner:
             f.write(content)
         self.test_files[filename] = filepath
         return filepath
-    
+
     def run_command(self, args, expect_success=True):
         """Run a fluent CLI command and return the result"""
         cmd = ['fluent'] + args
@@ -52,7 +52,7 @@ class CLITestRunner:
         except Exception as e:
             print(f"💥 Command failed with exception: {' '.join(cmd)} - {e}")
             return None
-    
+
     def cleanup(self):
         """Clean up temporary files"""
         import shutil
@@ -61,24 +61,24 @@ class CLITestRunner:
 def test_global_options():
     """Test global CLI options"""
     print("📋 Testing Global Options")
-    
+
     runner = CLITestRunner()
-    
+
     # Test help options
     result = runner.run_command(['--help'])
     assert result and result.returncode == 0, "Help command should succeed"
     assert 'fluent' in result.stdout, "Help should contain 'fluent'"
-    
+
     result = runner.run_command(['-h'])
     assert result and result.returncode == 0, "Short help should succeed"
-    
+
     # Test version options
     result = runner.run_command(['--version'])
     assert result and result.returncode == 0, "Version command should succeed"
-    
+
     result = runner.run_command(['-V'])
     assert result and result.returncode == 0, "Short version should succeed"
-    
+
     # Test config options
     config_content = {
         'engines': [{
@@ -95,23 +95,23 @@ def test_global_options():
             }
         }]
     }
-    
+
     config_file = runner.create_test_file('test_config.yaml', yaml.dump(config_content))
     result = runner.run_command(['--config', config_file, '--help'])
     assert result and result.returncode == 0, "Config option should work"
-    
+
     result = runner.run_command(['-c', config_file, '--help'])
     assert result and result.returncode == 0, "Short config option should work"
-    
+
     runner.cleanup()
     print("✅ Global options tests passed")
 
 def test_pipeline_scenarios():
     """Test pipeline command scenarios"""
     print("📋 Testing Pipeline Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Create test pipeline
     pipeline_content = {
         'name': 'test_pipeline',
@@ -121,9 +121,9 @@ def test_pipeline_scenarios():
             'request': 'Hello, world!'
         }]
     }
-    
+
     pipeline_file = runner.create_test_file('test_pipeline.yaml', yaml.dump(pipeline_content))
-    
+
     # Create test config
     config_content = {
         'engines': [{
@@ -138,13 +138,13 @@ def test_pipeline_scenarios():
             'parameters': {}
         }]
     }
-    
+
     config_file = runner.create_test_file('test_config.yaml', yaml.dump(config_content))
-    
+
     # Test pipeline help
     result = runner.run_command(['pipeline', '--help'])
     assert result and result.returncode == 0, "Pipeline help should succeed"
-    
+
     # Test pipeline with required file
     result = runner.run_command(['pipeline', '--file', pipeline_file, '--config', config_file, '--dry-run'])
     assert result and result.returncode == 0, "Pipeline dry-run should complete without errors"
@@ -169,13 +169,13 @@ def test_pipeline_scenarios():
 def test_agent_scenarios():
     """Test agent command scenarios"""
     print("📋 Testing Agent Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Test agent help
     result = runner.run_command(['agent', '--help'])
     assert result and result.returncode == 0, "Agent help should succeed"
-    
+
     # Test agent with goal
     result = runner.run_command([
         'agent',
@@ -185,22 +185,22 @@ def test_agent_scenarios():
         '--dry-run'
     ])
     # Should at least parse correctly
-    
+
     # Create test goal file
     goal_content = {
         'goal_description': 'Create a simple function',
         'max_iterations': 5,
         'success_criteria': ['Function compiles without errors']
     }
-    
+
     # Write as TOML
     goal_toml = '''goal_description = "Create a simple function"
 max_iterations = 5
 success_criteria = ["Function compiles without errors"]
 '''
-    
+
     goal_file = runner.create_test_file('test_goal.toml', goal_toml)
-    
+
     # Test agent with goal file
     result = runner.run_command([
         'agent',
@@ -211,57 +211,57 @@ success_criteria = ["Function compiles without errors"]
         '--dry-run'
     ])
     # Should at least parse correctly
-    
+
     runner.cleanup()
     print("✅ Agent scenarios tests passed")
 
 def test_mcp_scenarios():
     """Test MCP command scenarios"""
     print("📋 Testing MCP Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Test MCP help
     result = runner.run_command(['mcp', '--help'])
     assert result and result.returncode == 0, "MCP help should succeed"
-    
+
     # Test MCP subcommands help
     result = runner.run_command(['mcp', 'server', '--help'])
     assert result and result.returncode == 0, "MCP server help should succeed"
-    
+
     result = runner.run_command(['mcp', 'client', '--help'])
     assert result and result.returncode == 0, "MCP client help should succeed"
-    
+
     runner.cleanup()
     print("✅ MCP scenarios tests passed")
 
 def test_error_scenarios():
     """Test error handling scenarios"""
     print("📋 Testing Error Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Test invalid command
     result = runner.run_command(['invalid-command'], expect_success=False)
     assert result and result.returncode != 0, "Invalid command should fail"
-    
+
     # Test missing required arguments
     result = runner.run_command(['pipeline'], expect_success=False)
     assert result and result.returncode != 0, "Pipeline without --file should fail"
-    
+
     # Test invalid subcommand
     result = runner.run_command(['pipeline', 'invalid-subcommand'], expect_success=False)
     assert result and result.returncode != 0, "Invalid subcommand should fail"
-    
+
     runner.cleanup()
     print("✅ Error scenarios tests passed")
 
 def test_complex_combinations():
     """Test complex command combinations"""
     print("📋 Testing Complex Combinations")
-    
+
     runner = CLITestRunner()
-    
+
     # Create test config
     config_content = {
         'engines': [{
@@ -278,17 +278,17 @@ def test_complex_combinations():
             }
         }]
     }
-    
+
     config_file = runner.create_test_file('test_config.yaml', yaml.dump(config_content))
-    
+
     # Test multiple global options
     result = runner.run_command(['--config', config_file, '--help'])
     assert result and result.returncode == 0, "Multiple global options should work"
-    
+
     # Test nested subcommands
     result = runner.run_command(['tools', 'list', '--json'])
     # Should at least parse correctly
-    
+
     # Test all major commands help
     commands = [
         ['pipeline', '--help'],
@@ -298,61 +298,61 @@ def test_complex_combinations():
         ['tools', '--help'],
         ['engine', '--help']
     ]
-    
+
     for cmd in commands:
         result = runner.run_command(cmd)
         assert result and result.returncode == 0, f"Help for {' '.join(cmd)} should succeed"
-    
+
     runner.cleanup()
     print("✅ Complex combinations tests passed")
 
 def test_tools_scenarios():
     """Test tools command scenarios"""
     print("📋 Testing Tools Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Test tools help
     result = runner.run_command(['tools', '--help'])
     assert result and result.returncode == 0, "Tools help should succeed"
-    
+
     # Test tools list with all options
     result = runner.run_command(['tools', 'list', '--category', 'file', '--search', 'read', '--json', '--available', '--detailed'])
     # Should at least parse correctly
-    
+
     # Test tools describe with all options
     result = runner.run_command(['tools', 'describe', 'read_file', '--json', '--schema', '--examples'])
     # Should at least parse correctly
-    
+
     # Test tools exec with options
     result = runner.run_command(['tools', 'exec', 'read_file', '--json-output'])
     # Should at least parse correctly
-    
+
     # Test tools categories with json
     result = runner.run_command(['tools', 'categories', '--json'])
     # Should at least parse correctly
-    
+
     runner.cleanup()
     print("✅ Tools scenarios tests passed")
 
 def test_engine_scenarios():
     """Test engine command scenarios"""
     print("📋 Testing Engine Scenarios")
-    
+
     runner = CLITestRunner()
-    
+
     # Test engine help
     result = runner.run_command(['engine', '--help'])
     assert result and result.returncode == 0, "Engine help should succeed"
-    
+
     # Test engine list with json
     result = runner.run_command(['engine', 'list', '--json'])
     # Should at least parse correctly
-    
+
     # Test engine test (will fail without valid config, but should parse)
     result = runner.run_command(['engine', 'test', 'nonexistent-engine'], expect_success=False)
     # Parsing should work, but execution will fail
-    
+
     runner.cleanup()
     print("✅ Engine scenarios tests passed")
 
@@ -360,7 +360,7 @@ def main():
     """Run all test scenarios"""
     print("🧪 Fluent CLI Advanced Scenario Tests")
     print("=====================================")
-    
+
     try:
         test_global_options()
         test_pipeline_scenarios()
@@ -370,7 +370,7 @@ def main():
         test_complex_combinations()
         test_tools_scenarios()
         test_engine_scenarios()
-        
+
         print("\n🎉 All advanced scenario tests passed!")
         return 0
     except Exception as e:

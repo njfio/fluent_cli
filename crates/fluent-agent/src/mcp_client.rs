@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -10,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::timeout;
+use tracing::warn;
 use tracing::{error, info, instrument, warn as tracing_warn};
 use uuid::Uuid;
 

@@ -47,12 +47,12 @@ echo ""
 if [ "$HAS_OPENAI" = true ] || [ "$HAS_ANTHROPIC" = true ] || [ "$HAS_GOOGLE" = true ]; then
     echo "🧪 Test 2: Real LLM integration test"
     echo "Testing with available API keys..."
-    
+
     # Create a simple agent config that uses available engines
     cat > test_agent_config.json << EOF
 {
   "reasoning_engine": "openai",
-  "action_engine": "openai", 
+  "action_engine": "openai",
   "reflection_engine": "openai",
   "memory_database": "test_agent_memory.db",
   "tools": {
@@ -65,7 +65,7 @@ EOF
 
     echo "Running real LLM test..."
     timeout 30s cargo run --package fluent-cli -- --agentic --goal "Create a simple hello world function in Rust" --agent-config ./test_agent_config.json --config ./config_test.json openai
-    
+
     echo ""
     echo "✅ Test 2 Complete: Real LLM integration"
 else

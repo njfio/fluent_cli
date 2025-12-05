@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
 use crate::types::{Cost, Usage};
 

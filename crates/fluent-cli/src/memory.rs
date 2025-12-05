@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info, warn};
 use std::fs;
 use std::path::Path;
+use tracing::{debug, info, warn};
 
 // Thread-local storage for cleanup counter
 std::thread_local! {

@@ -1,7 +1,9 @@
 use anyhow::Result;
 use fluent_agent::Agent;
-use fluent_core::types::{Cost, ExtractedContent, Request, Response, Usage, UpsertRequest, UpsertResponse};
 use fluent_core::neo4j_client::Neo4jClient;
+use fluent_core::types::{
+    Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
+};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
