@@ -164,6 +164,14 @@ impl Engine for AnthropicEngine {
             // Add the user's request to the messages
             payload["messages"][0]["content"] = json!(request.payload);
 
+            // Debug log the actual payload being sent (with content)
+            debug!(
+                "Anthropic API request: model={} content_len={} max_tokens={}",
+                payload.get("model").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                request.payload.len(),
+                payload.get("max_tokens").and_then(|v| v.as_i64()).unwrap_or(0)
+            );
+
             let url = format!(
                 "{}://{}:{}{}",
                 self.config.connection.protocol,

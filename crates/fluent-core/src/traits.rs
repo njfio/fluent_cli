@@ -179,14 +179,14 @@ pub trait EngineConfigProcessor {
 pub struct AnthropicConfigProcessor;
 impl EngineConfigProcessor for AnthropicConfigProcessor {
     fn process_config(&self, config: &EngineConfig) -> Result<serde_json::Value> {
-        debug!("AnthropicConfigProcessor::process_config");
-        debug!("Config: {:#?}", config);
+        // Note: Detailed logging moved to anthropic.rs after content is added
+        // This creates a template that gets filled with actual content later
 
         let mut payload = json!({
             "messages": [
                 {
                     "role": "user",
-                    "content": "" // This will be filled later with the actual request
+                    "content": "" // Filled by anthropic.rs execute() with actual request
                 }
             ],
             "model": config.parameters.get("modelName")
@@ -219,7 +219,6 @@ impl EngineConfigProcessor for AnthropicConfigProcessor {
             }
         }
 
-        debug!("Anthropic Payload: {:#?}", payload);
         Ok(payload)
     }
 }
