@@ -70,120 +70,9 @@ impl TodoItem {
     }
 }
 
-/// Goal completion criteria for structured validation
-///
-/// Defines what "done" looks like for a goal with specific validation rules
-#[derive(Debug, Clone)]
-pub struct GoalCompletionCriteria {
-    /// Files that must exist for goal completion
-    pub required_files: Vec<String>,
-    /// Whether tests must pass for completion
-    pub required_tests_pass: bool,
-    /// Minimum code size in bytes (for non-empty file validation)
-    pub min_code_size: Option<usize>,
-    /// Whether code must compile/lint clean
-    pub must_compile_clean: bool,
-    /// Custom validation strings to look for in outputs
-    pub custom_checks: Vec<String>,
-    /// Required keywords that must appear in created files (game-specific, research keywords, etc.)
-    pub required_keywords: Vec<String>,
-}
-
-impl GoalCompletionCriteria {
-    /// Create default criteria for game goals
-    pub fn for_game_goal(game_type: &str, file_path: &str, file_extension: &str) -> Self {
-        let required_keywords = match game_type {
-            "solitaire" => vec!["card", "deck", "pile", "tableau", "foundation"],
-            "tetris" => vec!["tetromino", "grid", "rotate", "block"],
-            "snake" => vec!["snake", "food", "direction"],
-            "pong" => vec!["paddle", "ball", "bounce"],
-            "breakout" => vec!["paddle", "ball", "brick"],
-            "minesweeper" => vec!["mine", "grid", "reveal", "flag"],
-            "tower" => vec!["tower", "enemy", "wave", "path", "projectile"],
-            "space" | "shooter" => vec!["player", "enemy", "bullet", "shoot", "score"],
-            _ => vec!["game", "update", "draw"],
-        }
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-
-        let min_size = if file_extension == "html" {
-            2000
-        } else if file_extension == "lua" {
-            1000
-        } else {
-            800
-        };
-
-        Self {
-            required_files: vec![file_path.to_string()],
-            required_tests_pass: false, // Games typically don't need tests to pass
-            min_code_size: Some(min_size),
-            must_compile_clean: false, // Not all game languages can be compiled easily
-            custom_checks: vec![],
-            required_keywords,
-        }
-    }
-
-    /// Create default criteria for code goals
-    pub fn for_code_goal(files: Vec<String>, needs_tests: bool) -> Self {
-        Self {
-            required_files: files,
-            required_tests_pass: needs_tests,
-            min_code_size: Some(100), // At least some code content
-            must_compile_clean: true,
-            custom_checks: vec![],
-            required_keywords: vec![],
-        }
-    }
-
-    /// Create default criteria for research goals
-    pub fn for_research_goal(output_files: Vec<String>) -> Self {
-        Self {
-            required_files: output_files,
-            required_tests_pass: false,
-            min_code_size: Some(1000), // At least 1KB of research content
-            must_compile_clean: false,
-            custom_checks: vec![],
-            required_keywords: vec![],
-        }
-    }
-}
-
-/// Result of goal completion check
-#[derive(Debug, Clone)]
-pub struct CompletionResult {
-    /// Whether the goal is complete
-    pub is_complete: bool,
-    /// Progress percentage (0-100)
-    pub progress_percentage: u8,
-    /// Items that are still missing or incomplete
-    pub missing_items: Vec<String>,
-    /// Items that were successfully completed
-    pub completed_items: Vec<String>,
-}
-
-impl CompletionResult {
-    /// Create a complete result
-    pub fn complete() -> Self {
-        Self {
-            is_complete: true,
-            progress_percentage: 100,
-            missing_items: vec![],
-            completed_items: vec![],
-        }
-    }
-
-    /// Create an incomplete result with specific missing items
-    pub fn incomplete(progress: u8, missing: Vec<String>, completed: Vec<String>) -> Self {
-        Self {
-            is_complete: false,
-            progress_percentage: progress,
-            missing_items: missing,
-            completed_items: completed,
-        }
-    }
-}
+// Note: Goal completion is now handled dynamically via should_complete_goal()
+// which tracks files created this session and todo completion status,
+// rather than using hardcoded game types and file patterns.
 
 /// Validate that generated game code matches the expected game type
 fn validate_game_output(
@@ -1184,6 +1073,8 @@ pub struct AutonomousExecutor<'a> {
     todo_list: Vec<TodoItem>,
     /// Tool registry for executing structured actions
     tool_registry: Arc<fluent_agent::tools::ToolRegistry>,
+    /// Files created during this session (for completion tracking)
+    files_created_this_session: Vec<String>,
 }
 
 /// Result of executing a structured action
@@ -1214,6 +1105,7 @@ impl<'a> AutonomousExecutor<'a> {
             recent_observations: Vec::new(),
             todo_list: Vec::new(),
             tool_registry,
+            files_created_this_session: Vec::new(),
         }
     }
 
@@ -1251,6 +1143,16 @@ impl<'a> AutonomousExecutor<'a> {
             .await
         {
             Ok(output) => {
+                // Track files created this session for dynamic completion checking
+                if tool_name == "write_file" || tool_name == "file_system" {
+                    if let Some(serde_json::Value::String(path)) = action.parameters.get("path") {
+                        if !self.files_created_this_session.contains(path) {
+                            self.files_created_this_session.push(path.clone());
+                            debug!("agent.session.file_created path='{}'", path);
+                        }
+                    }
+                }
+
                 let truncated_output = if output.len() > 1000 {
                     format!("{}... (truncated {} chars)", &output[..1000], output.len() - 1000)
                 } else {
@@ -2197,293 +2099,76 @@ impl<'a> AutonomousExecutor<'a> {
         }
     }
 
-    /// Check goal completion against structured criteria
+    /// Check if goal should be completed
     ///
-    /// This is the main structured goal completion checker that evaluates:
-    /// - Required files exist and have minimum size
-    /// - Required keywords appear in files
-    /// - Tests pass (if required)
-    /// - Code compiles clean (if required)
-    /// - Custom validation checks pass
-    fn check_goal_completion(&mut self, criteria: &GoalCompletionCriteria) -> CompletionResult {
-        let mut missing_items = Vec::new();
-        let mut completed_items = Vec::new();
-        let mut total_checks = 0;
-        let mut passed_checks = 0;
+    /// Uses dynamic, session-aware completion checking instead of hardcoded patterns.
+    /// The agent is complete when:
+    /// 1. All todos are completed (primary indicator)
+    /// 2. At least one file was created in this session (for file-producing goals)
+    /// 3. No todos have failed status
+    fn should_complete_goal(&mut self, iteration: u32, _max_iterations: u32) -> bool {
+        // Count todo statuses
+        let total_todos = self.todo_list.len();
+        let completed_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Completed).count();
+        let failed_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Failed).count();
+        let pending_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Pending).count();
+        let in_progress_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::InProgress).count();
 
-        // Check 1: Required files exist and have minimum size
-        total_checks += criteria.required_files.len();
-        for file_path in &criteria.required_files {
-            if let Ok(metadata) = fs::metadata(file_path) {
-                let file_size = metadata.len() as usize;
+        // Log completion check status
+        info!(
+            "agent.completion.check iteration={} todos={{total={}, completed={}, failed={}, pending={}, in_progress={}}} files_created={}",
+            iteration, total_todos, completed_todos, failed_todos, pending_todos, in_progress_todos, self.files_created_this_session.len()
+        );
 
-                // Check minimum size if specified
-                if let Some(min_size) = criteria.min_code_size {
-                    if file_size >= min_size {
-                        passed_checks += 1;
-                        completed_items.push(format!(
-                            "File exists with sufficient size: {} ({} bytes)",
-                            file_path, file_size
-                        ));
-                    } else {
-                        missing_items.push(format!(
-                            "File too small: {} ({} bytes, need {} bytes)",
-                            file_path, file_size, min_size
-                        ));
-                    }
-                } else {
-                    passed_checks += 1;
-                    completed_items.push(format!("File exists: {}", file_path));
-                }
-            } else {
-                missing_items.push(format!("File does not exist: {}", file_path));
-            }
+        // If there are failed todos, we're not complete
+        if failed_todos > 0 {
+            debug!("agent.completion.blocked reason='failed_todos' count={}", failed_todos);
+            return false;
         }
 
-        // Check 2: Required keywords in files (for games, research, etc.)
-        if !criteria.required_keywords.is_empty() {
-            total_checks += 1;
-            let mut found_keywords = 0;
-            let keywords_needed = (criteria.required_keywords.len() as f32 * 0.6).ceil() as usize; // Need 60% of keywords
+        // If there are still pending or in-progress todos, we're not complete
+        if pending_todos > 0 || in_progress_todos > 0 {
+            debug!("agent.completion.blocked reason='incomplete_todos' pending={} in_progress={}", pending_todos, in_progress_todos);
+            return false;
+        }
 
-            for file_path in &criteria.required_files {
-                if let Ok(content) = fs::read_to_string(file_path) {
-                    let content_lower = content.to_lowercase();
-                    for keyword in &criteria.required_keywords {
-                        if content_lower.contains(&keyword.to_lowercase()) {
-                            found_keywords += 1;
+        // All todos must be completed
+        if total_todos > 0 && completed_todos == total_todos {
+            // Verify we actually created something this session
+            if !self.files_created_this_session.is_empty() {
+                // Verify created files exist and have content
+                for file_path in &self.files_created_this_session {
+                    if let Ok(metadata) = fs::metadata(file_path) {
+                        if metadata.len() > 100 {
+                            self.tui.add_log(format!(
+                                "✅ Goal complete: All {} todos done, created {} ({} bytes)",
+                                total_todos, file_path, metadata.len()
+                            ));
+                            info!(
+                                "agent.completion.success todos={} files_created={} primary_file='{}' size={}",
+                                completed_todos, self.files_created_this_session.len(), file_path, metadata.len()
+                            );
+                            return true;
                         }
                     }
                 }
-            }
-
-            if found_keywords >= keywords_needed {
-                passed_checks += 1;
-                completed_items.push(format!(
-                    "Keywords found: {}/{} (needed {})",
-                    found_keywords,
-                    criteria.required_keywords.len(),
-                    keywords_needed
-                ));
+                // Files were tracked but may not exist (write failed)
+                debug!("agent.completion.blocked reason='files_not_verified'");
+                return false;
             } else {
-                missing_items.push(format!(
-                    "Insufficient keywords: {}/{} (need {})",
-                    found_keywords,
-                    criteria.required_keywords.len(),
-                    keywords_needed
-                ));
-            }
-        }
-
-        // Check 3: Tests pass (if required)
-        if criteria.required_tests_pass {
-            total_checks += 1;
-            self.tui
-                .add_log("🧪 Running tests to verify completion...".to_string());
-
-            match Command::new("cargo").args(&["test", "--quiet"]).output() {
-                Ok(output) if output.status.success() => {
-                    passed_checks += 1;
-                    completed_items.push("Tests pass".to_string());
-                    self.tui.add_log("✅ Tests passed successfully".to_string());
-                }
-                Ok(_) => {
-                    missing_items.push("Tests are failing".to_string());
-                    self.tui.add_log("❌ Tests failed".to_string());
-                }
-                Err(e) => {
-                    missing_items.push(format!("Could not run tests: {}", e));
-                    self.tui.add_log(format!("⚠️ Could not run tests: {}", e));
+                // No files created but todos complete - might be a non-file-producing goal
+                // Complete if we've done at least 2 iterations of work
+                if iteration >= 2 {
+                    self.tui.add_log(format!(
+                        "✅ Goal complete: All {} todos done (no files required)",
+                        total_todos
+                    ));
+                    return true;
                 }
             }
         }
 
-        // Check 4: Code compiles clean (if required)
-        if criteria.must_compile_clean {
-            total_checks += 1;
-            self.tui
-                .add_log("🔧 Checking if code compiles cleanly...".to_string());
-
-            match Command::new("cargo").args(&["check", "--quiet"]).output() {
-                Ok(output) if output.status.success() => {
-                    passed_checks += 1;
-                    completed_items.push("Code compiles cleanly".to_string());
-                    self.tui
-                        .add_log("✅ Code compiles successfully".to_string());
-                }
-                Ok(_) => {
-                    missing_items.push("Code does not compile".to_string());
-                    self.tui.add_log("❌ Code compilation failed".to_string());
-                }
-                Err(e) => {
-                    missing_items.push(format!("Could not check compilation: {}", e));
-                    self.tui
-                        .add_log(format!("⚠️ Could not check compilation: {}", e));
-                }
-            }
-        }
-
-        // Check 5: Custom validation checks
-        for custom_check in &criteria.custom_checks {
-            total_checks += 1;
-            // Custom checks can be arbitrary validation logic
-            // For now, we'll just log them as requirements
-            missing_items.push(format!("Custom check pending: {}", custom_check));
-        }
-
-        // Calculate progress percentage
-        let progress_percentage = if total_checks > 0 {
-            ((passed_checks as f32 / total_checks as f32) * 100.0) as u8
-        } else {
-            0
-        };
-
-        let is_complete = missing_items.is_empty();
-
-        // Debug: Log completion check details
-        info!(
-            "agent.completion.check total_checks={} passed_checks={} missing_count={} is_complete={}",
-            total_checks, passed_checks, missing_items.len(), is_complete
-        );
-
-        if is_complete {
-            self.tui.add_log(format!(
-                "✅ Goal completion criteria met: {}/{} checks passed",
-                passed_checks, total_checks
-            ));
-        } else {
-            self.tui.add_log(format!(
-                "⏳ Goal progress: {}/{} checks passed ({}%)",
-                passed_checks, total_checks, progress_percentage
-            ));
-            self.tui
-                .add_log(format!("📋 Missing: {}", missing_items.join(", ")));
-        }
-
-        CompletionResult {
-            is_complete,
-            progress_percentage,
-            missing_items,
-            completed_items,
-        }
-    }
-
-    /// Check if goal should be completed
-    ///
-    /// This method uses structured criteria when possible, falling back to heuristics
-    fn should_complete_goal(&mut self, iteration: u32, max_iterations: u32) -> bool {
-        let description_lower = self.goal.description.to_lowercase();
-
-        // Try to determine goal type and create appropriate criteria
-        let criteria = if description_lower.contains("game") {
-            // For game goals, extract game type and expected file
-            let game_type = if description_lower.contains("solitaire") {
-                "solitaire"
-            } else if description_lower.contains("tetris") {
-                "tetris"
-            } else if description_lower.contains("snake") {
-                "snake"
-            } else if description_lower.contains("pong") {
-                "pong"
-            } else if description_lower.contains("breakout") {
-                "breakout"
-            } else if description_lower.contains("minesweeper") {
-                "minesweeper"
-            } else if description_lower.contains("tower") {
-                "tower"
-            } else if description_lower.contains("space") || description_lower.contains("shooter") {
-                "space"
-            } else {
-                "game"
-            };
-
-            // Determine file extension and path
-            let (file_ext, file_path) = if description_lower.contains("html")
-                || description_lower.contains("javascript")
-            {
-                ("html", format!("outputs/{}_web.html", game_type))
-            } else if description_lower.contains("lua") || description_lower.contains("love2d") {
-                ("lua", format!("outputs/{}_love2d/main.lua", game_type))
-            } else if description_lower.contains("python") {
-                ("py", format!("outputs/{}_pygame.py", game_type))
-            } else {
-                ("rs", format!("outputs/{}_game.rs", game_type))
-            };
-
-            Some(GoalCompletionCriteria::for_game_goal(
-                game_type, &file_path, file_ext,
-            ))
-        } else if description_lower.contains("research")
-            || description_lower.contains("write about")
-            || description_lower.contains("analyze")
-        {
-            // For research/analysis goals, check for output files
-            let output_files = if description_lower.contains("grilled cheese") {
-                vec!["grilled_cheese_research.md".to_string()]
-            } else {
-                vec!["research_output.md".to_string()]
-            };
-            Some(GoalCompletionCriteria::for_research_goal(output_files))
-        } else if description_lower.contains("code")
-            || description_lower.contains("implement")
-            || description_lower.contains("create")
-        {
-            // For code goals, we might need to infer file names from context
-            // For now, use a basic check
-            let needs_tests = description_lower.contains("test");
-            Some(GoalCompletionCriteria::for_code_goal(vec![], needs_tests))
-        } else {
-            None
-        };
-
-        // Use structured criteria if available
-        if let Some(criteria) = criteria {
-            let result = self.check_goal_completion(&criteria);
-
-            // Log progress details
-            if !result.completed_items.is_empty() {
-                debug!(
-                    "goal.completion.completed items={}",
-                    result.completed_items.len()
-                );
-            }
-            if !result.missing_items.is_empty() {
-                debug!(
-                    "goal.completion.missing items={}",
-                    result.missing_items.len()
-                );
-            }
-
-            return result.is_complete;
-        }
-
-        // Fallback to legacy heuristics for goals we can't categorize
-        if description_lower.contains("reflection") && iteration >= max_iterations / 2 {
-            self.tui.add_log(format!(
-                "🎯 Comprehensive analysis completed across {} iterations!",
-                iteration
-            ));
-            return true;
-        }
-
-        // For research goals, check if we've created substantial content
-        if iteration >= 3 {
-            // Check if research files exist and have content
-            let research_files = ["grilled_cheese_research.md", "research_output.md"];
-            for file in &research_files {
-                if let Ok(metadata) = fs::metadata(file) {
-                    if metadata.len() > 1000 {
-                        // At least 1KB of content
-                        self.tui.add_log(format!(
-                            "🎯 Research goal appears complete - substantial content created in {}",
-                            file
-                        ));
-                        return true;
-                    }
-                }
-            }
-        }
-
+        // Not complete yet
         false
     }
 }
