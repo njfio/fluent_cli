@@ -1552,15 +1552,26 @@ impl<'a> AutonomousExecutor<'a> {
             self.display_todo_summary();
 
             // Check if all todos are complete
-            let all_complete = self.todo_list.iter().all(|t| t.status == TodoStatus::Completed);
-            if all_complete && !self.todo_list.is_empty() {
+            let completed_count = self.todo_list.iter().filter(|t| t.status == TodoStatus::Completed).count();
+            let total_count = self.todo_list.len();
+            let all_complete = completed_count == total_count && total_count > 0;
+
+            info!(
+                "agent.loop.todos completed={}/{} all_complete={}",
+                completed_count, total_count, all_complete
+            );
+
+            if all_complete {
                 info!("agent.loop.complete all_todos_done iter={}", iteration);
                 self.tui.add_log("✅ All tasks completed!".to_string());
                 return Ok(());
             }
 
             // Check goal completion criteria
-            if self.should_complete_goal(iteration, max_iterations) {
+            let goal_met = self.should_complete_goal(iteration, max_iterations);
+            info!("agent.loop.goal_check goal_met={} iter={}", goal_met, iteration);
+
+            if goal_met {
                 info!("agent.loop.complete criteria_met iter={}", iteration);
                 return Ok(());
             }
@@ -2327,6 +2338,12 @@ impl<'a> AutonomousExecutor<'a> {
         };
 
         let is_complete = missing_items.is_empty();
+
+        // Debug: Log completion check details
+        info!(
+            "agent.completion.check total_checks={} passed_checks={} missing_count={} is_complete={}",
+            total_checks, passed_checks, missing_items.len(), is_complete
+        );
 
         if is_complete {
             self.tui.add_log(format!(
