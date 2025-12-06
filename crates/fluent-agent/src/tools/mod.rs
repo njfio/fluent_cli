@@ -100,30 +100,46 @@ impl ToolRegistry {
         tool_name: &str,
         parameters: &HashMap<String, serde_json::Value>,
     ) -> Result<String> {
-        // Find the executor that provides this tool
+        // Normalize tool name - map common aliases to actual registered names
+        let normalized_name = match tool_name.to_lowercase().as_str() {
+            // Shell command aliases
+            "run_command" | "execute_command" | "command" | "bash" | "exec" => "shell",
+            // File system aliases
+            "file_system" | "fs" | "file" | "files" => "filesystem",
+            // Read/write file aliases (map to filesystem)
+            "read_file" | "write_file" | "list_directory" | "create_directory" | "file_exists" => "filesystem",
+            // Rust compiler aliases
+            "compiler" | "cargo" | "rustc" | "cargo_build" | "cargo_test" | "cargo_check" | "cargo_clippy" => "rust_compiler",
+            // String replace aliases
+            "str_replace" | "replace" | "edit" | "string_replace_editor" => "string_replace",
+            // Use original name if no alias matches
+            _ => tool_name,
+        };
+
+        // Find the executor that provides this tool (using normalized name)
         for executor in self.executors.values() {
             if executor
                 .get_available_tools()
-                .contains(&tool_name.to_string())
+                .contains(&normalized_name.to_string())
             {
-                // Validate the request first
-                executor.validate_tool_request(tool_name, parameters)?;
+                // Validate the request first (use normalized name)
+                executor.validate_tool_request(normalized_name, parameters)?;
 
-                // Execute the tool
-                let result = executor.execute_tool(tool_name, parameters).await;
+                // Execute the tool (use normalized name)
+                let result = executor.execute_tool(normalized_name, parameters).await;
 
                 // Enhance the result with behavioral reminders
                 return match result {
                     Ok(output) => {
                         let enhanced_output =
-                            validation::append_behavioral_reminder(tool_name, output, true);
+                            validation::append_behavioral_reminder(normalized_name, output, true);
                         Ok(enhanced_output)
                     }
                     Err(e) => {
                         // Even for errors, provide a reminder to guide recovery
                         let error_msg = e.to_string();
                         let enhanced_error = validation::append_behavioral_reminder(
-                            tool_name,
+                            normalized_name,
                             error_msg.clone(),
                             false,
                         );
@@ -135,8 +151,9 @@ impl ToolRegistry {
         }
 
         Err(anyhow::anyhow!(
-            "Tool '{}' not found in any registered executor",
-            tool_name
+            "Tool '{}' not found in any registered executor (tried alias: '{}')",
+            tool_name,
+            normalized_name
         ))
     }
 
