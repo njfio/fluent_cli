@@ -13,7 +13,6 @@ members = [
     "crates/fluent-sdk",
     "crates/fluent-lambda",
     "crates/fluent-config",
-    "minesweeper_solitaire_game",
     "tests",
 ]
 

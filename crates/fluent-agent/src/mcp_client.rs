@@ -232,12 +232,16 @@ impl McpClient {
                             error!(request_id = %request_id, "MCP server health check failed");
                             self.is_connected
                                 .store(false, std::sync::atomic::Ordering::Relaxed);
+                            // Clean up server process before retry to prevent orphans
+                            self.cleanup_server_process().await;
                             last_error = Some(anyhow!("MCP server health check failed"));
                         }
                         Err(e) => {
                             error!(request_id = %request_id, error = %e, "MCP server health check error");
                             self.is_connected
                                 .store(false, std::sync::atomic::Ordering::Relaxed);
+                            // Clean up server process before retry to prevent orphans
+                            self.cleanup_server_process().await;
                             last_error = Some(anyhow!("MCP server health check error: {}", e));
                         }
                     }
@@ -300,6 +304,20 @@ impl McpClient {
                 Ok(false)
             }
         }
+    }
+
+    /// Clean up server process without full disconnect
+    /// Used when health check fails and we need to retry with a fresh process
+    async fn cleanup_server_process(&mut self) {
+        if let Some(mut process) = self.server_process.take() {
+            if let Err(e) = process.kill().await {
+                tracing_warn!("Failed to kill MCP server process during cleanup: {}", e);
+            }
+            // Wait briefly for process to exit
+            let _ = timeout(Duration::from_secs(2), process.wait()).await;
+        }
+        // Clear stdin as well since the process is gone
+        self.stdin = None;
     }
 
     /// Connect to MCP server with explicit health check

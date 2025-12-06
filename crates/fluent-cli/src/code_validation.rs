@@ -51,14 +51,18 @@ impl ValidationResult {
 
 /// Syntax validation check result
 #[derive(Debug, Clone)]
-struct SyntaxCheck {
-    passed: bool,
-    message: String,
-    suggestion: Option<String>,
+pub struct SyntaxCheck {
+    /// Whether the syntax check passed
+    pub passed: bool,
+    /// Description of what was checked
+    pub message: String,
+    /// Suggestion for fixing the issue if the check failed
+    pub suggestion: Option<String>,
 }
 
 impl SyntaxCheck {
-    fn passed(message: String) -> Self {
+    /// Create a passing syntax check
+    pub fn passed(message: String) -> Self {
         Self {
             passed: true,
             message,
@@ -66,7 +70,8 @@ impl SyntaxCheck {
         }
     }
 
-    fn failed(message: String, suggestion: String) -> Self {
+    /// Create a failing syntax check with suggestion
+    pub fn failed(message: String, suggestion: String) -> Self {
         Self {
             passed: false,
             message,
@@ -197,7 +202,7 @@ pub fn validate_generated_code(
 }
 
 /// Validate Rust syntax markers
-fn validate_rust_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
+pub fn validate_rust_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
     let mut checks = Vec::new();
 
     // Check for fn main() or fn keyword
@@ -238,7 +243,7 @@ fn validate_rust_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
 }
 
 /// Validate Python syntax markers
-fn validate_python_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
+pub fn validate_python_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
     let mut checks = Vec::new();
 
     // Check for def or class
@@ -277,7 +282,7 @@ fn validate_python_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
 }
 
 /// Validate JavaScript syntax markers
-fn validate_javascript_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
+pub fn validate_javascript_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
     let mut checks = Vec::new();
 
     // Check for function declarations
@@ -323,7 +328,7 @@ fn validate_javascript_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
 }
 
 /// Validate Lua syntax markers
-fn validate_lua_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
+pub fn validate_lua_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
     let mut checks = Vec::new();
 
     // Check for function or local declarations
@@ -365,7 +370,7 @@ fn validate_lua_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
 }
 
 /// Validate HTML syntax markers
-fn validate_html_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
+pub fn validate_html_syntax(code_lower: &str) -> Vec<SyntaxCheck> {
     let mut checks = Vec::new();
 
     // Check for basic HTML structure

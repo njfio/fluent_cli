@@ -349,9 +349,24 @@ impl IntelligentActionPlanner {
                 return Err(anyhow!("Unclosed JSON code block"));
             }
         } else if let Some(start) = reasoning_output.find('{') {
-            // Try to extract raw JSON
+            // Try to extract raw JSON using depth counting to find matching brace
             let after_start = &reasoning_output[start..];
-            if let Some(end) = after_start.rfind('}') {
+            let mut depth = 0;
+            let mut end_idx = None;
+            for (i, c) in after_start.chars().enumerate() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end_idx = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(end) = end_idx {
                 &after_start[..=end]
             } else {
                 return Err(anyhow!("Malformed JSON: missing closing brace"));
@@ -1213,7 +1228,7 @@ impl PlanningStrategy for ToolPlanningStrategy {
         // Determine which tool to use based on reasoning output
         let (tool_name, description) = if output.contains("shell")
             || output.contains("command")
-            || output.contains("execute") && output.contains("run")
+            || (output.contains("execute") && output.contains("run"))
         {
             ("run_command", "Execute shell command")
         } else if output.contains("read") && output.contains("file") {
@@ -1224,7 +1239,7 @@ impl PlanningStrategy for ToolPlanningStrategy {
             ("list_directory", "List directory contents")
         } else if output.contains("create") && output.contains("dir") {
             ("create_directory", "Create directory")
-        } else if output.contains("cargo") || output.contains("rust") && output.contains("build") {
+        } else if (output.contains("cargo") || output.contains("rust")) && output.contains("build") {
             ("cargo_build", "Build Rust project")
         } else if output.contains("test") && output.contains("rust") {
             ("cargo_test", "Run Rust tests")

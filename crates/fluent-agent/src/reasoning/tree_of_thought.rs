@@ -21,6 +21,12 @@ use crate::context::ExecutionContext;
 use crate::reasoning::{ReasoningCapability, ReasoningEngine};
 use fluent_core::traits::Engine;
 
+// Node quality calculation weights
+// These control the relative importance of different factors when scoring nodes
+const EVALUATION_SCORE_WEIGHT: f64 = 0.5;
+const CONFIDENCE_SCORE_WEIGHT: f64 = 0.3;
+const DEPTH_BONUS_WEIGHT: f64 = 0.2;
+
 /// Tree-of-Thought reasoning engine that explores multiple solution paths
 pub struct TreeOfThoughtEngine {
     base_engine: Arc<dyn Engine>,
@@ -752,18 +758,20 @@ Respond with just the numerical score (e.g., 0.75)"#,
 
     /// Calculate quality score for a node based on multiple factors
     fn calculate_node_quality(&self, node: &ThoughtNode) -> f64 {
-        // Factor 1: Evaluation score (0.5 weight)
+        // Factor 1: Evaluation score
         let eval_score = node.evaluation_score;
 
-        // Factor 2: Accumulated confidence (0.3 weight)
+        // Factor 2: Accumulated confidence
         let confidence_score = node.accumulated_confidence;
 
-        // Factor 3: Depth bonus - deeper exploration is valuable (0.2 weight)
+        // Factor 3: Depth bonus - deeper exploration is valuable
         // Normalize depth to 0-1 range based on max_depth
         let depth_bonus = (node.depth as f64 / self.config.max_depth as f64).min(1.0);
 
-        // Weighted combination
-        eval_score * 0.5 + confidence_score * 0.3 + depth_bonus * 0.2
+        // Weighted combination using module-level constants
+        eval_score * EVALUATION_SCORE_WEIGHT
+            + confidence_score * CONFIDENCE_SCORE_WEIGHT
+            + depth_bonus * DEPTH_BONUS_WEIGHT
     }
 
     /// Recursively remove a branch and all its descendants

@@ -100,6 +100,13 @@ fn load_env_credentials() -> HashMap<String, String> {
     credentials
 }
 
+/// Core configuration for an LLM engine instance.
+///
+/// `EngineConfig` defines the settings required to initialize and operate an engine,
+/// including its name, type, connection details, runtime parameters, and optional
+/// integrations such as Neo4j and spinner configuration. This struct is typically
+/// loaded from configuration files (YAML, JSON, or TOML) and used throughout the
+/// application to manage engine behavior.
 #[derive(Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
     pub name: String,

@@ -21,7 +21,7 @@
 use anyhow::{anyhow, Result};
 use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
-use tracing::debug; // Using log instead of tracing for compatibility
+use tracing::debug;
 
 /// Default timeout for establishing HTTP connections (10 seconds)
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
