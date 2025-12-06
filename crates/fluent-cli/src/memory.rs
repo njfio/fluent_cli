@@ -626,11 +626,11 @@ fn get_system_memory_info_linux() -> Result<SystemMemoryInfo> {
     let meminfo = fs::read_to_string("/proc/meminfo")
         .map_err(|e| anyhow!("Failed to read /proc/meminfo: {}", e))?;
 
-    let mut total_kb = 0;
-    let mut available_kb = 0;
-    let mut free_kb = 0;
-    let mut buffers_kb = 0;
-    let mut cached_kb = 0;
+    let mut total_kb: u64 = 0;
+    let mut available_kb: u64 = 0;
+    let mut free_kb: u64 = 0;
+    let mut buffers_kb: u64 = 0;
+    let mut cached_kb: u64 = 0;
 
     for line in meminfo.lines() {
         if line.starts_with("MemTotal:") {
