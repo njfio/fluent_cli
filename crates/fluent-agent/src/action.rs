@@ -1239,7 +1239,8 @@ impl PlanningStrategy for ToolPlanningStrategy {
             ("list_directory", "List directory contents")
         } else if output.contains("create") && output.contains("dir") {
             ("create_directory", "Create directory")
-        } else if (output.contains("cargo") || output.contains("rust")) && output.contains("build") {
+        } else if (output.contains("cargo") || output.contains("rust")) && output.contains("build")
+        {
             ("cargo_build", "Build Rust project")
         } else if output.contains("test") && output.contains("rust") {
             ("cargo_test", "Run Rust tests")

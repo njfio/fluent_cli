@@ -107,9 +107,12 @@ impl ToolRegistry {
             // File system aliases
             "file_system" | "fs" | "file" | "files" => "filesystem",
             // Read/write file aliases (map to filesystem)
-            "read_file" | "write_file" | "list_directory" | "create_directory" | "file_exists" => "filesystem",
+            "read_file" | "write_file" | "list_directory" | "create_directory" | "file_exists" => {
+                "filesystem"
+            }
             // Rust compiler aliases
-            "compiler" | "cargo" | "rustc" | "cargo_build" | "cargo_test" | "cargo_check" | "cargo_clippy" => "rust_compiler",
+            "compiler" | "cargo" | "rustc" | "cargo_build" | "cargo_test" | "cargo_check"
+            | "cargo_clippy" => "rust_compiler",
             // String replace aliases
             "str_replace" | "replace" | "edit" | "string_replace_editor" => "string_replace",
             // Use original name if no alias matches

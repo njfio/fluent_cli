@@ -1145,7 +1145,10 @@ impl<'a> AutonomousExecutor<'a> {
     /// Execute a structured action using the tool registry
     ///
     /// Returns the observation and whether it succeeded.
-    async fn execute_structured_action(&mut self, action: &StructuredAction) -> ActionExecutionResult {
+    async fn execute_structured_action(
+        &mut self,
+        action: &StructuredAction,
+    ) -> ActionExecutionResult {
         use fluent_agent::prompts::format_observation;
 
         let tool_name = action.get_tool_name().unwrap_or_else(|| {
@@ -1187,7 +1190,11 @@ impl<'a> AutonomousExecutor<'a> {
                 }
 
                 let truncated_output = if output.len() > 1000 {
-                    format!("{}... (truncated {} chars)", &output[..1000], output.len() - 1000)
+                    format!(
+                        "{}... (truncated {} chars)",
+                        &output[..1000],
+                        output.len() - 1000
+                    )
                 } else {
                     output.clone()
                 };
@@ -1199,8 +1206,15 @@ impl<'a> AutonomousExecutor<'a> {
                     None,
                 );
                 self.tui.add_log(format!("✅ Tool {} succeeded", tool_name));
-                info!("agent.tool.success tool='{}' output_len={}", tool_name, output.len());
-                ActionExecutionResult { observation, success: true }
+                info!(
+                    "agent.tool.success tool='{}' output_len={}",
+                    tool_name,
+                    output.len()
+                );
+                ActionExecutionResult {
+                    observation,
+                    success: true,
+                }
             }
             Err(e) => {
                 let error_msg = e.to_string();
@@ -1211,9 +1225,13 @@ impl<'a> AutonomousExecutor<'a> {
                     "",
                     Some(&error_msg),
                 );
-                self.tui.add_log(format!("❌ Tool {} failed: {}", tool_name, e));
+                self.tui
+                    .add_log(format!("❌ Tool {} failed: {}", tool_name, e));
                 warn!("agent.tool.error tool='{}' error={}", tool_name, e);
-                ActionExecutionResult { observation, success: false }
+                ActionExecutionResult {
+                    observation,
+                    success: false,
+                }
             }
         }
     }
@@ -1256,7 +1274,9 @@ impl<'a> AutonomousExecutor<'a> {
         let action_type = action.action_type.to_lowercase();
 
         // Extract file path if present
-        let file_path = action.parameters.get("path")
+        let file_path = action
+            .parameters
+            .get("path")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
@@ -1268,24 +1288,30 @@ impl<'a> AutonomousExecutor<'a> {
             let task_lower = todo.task.to_lowercase();
 
             // Match write_file to "write" or "create" todos
-            if tool_name == "write_file" || (tool_name == "file_system" && action.parameters.contains_key("content")) {
+            if tool_name == "write_file"
+                || (tool_name == "file_system" && action.parameters.contains_key("content"))
+            {
                 if task_lower.contains("write")
                     || task_lower.contains("create")
                     || task_lower.contains("generate")
                     || task_lower.contains("output")
-                    || task_lower.contains("save") {
+                    || task_lower.contains("save")
+                {
                     return Some(idx);
                 }
             }
 
             // Match read_file to "read" or "examine" or "understand" todos
-            if tool_name == "read_file" || (tool_name == "file_system" && !action.parameters.contains_key("content")) {
+            if tool_name == "read_file"
+                || (tool_name == "file_system" && !action.parameters.contains_key("content"))
+            {
                 if task_lower.contains("read")
                     || task_lower.contains("examine")
                     || task_lower.contains("understand")
                     || task_lower.contains("analyze")
                     || task_lower.contains("check")
-                    || task_lower.contains("review") {
+                    || task_lower.contains("review")
+                {
                     return Some(idx);
                 }
             }
@@ -1294,7 +1320,8 @@ impl<'a> AutonomousExecutor<'a> {
             if tool_name == "create_directory" || tool_name.contains("mkdir") {
                 if task_lower.contains("directory")
                     || task_lower.contains("folder")
-                    || task_lower.contains("structure") {
+                    || task_lower.contains("structure")
+                {
                     return Some(idx);
                 }
             }
@@ -1305,7 +1332,8 @@ impl<'a> AutonomousExecutor<'a> {
                     || task_lower.contains("execute")
                     || task_lower.contains("build")
                     || task_lower.contains("test")
-                    || task_lower.contains("compile") {
+                    || task_lower.contains("compile")
+                {
                     return Some(idx);
                 }
             }
@@ -1553,7 +1581,10 @@ impl<'a> AutonomousExecutor<'a> {
                                         let _ = self.update_todo_status(idx, TodoStatus::Completed);
                                     }
                                 }
-                                format!("Iteration {}: Game creation completed successfully", iteration)
+                                format!(
+                                    "Iteration {}: Game creation completed successfully",
+                                    iteration
+                                )
                             }
                             Err(e) => {
                                 format!("Iteration {}: Game creation failed: {}", iteration, e)
@@ -1563,7 +1594,12 @@ impl<'a> AutonomousExecutor<'a> {
                         info!("agent.loop.path general=true (legacy)");
                         // Legacy general goal handling
                         match self
-                            .handle_general_goal(&mut context, &reasoning_response, iteration, max_iterations)
+                            .handle_general_goal(
+                                &mut context,
+                                &reasoning_response,
+                                iteration,
+                                max_iterations,
+                            )
                             .await
                         {
                             Ok(()) => {
@@ -1585,7 +1621,10 @@ impl<'a> AutonomousExecutor<'a> {
             // Note: We don't early-exit on "all todos complete" because we need to verify
             // that files were actually created for file-producing goals
             let goal_met = self.should_complete_goal(iteration, max_iterations);
-            info!("agent.loop.goal_check goal_met={} iter={}", goal_met, iteration);
+            info!(
+                "agent.loop.goal_check goal_met={} iter={}",
+                goal_met, iteration
+            );
 
             if goal_met {
                 info!("agent.loop.complete criteria_met iter={}", iteration);
@@ -1683,7 +1722,9 @@ impl<'a> AutonomousExecutor<'a> {
 
     /// Perform reasoning for current iteration
     async fn perform_reasoning(&mut self, iteration: u32, max_iterations: u32) -> Result<String> {
-        use fluent_agent::prompts::{format_reasoning_prompt, AGENT_SYSTEM_PROMPT, TOOL_DESCRIPTIONS};
+        use fluent_agent::prompts::{
+            format_reasoning_prompt, AGENT_SYSTEM_PROMPT, TOOL_DESCRIPTIONS,
+        };
 
         self.tui
             .set_current_action("Analyzing goal and determining next action...".to_string());
@@ -1709,11 +1750,7 @@ impl<'a> AutonomousExecutor<'a> {
 
         // CRITICAL: Include the full system prompt so the LLM knows HOW to reason
         // The system prompt defines the ReAct algorithm and output format
-        let full_payload = format!(
-            "{}\n\n---\n\n{}",
-            AGENT_SYSTEM_PROMPT,
-            user_prompt
-        );
+        let full_payload = format!("{}\n\n---\n\n{}", AGENT_SYSTEM_PROMPT, user_prompt);
 
         let reasoning_request = Request {
             flowname: "agentic_reasoning".to_string(),
@@ -1780,7 +1817,10 @@ impl<'a> AutonomousExecutor<'a> {
         // Track the created file for completion checking
         if !self.files_created_this_session.contains(&file_path) {
             self.files_created_this_session.push(file_path.clone());
-            debug!("agent.session.file_created path='{}' (via legacy game creator)", file_path);
+            debug!(
+                "agent.session.file_created path='{}' (via legacy game creator)",
+                file_path
+            );
         }
 
         Ok(())
@@ -2230,10 +2270,26 @@ impl<'a> AutonomousExecutor<'a> {
     fn should_complete_goal(&mut self, iteration: u32, _max_iterations: u32) -> bool {
         // Count todo statuses
         let total_todos = self.todo_list.len();
-        let completed_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Completed).count();
-        let failed_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Failed).count();
-        let pending_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::Pending).count();
-        let in_progress_todos = self.todo_list.iter().filter(|t| t.status == TodoStatus::InProgress).count();
+        let completed_todos = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Completed)
+            .count();
+        let failed_todos = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Failed)
+            .count();
+        let pending_todos = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::Pending)
+            .count();
+        let in_progress_todos = self
+            .todo_list
+            .iter()
+            .filter(|t| t.status == TodoStatus::InProgress)
+            .count();
 
         // Log completion check status
         info!(
@@ -2243,13 +2299,19 @@ impl<'a> AutonomousExecutor<'a> {
 
         // If there are failed todos, we're not complete
         if failed_todos > 0 {
-            debug!("agent.completion.blocked reason='failed_todos' count={}", failed_todos);
+            debug!(
+                "agent.completion.blocked reason='failed_todos' count={}",
+                failed_todos
+            );
             return false;
         }
 
         // If there are still pending or in-progress todos, we're not complete
         if pending_todos > 0 || in_progress_todos > 0 {
-            debug!("agent.completion.blocked reason='incomplete_todos' pending={} in_progress={}", pending_todos, in_progress_todos);
+            debug!(
+                "agent.completion.blocked reason='incomplete_todos' pending={} in_progress={}",
+                pending_todos, in_progress_todos
+            );
             return false;
         }
 
@@ -2263,7 +2325,9 @@ impl<'a> AutonomousExecutor<'a> {
                         if metadata.len() > 100 {
                             self.tui.add_log(format!(
                                 "✅ Goal complete: All {} todos done, created {} ({} bytes)",
-                                total_todos, file_path, metadata.len()
+                                total_todos,
+                                file_path,
+                                metadata.len()
                             ));
                             info!(
                                 "agent.completion.success todos={} files_created={} primary_file='{}' size={}",
@@ -2289,8 +2353,12 @@ impl<'a> AutonomousExecutor<'a> {
 
                 if requires_files {
                     // Goal requires files but none were created - not complete
-                    debug!("agent.completion.blocked reason='file_producing_goal_no_files' goal='{}'", self.goal.description);
-                    self.tui.add_log("⏳ Waiting for file creation...".to_string());
+                    debug!(
+                        "agent.completion.blocked reason='file_producing_goal_no_files' goal='{}'",
+                        self.goal.description
+                    );
+                    self.tui
+                        .add_log("⏳ Waiting for file creation...".to_string());
                     return false;
                 } else {
                     // Non-file-producing goal (analysis, research, etc.)
