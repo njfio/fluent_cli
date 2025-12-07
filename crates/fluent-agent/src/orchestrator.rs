@@ -6,6 +6,10 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::fs;
 use tokio::sync::RwLock;
+use tokio::time::timeout;
+
+/// Default timeout for acquiring locks to prevent deadlocks
+const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 // use uuid::Uuid;
 use strum_macros::{Display, EnumString};
 
@@ -272,7 +276,9 @@ impl AgentOrchestrator {
 
         // Update metrics
         {
-            let mut metrics = self.metrics.write().await;
+            let mut metrics = timeout(LOCK_TIMEOUT, self.metrics.write())
+                .await
+                .map_err(|_| anyhow!("Timeout acquiring metrics lock in execute_goal"))?;
             metrics.total_goals_processed += 1;
         }
 
@@ -414,7 +420,9 @@ impl AgentOrchestrator {
             self.memory_system.update_memory(&context).await?;
 
             // Advanced Self-reflection: Evaluate progress and adjust strategy if needed
-            let mut reflection_engine = self.reflection_engine.write().await;
+            let mut reflection_engine = timeout(LOCK_TIMEOUT, self.reflection_engine.write())
+                .await
+                .map_err(|_| anyhow!("Timeout acquiring reflection_engine lock"))?;
             if let Some(trigger) = reflection_engine.should_reflect(&context) {
                 // Create checkpoint before reflection
                 self.persistent_state_manager
@@ -476,7 +484,9 @@ impl AgentOrchestrator {
             last_update: SystemTime::now(),
         };
 
-        let mut state = self.state_manager.current_state.write().await;
+        let mut state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in initialize_state"))?;
         *state = initial_state;
 
         Ok(())
@@ -619,10 +629,16 @@ impl AgentOrchestrator {
             next_action_plan: reasoning.next_actions.first().cloned(),
         };
 
-        // DEADLOCK PREVENTION: Acquire locks in consistent order (state before metrics)
-        let mut state = self.state_manager.current_state.write().await;
-        let mut metrics = self.metrics.write().await;
-        let mut perf = self.performance_metrics.write().await;
+        // DEADLOCK PREVENTION: Acquire locks in consistent order with timeout
+        let mut state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in record_reasoning_step"))?;
+        let mut metrics = timeout(LOCK_TIMEOUT, self.metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_reasoning_step"))?;
+        let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_reasoning_step"))?;
 
         state.reasoning_history.push(step);
         metrics.total_reasoning_steps += 1;
@@ -666,9 +682,15 @@ impl AgentOrchestrator {
             duration: Some(duration),
         };
 
-        let mut state = self.state_manager.current_state.write().await;
-        let mut metrics = self.metrics.write().await;
-        let mut perf = self.performance_metrics.write().await;
+        let mut state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in record_action_step"))?;
+        let mut metrics = timeout(LOCK_TIMEOUT, self.metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_action_step"))?;
+        let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_action_step"))?;
 
         state.last_action = Some(step);
         metrics.total_actions_taken += 1;
@@ -691,9 +713,15 @@ impl AgentOrchestrator {
 
     /// Record an observation for analysis and learning
     async fn record_observation(&self, observation: Observation) -> Result<()> {
-        let mut state = self.state_manager.current_state.write().await;
-        let mut metrics = self.metrics.write().await;
-        let mut perf = self.performance_metrics.write().await;
+        let mut state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in record_observation"))?;
+        let mut metrics = timeout(LOCK_TIMEOUT, self.metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_observation"))?;
+        let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_observation"))?;
 
         state.observations.push(observation.clone());
         metrics.total_observations_made += 1;
@@ -707,12 +735,16 @@ impl AgentOrchestrator {
 
     /// Update the current agent state
     async fn update_state(&self, context: &ExecutionContext, iteration_count: u32) -> Result<()> {
-        let mut state = self.state_manager.current_state.write().await;
+        let mut state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in update_state"))?;
         state.current_context = context.clone();
         state.iteration_count = iteration_count;
         state.last_update = SystemTime::now();
 
-        let mut perf = self.performance_metrics.write().await;
+        let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in update_state"))?;
         perf.execution_metrics.queue_length = context.active_tasks.len() as u32;
         perf.execution_metrics.active_tasks = context.active_tasks.len() as u32;
 
@@ -725,7 +757,9 @@ impl AgentOrchestrator {
         context: &ExecutionContext,
         success: bool,
     ) -> Result<GoalResult> {
-        let state = self.state_manager.current_state.read().await;
+        let state = timeout(LOCK_TIMEOUT, self.state_manager.current_state.read())
+            .await
+            .map_err(|_| anyhow!("Timeout acquiring state lock in finalize_goal_execution"))?;
 
         Ok(GoalResult {
             success,
@@ -743,24 +777,42 @@ impl AgentOrchestrator {
 
     /// Update success metrics
     async fn update_success_metrics(&self, duration: Duration) {
-        let mut metrics = self.metrics.write().await;
-        metrics.successful_goals += 1;
-        metrics.average_goal_completion_time = (metrics.average_goal_completion_time
-            * (metrics.successful_goals - 1) as f64
-            + duration.as_millis() as f64)
-            / metrics.successful_goals as f64;
-        metrics.success_rate =
-            metrics.successful_goals as f64 / metrics.total_goals_processed as f64;
+        match timeout(LOCK_TIMEOUT, self.metrics.write()).await {
+            Ok(mut metrics) => {
+                metrics.successful_goals += 1;
+                metrics.average_goal_completion_time = (metrics.average_goal_completion_time
+                    * (metrics.successful_goals - 1) as f64
+                    + duration.as_millis() as f64)
+                    / metrics.successful_goals as f64;
+                metrics.success_rate =
+                    metrics.successful_goals as f64 / metrics.total_goals_processed as f64;
+            }
+            Err(_) => {
+                tracing::warn!("Timeout acquiring metrics lock in update_success_metrics - metrics may be stale");
+            }
+        }
     }
 
     /// Get current orchestration metrics
     pub async fn get_metrics(&self) -> OrchestrationMetrics {
-        self.metrics.read().await.clone()
+        match timeout(LOCK_TIMEOUT, self.metrics.read()).await {
+            Ok(metrics) => metrics.clone(),
+            Err(_) => {
+                tracing::warn!("Timeout acquiring metrics lock in get_metrics - returning default");
+                OrchestrationMetrics::default()
+            }
+        }
     }
 
     /// Get current agent state
     pub async fn get_current_state(&self) -> AgentState {
-        self.state_manager.current_state.read().await.clone()
+        match timeout(LOCK_TIMEOUT, self.state_manager.current_state.read()).await {
+            Ok(state) => state.clone(),
+            Err(_) => {
+                tracing::warn!("Timeout acquiring state lock in get_current_state - returning default");
+                AgentState::default()
+            }
+        }
     }
 
     /// Get the persistent state manager for advanced state operations
