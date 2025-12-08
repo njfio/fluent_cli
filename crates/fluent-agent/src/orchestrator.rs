@@ -10,6 +10,12 @@ use tokio::time::timeout;
 
 /// Default timeout for acquiring locks to prevent deadlocks
 const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum number of retries for reasoning engine calls
+const MAX_REASONING_RETRIES: u32 = 3;
+
+/// Base delay between reasoning retries (doubles each retry)
+const REASONING_RETRY_BASE_DELAY: Duration = Duration::from_secs(2);
 // use uuid::Uuid;
 use strum_macros::{Display, EnumString};
 
@@ -311,10 +317,45 @@ impl AgentOrchestrator {
                 "react.reasoning.begin context_len={}",
                 context.get_summary().len()
             );
-            let reasoning_output = self
-                .reasoning_engine
-                .reason(&context.get_summary(), &context)
-                .await?;
+
+            // Retry reasoning with exponential backoff
+            let reasoning_output = {
+                let context_summary = context.get_summary();
+                let mut last_error = None;
+                let mut reasoning_result = None;
+
+                for attempt in 0..MAX_REASONING_RETRIES {
+                    match self.reasoning_engine.reason(&context_summary, &context).await {
+                        Ok(output) => {
+                            reasoning_result = Some(output);
+                            break;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "react.reasoning.retry attempt={}/{} error={}",
+                                attempt + 1,
+                                MAX_REASONING_RETRIES,
+                                e
+                            );
+                            last_error = Some(e);
+
+                            if attempt + 1 < MAX_REASONING_RETRIES {
+                                // Exponential backoff: 2s, 4s, 8s, ...
+                                let delay = REASONING_RETRY_BASE_DELAY * (1 << attempt);
+                                tokio::time::sleep(delay).await;
+                            }
+                        }
+                    }
+                }
+
+                reasoning_result.ok_or_else(|| {
+                    anyhow!(
+                        "Reasoning failed after {} attempts: {}",
+                        MAX_REASONING_RETRIES,
+                        last_error.map(|e| e.to_string()).unwrap_or_else(|| "Unknown error".to_string())
+                    )
+                })?
+            };
 
             // Convert string output to ReasoningResult structure
             let reasoning_result = ReasoningResult {
