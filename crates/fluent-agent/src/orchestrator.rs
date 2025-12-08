@@ -16,6 +16,12 @@ const MAX_REASONING_RETRIES: u32 = 3;
 
 /// Base delay between reasoning retries (doubles each retry)
 const REASONING_RETRY_BASE_DELAY: Duration = Duration::from_secs(2);
+
+/// Number of consecutive similar iterations before detecting convergence
+const CONVERGENCE_THRESHOLD: usize = 3;
+
+/// Minimum similarity ratio (0.0-1.0) to consider outputs as "similar"
+const SIMILARITY_THRESHOLD: f64 = 0.85;
 // use uuid::Uuid;
 use strum_macros::{Display, EnumString};
 
@@ -183,6 +189,76 @@ pub struct SimpleActionResult {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
+/// Tracks recent outputs to detect when the agent is stuck in a loop
+#[derive(Debug, Default)]
+struct ConvergenceTracker {
+    recent_reasoning: Vec<String>,
+    recent_actions: Vec<String>,
+    similar_count: usize,
+}
+
+impl ConvergenceTracker {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a reasoning output and check for convergence
+    fn record_reasoning(&mut self, output: &str) -> bool {
+        let normalized = Self::normalize_output(output);
+
+        // Check similarity with recent outputs
+        if self.recent_reasoning.iter().any(|prev| Self::similarity(prev, &normalized) >= SIMILARITY_THRESHOLD) {
+            self.similar_count += 1;
+        } else {
+            self.similar_count = 0;
+        }
+
+        // Keep only the last few outputs
+        self.recent_reasoning.push(normalized);
+        if self.recent_reasoning.len() > CONVERGENCE_THRESHOLD + 1 {
+            self.recent_reasoning.remove(0);
+        }
+
+        self.similar_count >= CONVERGENCE_THRESHOLD
+    }
+
+    /// Record an action and check for convergence
+    fn record_action(&mut self, action: &str) {
+        let normalized = Self::normalize_output(action);
+        self.recent_actions.push(normalized);
+        if self.recent_actions.len() > CONVERGENCE_THRESHOLD + 1 {
+            self.recent_actions.remove(0);
+        }
+    }
+
+    /// Normalize output for comparison (lowercase, trim, remove extra whitespace)
+    fn normalize_output(output: &str) -> String {
+        output
+            .to_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Calculate Jaccard similarity between two strings
+    fn similarity(a: &str, b: &str) -> f64 {
+        let words_a: std::collections::HashSet<_> = a.split_whitespace().collect();
+        let words_b: std::collections::HashSet<_> = b.split_whitespace().collect();
+
+        if words_a.is_empty() && words_b.is_empty() {
+            return 1.0;
+        }
+        if words_a.is_empty() || words_b.is_empty() {
+            return 0.0;
+        }
+
+        let intersection = words_a.intersection(&words_b).count();
+        let union = words_a.union(&words_b).count();
+
+        intersection as f64 / union as f64
+    }
+}
+
 impl AgentOrchestrator {
     /// Create a new agent orchestrator with the specified components
     pub async fn new(
@@ -290,6 +366,7 @@ impl AgentOrchestrator {
 
         let mut iteration_count = 0;
         let max_iterations = goal.max_iterations.unwrap_or(50);
+        let mut convergence_tracker = ConvergenceTracker::new();
 
         tracing::info!(
             "react.loop.begin goal='{}' max_iterations={}",
@@ -383,6 +460,37 @@ impl AgentOrchestrator {
             self.record_reasoning_step(reasoning_result.clone(), reasoning_duration)
                 .await?;
 
+            // Check for convergence (agent stuck in similar reasoning loop)
+            if convergence_tracker.record_reasoning(&reasoning_result.reasoning_output) {
+                tracing::warn!(
+                    "react.convergence_detected iter={} similar_count={}",
+                    iteration_count,
+                    CONVERGENCE_THRESHOLD
+                );
+
+                // Try to break out by requesting a different approach
+                context.add_context_item(
+                    "system_warning".to_string(),
+                    "CONVERGENCE DETECTED: Previous attempts have produced similar results. \
+                     Please try a fundamentally different approach or reconsider the goal requirements."
+                        .to_string(),
+                );
+
+                // If still stuck after additional iterations, fail gracefully
+                if iteration_count > max_iterations / 2 {
+                    tracing::error!(
+                        "react.convergence_fatal iter={} max_iter={}",
+                        iteration_count,
+                        max_iterations
+                    );
+                    return Err(anyhow!(
+                        "Agent appears stuck in a loop after {} iterations with similar outputs. \
+                         Consider rephrasing the goal or breaking it into smaller tasks.",
+                        iteration_count
+                    ));
+                }
+            }
+
             // Check if goal is achieved
             if self.is_goal_achieved(&context, &reasoning_result).await? {
                 tracing::info!(
@@ -438,6 +546,11 @@ impl AgentOrchestrator {
                 action_duration,
             )
             .await?;
+
+            // Track action for convergence detection
+            if let Some(ref output) = action_result.output {
+                convergence_tracker.record_action(output);
+            }
 
             // Observation Phase: Process results and update context
             let observation = self
@@ -956,6 +1069,40 @@ mod tests {
         let metrics = OrchestrationMetrics::default();
         assert_eq!(metrics.total_goals_processed, 0);
         assert_eq!(metrics.success_rate, 0.0);
+    }
+
+    #[test]
+    fn test_convergence_tracker_no_convergence() {
+        let mut tracker = ConvergenceTracker::new();
+        // Different inputs should not trigger convergence
+        assert!(!tracker.record_reasoning("This is the first unique reasoning output"));
+        assert!(!tracker.record_reasoning("A completely different second output"));
+        assert!(!tracker.record_reasoning("Yet another unique third output"));
+    }
+
+    #[test]
+    fn test_convergence_tracker_detects_convergence() {
+        let mut tracker = ConvergenceTracker::new();
+        // Similar inputs should trigger convergence after threshold
+        assert!(!tracker.record_reasoning("The agent should write a file to disk"));
+        assert!(!tracker.record_reasoning("The agent should write a file to disk now"));
+        assert!(!tracker.record_reasoning("The agent should write a file to disk please"));
+        // Third similar output triggers convergence (threshold is 3)
+        assert!(tracker.record_reasoning("The agent should write a file to disk again"));
+    }
+
+    #[test]
+    fn test_convergence_similarity_function() {
+        // Identical strings
+        assert!((ConvergenceTracker::similarity("hello world", "hello world") - 1.0).abs() < 0.01);
+        // Similar strings
+        let sim = ConvergenceTracker::similarity("the quick brown fox", "the quick brown dog");
+        assert!(sim > 0.5 && sim < 1.0);
+        // Completely different strings
+        let sim = ConvergenceTracker::similarity("hello", "goodbye world");
+        assert!(sim < 0.5);
+        // Empty strings
+        assert!((ConvergenceTracker::similarity("", "") - 1.0).abs() < 0.01);
     }
 }
 
