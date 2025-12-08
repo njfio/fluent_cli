@@ -189,6 +189,21 @@ pub struct SimpleActionResult {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
+/// Signals collected for multi-signal goal achievement detection
+#[derive(Debug, Clone, Default)]
+struct GoalAchievementSignals {
+    /// Confidence from reasoning engine (0.0-1.0)
+    reasoning_confidence: f64,
+    /// Assessment from structured reasoning output (0.0-1.0)
+    structured_assessment: f64,
+    /// Evidence from file creation/modification (0.0-1.0)
+    file_evidence: f64,
+    /// Success patterns in command execution (0.0-1.0)
+    execution_success: f64,
+    /// Progress trend over iterations (0.0-1.0)
+    progress_trend: f64,
+}
+
 /// Tracks recent outputs to detect when the agent is stuck in a loop
 #[derive(Debug, Default)]
 struct ConvergenceTracker {
@@ -658,43 +673,165 @@ impl AgentOrchestrator {
         Ok(())
     }
 
-    /// Check if the goal has been achieved
+    /// Check if the goal has been achieved using multi-signal detection
+    ///
+    /// This uses a weighted scoring system combining multiple signals:
+    /// 1. Explicit success criteria (if defined)
+    /// 2. Structured reasoning assessment
+    /// 3. File creation/modification evidence
+    /// 4. Command execution success patterns
+    /// 5. Observation history analysis
     async fn is_goal_achieved(
         &self,
         context: &ExecutionContext,
         reasoning: &ReasoningResult,
     ) -> Result<bool> {
-        // 1) Check explicit success criteria on the goal if provided
+        // 1) Check explicit success criteria on the goal if provided (highest priority)
         if let Some(goal) = context.get_current_goal() {
             if !goal.success_criteria.is_empty() {
                 if self
                     .check_success_criteria(context, &goal.success_criteria)
                     .await?
                 {
+                    tracing::info!("react.goal_check explicit_criteria=passed");
                     return Ok(true);
                 }
             }
         }
 
-        // 2) Heuristic: if recent file write succeeded and is non-empty
+        // 2) Multi-signal weighted scoring
+        let signals = self.collect_achievement_signals(context, reasoning).await;
+        let weighted_score = self.calculate_weighted_achievement_score(&signals);
+
+        tracing::debug!(
+            "react.goal_check signals={:?} weighted_score={:.2}",
+            signals,
+            weighted_score
+        );
+
+        // Require high confidence from multiple signals
+        Ok(weighted_score >= 0.75)
+    }
+
+    /// Collect all signals that indicate goal achievement
+    async fn collect_achievement_signals(
+        &self,
+        context: &ExecutionContext,
+        reasoning: &ReasoningResult,
+    ) -> GoalAchievementSignals {
+        let mut signals = GoalAchievementSignals::default();
+
+        // Signal 1: Reasoning confidence
+        signals.reasoning_confidence = reasoning.goal_achieved_confidence;
+
+        // Signal 2: Parse structured output for assessment
+        let structured = StructuredReasoningOutput::from_raw_output(&reasoning.reasoning_output);
+        signals.structured_assessment = if structured.goal_assessment.is_achieved {
+            structured.goal_assessment.achievement_confidence
+        } else {
+            structured.goal_assessment.progress_percentage * 0.5
+        };
+
+        // Signal 3: Recent file write success
         if let Some(obs) = context.get_latest_observation() {
-            if obs.content.to_lowercase().contains("successfully wrote to") {
-                // Extract path and verify non-empty
+            if obs.content.to_lowercase().contains("successfully wrote to")
+                || obs.content.to_lowercase().contains("file created")
+                || obs.content.to_lowercase().contains("saved to")
+            {
+                // Extract path and verify
                 if let Some(path) = obs
                     .content
                     .split_whitespace()
-                    .last()
-                    .map(|s| s.trim_matches('\"'))
+                    .find(|s| s.contains('/') || s.contains('.'))
+                    .map(|s| s.trim_matches(|c| c == '\"' || c == '\'' || c == '`'))
                 {
-                    if self.non_empty_file_exists(path).await? {
-                        return Ok(true);
+                    if self.non_empty_file_exists(path).await.unwrap_or(false) {
+                        signals.file_evidence = 1.0;
+                    } else {
+                        signals.file_evidence = 0.3; // Mentioned but not verified
                     }
                 }
             }
         }
 
-        // 3) Fall back to reasoning-provided confidence
-        Ok(reasoning.goal_achieved_confidence > 0.8)
+        // Signal 4: Command execution success patterns
+        let recent_observations: Vec<_> = context.observations.iter().rev().take(5).collect();
+        let success_patterns = [
+            "successfully", "completed", "done", "finished",
+            "created", "generated", "built", "compiled",
+        ];
+        let failure_patterns = [
+            "error", "failed", "cannot", "unable", "exception", "panic",
+        ];
+
+        let mut success_count = 0;
+        let mut failure_count = 0;
+        for obs in &recent_observations {
+            let lower = obs.content.to_lowercase();
+            for pattern in &success_patterns {
+                if lower.contains(pattern) {
+                    success_count += 1;
+                    break;
+                }
+            }
+            for pattern in &failure_patterns {
+                if lower.contains(pattern) {
+                    failure_count += 1;
+                    break;
+                }
+            }
+        }
+
+        if success_count > 0 && failure_count == 0 {
+            signals.execution_success = (success_count as f64 / recent_observations.len() as f64).min(1.0);
+        } else if failure_count > success_count {
+            signals.execution_success = 0.0;
+        } else {
+            signals.execution_success = 0.3;
+        }
+
+        // Signal 5: Progress trend (are we making progress?)
+        let iteration = context.iteration_count();
+        if iteration > 1 {
+            // Simple heuristic: if we're on later iterations with high confidence, likely done
+            signals.progress_trend = if iteration > 3 && signals.reasoning_confidence > 0.7 {
+                0.8
+            } else {
+                0.5
+            };
+        }
+
+        signals
+    }
+
+    /// Calculate weighted achievement score from multiple signals
+    fn calculate_weighted_achievement_score(&self, signals: &GoalAchievementSignals) -> f64 {
+        // Weights for each signal (must sum to 1.0)
+        const REASONING_WEIGHT: f64 = 0.25;
+        const STRUCTURED_WEIGHT: f64 = 0.25;
+        const FILE_WEIGHT: f64 = 0.20;
+        const EXECUTION_WEIGHT: f64 = 0.20;
+        const PROGRESS_WEIGHT: f64 = 0.10;
+
+        let score = signals.reasoning_confidence * REASONING_WEIGHT
+            + signals.structured_assessment * STRUCTURED_WEIGHT
+            + signals.file_evidence * FILE_WEIGHT
+            + signals.execution_success * EXECUTION_WEIGHT
+            + signals.progress_trend * PROGRESS_WEIGHT;
+
+        // Bonus: if multiple strong signals agree, boost confidence
+        let strong_signals = [
+            signals.reasoning_confidence > 0.8,
+            signals.structured_assessment > 0.8,
+            signals.file_evidence > 0.8,
+            signals.execution_success > 0.8,
+        ].iter().filter(|&&x| x).count();
+
+        if strong_signals >= 3 {
+            (score * 1.1).min(1.0) // 10% bonus for agreement
+        } else {
+            score
+        }
     }
 
     /// Evaluate simple, common success criteria patterns
@@ -1115,6 +1252,92 @@ mod tests {
         assert!(sim < 0.5);
         // Empty strings
         assert!((ConvergenceTracker::similarity("", "") - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_goal_achievement_signals_default() {
+        let signals = GoalAchievementSignals::default();
+        assert_eq!(signals.reasoning_confidence, 0.0);
+        assert_eq!(signals.structured_assessment, 0.0);
+        assert_eq!(signals.file_evidence, 0.0);
+        assert_eq!(signals.execution_success, 0.0);
+        assert_eq!(signals.progress_trend, 0.0);
+    }
+
+    #[test]
+    fn test_weighted_score_all_high() {
+        let signals = GoalAchievementSignals {
+            reasoning_confidence: 0.9,
+            structured_assessment: 0.9,
+            file_evidence: 0.9,
+            execution_success: 0.9,
+            progress_trend: 0.8,
+        };
+
+        // With 4 strong signals (>0.8), should get 10% bonus
+        // Base: 0.9*0.25 + 0.9*0.25 + 0.9*0.20 + 0.9*0.20 + 0.8*0.10 = 0.89
+        // With bonus: 0.89 * 1.1 = 0.979
+        let score = calculate_weighted_score_test(&signals);
+        assert!(score > 0.95, "Score should be > 0.95, got {}", score);
+    }
+
+    #[test]
+    fn test_weighted_score_mixed_signals() {
+        let signals = GoalAchievementSignals {
+            reasoning_confidence: 0.9,
+            structured_assessment: 0.7,
+            file_evidence: 0.0,
+            execution_success: 0.5,
+            progress_trend: 0.5,
+        };
+
+        // Base: 0.9*0.25 + 0.7*0.25 + 0.0*0.20 + 0.5*0.20 + 0.5*0.10 = 0.55
+        // Only 1 strong signal, no bonus
+        let score = calculate_weighted_score_test(&signals);
+        assert!(score > 0.5 && score < 0.7, "Score should be ~0.55, got {}", score);
+    }
+
+    #[test]
+    fn test_weighted_score_all_low() {
+        let signals = GoalAchievementSignals {
+            reasoning_confidence: 0.1,
+            structured_assessment: 0.2,
+            file_evidence: 0.0,
+            execution_success: 0.1,
+            progress_trend: 0.0,
+        };
+
+        let score = calculate_weighted_score_test(&signals);
+        assert!(score < 0.2, "Score should be < 0.2, got {}", score);
+    }
+
+    /// Helper function for testing weighted score calculation
+    /// (duplicates the logic from AgentOrchestrator::calculate_weighted_achievement_score)
+    fn calculate_weighted_score_test(signals: &GoalAchievementSignals) -> f64 {
+        const REASONING_WEIGHT: f64 = 0.25;
+        const STRUCTURED_WEIGHT: f64 = 0.25;
+        const FILE_WEIGHT: f64 = 0.20;
+        const EXECUTION_WEIGHT: f64 = 0.20;
+        const PROGRESS_WEIGHT: f64 = 0.10;
+
+        let score = signals.reasoning_confidence * REASONING_WEIGHT
+            + signals.structured_assessment * STRUCTURED_WEIGHT
+            + signals.file_evidence * FILE_WEIGHT
+            + signals.execution_success * EXECUTION_WEIGHT
+            + signals.progress_trend * PROGRESS_WEIGHT;
+
+        let strong_signals = [
+            signals.reasoning_confidence > 0.8,
+            signals.structured_assessment > 0.8,
+            signals.file_evidence > 0.8,
+            signals.execution_success > 0.8,
+        ].iter().filter(|&&x| x).count();
+
+        if strong_signals >= 3 {
+            (score * 1.1).min(1.0)
+        } else {
+            score
+        }
     }
 }
 
