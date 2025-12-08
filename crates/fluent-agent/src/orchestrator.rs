@@ -35,7 +35,7 @@ use crate::monitoring::{AdaptiveStrategySystem, PerformanceMetrics};
 use crate::observation::ObservationProcessor;
 use crate::planning::DynamicReplanner;
 use crate::reasoning::enhanced_multi_modal::{EnhancedMultiModalEngine, EnhancedReasoningConfig};
-use crate::reasoning::{ReasoningCapability, ReasoningEngine};
+use crate::reasoning::{ReasoningCapability, ReasoningEngine, StructuredReasoningOutput};
 use crate::reflection_engine::ReflectionEngine;
 use crate::state_manager::StateManager as PersistentStateManager;
 use crate::task::{Task, TaskResult};
@@ -434,18 +434,30 @@ impl AgentOrchestrator {
                 })?
             };
 
-            // Convert string output to ReasoningResult structure
+            // Parse raw output into structured format with schema validation
+            let structured_output = StructuredReasoningOutput::from_raw_output(&reasoning_output);
+
+            // Log structured output details for debugging
+            tracing::debug!(
+                "react.structured_reasoning summary='{}' thoughts={} actions={} progress={:.1}% achieved={}",
+                structured_output.summary.chars().take(50).collect::<String>(),
+                structured_output.reasoning_chain.len(),
+                structured_output.proposed_actions.len(),
+                structured_output.goal_assessment.progress_percentage * 100.0,
+                structured_output.goal_assessment.is_achieved
+            );
+
+            // Convert to legacy ReasoningResult for compatibility
+            // TODO: Eventually migrate fully to StructuredReasoningOutput
             let reasoning_result = ReasoningResult {
                 reasoning_output: reasoning_output.clone(),
-                confidence_score: self.reasoning_engine.get_confidence().await,
-                goal_achieved_confidence: if reasoning_output.to_lowercase().contains("complete")
-                    || reasoning_output.to_lowercase().contains("achieved")
-                {
-                    0.9
-                } else {
-                    0.3
-                },
-                next_actions: vec!["Continue with planned action".to_string()],
+                confidence_score: structured_output.confidence,
+                goal_achieved_confidence: structured_output.goal_assessment.achievement_confidence,
+                next_actions: structured_output
+                    .proposed_actions
+                    .iter()
+                    .map(|a| a.description.clone())
+                    .collect(),
             };
 
             tracing::debug!(
