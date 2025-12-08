@@ -56,6 +56,7 @@ pub mod collaboration_bridge;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
+pub mod execution;
 pub mod ethical_guardrails;
 pub mod goal;
 pub mod human_collaboration;
