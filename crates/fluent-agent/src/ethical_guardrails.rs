@@ -473,7 +473,7 @@ impl EthicalGuardrailsSystem {
         let max_severity = bias_assessments
             .iter()
             .map(|a| a.severity)
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap_or(0.0);
 
         Ok(BiasCheck {

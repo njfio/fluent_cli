@@ -961,13 +961,16 @@ impl HumanCollaborationInterface for HumanCollaborationCoordinator {
                 return Err(anyhow!("Intervention not found"));
             }
 
-            // Record the response
+            // Record the response - intervention_clone is guaranteed to be Some here
+            // because we would have returned an error above if not found
+            let resolved_intervention = intervention_clone
+                .as_ref()
+                .expect("intervention_clone should be Some after successful lookup");
+
             let record = InterventionRecord {
-                intervention: intervention_clone.as_ref().unwrap().clone(),
+                intervention: resolved_intervention.clone(),
                 outcome: InterventionOutcome::Resolved,
-                duration: intervention_clone
-                    .as_ref()
-                    .unwrap()
+                duration: resolved_intervention
                     .created_at
                     .elapsed()
                     .unwrap_or(Duration::from_secs(0)),
