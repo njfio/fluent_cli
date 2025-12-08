@@ -151,6 +151,12 @@ pub struct ToolBenchmark {
     pub context: String,
 }
 
+impl Default for AdvancedToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdvancedToolRegistry {
     /// Create a new advanced tool registry
     pub fn new() -> Self {

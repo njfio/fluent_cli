@@ -985,6 +985,12 @@ pub struct EpisodicMemoryStub {
     items: tokio::sync::RwLock<Vec<String>>,
 }
 
+impl Default for EpisodicMemoryStub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EpisodicMemoryStub {
     pub fn new() -> Self {
         Self {
@@ -1006,6 +1012,12 @@ impl EpisodicMemoryStub {
 /// In-memory semantic memory stub (placeholder for legacy compatibility)
 pub struct SemanticMemoryStub {
     items: tokio::sync::RwLock<Vec<String>>,
+}
+
+impl Default for SemanticMemoryStub {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SemanticMemoryStub {

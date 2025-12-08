@@ -812,6 +812,12 @@ impl WorkingMemory {
         store.archived_items.remove(item_id);
         Ok(())
     }
+
+    /// Get memory usage statistics
+    pub async fn get_stats(&self) -> MemoryUsageStats {
+        let store = self.memory_store.read().await;
+        store.memory_usage.clone()
+    }
 }
 
 /// Action to take during consolidation

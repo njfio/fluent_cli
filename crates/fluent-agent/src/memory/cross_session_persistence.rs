@@ -678,4 +678,16 @@ impl CrossSessionPersistence {
             .map(|s| s.session_id.clone())
             .ok_or_else(|| anyhow::anyhow!("No active session"))
     }
+
+    /// Get total session count (current + history)
+    pub async fn get_session_count(&self) -> Result<usize> {
+        let manager = self.session_manager.read().await;
+        let history_count = manager.session_history.len();
+        let active_count = if manager.current_session.is_some() {
+            1
+        } else {
+            0
+        };
+        Ok(history_count + active_count)
+    }
 }
