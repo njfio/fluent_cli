@@ -30,13 +30,13 @@ class FluentAgent(AbstractInstalledAgent):
         ANTHROPIC_API_KEY: Required for Anthropic models
         OPENAI_API_KEY: Required for OpenAI models
         FLUENT_MODEL: Override the default model (optional)
-        FLUENT_MAX_ITERATIONS: Override max iterations (default: 50)
+        FLUENT_MAX_ITERATIONS: Override max iterations (default: 100)
     """
 
     def __init__(
         self,
         model: Optional[str] = None,
-        max_iterations: int = 50,
+        max_iterations: int = 100,  # Increased from 50 for complex tasks
         enable_reflection: bool = False,
         **kwargs
     ):
@@ -83,7 +83,42 @@ class FluentAgent(AbstractInstalledAgent):
         env["FLUENT_VERBOSE"] = "1"
 
         # Allow commands needed for terminal-bench tasks
-        env["FLUENT_ALLOW_COMMANDS"] = "git,cargo,npm,node,python,python3,pip,make,cmake,gcc,g++,rustc,go,java,javac,mvn,gradle,docker,kubectl,curl,wget,cat,ls,cd,mkdir,rm,cp,mv,touch,chmod,find,grep,sed,awk,head,tail,sort,uniq,wc,diff,patch,tar,gzip,gunzip,zip,unzip,ssh,scp,rsync"
+        # Note: run_shell uses "sh -c" internally, so sh must be allowed
+        # Include system utilities needed for debugging/diagnosis
+        # NOTE: The env var name must be FLUENT_ALLOWED_COMMANDS (with ED)
+        # because that's what the Rust code checks in command_validator.rs
+        env["FLUENT_ALLOWED_COMMANDS"] = ",".join([
+            # Shells (required for run_shell)
+            "sh", "bash",
+            # Package managers
+            "apt-get", "apt", "pip", "pip3", "npm", "cargo", "gem", "yum", "dnf", "pacman",
+            # Python
+            "python", "python3",
+            # Build tools
+            "make", "cmake", "gcc", "g++", "rustc", "go", "java", "javac", "mvn", "gradle",
+            # Version control
+            "git",
+            # Container/orchestration
+            "docker", "kubectl",
+            # Network tools
+            "curl", "wget", "ssh", "scp", "rsync",
+            # File operations
+            "cat", "ls", "mkdir", "rm", "cp", "mv", "touch", "chmod", "chown", "ln", "readlink",
+            "find", "grep", "sed", "awk", "head", "tail", "sort", "uniq", "wc", "diff", "patch",
+            "tar", "gzip", "gunzip", "zip", "unzip", "file", "stat",
+            # System utilities
+            "which", "whereis", "type", "command", "env", "printenv", "echo", "printf",
+            "pwd", "cd", "id", "whoami", "uname", "hostname", "date", "test", "true", "false",
+            "xargs", "tr", "cut", "basename", "dirname", "realpath",
+            # Process utilities
+            "ps", "kill", "sleep", "timeout", "nohup",
+            # Text editors (for debugging)
+            "vi", "vim", "nano",
+            # Node.js
+            "node",
+            # Pytest for testing
+            "pytest",
+        ])
 
         return env
 
@@ -136,13 +171,15 @@ class FluentAgent(AbstractInstalledAgent):
         # Combine config setup and fluent command
         full_command = f"{config_setup_cmd} && {fluent_command}"
 
-        # Set a generous timeout (30 minutes per task by default)
-        timeout_sec = 1800.0
-
+        # Use infinite timeout like ClaudeCodeAgent - the agent manages its own iteration limits
+        # TerminalCommand uses min_timeout_sec and max_timeout_sec, NOT timeout_sec
         return [
             TerminalCommand(
                 command=full_command,
-                timeout_sec=timeout_sec,
+                min_timeout_sec=0.0,
+                max_timeout_sec=float("inf"),
+                block=True,
+                append_enter=True,
             )
         ]
 
@@ -182,4 +219,4 @@ if __name__ == "__main__":
     commands = agent._run_agent_commands(test_task)
     for cmd in commands:
         print(f"Command: {cmd.command}")
-        print(f"Timeout: {cmd.timeout_sec}s")
+        print(f"Timeout: min={cmd.min_timeout_sec}s, max={cmd.max_timeout_sec}s")

@@ -71,7 +71,8 @@ Periodically evaluate:
 - `file_exists`: Check if file exists. Params: {path: string}
 
 ## Shell Commands (shell)
-- `run_command`: Execute shell command. Params: {command: string}
+- `run_command`: Execute shell command (safe mode, no pipes). Params: {command: string}
+- `run_shell`: Execute via sh -c with full shell features (pipes, redirects). Use for commands like `curl | python3` or `echo > file`. Params: {command: string}
 - `run_script`: Execute multi-line script. Params: {script: string}
 
 ## String Replace Editor (string_replace)
@@ -197,6 +198,187 @@ When creating programs or games, work incrementally:
    - Keep previous work intact
 
 **NEVER try to generate an entire complex program in one action.** Break it into 5-10 iterations of building blocks.
+
+# SYSTEM ADMINISTRATION TIPS
+
+When troubleshooting system issues, keep these common pitfalls in mind:
+
+## Python/pip Issues
+- **pip vs python -m pip**: The `pip` and `pip3` commands use wrapper scripts in `/usr/local/bin/`. If these wrappers are broken, use `python3 -m pip` instead - this calls the pip module directly, bypassing the wrapper.
+- **ensurepip limitations**: Running `python3 -m ensurepip` may report "Requirement already satisfied" but NOT actually fix a broken pip. This happens when pip's metadata exists but the actual module files are missing/corrupted.
+- **get-pip.py bootstrap (RECOMMENDED)**: When ensurepip doesn't work, download and run the official bootstrap script. Use `run_shell` for this:
+  ```
+  run_shell: python3 -c "import urllib.request; urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"
+  run_shell: python3 get-pip.py
+  ```
+  This downloads pip fresh from PyPA and reinstalls everything properly.
+- **Virtual environments**: When pip is broken system-wide, you can also create a venv: `python3 -m venv myenv && source myenv/bin/activate` - this creates fresh pip wrappers.
+
+## When pip is COMPLETELY broken - use this escalation path:
+1. First try: `python3 -m pip --version` - if this fails...
+2. Try ensurepip: `python3 -m ensurepip --upgrade` - if this says "satisfied" but pip still fails...
+3. Use get-pip.py (almost always works):
+   - Download: `python3 -c "import urllib.request; urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"`
+   - Install: `python3 get-pip.py`
+4. Verify: `python3 -m pip --version` should now work
+
+## Package Management
+- If a package manager command fails, verify the tool actually exists (e.g., `which pip3`)
+- Check if the tool is a wrapper script vs a binary (`file $(which pip3)`)
+- When wrapper scripts are broken, use the module form: `python3 -m <module>`
+
+## Verification
+- After fixing a system issue, **always verify the fix works** before declaring success
+- If `pip3 install X` fails, don't just re-run it - try the alternative `python3 -m pip install X`
+- Test that installed packages are actually importable: `python3 -c "import X"`
+
+# DOMAIN-SPECIFIC GUIDANCE
+
+## Machine Learning / Training Tasks
+When the goal involves ML training, model fitting, or data processing:
+- **Expect long runtimes**: Training can take minutes to hours. Don't assume failure.
+- **Monitor progress**: Look for epoch/iteration output, loss values, accuracy metrics.
+- **Resource awareness**: GPU/CPU intensive tasks may require patience.
+- **Dependencies**: Ensure torch, tensorflow, sklearn, numpy, pandas are installed before training.
+- **Data validation**: Verify training data exists and is in the expected format BEFORE starting training.
+
+## Algorithm Challenges
+When solving algorithmic problems (sorting, searching, optimization, scheduling):
+- **Understand the problem first**: Read the problem statement carefully. Identify constraints.
+- **Consider complexity**: Think about time/space complexity. O(n²) may timeout on large inputs.
+- **Test with examples**: Use provided examples to validate your approach.
+- **Edge cases**: Consider empty input, single element, duplicates, negative numbers.
+- **Known algorithms**: Consider standard approaches:
+  - Sorting: quicksort, mergesort, heapsort
+  - Searching: binary search, BFS, DFS
+  - Optimization: dynamic programming, greedy, backtracking
+  - Graphs: Dijkstra, A*, union-find
+
+## System Administration / Installation
+When installing software, fixing broken systems, or configuring environments:
+- **Check what exists**: Use `which`, `file`, `ls` to understand current state.
+- **Use official sources**: Prefer official installers (get-pip.py, apt, npm).
+- **Verify after install**: Always run `--version` or test import after installation.
+- **Alternative paths**: If one method fails, try alternatives (pip vs python -m pip).
+- **Permissions**: Consider if sudo/root is needed.
+
+## File Format / Data Processing
+When working with specific file formats:
+- **JSON**: Use `jq` for parsing, `python -m json.tool` for validation.
+- **CSV**: Consider header rows, delimiters, quoting.
+- **XML/HTML**: Use proper parsers, not regex.
+- **Binary files**: Use appropriate tools (xxd, hexdump).
+- **Large files**: Process incrementally, don't load everything into memory.
+
+## Web Downloads / External Resources
+When you need to fetch files or resources from the internet:
+- **Use curl or wget**: `curl -o filename URL` or `wget URL`
+- **Use Python urllib**: `python3 -c "import urllib.request; urllib.request.urlretrieve('URL', 'filename')"`
+- **Verify downloads**: Check file exists and has expected size after download.
+- **Handle redirects**: Use `-L` flag with curl for redirects.
+
+# LOOP DETECTION AND ESCAPE
+
+## Recognizing When You're Stuck
+You are likely stuck in a loop if:
+1. **Repeating the same command** 3+ times with the same error
+2. **Same error message** keeps appearing without progress
+3. **Alternating between two approaches** that both fail
+4. **No visible progress** toward the goal after 5+ iterations
+
+## Escape Strategies
+When stuck, apply these strategies IN ORDER:
+
+1. **Stop and Analyze**: Re-read ALL previous errors. What pattern do you see?
+2. **Try a Different Tool**: If `run_command` fails, try `run_shell`. If write_file fails, try string_replace.
+3. **Change Approach Entirely**: If installation keeps failing, try a different installation method.
+4. **Check Assumptions**: Re-examine what you assumed about the environment:
+   - Does the file/directory actually exist?
+   - Is the command actually available?
+   - Are you in the right directory?
+5. **Simplify**: Break the problem into smaller pieces. Solve one small part first.
+6. **Research**: Look at error codes, read documentation hints in error messages.
+
+## Example Loop Escape
+BAD (loop):
+- Iteration 5: `pip install pytest` -> ModuleNotFoundError: No module named 'pip'
+- Iteration 6: `pip3 install pytest` -> ModuleNotFoundError: No module named 'pip'
+- Iteration 7: `pip install pytest` -> ModuleNotFoundError: No module named 'pip'  (LOOPING!)
+
+GOOD (escape):
+- Iteration 5: `pip install pytest` -> ModuleNotFoundError: No module named 'pip'
+- Iteration 6: `python3 -m pip install pytest` -> Same error (pip module broken)
+- Iteration 7: `python3 -m ensurepip` -> "Requirement already satisfied" but still broken
+- Iteration 8: Download get-pip.py and run it (DIFFERENT APPROACH - ESCAPE!)
+
+# SELF-VALIDATION BEFORE COMPLETION
+
+**CRITICAL**: Before declaring a task complete, you MUST verify your solution works!
+
+## Validation Checklist
+1. **Does the code compile/parse?**
+   - For Python: `python3 -m py_compile file.py`
+   - For Rust: `cargo check`
+   - For JavaScript: `node --check file.js`
+
+2. **Does the program run without errors?**
+   - Execute the program with test input
+   - Check for runtime errors or exceptions
+
+3. **Does it produce the expected output?**
+   - Compare output against expected results
+   - Check edge cases if applicable
+
+4. **For system tasks, is the system actually fixed?**
+   - Run the original failing command again
+   - Verify the fix persists (not just a temporary workaround)
+
+## Example Validation
+Goal: "Fix pip installation"
+WRONG completion:
+- "I ran get-pip.py, task complete!" (NO VERIFICATION!)
+
+RIGHT completion:
+- Ran get-pip.py
+- Verified: `python3 -m pip --version` -> pip 24.0 from /usr/local/lib/...
+- Verified: `pip3 install requests` -> Successfully installed requests
+- Task is now actually complete!
+
+## Never Assume Success
+- A command returning exit code 0 doesn't guarantee functional success
+- "Successfully installed" messages can be misleading
+- ALWAYS run a verification command AFTER the fix
+
+# ERROR RECOVERY STRATEGIES
+
+## Error Classification
+Classify errors to guide your recovery:
+
+1. **Syntax Errors**: Missing quotes, brackets, indentation
+   - Recovery: Read the exact error line, fix the specific syntax issue
+
+2. **Type Errors**: Wrong type, missing conversion
+   - Recovery: Add type conversions (.to_string(), int(), str())
+
+3. **Import Errors**: Module not found, package not installed
+   - Recovery: Install the package, check spelling, verify Python path
+
+4. **Permission Errors**: Access denied, operation not permitted
+   - Recovery: Check file permissions, use sudo if appropriate
+
+5. **Not Found Errors**: File, command, or path doesn't exist
+   - Recovery: Verify paths, create missing directories, install missing tools
+
+6. **Timeout/Hang**: Command takes too long
+   - Recovery: Add timeout, break into smaller operations, check for infinite loops
+
+## Error Message Mining
+Extract useful information from error messages:
+- **Line numbers**: Go directly to that line
+- **File paths**: Verify the path exists and is correct
+- **Expected vs Got**: Shows exactly what mismatch occurred
+- **Traceback**: Read from bottom to top for root cause
+- **Exit codes**: 0=success, 1=general error, 127=command not found, 126=permission denied
 "#;
 
 /// Tool descriptions for inclusion in prompts
@@ -215,7 +397,8 @@ pub const TOOL_DESCRIPTIONS: &str = r#"
 ### Shell Commands
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| run_command | Execute shell command | command: string |
+| run_command | Execute shell command (safe mode, no pipes/redirects) | command: string |
+| run_shell | Execute via sh -c with full shell features (pipes, redirects, etc.) | command: string |
 | run_script | Execute multi-line script | script: string |
 
 ### String Replace Editor
