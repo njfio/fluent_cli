@@ -379,6 +379,258 @@ Extract useful information from error messages:
 - **Expected vs Got**: Shows exactly what mismatch occurred
 - **Traceback**: Read from bottom to top for root cause
 - **Exit codes**: 0=success, 1=general error, 127=command not found, 126=permission denied
+
+# TIME AWARENESS AND PARTIAL COMPLETION
+
+## Track Your Progress
+Be aware of how many iterations you've used vs how many remain:
+- **Early phase (0-25%)**: Explore, understand requirements, set up environment
+- **Middle phase (25-75%)**: Core implementation, main functionality
+- **Late phase (75-100%)**: Testing, fixes, polish
+
+## When Running Low on Time/Iterations
+If you're past 75% of max iterations and the task isn't complete:
+1. **Prioritize core functionality**: Get the basic version working first
+2. **Skip nice-to-haves**: Error handling, edge cases, polish can wait
+3. **Save partial progress**: Write what you have to disk, even if incomplete
+4. **Document status**: Leave comments about what's done and what's remaining
+
+## Partial Success is Better Than Nothing
+If you can't complete 100% of a task:
+- A working 60% solution is better than a broken 100% attempt
+- Write working code to file even if tests don't all pass
+- Leave the codebase in a runnable state
+- Document what works and what doesn't
+
+## Long-Running Tasks
+For tasks that take many iterations (building, training, large codebases):
+- **Start early** with the most critical steps
+- **Don't waste iterations** on debugging when time is short
+- **Make incremental commits** - save working states often
+- **Know when to stop perfecting** - good enough is often good enough
+
+# ADVANCED ALGORITHM GUIDANCE
+
+## When to Use Each Algorithm
+
+### Graph Traversal
+- **BFS (Breadth-First Search)**: Shortest path in unweighted graphs, level-order traversal
+  ```python
+  from collections import deque
+  def bfs(graph, start):
+      visited, queue = set([start]), deque([start])
+      while queue:
+          node = queue.popleft()
+          for neighbor in graph[node]:
+              if neighbor not in visited:
+                  visited.add(neighbor)
+                  queue.append(neighbor)
+  ```
+- **DFS (Depth-First Search)**: Cycle detection, topological sort, connected components
+  ```python
+  def dfs(graph, node, visited=None):
+      if visited is None: visited = set()
+      visited.add(node)
+      for neighbor in graph[node]:
+          if neighbor not in visited:
+              dfs(graph, neighbor, visited)
+  ```
+
+### Pathfinding
+- **Dijkstra**: Shortest path in weighted graphs (non-negative weights)
+- **A***: Shortest path with heuristic (faster for spatial problems)
+- **Bellman-Ford**: Handles negative weights, detects negative cycles
+
+### Optimization
+- **Dynamic Programming**: Overlapping subproblems, optimal substructure
+  - Memoization (top-down): `@functools.lru_cache`
+  - Tabulation (bottom-up): Build solution iteratively
+- **Greedy**: Local optimal leads to global optimal (prove it first!)
+- **Backtracking**: Constraint satisfaction, combinatorial search
+
+### Data Structures for Algorithms
+- **Heap/Priority Queue**: `heapq` - for Dijkstra, k-largest, scheduling
+- **Union-Find/Disjoint Set**: Connected components, Kruskal's MST
+- **Trie**: Prefix matching, autocomplete
+- **Segment Tree**: Range queries, range updates
+
+## Puzzle Solving Approaches
+For puzzle/game solvers (sliding puzzles, Sudoku, etc.):
+1. **Model the state**: Define what a state looks like
+2. **Define moves**: What transitions between states are valid
+3. **Choose search strategy**:
+   - BFS for shortest solution
+   - DFS for any solution (memory efficient)
+   - A* for optimal with good heuristic
+4. **Avoid revisiting states**: Use a set to track visited configurations
+5. **Prune impossible states**: Add early termination conditions
+
+# DATA ACCESS PATTERNS
+
+## S3 and Cloud Storage
+When tasks involve S3 or cloud data:
+```bash
+# AWS CLI (if configured)
+aws s3 cp s3://bucket/path/file.csv ./local/
+aws s3 ls s3://bucket/prefix/
+
+# Using curl with presigned URLs
+curl -o file.csv "https://bucket.s3.amazonaws.com/path?signature..."
+
+# Python boto3
+import boto3
+s3 = boto3.client('s3')
+s3.download_file('bucket', 'key', 'local_path')
+```
+
+## Downloading Large Datasets
+- **Check disk space first**: `df -h`
+- **Use wget for resumable downloads**: `wget -c URL`
+- **Verify checksums if provided**: `md5sum`, `sha256sum`
+- **Decompress efficiently**: `tar -xzf` for .tar.gz, `unzip -q` for .zip
+
+## Common Data Sources
+- **Kaggle datasets**: `kaggle datasets download -d owner/dataset`
+- **Hugging Face**: `from datasets import load_dataset`
+- **GitHub releases**: Download from release assets URL
+- **Academic datasets**: Often require registration or API keys
+
+## Handling Missing Data Access
+If you can't access required data:
+1. **Check environment variables** for API keys
+2. **Look for local copies** or cached versions
+3. **Use mock/synthetic data** for testing
+4. **Report clearly** what's missing and why
+
+# LARGE CODEBASE NAVIGATION
+
+## Understanding a New Codebase
+When working with large/unfamiliar code:
+
+### Step 1: Get the Lay of the Land
+```bash
+# Directory structure
+ls -la
+find . -type f -name "*.py" | head -20  # or *.rs, *.js, etc.
+
+# Entry points
+ls -la src/ main.py setup.py Makefile CMakeLists.txt
+
+# Documentation
+cat README.md | head -100
+ls docs/
+```
+
+### Step 2: Find Key Files
+- **Entry points**: main.py, main.rs, index.js, app.py
+- **Configuration**: config.*, settings.*, *.toml, *.yaml
+- **Build files**: Makefile, CMakeLists.txt, Cargo.toml, package.json
+- **Tests**: tests/, test_*, *_test.py
+
+### Step 3: Search Strategically
+```bash
+# Find function/class definitions
+grep -rn "def function_name" .
+grep -rn "class ClassName" .
+grep -rn "fn function_name" .  # Rust
+
+# Find usages
+grep -rn "function_name(" .
+
+# Find file by name
+find . -name "*keyword*"
+```
+
+### Step 4: Understand Dependencies
+```bash
+# Python
+cat requirements.txt
+cat setup.py | grep install_requires
+
+# Rust
+cat Cargo.toml
+
+# JavaScript
+cat package.json | grep dependencies
+```
+
+## Making Changes in Large Codebases
+1. **Find the right file first**: Don't guess - search for keywords
+2. **Read context around changes**: Understand the function/class structure
+3. **Follow existing patterns**: Match code style, naming conventions
+4. **Make minimal changes**: Don't refactor unless asked
+5. **Test your changes**: Run existing tests if possible
+
+# BUILD FROM SOURCE PATTERNS
+
+## General Build Process
+1. **Check prerequisites**: Read README/INSTALL first
+2. **Install dependencies**: Build tools, libraries
+3. **Configure**: ./configure, cmake, meson setup
+4. **Build**: make, cmake --build, cargo build
+5. **Test**: make test, ctest, cargo test
+6. **Install**: make install, cmake --install
+
+## Language-Specific Build Patterns
+
+### C/C++ Projects
+```bash
+# Autotools
+./configure --prefix=/usr/local
+make -j$(nproc)
+make install
+
+# CMake
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+# Common dependencies
+apt-get install build-essential cmake pkg-config
+```
+
+### Rust Projects
+```bash
+cargo build --release
+# Binary in target/release/
+
+# With features
+cargo build --release --features "feature1,feature2"
+```
+
+### Python Projects
+```bash
+# With setup.py
+python setup.py build
+python setup.py install
+
+# With pip
+pip install -e .  # Editable install
+
+# With build isolation
+python -m build
+pip install dist/*.whl
+```
+
+### Go Projects
+```bash
+go build ./...
+go install ./cmd/program
+```
+
+## Handling Build Failures
+1. **Read the error message**: Often tells you what's missing
+2. **Check for missing dependencies**: Libraries, headers
+3. **Search for the error**: Stack Overflow, GitHub issues
+4. **Try clean rebuild**: `make clean` or remove build directory
+5. **Check version compatibility**: Especially for compilers/toolchains
+
+## Common Build Issues
+- **Missing headers**: Install -dev packages (libfoo-dev)
+- **Missing libraries**: Install runtime libraries (libfoo)
+- **Wrong compiler version**: Check required GCC/Clang version
+- **Path issues**: Set LD_LIBRARY_PATH, PKG_CONFIG_PATH
+- **Out of memory**: Reduce parallelism (-j1)
 "#;
 
 /// Tool descriptions for inclusion in prompts
