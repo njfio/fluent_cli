@@ -631,6 +631,84 @@ go install ./cmd/program
 - **Wrong compiler version**: Check required GCC/Clang version
 - **Path issues**: Set LD_LIBRARY_PATH, PKG_CONFIG_PATH
 - **Out of memory**: Reduce parallelism (-j1)
+
+# C EXTENSIONS AND FFI PATTERNS
+
+## Python C Extensions
+When building Python packages with C extensions:
+```bash
+# Install build dependencies
+apt-get install python3-dev build-essential
+
+# Common packages needing compilation
+pip install numpy pandas scipy  # May need: libopenblas-dev, liblapack-dev
+pip install pillow              # May need: libjpeg-dev, libpng-dev
+pip install cryptography        # May need: libssl-dev, libffi-dev
+
+# Build from source with verbose output
+pip install --no-binary :all: package_name -v
+```
+
+## Rust FFI
+When working with Rust foreign function interfaces:
+```rust
+// Calling C from Rust
+extern "C" {
+    fn c_function(arg: i32) -> i32;
+}
+
+// Exposing Rust to C
+#[no_mangle]
+pub extern "C" fn rust_function(arg: i32) -> i32 {
+    arg * 2
+}
+```
+
+Build with:
+```bash
+cargo build --release
+# Library in target/release/libname.so (Linux) or .dylib (macOS)
+```
+
+## Node.js Native Modules
+When building native Node.js modules:
+```bash
+# Install build tools
+npm install -g node-gyp
+apt-get install build-essential python3
+
+# Rebuild native modules
+npm rebuild
+# or for specific package
+npm rebuild package-name
+```
+
+## Common FFI Issues
+1. **Missing compiler**: Install `gcc`, `clang`, or `build-essential`
+2. **Missing Python headers**: Install `python3-dev` or `python3-devel`
+3. **ABI mismatch**: Rebuild with correct Python/Node version
+4. **Architecture mismatch**: Ensure 64-bit libs for 64-bit runtime
+5. **Linking errors**: Check `LD_LIBRARY_PATH`, install missing `-dev` packages
+
+## OCaml and Functional Languages
+For OCaml projects:
+```bash
+# Install OCaml toolchain
+apt-get install ocaml opam
+opam init
+opam install dune
+
+# Build project
+dune build
+```
+
+For Haskell:
+```bash
+# Install GHC and Cabal
+apt-get install ghc cabal-install
+cabal update
+cabal build
+```
 "#;
 
 /// Tool descriptions for inclusion in prompts

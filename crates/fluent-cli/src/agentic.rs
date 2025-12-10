@@ -212,6 +212,23 @@ pub struct AgenticConfig {
     pub dry_run: bool,
 }
 
+impl Default for AgenticConfig {
+    fn default() -> Self {
+        Self {
+            goal_description: String::new(),
+            agent_config_path: "agent_config.json".to_string(),
+            max_iterations: 50,
+            enable_tools: true,
+            enable_reflection: false,
+            config_path: "fluent_config.toml".to_string(),
+            model_override: None,
+            gen_retries: Some(3),
+            min_html_size: Some(1000),
+            dry_run: false,
+        }
+    }
+}
+
 impl AgenticConfig {
     /// Create a new agentic configuration
     ///
