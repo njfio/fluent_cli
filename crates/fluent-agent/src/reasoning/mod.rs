@@ -9,6 +9,7 @@ pub mod chain_of_thought;
 pub mod code_porting_patterns;
 pub mod enhanced_multi_modal;
 pub mod meta_reasoning;
+pub mod ml_model_patterns;
 pub mod multi_modal;
 pub mod sysadmin_patterns;
 pub mod tree_of_thought;
@@ -24,6 +25,10 @@ pub use sysadmin_patterns::{
 pub use code_porting_patterns::{
     CodePortingDetectionResult, CodePortingPatternDetector, LanguagePairPattern,
     PortingCategory, PortingGuidance, ProgrammingLanguage,
+};
+pub use ml_model_patterns::{
+    ConversionCategory, ConversionGuidance, FrameworkConversionPattern, MLConversionDetectionResult,
+    MLConversionPatternDetector, MLFramework, QuantizationLevel,
 };
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
 pub use enhanced_multi_modal::{
@@ -79,6 +84,7 @@ pub enum ReasoningCapability {
     AlgorithmicReasoning,
     SysadminReasoning,
     CodePortingReasoning,
+    MLModelReasoning,
 }
 
 /// Structured output from a reasoning step with validated schema
