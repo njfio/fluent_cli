@@ -4,12 +4,17 @@
 //! cognitive patterns for autonomous problem solving, including multi-modal
 //! reasoning capabilities for processing text, code, images, and audio.
 
+pub mod algorithmic_patterns;
 pub mod chain_of_thought;
 pub mod enhanced_multi_modal;
 pub mod meta_reasoning;
 pub mod multi_modal;
 pub mod tree_of_thought;
 
+pub use algorithmic_patterns::{
+    AlgorithmCategory, AlgorithmGuidance, AlgorithmPattern, AlgorithmPatternDetector,
+    PatternDetectionResult,
+};
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
 pub use enhanced_multi_modal::{
     EnhancedMultiModalEngine, EnhancedReasoningConfig, EnhancedReasoningResult,
@@ -61,6 +66,7 @@ pub enum ReasoningCapability {
     MetaCognition,
     AnalogicalReasoning,
     CausalReasoning,
+    AlgorithmicReasoning,
 }
 
 /// Structured output from a reasoning step with validated schema
