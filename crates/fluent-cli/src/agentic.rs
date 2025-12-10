@@ -108,6 +108,58 @@ pub fn get_api_error_guidance(error_msg: &str) -> &'static str {
     }
 }
 
+/// Configuration for retry logic on transient errors
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Initial delay in milliseconds before first retry
+    pub initial_delay_ms: u64,
+    /// Maximum delay in milliseconds between retries
+    pub max_delay_ms: u64,
+    /// Multiplier for exponential backoff
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay_ms: 1000,   // 1 second
+            max_delay_ms: 30000,      // 30 seconds
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+impl RetryConfig {
+    /// Calculate delay for a given retry attempt (0-indexed)
+    pub fn delay_for_attempt(&self, attempt: u32) -> std::time::Duration {
+        let delay_ms = (self.initial_delay_ms as f64
+            * self.backoff_multiplier.powi(attempt as i32)) as u64;
+        let capped_delay_ms = delay_ms.min(self.max_delay_ms);
+        std::time::Duration::from_millis(capped_delay_ms)
+    }
+}
+
+/// Get user-friendly message for transient errors
+pub fn get_transient_error_message(error_msg: &str) -> &'static str {
+    let lower = error_msg.to_lowercase();
+
+    if lower.contains("rate limit") || lower.contains("too many requests") || lower.contains("429")
+    {
+        "⏳ Rate limit hit. Waiting before retry..."
+    } else if lower.contains("timeout") {
+        "⏱️ Request timed out. Retrying..."
+    } else if lower.contains("connection refused")
+        || lower.contains("network error")
+        || lower.contains("connection reset")
+    {
+        "🌐 Network error. Retrying..."
+    } else {
+        "🔄 Transient error. Retrying..."
+    }
+}
+
 /// Status of a todo item
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
@@ -1619,36 +1671,79 @@ impl<'a> AutonomousExecutor<'a> {
                 ));
             }
 
-            let reasoning_response = match self.perform_reasoning(iteration, max_iterations).await {
-                Ok(response) => response,
-                Err(e) => {
-                    let error_msg = e.to_string();
-                    let error_kind = classify_api_error(&error_msg);
+            // Perform reasoning with retry logic for transient errors
+            let retry_config = RetryConfig::default();
+            let mut last_error: Option<anyhow::Error> = None;
 
-                    match error_kind {
-                        ApiErrorKind::NonRecoverable => {
-                            // Log and exit immediately for non-recoverable errors
-                            let guidance = get_api_error_guidance(&error_msg);
-                            error!(
-                                "agent.api.non_recoverable error='{}' guidance='{}'",
-                                error_msg, guidance
-                            );
-                            self.tui.add_log(format!("🛑 {}", guidance));
-                            self.tui.add_log(format!(
-                                "❌ Agent stopping immediately due to non-recoverable API error"
-                            ));
-                            return Err(anyhow!(
-                                "Non-recoverable API error: {}. {}",
-                                error_msg,
-                                guidance
-                            ));
-                        }
-                        ApiErrorKind::Transient | ApiErrorKind::Unknown => {
-                            // For transient errors, propagate normally (may retry)
-                            return Err(e);
+            let reasoning_response = 'retry_loop: {
+                for attempt in 0..=retry_config.max_retries {
+                    match self.perform_reasoning(iteration, max_iterations).await {
+                        Ok(response) => break 'retry_loop response,
+                        Err(e) => {
+                            let error_msg = e.to_string();
+                            let error_kind = classify_api_error(&error_msg);
+
+                            match error_kind {
+                                ApiErrorKind::NonRecoverable => {
+                                    // Log and exit immediately for non-recoverable errors
+                                    let guidance = get_api_error_guidance(&error_msg);
+                                    error!(
+                                        "agent.api.non_recoverable error='{}' guidance='{}'",
+                                        error_msg, guidance
+                                    );
+                                    self.tui.add_log(format!("🛑 {}", guidance));
+                                    self.tui.add_log(
+                                        "❌ Agent stopping immediately due to non-recoverable API error".to_string()
+                                    );
+                                    return Err(anyhow!(
+                                        "Non-recoverable API error: {}. {}",
+                                        error_msg,
+                                        guidance
+                                    ));
+                                }
+                                ApiErrorKind::Transient | ApiErrorKind::Unknown => {
+                                    // For transient errors, retry with exponential backoff
+                                    if attempt < retry_config.max_retries {
+                                        let delay = retry_config.delay_for_attempt(attempt);
+                                        let message = get_transient_error_message(&error_msg);
+                                        warn!(
+                                            "agent.api.transient attempt={}/{} delay_ms={} error='{}'",
+                                            attempt + 1,
+                                            retry_config.max_retries,
+                                            delay.as_millis(),
+                                            error_msg
+                                        );
+                                        self.tui.add_log(format!(
+                                            "{} (attempt {}/{}, waiting {}s)",
+                                            message,
+                                            attempt + 1,
+                                            retry_config.max_retries,
+                                            delay.as_secs()
+                                        ));
+                                        tokio::time::sleep(delay).await;
+                                        last_error = Some(e);
+                                        continue;
+                                    } else {
+                                        // Exhausted all retries
+                                        error!(
+                                            "agent.api.retry_exhausted attempts={} error='{}'",
+                                            retry_config.max_retries + 1,
+                                            error_msg
+                                        );
+                                        self.tui.add_log(format!(
+                                            "❌ Exhausted {} retry attempts. Last error: {}",
+                                            retry_config.max_retries + 1,
+                                            error_msg
+                                        ));
+                                        return Err(e);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                // Should not reach here, but handle edge case
+                return Err(last_error.unwrap_or_else(|| anyhow!("Unknown error during retry")));
             };
 
             // Reset activity timer - we got an LLM response
@@ -3210,5 +3305,75 @@ mod tests {
         assert!(get_api_error_guidance("unauthorized").contains("Authentication"));
         assert!(get_api_error_guidance("account suspended").contains("Account"));
         assert!(get_api_error_guidance("unknown error").contains("API"));
+    }
+
+    #[test]
+    fn test_retry_config_default() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_delay_ms, 1000);
+        assert_eq!(config.max_delay_ms, 30000);
+        assert!((config.backoff_multiplier - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_retry_config_exponential_backoff() {
+        let config = RetryConfig::default();
+
+        // First attempt: 1000ms
+        let delay0 = config.delay_for_attempt(0);
+        assert_eq!(delay0.as_millis(), 1000);
+
+        // Second attempt: 2000ms (1000 * 2)
+        let delay1 = config.delay_for_attempt(1);
+        assert_eq!(delay1.as_millis(), 2000);
+
+        // Third attempt: 4000ms (1000 * 2^2)
+        let delay2 = config.delay_for_attempt(2);
+        assert_eq!(delay2.as_millis(), 4000);
+
+        // Fourth attempt: 8000ms (1000 * 2^3)
+        let delay3 = config.delay_for_attempt(3);
+        assert_eq!(delay3.as_millis(), 8000);
+    }
+
+    #[test]
+    fn test_retry_config_max_delay_cap() {
+        let config = RetryConfig {
+            max_retries: 10,
+            initial_delay_ms: 1000,
+            max_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+        };
+
+        // After many retries, delay should cap at max_delay_ms
+        let delay10 = config.delay_for_attempt(10);
+        assert_eq!(delay10.as_millis(), 5000); // Capped at max
+    }
+
+    #[test]
+    fn test_get_transient_error_message_rate_limit() {
+        assert!(get_transient_error_message("rate limit exceeded").contains("Rate limit"));
+        assert!(get_transient_error_message("too many requests").contains("Rate limit"));
+        assert!(get_transient_error_message("Error 429: too many requests").contains("Rate limit"));
+    }
+
+    #[test]
+    fn test_get_transient_error_message_timeout() {
+        assert!(get_transient_error_message("request timeout").contains("timed out"));
+        assert!(get_transient_error_message("connection timeout").contains("timed out"));
+    }
+
+    #[test]
+    fn test_get_transient_error_message_network() {
+        assert!(get_transient_error_message("connection refused").contains("Network"));
+        assert!(get_transient_error_message("network error").contains("Network"));
+        assert!(get_transient_error_message("connection reset by peer").contains("Network"));
+    }
+
+    #[test]
+    fn test_get_transient_error_message_unknown() {
+        // Unknown transient errors should get a generic retry message
+        assert!(get_transient_error_message("some unknown error").contains("Transient"));
     }
 }
