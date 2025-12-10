@@ -9,11 +9,16 @@ pub mod chain_of_thought;
 pub mod enhanced_multi_modal;
 pub mod meta_reasoning;
 pub mod multi_modal;
+pub mod sysadmin_patterns;
 pub mod tree_of_thought;
 
 pub use algorithmic_patterns::{
     AlgorithmCategory, AlgorithmGuidance, AlgorithmPattern, AlgorithmPatternDetector,
     PatternDetectionResult,
+};
+pub use sysadmin_patterns::{
+    SysadminCategory, SysadminDetectionResult, SysadminGuidance, SysadminPattern,
+    SysadminPatternDetector,
 };
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
 pub use enhanced_multi_modal::{
@@ -67,6 +72,7 @@ pub enum ReasoningCapability {
     AnalogicalReasoning,
     CausalReasoning,
     AlgorithmicReasoning,
+    SysadminReasoning,
 }
 
 /// Structured output from a reasoning step with validated schema
