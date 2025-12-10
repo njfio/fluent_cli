@@ -44,14 +44,16 @@ prometheus = { workspace = true }
 # Additional utilities
 base64 = { workspace = true }
 thiserror = { workspace = true }
+urlencoding = "2.1"
 bincode = "1.3"
 toml = { workspace = true }
 # Web dashboard dependencies
 warp = "0.3"
 futures-util = { version = "0.3", features = ["sink", "std"] }
+# Async cancellation support
+tokio-util = "0.7"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio-util = "0.7"
 tokio-stream = "0.1"
 futures = { workspace = true }
