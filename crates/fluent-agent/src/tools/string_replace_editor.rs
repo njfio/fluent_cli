@@ -1,3 +1,23 @@
+//! String replacement editor for surgical file modifications.
+//!
+//! This module provides the [`StringReplaceEditor`] tool for making precise,
+//! targeted edits to files by replacing specific strings with new content.
+//! Similar to Anthropic's string_replace_editor tool used in Claude Code.
+//!
+//! # Features
+//!
+//! - Exact string matching with optional case sensitivity
+//! - Path-based security restrictions
+//! - Automatic backup creation before edits
+//! - Size limits to prevent accidental large file edits
+//! - Support for multiple replacements in a single operation
+//!
+//! # Security
+//!
+//! - Only files within `allowed_paths` can be modified
+//! - Maximum file size limit (default 10MB)
+//! - Maximum replacements per operation (default 100)
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

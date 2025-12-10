@@ -1,3 +1,28 @@
+//! Configuration management for Fluent CLI.
+//!
+//! This module handles loading, parsing, and validating configuration from multiple
+//! formats (YAML, JSON, TOML) with support for environment variable expansion.
+//!
+//! # Supported Formats
+//!
+//! - **YAML**: Recommended for readability
+//! - **JSON**: Good for programmatic generation
+//! - **TOML**: Used for `fluent_config.toml` files with `[[engines]]` array syntax
+//!
+//! # Configuration Sources
+//!
+//! Configuration is loaded in order of precedence:
+//! 1. Command-line `--config` flag
+//! 2. Environment variable `FLUENT_CONFIG_PATH`
+//! 3. Default locations (`fluent_config.toml`, `config.yaml`, etc.)
+//!
+//! # Environment Variables
+//!
+//! Bearer tokens and API keys support `${VAR}` syntax for runtime expansion:
+//! ```toml
+//! bearer_token = "${ANTHROPIC_API_KEY}"
+//! ```
+
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
 

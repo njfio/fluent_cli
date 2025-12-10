@@ -1,3 +1,33 @@
+//! Agent orchestration implementing the ReAct (Reasoning, Acting, Observing) pattern.
+//!
+//! This module contains the core [`AgentOrchestrator`] that coordinates all agent
+//! activities including goal decomposition, task execution, and state management.
+//!
+//! # Architecture
+//!
+//! The orchestrator follows the ReAct pattern:
+//!
+//! 1. **Reasoning**: Analyze current state, plan next actions via the reasoning engine
+//! 2. **Acting**: Execute planned actions through tools (file ops, shell, etc.)
+//! 3. **Observing**: Process action results, update context and memory
+//!
+//! # Components
+//!
+//! - **ReasoningEngine**: Multi-modal reasoning with chain-of-thought
+//! - **ActionPlanner/Executor**: Convert reasoning to concrete tool calls
+//! - **ObservationProcessor**: Extract insights from action results
+//! - **MemorySystem**: Short-term working memory and long-term persistence
+//! - **ReflectionEngine**: Self-evaluation and strategy adjustment
+//!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use fluent_agent::orchestrator::AgentOrchestrator;
+//!
+//! let orchestrator = AgentOrchestrator::new(config).await?;
+//! let result = orchestrator.execute_goal(goal).await?;
+//! ```
+
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,6 +52,15 @@ const CONVERGENCE_THRESHOLD: usize = 3;
 
 /// Minimum similarity ratio (0.0-1.0) to consider outputs as "similar"
 const SIMILARITY_THRESHOLD: f64 = 0.85;
+
+/// Maximum number of reasoning steps to retain in history
+const MAX_REASONING_HISTORY_SIZE: usize = 500;
+
+/// Maximum number of observations to retain in history
+const MAX_OBSERVATIONS_SIZE: usize = 1000;
+
+/// Maximum number of completed tasks to retain
+const MAX_COMPLETED_TASKS_SIZE: usize = 200;
 // use uuid::Uuid;
 use strum_macros::{Display, EnumString};
 
@@ -944,6 +983,11 @@ impl AgentOrchestrator {
             .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_reasoning_step"))?;
 
         state.reasoning_history.push(step);
+        // Enforce memory bounds: keep most recent entries, evict oldest
+        if state.reasoning_history.len() > MAX_REASONING_HISTORY_SIZE {
+            let drain_count = state.reasoning_history.len() - MAX_REASONING_HISTORY_SIZE;
+            state.reasoning_history.drain(0..drain_count);
+        }
         metrics.total_reasoning_steps += 1;
         metrics.average_reasoning_time = (metrics.average_reasoning_time
             * (metrics.total_reasoning_steps - 1) as f64
@@ -1027,6 +1071,11 @@ impl AgentOrchestrator {
             .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_observation"))?;
 
         state.observations.push(observation.clone());
+        // Enforce memory bounds: keep most recent entries, evict oldest
+        if state.observations.len() > MAX_OBSERVATIONS_SIZE {
+            let drain_count = state.observations.len() - MAX_OBSERVATIONS_SIZE;
+            state.observations.drain(0..drain_count);
+        }
         metrics.total_observations_made += 1;
 
         if observation.content.to_lowercase().contains("error") {
@@ -1339,6 +1388,85 @@ mod tests {
             score
         }
     }
+
+    // ==================== Memory Bounds Tests ====================
+
+    #[test]
+    fn test_memory_bounds_constants() {
+        // Verify reasonable bounds are set
+        assert!(MAX_REASONING_HISTORY_SIZE > 0);
+        assert!(MAX_OBSERVATIONS_SIZE > 0);
+        assert!(MAX_COMPLETED_TASKS_SIZE > 0);
+        // Ensure observations > reasoning since observations are more frequent
+        assert!(MAX_OBSERVATIONS_SIZE >= MAX_REASONING_HISTORY_SIZE);
+    }
+
+    #[test]
+    fn test_agent_state_vector_initialization() {
+        let state = AgentState::default();
+        // Vectors should start empty
+        assert!(state.reasoning_history.is_empty());
+        assert!(state.observations.is_empty());
+        assert!(state.completed_tasks.is_empty());
+    }
+
+    #[test]
+    fn test_reasoning_history_bounded_simulation() {
+        // Simulate the bounds check logic
+        let mut history: Vec<ReasoningStep> = Vec::new();
+
+        // Add more than max items
+        for i in 0..MAX_REASONING_HISTORY_SIZE + 100 {
+            history.push(ReasoningStep {
+                step_id: format!("step-{}", i),
+                timestamp: SystemTime::now(),
+                reasoning_type: ReasoningType::GoalAnalysis,
+                input_context: "test".to_string(),
+                reasoning_output: format!("output-{}", i),
+                confidence_score: 0.8,
+                next_action_plan: None,
+            });
+
+            // Apply bounds check (same logic as record_reasoning_step)
+            if history.len() > MAX_REASONING_HISTORY_SIZE {
+                let drain_count = history.len() - MAX_REASONING_HISTORY_SIZE;
+                history.drain(0..drain_count);
+            }
+        }
+
+        // Should be bounded
+        assert_eq!(history.len(), MAX_REASONING_HISTORY_SIZE);
+        // Most recent should be preserved
+        assert!(history.last().unwrap().step_id.contains(&(MAX_REASONING_HISTORY_SIZE + 99).to_string()));
+    }
+
+    #[test]
+    fn test_observations_bounded_simulation() {
+        // Simulate the bounds check logic
+        let mut observations: Vec<Observation> = Vec::new();
+
+        // Add more than max items
+        for i in 0..MAX_OBSERVATIONS_SIZE + 50 {
+            observations.push(Observation {
+                observation_id: format!("obs-{}", i),
+                timestamp: SystemTime::now(),
+                observation_type: ObservationType::ProgressUpdate,
+                content: format!("content-{}", i),
+                source: "test".to_string(),
+                relevance_score: 0.5,
+                impact_assessment: None,
+            });
+
+            // Apply bounds check (same logic as record_observation)
+            if observations.len() > MAX_OBSERVATIONS_SIZE {
+                let drain_count = observations.len() - MAX_OBSERVATIONS_SIZE;
+                observations.drain(0..drain_count);
+            }
+        }
+
+        // Should be bounded
+        assert_eq!(observations.len(), MAX_OBSERVATIONS_SIZE);
+    }
 }
 
 /// Mock reasoning engine for testing and basic functionality
@@ -1364,6 +1492,701 @@ impl ReasoningEngine for MockReasoningEngine {
         0.8
     }
 }
+
+// ============================================================================
+// ExecutionLoop Implementation for AgentOrchestrator
+// ============================================================================
+
+use crate::execution::{ExecutionLoop, ExecutionState, ExecutionStatus, StepResult};
+
+/// Adapter to run AgentOrchestrator through the unified ExecutionLoop interface
+///
+/// This adapter wraps an AgentOrchestrator and exposes its ReAct loop as
+/// discrete steps that can be controlled by the UniversalExecutor.
+pub struct OrchestratorExecutionAdapter {
+    /// The underlying orchestrator (owned for step execution)
+    orchestrator: AgentOrchestrator,
+    /// Goal being executed
+    goal: Goal,
+    /// Unified execution state for the ExecutionLoop interface
+    execution_state: ExecutionState,
+    /// Execution context for this run
+    context: ExecutionContext,
+    /// Convergence tracker to detect stuck loops
+    convergence_tracker: ConvergenceTracker,
+    /// Last reasoning result for completion checking
+    last_reasoning: Option<ReasoningResult>,
+    /// Whether initialization has been called
+    initialized: bool,
+    /// Last error encountered (for retry logic)
+    last_error: Option<String>,
+    /// Start time for elapsed tracking
+    start_time: std::time::Instant,
+}
+
+impl OrchestratorExecutionAdapter {
+    /// Create a new adapter for running an orchestrator with a goal
+    pub fn new(orchestrator: AgentOrchestrator, goal: Goal) -> Self {
+        let max_iterations = goal.max_iterations.unwrap_or(50);
+        Self {
+            orchestrator,
+            goal: goal.clone(),
+            execution_state: ExecutionState::new(Some(max_iterations)),
+            context: ExecutionContext::new(goal),
+            convergence_tracker: ConvergenceTracker::new(),
+            last_reasoning: None,
+            initialized: false,
+            last_error: None,
+            start_time: std::time::Instant::now(),
+        }
+    }
+
+    /// Get the final goal result after execution completes
+    pub async fn get_result(&self) -> Result<GoalResult> {
+        let success = matches!(self.execution_state.status, ExecutionStatus::Completed);
+        self.orchestrator
+            .finalize_goal_execution(&self.context, success)
+            .await
+    }
+
+    /// List all available checkpoints for this execution
+    pub fn list_checkpoints(&self) -> Vec<CheckpointInfo> {
+        self.context
+            .checkpoints
+            .iter()
+            .map(|cp| CheckpointInfo {
+                checkpoint_id: format!(
+                    "orchestrator-{}-{}",
+                    self.context.context_id,
+                    cp.iteration_count
+                ),
+                context_id: self.context.context_id.clone(),
+                checkpoint_type: format!("{:?}", cp.checkpoint_type),
+                description: cp.description.clone(),
+                created_at: cp.timestamp,
+                iteration: cp.iteration_count,
+            })
+            .collect()
+    }
+
+    /// Get recovery information for the current execution
+    pub async fn get_recovery_info(&self) -> Result<RecoveryInfo> {
+        let state_recovery = self
+            .orchestrator
+            .persistent_state_manager
+            .get_recovery_info(&self.context.context_id)
+            .await?;
+
+        let latest_checkpoint = self.context.checkpoints.last().map(|cp| CheckpointInfo {
+            checkpoint_id: format!(
+                "orchestrator-{}-{}",
+                self.context.context_id,
+                cp.iteration_count
+            ),
+            context_id: self.context.context_id.clone(),
+            checkpoint_type: format!("{:?}", cp.checkpoint_type),
+            description: cp.description.clone(),
+            created_at: cp.timestamp,
+            iteration: cp.iteration_count,
+        });
+
+        Ok(RecoveryInfo {
+            context_id: self.context.context_id.clone(),
+            current_iteration: self.execution_state.iteration,
+            checkpoint_count: self.context.checkpoints.len(),
+            latest_checkpoint,
+            recovery_possible: state_recovery.recovery_possible,
+            corruption_detected: state_recovery.corruption_detected,
+            last_saved: state_recovery.last_saved,
+        })
+    }
+
+    /// Create a named checkpoint for manual recovery points
+    pub async fn create_named_checkpoint(&mut self, name: &str) -> Result<String> {
+        let checkpoint_id = self
+            .orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::Manual,
+                format!("{} at iteration {}", name, self.execution_state.iteration),
+            )
+            .await?;
+
+        Ok(format!(
+            "orchestrator-{}-{}",
+            self.context.context_id,
+            self.execution_state.iteration
+        ))
+    }
+
+    /// Resume from the most recent checkpoint
+    pub async fn resume_from_latest(&mut self) -> Result<()> {
+        let latest = self.context.checkpoints.last().ok_or_else(|| {
+            anyhow!("No checkpoints available to resume from")
+        })?;
+
+        let checkpoint_id = format!(
+            "orchestrator-{}-{}",
+            self.context.context_id,
+            self.context.iteration_count
+        );
+
+        self.restore_checkpoint(&checkpoint_id).await
+    }
+
+    /// Check if recovery is possible from a previous state
+    pub async fn can_recover(&self) -> bool {
+        match self
+            .orchestrator
+            .persistent_state_manager
+            .get_recovery_info(&self.context.context_id)
+            .await
+        {
+            Ok(info) => info.recovery_possible && !info.corruption_detected,
+            Err(_) => false,
+        }
+    }
+}
+
+/// Information about a checkpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckpointInfo {
+    pub checkpoint_id: String,
+    pub context_id: String,
+    pub checkpoint_type: String,
+    pub description: String,
+    pub created_at: std::time::SystemTime,
+    pub iteration: u32,
+}
+
+/// Information about recovery state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryInfo {
+    pub context_id: String,
+    pub current_iteration: u32,
+    pub checkpoint_count: usize,
+    pub latest_checkpoint: Option<CheckpointInfo>,
+    pub recovery_possible: bool,
+    pub corruption_detected: bool,
+    pub last_saved: std::time::SystemTime,
+}
+
+#[async_trait::async_trait]
+impl ExecutionLoop for OrchestratorExecutionAdapter {
+    type State = ExecutionState;
+
+    async fn initialize(&mut self) -> Result<()> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        // Initialize orchestrator state
+        self.orchestrator
+            .initialize_state(self.goal.clone(), &self.context)
+            .await?;
+
+        // Set context in persistent state manager
+        self.orchestrator
+            .persistent_state_manager
+            .set_context(self.context.clone())
+            .await?;
+
+        // Create initial checkpoint
+        self.orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::BeforeAction,
+                "Goal execution started via ExecutionLoop".to_string(),
+            )
+            .await?;
+
+        // Update metrics
+        {
+            let mut metrics = timeout(LOCK_TIMEOUT, self.orchestrator.metrics.write())
+                .await
+                .map_err(|_| anyhow!("Timeout acquiring metrics lock in initialize"))?;
+            metrics.total_goals_processed += 1;
+        }
+
+        self.execution_state.status = ExecutionStatus::Running;
+        self.initialized = true;
+
+        tracing::info!(
+            "execution_loop.orchestrator.init goal='{}' max_iterations={:?}",
+            self.goal.description,
+            self.execution_state.max_iterations
+        );
+
+        Ok(())
+    }
+
+    async fn execute_step(&mut self) -> Result<StepResult> {
+        let step_start = std::time::Instant::now();
+        self.execution_state.next_iteration();
+        self.context.increment_iteration();
+
+        let step_id = format!("react-{}", self.execution_state.iteration);
+        self.execution_state.current_step = step_id.clone();
+
+        tracing::debug!(
+            "execution_loop.step.start iter={} step={}",
+            self.execution_state.iteration,
+            step_id
+        );
+
+        // ====== Reasoning Phase ======
+        let reasoning_result = {
+            let context_summary = self.context.get_summary();
+            let mut last_error = None;
+            let mut reasoning_result = None;
+
+            for attempt in 0..MAX_REASONING_RETRIES {
+                match self
+                    .orchestrator
+                    .reasoning_engine
+                    .reason(&context_summary, &self.context)
+                    .await
+                {
+                    Ok(output) => {
+                        // Parse into ReasoningResult
+                        let structured = StructuredReasoningOutput::from_raw_output(&output);
+                        reasoning_result = Some(ReasoningResult {
+                            reasoning_output: output,
+                            confidence_score: structured.confidence,
+                            goal_achieved_confidence: structured.goal_assessment.achievement_confidence,
+                            next_actions: structured
+                                .proposed_actions
+                                .iter()
+                                .map(|a| a.description.clone())
+                                .collect(),
+                        });
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "execution_loop.reasoning.retry attempt={}/{} error={}",
+                            attempt + 1,
+                            MAX_REASONING_RETRIES,
+                            e
+                        );
+                        last_error = Some(e);
+
+                        if attempt + 1 < MAX_REASONING_RETRIES {
+                            let delay = REASONING_RETRY_BASE_DELAY * (1 << attempt);
+                            tokio::time::sleep(delay).await;
+                        }
+                    }
+                }
+            }
+
+            reasoning_result.ok_or_else(|| {
+                anyhow!(
+                    "Reasoning failed after {} attempts: {}",
+                    MAX_REASONING_RETRIES,
+                    last_error
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "Unknown error".to_string())
+                )
+            })?
+        };
+
+        // Check for convergence
+        if self
+            .convergence_tracker
+            .record_reasoning(&reasoning_result.reasoning_output)
+        {
+            tracing::warn!(
+                "execution_loop.convergence iter={} similar_count={}",
+                self.execution_state.iteration,
+                CONVERGENCE_THRESHOLD
+            );
+
+            self.context.add_context_item(
+                "system_warning".to_string(),
+                "CONVERGENCE DETECTED: Please try a fundamentally different approach.".to_string(),
+            );
+
+            if self.execution_state.iteration > self.execution_state.max_iterations.unwrap_or(50) / 2
+            {
+                return Ok(StepResult::failure(
+                    step_id,
+                    "Agent stuck in convergence loop",
+                    step_start.elapsed(),
+                ));
+            }
+        }
+
+        // Store for completion checking
+        self.last_reasoning = Some(reasoning_result.clone());
+
+        // Record reasoning step
+        self.orchestrator
+            .record_reasoning_step(reasoning_result.clone(), step_start.elapsed())
+            .await?;
+
+        // ====== Planning Phase ======
+        let action_plan = self
+            .orchestrator
+            .action_planner
+            .plan_action(reasoning_result.clone(), &self.context)
+            .await?;
+
+        // Create checkpoint before action
+        self.orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::BeforeAction,
+                format!(
+                    "Before action at iteration {}",
+                    self.execution_state.iteration
+                ),
+            )
+            .await?;
+
+        // ====== Execution Phase ======
+        let action_start = std::time::Instant::now();
+        let action_result = self
+            .orchestrator
+            .action_executor
+            .execute(action_plan, &mut self.context)
+            .await?;
+        let action_duration = action_start.elapsed();
+
+        // Create checkpoint after action
+        self.orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::AfterAction,
+                format!(
+                    "After action at iteration {}",
+                    self.execution_state.iteration
+                ),
+            )
+            .await?;
+
+        // Record action step
+        self.orchestrator
+            .record_action_step(
+                SimpleActionResult {
+                    success: action_result.success,
+                    output: action_result.output.clone(),
+                    error: action_result.error.clone(),
+                    metadata: action_result.metadata.clone(),
+                },
+                action_duration,
+            )
+            .await?;
+
+        // Track for convergence
+        if let Some(ref output) = action_result.output {
+            self.convergence_tracker.record_action(output);
+        }
+
+        // ====== Observation Phase ======
+        let observation = self
+            .orchestrator
+            .observation_processor
+            .process(action_result.clone(), &self.context)
+            .await?;
+
+        self.orchestrator.record_observation(observation.clone()).await?;
+
+        // Apply guardrails if supervisor present
+        if let Some(supervisor) = &self.orchestrator.autonomy_supervisor {
+            let assessment = supervisor
+                .assess_post_action(&action_result, &observation)
+                .await?;
+            self.orchestrator
+                .apply_guardrail(SupervisorStage::PostAction, "post action", &assessment)
+                .await?;
+        }
+
+        self.context.add_observation(observation.clone());
+        self.orchestrator
+            .memory_system
+            .update_memory(&self.context)
+            .await?;
+
+        // Add observation to execution state
+        self.execution_state.add_observation(
+            format!(
+                "[{}] {}",
+                observation.observation_type.as_str(),
+                observation.content.chars().take(200).collect::<String>()
+            ),
+            10,
+        );
+
+        // Update persistent state
+        self.orchestrator
+            .persistent_state_manager
+            .set_context(self.context.clone())
+            .await?;
+
+        // Build step result
+        let step_result = if action_result.success {
+            StepResult::success(
+                step_id,
+                action_result.output.unwrap_or_default(),
+                step_start.elapsed(),
+            )
+        } else {
+            StepResult::failure(
+                step_id,
+                action_result.error.unwrap_or_else(|| "Unknown error".to_string()),
+                step_start.elapsed(),
+            )
+        };
+
+        tracing::debug!(
+            "execution_loop.step.end iter={} success={} duration_ms={}",
+            self.execution_state.iteration,
+            step_result.success,
+            step_start.elapsed().as_millis()
+        );
+
+        Ok(step_result)
+    }
+
+    fn current_step_id(&self) -> String {
+        self.execution_state.current_step.clone()
+    }
+
+    fn should_continue(&self) -> bool {
+        // Continue if not at max iterations and not complete
+        !self.execution_state.is_max_iterations_exceeded()
+            && !matches!(
+                self.execution_state.status,
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Terminated
+            )
+    }
+
+    fn is_retryable_error(&self) -> bool {
+        self.last_error.is_some()
+    }
+
+    fn is_complete(&self) -> Result<bool> {
+        // Use the orchestrator's completion logic
+        if let Some(ref reasoning) = self.last_reasoning {
+            // Check explicit success criteria
+            if let Some(goal) = self.context.get_current_goal() {
+                if !goal.success_criteria.is_empty() {
+                    // Use blocking check - this is called from sync context
+                    // For now, use a simple heuristic based on reasoning confidence
+                    if reasoning.goal_achieved_confidence >= 0.85 {
+                        return Ok(true);
+                    }
+                }
+            }
+
+            // Multi-signal check using confidence
+            if reasoning.goal_achieved_confidence >= 0.75 && reasoning.confidence_score >= 0.7 {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn should_terminate(&self) -> Result<bool> {
+        // Check for timeout (default 30 minutes)
+        let timeout = Duration::from_secs(30 * 60);
+        if self.start_time.elapsed() > timeout {
+            return Ok(true);
+        }
+
+        // Check for max iterations
+        if self.execution_state.is_max_iterations_exceeded() {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    fn get_state(&self) -> &Self::State {
+        &self.execution_state
+    }
+
+    fn get_state_mut(&mut self) -> &mut Self::State {
+        &mut self.execution_state
+    }
+
+    async fn save_checkpoint(&self) -> Result<String> {
+        let checkpoint_id = format!(
+            "orchestrator-{}-{}",
+            self.context.context_id,
+            self.execution_state.iteration
+        );
+
+        self.orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::Manual,
+                format!("ExecutionLoop checkpoint at iteration {}", self.execution_state.iteration),
+            )
+            .await?;
+
+        Ok(checkpoint_id)
+    }
+
+    async fn restore_checkpoint(&mut self, id: &str) -> Result<()> {
+        // Parse checkpoint ID format: orchestrator-{context_id}-{iteration}
+        let parts: Vec<&str> = id.splitn(3, '-').collect();
+        if parts.len() < 3 || parts[0] != "orchestrator" {
+            return Err(anyhow!("Invalid checkpoint ID format: expected 'orchestrator-<context_id>-<iteration>', got '{}'", id));
+        }
+
+        let context_id = parts[1];
+        let saved_iteration: u32 = parts[2].parse().map_err(|_| {
+            anyhow!("Invalid iteration in checkpoint ID: '{}'", parts[2])
+        })?;
+
+        // Find the checkpoint ID from the context's checkpoints
+        // The checkpoint was created at this iteration
+        let checkpoint_id = {
+            let context = self
+                .orchestrator
+                .persistent_state_manager
+                .load_context(context_id)
+                .await?;
+
+            // Find checkpoint created at or near this iteration
+            let checkpoint = context
+                .checkpoints
+                .iter()
+                .find(|cp| {
+                    cp.description.contains(&format!("iteration {}", saved_iteration))
+                        || cp.checkpoint_id.contains(&saved_iteration.to_string())
+                })
+                .or_else(|| context.checkpoints.last());
+
+            match checkpoint {
+                Some(cp) => cp.checkpoint_id.clone(),
+                None => return Err(anyhow!("No checkpoint found for iteration {}", saved_iteration)),
+            }
+        };
+
+        // Use StateManager's restore_from_checkpoint for proper restoration
+        self.orchestrator
+            .persistent_state_manager
+            .restore_from_checkpoint(context_id, &checkpoint_id)
+            .await?;
+
+        // Load the restored context
+        self.context = self
+            .orchestrator
+            .persistent_state_manager
+            .load_context(context_id)
+            .await?;
+
+        // Restore execution state from context
+        self.execution_state.iteration = self.context.iteration_count;
+        self.execution_state.status = ExecutionStatus::Running;
+        self.execution_state.current_step = "restored".to_string();
+
+        // Copy recent observations from context
+        self.execution_state.recent_observations = self
+            .context
+            .execution_history
+            .iter()
+            .rev()
+            .take(10)
+            .map(|e| format!("{:?}: {}", e.event_type, e.description))
+            .collect();
+
+        // Reset adapter state
+        self.last_reasoning = None;
+        self.last_error = None;
+        self.initialized = true;
+        self.convergence_tracker = ConvergenceTracker::new();
+
+        tracing::info!(
+            "execution_loop.checkpoint.restored checkpoint_id={} iteration={}",
+            checkpoint_id,
+            saved_iteration
+        );
+
+        Ok(())
+    }
+
+    fn iteration(&self) -> u32 {
+        self.execution_state.iteration
+    }
+
+    fn max_iterations(&self) -> Option<u32> {
+        self.execution_state.max_iterations
+    }
+
+    fn elapsed_time(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+
+    async fn handle_error(&mut self, error: anyhow::Error) -> Result<()> {
+        self.last_error = Some(error.to_string());
+        self.execution_state.error_count += 1;
+
+        tracing::warn!(
+            "execution_loop.error iter={} error={}",
+            self.execution_state.iteration,
+            error
+        );
+
+        // Create error checkpoint
+        self.orchestrator
+            .persistent_state_manager
+            .create_checkpoint(
+                CheckpointType::OnError,
+                format!("Error at iteration {}: {}", self.execution_state.iteration, error),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    fn reset_error_state(&mut self) {
+        self.last_error = None;
+    }
+
+    fn get_metrics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "iteration": self.execution_state.iteration,
+            "max_iterations": self.execution_state.max_iterations,
+            "error_count": self.execution_state.error_count,
+            "retry_count": self.execution_state.retry_count,
+            "status": format!("{:?}", self.execution_state.status),
+            "elapsed_ms": self.start_time.elapsed().as_millis(),
+            "goal": self.goal.description,
+        })
+    }
+
+    fn get_recent_observations(&self, n: usize) -> Vec<String> {
+        self.execution_state
+            .recent_observations
+            .iter()
+            .rev()
+            .take(n)
+            .cloned()
+            .collect()
+    }
+}
+
+/// Helper trait for observation type
+impl ObservationType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ObservationType::ActionResult => "action",
+            ObservationType::EnvironmentChange => "env",
+            ObservationType::UserFeedback => "user",
+            ObservationType::SystemEvent => "system",
+            ObservationType::ErrorOccurrence => "error",
+            ObservationType::ProgressUpdate => "progress",
+        }
+    }
+}
+
+// ============================================================================
+// End ExecutionLoop Implementation
+// ============================================================================
 
 /// Mock engine for testing and configuration fallback
 struct MockEngine;

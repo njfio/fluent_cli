@@ -1,3 +1,26 @@
+//! Neo4j graph database client for Fluent CLI.
+//!
+//! This module provides a high-level client for interacting with Neo4j databases,
+//! supporting document storage, vector embeddings, and TF-IDF text search.
+//!
+//! # Features
+//!
+//! - Connection management with automatic retry for transient errors
+//! - Document storage with vector embeddings (via VoyageAI integration)
+//! - TF-IDF based text search for semantic queries
+//! - Custom error types for granular error handling
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use fluent_core::neo4j_client::Neo4jClient;
+//! use fluent_core::config::Neo4jConfig;
+//!
+//! let config = Neo4jConfig::default();
+//! let client = Neo4jClient::new(&config).await?;
+//! let docs = client.search("query", 10).await?;
+//! ```
+
 use anyhow::{anyhow, Error, Result};
 use neo4rs::{
     query, BoltFloat, BoltInteger, BoltList, BoltString, BoltType, ConfigBuilder, Database, Graph,

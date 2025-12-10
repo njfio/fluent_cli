@@ -1,3 +1,31 @@
+//! Authentication and credential management for Fluent CLI.
+//!
+//! This module provides secure handling of API credentials and authentication tokens
+//! for communicating with LLM providers and external services.
+//!
+//! # Security Features
+//!
+//! - **SecureString**: Memory-safe credential storage that clears on drop
+//! - **AuthManager**: Centralized authentication with multiple auth types
+//! - Token validation to prevent injection attacks
+//! - Redacted debug/display output to prevent credential leakage
+//!
+//! # Supported Authentication Types
+//!
+//! - Bearer token (OAuth 2.0 style)
+//! - API key with custom header
+//! - HTTP Basic authentication
+//! - Custom header/value pairs
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use fluent_core::auth::{AuthManager, AuthType};
+//!
+//! let auth = AuthManager::bearer_token(&config_params)?;
+//! let headers = auth.to_headers()?;
+//! ```
+
 use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
