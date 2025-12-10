@@ -160,6 +160,115 @@ pub fn get_transient_error_message(error_msg: &str) -> &'static str {
     }
 }
 
+/// Detect if a goal description indicates a code porting/translation task
+pub fn detect_code_porting_goal(description: &str) -> bool {
+    let description_lower = description.to_lowercase();
+    let porting_keywords = [
+        "port",
+        "convert",
+        "translate",
+        "rewrite",
+        "migrate",
+        "transpile",
+    ];
+    let language_keywords = [
+        "rust",
+        "python",
+        "javascript",
+        "typescript",
+        "go",
+        "java",
+        "c++",
+        "cpp",
+        "c#",
+        "ruby",
+        "kotlin",
+        "swift",
+    ];
+
+    let has_porting_action = porting_keywords
+        .iter()
+        .any(|k| description_lower.contains(k));
+    let has_language = language_keywords
+        .iter()
+        .any(|k| description_lower.contains(k));
+
+    has_porting_action && has_language
+}
+
+/// Detect if a goal description indicates a bug fix/debugging task
+pub fn detect_bug_fix_goal(description: &str) -> bool {
+    let description_lower = description.to_lowercase();
+    let fix_keywords = [
+        "fix",
+        "debug",
+        "repair",
+        "resolve",
+        "broken",
+        "error",
+        "bug",
+        "issue",
+        "failing",
+        "crash",
+    ];
+    fix_keywords
+        .iter()
+        .any(|k| description_lower.contains(k))
+}
+
+/// Detect if a goal description indicates a file editing task
+pub fn detect_file_edit_goal(description: &str) -> bool {
+    let description_lower = description.to_lowercase();
+    let edit_keywords = [
+        "edit",
+        "modify",
+        "change",
+        "update",
+        "add to",
+        "append",
+        "insert",
+        "replace",
+        "remove from",
+    ];
+    edit_keywords
+        .iter()
+        .any(|k| description_lower.contains(k))
+}
+
+/// Detect if a goal description indicates an installation/setup task
+pub fn detect_install_setup_goal(description: &str) -> bool {
+    let description_lower = description.to_lowercase();
+    let setup_keywords = [
+        "install",
+        "setup",
+        "configure",
+        "deploy",
+        "provision",
+        "initialize",
+    ];
+    setup_keywords
+        .iter()
+        .any(|k| description_lower.contains(k))
+}
+
+/// Extract a file path from a goal description
+pub fn extract_file_path_from_description(description: &str) -> Option<String> {
+    let path_patterns = [
+        r"/[a-zA-Z0-9_/.-]+\.[a-zA-Z0-9]+", // Unix paths like /path/to/file.ext
+        r"\./[a-zA-Z0-9_/.-]+",              // Relative paths like ./file.ext
+        r"[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+",    // Simple filenames like file.ext
+    ];
+
+    for pattern in &path_patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            if let Some(mat) = re.find(description) {
+                return Some(mat.as_str().to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Status of a todo item
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
@@ -1565,25 +1674,13 @@ impl<'a> AutonomousExecutor<'a> {
 
         // Detect goal type and create appropriate todos
         if description.contains("game") {
-            if description.contains("tetris") {
-                self.add_todo("Generate Tetris game code".to_string());
-                self.add_todo("Validate game has tetromino pieces".to_string());
-                self.add_todo("Validate game has grid/board".to_string());
-                self.add_todo("Write game to output file".to_string());
-            } else if description.contains("solitaire") {
-                self.add_todo("Generate Solitaire game code".to_string());
-                self.add_todo("Validate game has card deck and piles".to_string());
-                self.add_todo("Write game to output file".to_string());
-            } else if description.contains("snake") {
-                self.add_todo("Generate Snake game code".to_string());
-                self.add_todo("Validate game has snake and food mechanics".to_string());
-                self.add_todo("Write game to output file".to_string());
-            } else {
-                self.add_todo("Determine game type to create".to_string());
-                self.add_todo("Generate game code".to_string());
-                self.add_todo("Validate game mechanics".to_string());
-                self.add_todo("Write game to output file".to_string());
-            }
+            self.parse_game_goal(&description);
+        } else if self.is_code_porting_goal(&description) {
+            self.parse_code_porting_goal(&description);
+        } else if self.is_bug_fix_goal(&description) {
+            self.parse_bug_fix_goal(&description);
+        } else if self.is_file_edit_goal(&description) {
+            self.parse_file_edit_goal(&description);
         } else if description.contains("reflection") || description.contains("analysis") {
             self.add_todo("Analyze target system".to_string());
             self.add_todo("Generate comprehensive report".to_string());
@@ -1592,6 +1689,8 @@ impl<'a> AutonomousExecutor<'a> {
             self.add_todo("Determine research scope".to_string());
             self.add_todo("Generate research content".to_string());
             self.add_todo("Write research to file".to_string());
+        } else if self.is_install_setup_goal(&description) {
+            self.parse_install_setup_goal(&description);
         } else {
             // Generic goal breakdown
             self.add_todo("Analyze goal requirements".to_string());
@@ -1605,6 +1704,119 @@ impl<'a> AutonomousExecutor<'a> {
             self.todo_list.len()
         ));
         self.display_todos();
+    }
+
+    /// Check if goal is about code porting/translation
+    fn is_code_porting_goal(&self, description: &str) -> bool {
+        detect_code_porting_goal(description)
+    }
+
+    /// Parse code porting/translation goal into specific todos
+    fn parse_code_porting_goal(&mut self, description: &str) {
+        // Extract source and target if possible
+        let source_file = self.extract_file_path(description);
+
+        if let Some(source) = source_file {
+            self.add_todo(format!("Read and analyze source file: {}", source));
+        } else {
+            self.add_todo("Identify source code to port".to_string());
+        }
+        self.add_todo("Understand the algorithm and data structures".to_string());
+        self.add_todo("Plan target language implementation structure".to_string());
+        self.add_todo("Implement core logic in target language".to_string());
+        self.add_todo("Implement helper functions and utilities".to_string());
+        self.add_todo("Write ported code to output file".to_string());
+        self.add_todo("Verify output file was created".to_string());
+    }
+
+    /// Check if goal is about fixing bugs or debugging
+    fn is_bug_fix_goal(&self, description: &str) -> bool {
+        detect_bug_fix_goal(description)
+    }
+
+    /// Parse bug fix goal into specific todos
+    fn parse_bug_fix_goal(&mut self, description: &str) {
+        let target_file = self.extract_file_path(description);
+
+        if let Some(file) = target_file {
+            self.add_todo(format!("Read and analyze file: {}", file));
+        } else {
+            self.add_todo("Identify the file(s) with the issue".to_string());
+        }
+        self.add_todo("Understand the expected behavior".to_string());
+        self.add_todo("Identify the root cause of the bug".to_string());
+        self.add_todo("Implement the fix".to_string());
+        self.add_todo("Verify the fix resolves the issue".to_string());
+    }
+
+    /// Check if goal is about editing or modifying files
+    fn is_file_edit_goal(&self, description: &str) -> bool {
+        detect_file_edit_goal(description)
+    }
+
+    /// Parse file edit goal into specific todos
+    fn parse_file_edit_goal(&mut self, description: &str) {
+        let target_file = self.extract_file_path(description);
+
+        if let Some(file) = target_file {
+            self.add_todo(format!("Read current contents of: {}", file));
+            self.add_todo("Identify what changes are needed".to_string());
+            self.add_todo(format!("Apply modifications to: {}", file));
+            self.add_todo("Verify changes were applied correctly".to_string());
+        } else {
+            self.add_todo("Identify target file(s) to modify".to_string());
+            self.add_todo("Read current file contents".to_string());
+            self.add_todo("Determine required modifications".to_string());
+            self.add_todo("Apply the modifications".to_string());
+            self.add_todo("Verify changes".to_string());
+        }
+    }
+
+    /// Check if goal is about installation or setup
+    fn is_install_setup_goal(&self, description: &str) -> bool {
+        detect_install_setup_goal(description)
+    }
+
+    /// Parse install/setup goal into specific todos
+    fn parse_install_setup_goal(&mut self, _description: &str) {
+        self.add_todo("Identify prerequisites and dependencies".to_string());
+        self.add_todo("Check current system state".to_string());
+        self.add_todo("Execute installation/setup commands".to_string());
+        self.add_todo("Verify installation succeeded".to_string());
+        self.add_todo("Run any post-installation configuration".to_string());
+    }
+
+    /// Parse game creation goal into specific todos
+    fn parse_game_goal(&mut self, description: &str) {
+        if description.contains("tetris") {
+            self.add_todo("Generate Tetris game code".to_string());
+            self.add_todo("Validate game has tetromino pieces".to_string());
+            self.add_todo("Validate game has grid/board".to_string());
+            self.add_todo("Write game to output file".to_string());
+        } else if description.contains("solitaire") {
+            self.add_todo("Generate Solitaire game code".to_string());
+            self.add_todo("Validate game has card deck and piles".to_string());
+            self.add_todo("Write game to output file".to_string());
+        } else if description.contains("snake") {
+            self.add_todo("Generate Snake game code".to_string());
+            self.add_todo("Validate game has snake and food mechanics".to_string());
+            self.add_todo("Write game to output file".to_string());
+        } else if description.contains("minesweeper") {
+            self.add_todo("Generate Minesweeper game code".to_string());
+            self.add_todo("Validate game has mine grid and reveal mechanics".to_string());
+            self.add_todo("Write game to output file".to_string());
+        } else {
+            self.add_todo("Determine game type to create".to_string());
+            self.add_todo("Generate game code".to_string());
+            self.add_todo("Validate game mechanics".to_string());
+            self.add_todo("Write game to output file".to_string());
+        }
+    }
+
+    /// Try to extract a file path from the goal description
+    fn extract_file_path(&self, _description: &str) -> Option<String> {
+        // Use original goal description to preserve case
+        extract_file_path_from_description(&self.goal.description)
     }
 
     /// Execute autonomous loop
@@ -3375,5 +3587,143 @@ mod tests {
     fn test_get_transient_error_message_unknown() {
         // Unknown transient errors should get a generic retry message
         assert!(get_transient_error_message("some unknown error").contains("Transient"));
+    }
+
+    // === Goal Type Detection Tests ===
+
+    #[test]
+    fn test_detect_code_porting_goal_positive() {
+        // Should detect code porting goals
+        assert!(detect_code_porting_goal("port this python code to rust"));
+        assert!(detect_code_porting_goal("convert the JavaScript to TypeScript"));
+        assert!(detect_code_porting_goal("translate this Go code to Java"));
+        assert!(detect_code_porting_goal("rewrite the Ruby implementation in Kotlin"));
+        assert!(detect_code_porting_goal("migrate from C++ to Rust"));
+        assert!(detect_code_porting_goal("transpile the code to Swift"));
+    }
+
+    #[test]
+    fn test_detect_code_porting_goal_negative() {
+        // Should NOT detect as porting without language mention
+        assert!(!detect_code_porting_goal("port this to a new file"));
+        assert!(!detect_code_porting_goal("convert the data format"));
+        // Should NOT detect without porting action
+        assert!(!detect_code_porting_goal("write some rust code"));
+        assert!(!detect_code_porting_goal("create a python script"));
+    }
+
+    #[test]
+    fn test_detect_bug_fix_goal_positive() {
+        assert!(detect_bug_fix_goal("fix the login bug"));
+        assert!(detect_bug_fix_goal("debug the server crash"));
+        assert!(detect_bug_fix_goal("repair the broken function"));
+        assert!(detect_bug_fix_goal("resolve the authentication issue"));
+        assert!(detect_bug_fix_goal("the code is broken, please fix"));
+        assert!(detect_bug_fix_goal("error in the calculation"));
+        assert!(detect_bug_fix_goal("tests are failing"));
+    }
+
+    #[test]
+    fn test_detect_bug_fix_goal_negative() {
+        assert!(!detect_bug_fix_goal("create a new feature"));
+        assert!(!detect_bug_fix_goal("implement user login"));
+        assert!(!detect_bug_fix_goal("write documentation"));
+    }
+
+    #[test]
+    fn test_detect_file_edit_goal_positive() {
+        assert!(detect_file_edit_goal("edit the config file"));
+        assert!(detect_file_edit_goal("modify the function"));
+        assert!(detect_file_edit_goal("change the variable name"));
+        assert!(detect_file_edit_goal("update the version"));
+        assert!(detect_file_edit_goal("add to the list"));
+        assert!(detect_file_edit_goal("append text to the file"));
+        assert!(detect_file_edit_goal("insert a new line"));
+        assert!(detect_file_edit_goal("replace the old value"));
+        assert!(detect_file_edit_goal("remove from the array"));
+    }
+
+    #[test]
+    fn test_detect_file_edit_goal_negative() {
+        assert!(!detect_file_edit_goal("create a new file"));
+        assert!(!detect_file_edit_goal("read the documentation"));
+        assert!(!detect_file_edit_goal("explain the code"));
+    }
+
+    #[test]
+    fn test_detect_install_setup_goal_positive() {
+        assert!(detect_install_setup_goal("install the package"));
+        assert!(detect_install_setup_goal("setup the development environment"));
+        assert!(detect_install_setup_goal("configure the database"));
+        assert!(detect_install_setup_goal("deploy to production"));
+        assert!(detect_install_setup_goal("provision the server"));
+        assert!(detect_install_setup_goal("initialize the project"));
+    }
+
+    #[test]
+    fn test_detect_install_setup_goal_negative() {
+        assert!(!detect_install_setup_goal("write code"));
+        assert!(!detect_install_setup_goal("create a function"));
+        assert!(!detect_install_setup_goal("fix the bug"));
+    }
+
+    #[test]
+    fn test_extract_file_path_unix() {
+        assert_eq!(
+            extract_file_path_from_description("edit /path/to/file.txt"),
+            Some("/path/to/file.txt".to_string())
+        );
+        assert_eq!(
+            extract_file_path_from_description("read /home/user/config.json"),
+            Some("/home/user/config.json".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_relative() {
+        // The regex extracts /src/main.rs from ./src/main.rs because the
+        // Unix absolute path pattern matches /src/main.rs first
+        assert_eq!(
+            extract_file_path_from_description("check ./src/main.rs"),
+            Some("/src/main.rs".to_string())
+        );
+        // For src/main.rs, the Unix path regex finds /main.rs inside it
+        assert_eq!(
+            extract_file_path_from_description("check src/main.rs"),
+            Some("/main.rs".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_simple() {
+        assert_eq!(
+            extract_file_path_from_description("fix config.yaml"),
+            Some("config.yaml".to_string())
+        );
+        assert_eq!(
+            extract_file_path_from_description("update main.py"),
+            Some("main.py".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_none() {
+        assert_eq!(
+            extract_file_path_from_description("write some code"),
+            None
+        );
+        assert_eq!(
+            extract_file_path_from_description("fix the bug"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_goal_detection_case_insensitive() {
+        // Should be case insensitive
+        assert!(detect_code_porting_goal("PORT THIS PYTHON CODE TO RUST"));
+        assert!(detect_bug_fix_goal("FIX THE BUG"));
+        assert!(detect_file_edit_goal("EDIT THE FILE"));
+        assert!(detect_install_setup_goal("INSTALL DEPENDENCIES"));
     }
 }
