@@ -18,6 +18,96 @@ use tracing::{debug, error, info, warn};
 
 use crate::tui::{AgentStatus, TuiManager};
 
+/// Classification of API errors for graceful handling
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiErrorKind {
+    /// Non-recoverable errors (billing, auth) - exit immediately
+    NonRecoverable,
+    /// Transient errors (network, rate limit) - may retry
+    Transient,
+    /// Unknown errors - treat as transient
+    Unknown,
+}
+
+/// Check if an error message indicates a non-recoverable API error
+///
+/// Non-recoverable errors include:
+/// - Billing/credit issues (e.g., "credit balance is too low")
+/// - Authentication failures (e.g., "invalid API key", "unauthorized")
+/// - Account issues (e.g., "account suspended")
+///
+/// These errors should cause immediate exit rather than continuing to retry.
+pub fn classify_api_error(error_msg: &str) -> ApiErrorKind {
+    let lower = error_msg.to_lowercase();
+
+    // Billing/credit issues - non-recoverable
+    if lower.contains("credit balance")
+        || lower.contains("billing")
+        || lower.contains("payment")
+        || lower.contains("quota exceeded")
+        || lower.contains("insufficient funds")
+        || lower.contains("purchase credits")
+    {
+        return ApiErrorKind::NonRecoverable;
+    }
+
+    // Authentication issues - non-recoverable
+    if lower.contains("invalid api key")
+        || lower.contains("invalid_api_key")
+        || lower.contains("unauthorized")
+        || lower.contains("authentication failed")
+        || lower.contains("invalid bearer token")
+        || lower.contains("api key not found")
+        || lower.contains("permission denied")
+    {
+        return ApiErrorKind::NonRecoverable;
+    }
+
+    // Account issues - non-recoverable
+    if lower.contains("account suspended")
+        || lower.contains("account disabled")
+        || lower.contains("access denied")
+    {
+        return ApiErrorKind::NonRecoverable;
+    }
+
+    // Rate limiting - transient (may recover after backoff)
+    if lower.contains("rate limit")
+        || lower.contains("too many requests")
+        || lower.contains("429")
+    {
+        return ApiErrorKind::Transient;
+    }
+
+    // Network/timeout errors - transient
+    if lower.contains("timeout")
+        || lower.contains("connection refused")
+        || lower.contains("network error")
+        || lower.contains("connection reset")
+    {
+        return ApiErrorKind::Transient;
+    }
+
+    ApiErrorKind::Unknown
+}
+
+/// Get a user-friendly message for non-recoverable errors
+pub fn get_api_error_guidance(error_msg: &str) -> &'static str {
+    let lower = error_msg.to_lowercase();
+
+    if lower.contains("credit balance") || lower.contains("purchase credits") {
+        "💳 API credits exhausted. Please add credits to your account and try again."
+    } else if lower.contains("invalid api key") || lower.contains("invalid_api_key") {
+        "🔑 Invalid API key. Please check your ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable."
+    } else if lower.contains("unauthorized") || lower.contains("authentication") {
+        "🔐 Authentication failed. Please verify your API credentials."
+    } else if lower.contains("account suspended") || lower.contains("account disabled") {
+        "⚠️ Account issue. Please check your account status with the API provider."
+    } else {
+        "❌ Non-recoverable API error. Please check your API configuration."
+    }
+}
+
 /// Status of a todo item
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {
@@ -1529,7 +1619,37 @@ impl<'a> AutonomousExecutor<'a> {
                 ));
             }
 
-            let reasoning_response = self.perform_reasoning(iteration, max_iterations).await?;
+            let reasoning_response = match self.perform_reasoning(iteration, max_iterations).await {
+                Ok(response) => response,
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    let error_kind = classify_api_error(&error_msg);
+
+                    match error_kind {
+                        ApiErrorKind::NonRecoverable => {
+                            // Log and exit immediately for non-recoverable errors
+                            let guidance = get_api_error_guidance(&error_msg);
+                            error!(
+                                "agent.api.non_recoverable error='{}' guidance='{}'",
+                                error_msg, guidance
+                            );
+                            self.tui.add_log(format!("🛑 {}", guidance));
+                            self.tui.add_log(format!(
+                                "❌ Agent stopping immediately due to non-recoverable API error"
+                            ));
+                            return Err(anyhow!(
+                                "Non-recoverable API error: {}. {}",
+                                error_msg,
+                                guidance
+                            ));
+                        }
+                        ApiErrorKind::Transient | ApiErrorKind::Unknown => {
+                            // For transient errors, propagate normally (may retry)
+                            return Err(e);
+                        }
+                    }
+                }
+            };
 
             // Reset activity timer - we got an LLM response
             self.reset_activity_timer();
@@ -2967,5 +3087,128 @@ impl<'a> GameCreator<'a> {
         context.set_variable("game_created".to_string(), "true".to_string());
         context.set_variable("game_path".to_string(), file_path.to_string());
         context.set_variable("game_type".to_string(), file_extension.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_classify_api_error_billing() {
+        // Credit balance errors
+        assert_eq!(
+            classify_api_error("Your credit balance is too low to access the Anthropic API"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Please go to Plans & Billing to purchase credits"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Quota exceeded for your organization"),
+            ApiErrorKind::NonRecoverable
+        );
+    }
+
+    #[test]
+    fn test_classify_api_error_auth() {
+        // Authentication errors
+        assert_eq!(
+            classify_api_error("Invalid API key provided"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Unauthorized: invalid_api_key"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Authentication failed: invalid bearer token"),
+            ApiErrorKind::NonRecoverable
+        );
+    }
+
+    #[test]
+    fn test_classify_api_error_account() {
+        // Account issues (note: patterns are "account suspended", "account disabled", "access denied")
+        assert_eq!(
+            classify_api_error("Your account suspended for policy violation"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Account disabled due to terms of service"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("Access denied: insufficient permissions"),
+            ApiErrorKind::NonRecoverable
+        );
+    }
+
+    #[test]
+    fn test_classify_api_error_transient() {
+        // Rate limiting - transient
+        assert_eq!(
+            classify_api_error("Rate limit exceeded, please retry"),
+            ApiErrorKind::Transient
+        );
+        assert_eq!(
+            classify_api_error("429 Too Many Requests"),
+            ApiErrorKind::Transient
+        );
+
+        // Network errors - transient (note: patterns are "timeout", "connection refused", "network error")
+        assert_eq!(
+            classify_api_error("Request timeout after 30 seconds"),
+            ApiErrorKind::Transient
+        );
+        assert_eq!(
+            classify_api_error("Connection refused by remote server"),
+            ApiErrorKind::Transient
+        );
+        assert_eq!(
+            classify_api_error("A network error occurred"),
+            ApiErrorKind::Transient
+        );
+    }
+
+    #[test]
+    fn test_classify_api_error_unknown() {
+        // Unknown errors
+        assert_eq!(
+            classify_api_error("Some random error message"),
+            ApiErrorKind::Unknown
+        );
+        assert_eq!(
+            classify_api_error("Internal server error"),
+            ApiErrorKind::Unknown
+        );
+    }
+
+    #[test]
+    fn test_classify_api_error_case_insensitive() {
+        // Should be case insensitive
+        assert_eq!(
+            classify_api_error("CREDIT BALANCE is too low"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("INVALID API KEY"),
+            ApiErrorKind::NonRecoverable
+        );
+        assert_eq!(
+            classify_api_error("RATE LIMIT exceeded"),
+            ApiErrorKind::Transient
+        );
+    }
+
+    #[test]
+    fn test_get_api_error_guidance() {
+        // Test guidance messages
+        assert!(get_api_error_guidance("credit balance is too low").contains("credits"));
+        assert!(get_api_error_guidance("invalid api key").contains("API key"));
+        assert!(get_api_error_guidance("unauthorized").contains("Authentication"));
+        assert!(get_api_error_guidance("account suspended").contains("Account"));
+        assert!(get_api_error_guidance("unknown error").contains("API"));
     }
 }
