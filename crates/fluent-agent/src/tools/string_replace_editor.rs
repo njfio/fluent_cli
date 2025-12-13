@@ -75,18 +75,13 @@ pub struct StringReplaceParams {
 }
 
 /// Specifies which occurrence(s) to replace
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum ReplaceOccurrence {
+    #[default]
     First,
     Last,
     All,
     Index(usize), // 1-based index
-}
-
-impl Default for ReplaceOccurrence {
-    fn default() -> Self {
-        ReplaceOccurrence::First
-    }
 }
 
 /// Result of a string replacement operation
@@ -143,6 +138,12 @@ pub struct MultiPatternResult {
     pub backup_path: Option<String>,
     pub preview: Option<String>,
     pub error: Option<String>,
+}
+
+impl Default for StringReplaceEditor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StringReplaceEditor {

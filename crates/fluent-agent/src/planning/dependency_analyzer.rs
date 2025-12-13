@@ -15,6 +15,9 @@ use uuid::Uuid;
 use crate::context::ExecutionContext;
 use crate::task::Task;
 
+type CycleDetectionFuture<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<String>>>> + Send + 'a>>;
+
 /// Dependency analyzer for task scheduling and parallel execution
 pub struct DependencyAnalyzer {
     config: AnalyzerConfig,
@@ -419,7 +422,7 @@ impl DependencyAnalyzer {
 
         for (dep_word, _) in dependency_keywords {
             if desc_a.contains(dep_word)
-                && desc_a.contains(&desc_b.split_whitespace().next().unwrap_or(""))
+                && desc_a.contains(desc_b.split_whitespace().next().unwrap_or(""))
             {
                 return Ok(true);
             }
@@ -616,9 +619,9 @@ impl DependencyAnalyzer {
             if graph
                 .dependencies
                 .get(task_id)
-                .map_or(true, |deps| deps.is_empty())
+                .is_none_or(|deps| deps.is_empty())
             {
-                let current_path = self.find_longest_path(task_id, &graph).await?;
+                let current_path = Self::find_longest_path(task_id, &graph).await?;
                 if current_path.len() > max_length {
                     max_length = current_path.len();
                     path = current_path;
@@ -631,7 +634,6 @@ impl DependencyAnalyzer {
 
     /// Find longest path starting from a given task
     fn find_longest_path<'a>(
-        &'a self,
         start_task: &'a str,
         graph: &'a DependencyGraph,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>>> + Send + 'a>> {
@@ -641,7 +643,7 @@ impl DependencyAnalyzer {
 
             loop {
                 let dependents = graph.dependents.get(&current);
-                if dependents.map_or(true, |deps| deps.is_empty()) {
+                if dependents.is_none_or(|deps| deps.is_empty()) {
                     break;
                 }
 
@@ -651,7 +653,7 @@ impl DependencyAnalyzer {
 
                 if let Some(dependents) = dependents {
                     for dependent in dependents {
-                        let sub_path = self.find_longest_path(dependent, graph).await?;
+                        let sub_path = Self::find_longest_path(dependent, graph).await?;
                         if sub_path.len() > best_length {
                             best_length = sub_path.len();
                             best_next = Some(dependent.clone());
@@ -868,9 +870,9 @@ impl DependencyAnalyzer {
 
         for node_id in graph.nodes.keys() {
             if !visited.contains(node_id) {
-                if let Some(cycle) = self
-                    .dfs_cycle_detection_simple(node_id, graph, &mut visited, &mut rec_stack)
-                    .await?
+                if let Some(cycle) =
+                    Self::dfs_cycle_detection_simple(node_id, graph, &mut visited, &mut rec_stack)
+                        .await?
                 {
                     cycles.push(cycle);
                 }
@@ -901,28 +903,24 @@ impl DependencyAnalyzer {
         graph: &DependencyGraph,
     ) -> Result<Vec<String>> {
         let mut path = vec![start.to_string()];
-        let mut current = start;
+        let mut current = start.to_string();
 
         // Simple greedy approach: follow the path with most dependencies
-        loop {
-            if let Some(dependents) = graph.dependents.get(current) {
-                if let Some(next) = dependents
-                    .iter()
-                    .max_by_key(|&dep| graph.nodes.get(dep).map(|n| n.dependent_count).unwrap_or(0))
-                {
-                    if !path.contains(next) {
-                        // Avoid cycles
-                        path.push(next.clone());
-                        current = next;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            } else {
+        while let Some(dependents) = graph.dependents.get(&current) {
+            let Some(next) = dependents
+                .iter()
+                .max_by_key(|&dep| graph.nodes.get(dep).map(|n| n.dependent_count).unwrap_or(0))
+            else {
+                break;
+            };
+
+            if path.contains(next) {
+                // Avoid cycles
                 break;
             }
+
+            path.push(next.clone());
+            current = next.clone();
         }
 
         Ok(path)
@@ -936,8 +934,8 @@ impl DependencyAnalyzer {
     ) -> Result<Vec<String>> {
         let mut parallel_tasks = vec![task_id.to_string()];
 
-        for (other_id, _) in &graph.nodes {
-            if other_id != task_id
+        for other_id in graph.nodes.keys() {
+            if other_id.as_str() != task_id
                 && self
                     .can_run_parallel_check(task_id, other_id, graph)
                     .await?
@@ -974,13 +972,11 @@ impl DependencyAnalyzer {
 
     /// DFS-based cycle detection (simplified)
     fn dfs_cycle_detection_simple<'a>(
-        &'a self,
         node: &'a str,
         graph: &'a DependencyGraph,
         visited: &'a mut HashSet<String>,
         rec_stack: &'a mut HashSet<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<Vec<String>>>> + Send + 'a>>
-    {
+    ) -> CycleDetectionFuture<'a> {
         Box::pin(async move {
             visited.insert(node.to_string());
             rec_stack.insert(node.to_string());
@@ -988,9 +984,9 @@ impl DependencyAnalyzer {
             if let Some(dependents) = graph.dependents.get(node) {
                 for dependent in dependents {
                     if !visited.contains(dependent) {
-                        if let Some(cycle) = self
-                            .dfs_cycle_detection_simple(dependent, graph, visited, rec_stack)
-                            .await?
+                        if let Some(cycle) =
+                            Self::dfs_cycle_detection_simple(dependent, graph, visited, rec_stack)
+                                .await?
                         {
                             return Ok(Some(cycle));
                         }

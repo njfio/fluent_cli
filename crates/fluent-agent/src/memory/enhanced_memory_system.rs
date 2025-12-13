@@ -819,16 +819,16 @@ impl EnhancedMemorySystem {
 
         // Update domain awareness
         let summary = context.get_summary();
-        if summary.contains("programming") {
-            if !meta
+        if summary.contains("programming")
+            && !meta
                 .memory_awareness
                 .known_domains
-                .contains(&"programming".to_string())
-            {
-                meta.memory_awareness
-                    .known_domains
-                    .push("programming".to_string());
-            }
+                .iter()
+                .any(|domain| domain == "programming")
+        {
+            meta.memory_awareness
+                .known_domains
+                .push("programming".to_string());
         }
 
         // Update confidence estimates

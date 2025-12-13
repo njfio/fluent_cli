@@ -388,11 +388,7 @@ impl MultiModalReasoningEngine {
 
         // Add modality-specific insights
         for (modality, insight) in modality_insights {
-            integrated.push_str(&format!(
-                "**{} Insights:**\n{}\n\n",
-                format!("{:?}", modality),
-                insight
-            ));
+            integrated.push_str(&format!("**{:?} Insights:**\n{}\n\n", modality, insight));
         }
 
         // Add cross-modal relationships
@@ -400,15 +396,15 @@ impl MultiModalReasoningEngine {
             integrated.push_str("**Cross-Modal Relationships:**\n");
             for relationship in relationships {
                 integrated.push_str(&format!(
-                    "- {} → {} ({}): {} (strength: {:.2})\n",
-                    format!("{:?}", relationship.source_modality),
-                    format!("{:?}", relationship.target_modality),
+                    "- {:?} → {:?} ({}): {} (strength: {:.2})\n",
+                    relationship.source_modality,
+                    relationship.target_modality,
                     relationship.relationship_type,
                     relationship.description,
                     relationship.strength
                 ));
             }
-            integrated.push_str("\n");
+            integrated.push('\n');
         }
 
         // Generate integrated conclusion

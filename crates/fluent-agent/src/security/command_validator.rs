@@ -19,10 +19,14 @@ use std::env;
 pub struct CommandValidator {
     /// List of commands that are explicitly allowed to run
     allowed_commands: Vec<String>,
-    /// Maximum allowed length for command names
+    /// Maximum allowed length for command names (default: 100)
     max_command_length: usize,
-    /// Maximum allowed length for individual arguments
+    /// Maximum allowed length for individual arguments (default: 4096)
     max_arg_length: usize,
+    /// Maximum number of arguments allowed (default: 100)
+    max_arg_count: usize,
+    /// Maximum total command line length (default: 131072 = 128KB)
+    max_total_length: usize,
     /// Dangerous patterns to detect in commands and arguments
     dangerous_patterns: Vec<&'static str>,
 }
@@ -49,7 +53,35 @@ impl CommandValidator {
         Self {
             allowed_commands,
             max_command_length: 100,
-            max_arg_length: 1000,
+            max_arg_length: 4096,     // 4KB per argument
+            max_arg_count: 100,       // Maximum 100 arguments
+            max_total_length: 131072, // 128KB total command line
+            dangerous_patterns: Self::get_dangerous_patterns(),
+        }
+    }
+
+    /// Create a new CommandValidator with custom limits
+    ///
+    /// # Arguments
+    ///
+    /// * `allowed_commands` - Vector of command names that are permitted to execute
+    /// * `max_command_length` - Maximum length for command names
+    /// * `max_arg_length` - Maximum length for individual arguments
+    /// * `max_arg_count` - Maximum number of arguments allowed
+    /// * `max_total_length` - Maximum total command line length
+    pub fn with_limits(
+        allowed_commands: Vec<String>,
+        max_command_length: usize,
+        max_arg_length: usize,
+        max_arg_count: usize,
+        max_total_length: usize,
+    ) -> Self {
+        Self {
+            allowed_commands,
+            max_command_length,
+            max_arg_length,
+            max_arg_count,
+            max_total_length,
             dangerous_patterns: Self::get_dangerous_patterns(),
         }
     }
@@ -77,11 +109,43 @@ impl CommandValidator {
     /// Checks the following environment variables:
     /// - `FLUENT_ALLOWED_COMMANDS`: Comma-separated list of allowed commands
     /// - `FLUENT_AGENT_CONTEXT`: Context-specific command sets (development, testing, production)
+    /// - `FLUENT_CMD_MAX_LENGTH`: Maximum command name length (default: 100)
+    /// - `FLUENT_CMD_MAX_ARG_LENGTH`: Maximum argument length (default: 4096)
+    /// - `FLUENT_CMD_MAX_ARG_COUNT`: Maximum argument count (default: 100)
+    /// - `FLUENT_CMD_MAX_TOTAL_LENGTH`: Maximum total command line length (default: 131072)
     ///
     /// Falls back to defaults if environment variables are not set or invalid.
     pub fn from_environment() -> Self {
         let allowed_commands = Self::get_allowed_commands_from_env();
-        Self::new(allowed_commands)
+
+        // Parse limit configuration from environment
+        let max_command_length = env::var("FLUENT_CMD_MAX_LENGTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
+
+        let max_arg_length = env::var("FLUENT_CMD_MAX_ARG_LENGTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4096);
+
+        let max_arg_count = env::var("FLUENT_CMD_MAX_ARG_COUNT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
+
+        let max_total_length = env::var("FLUENT_CMD_MAX_TOTAL_LENGTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(131072);
+
+        Self::with_limits(
+            allowed_commands,
+            max_command_length,
+            max_arg_length,
+            max_arg_count,
+            max_total_length,
+        )
     }
 
     /// Validate a command and its arguments against security policies
@@ -115,6 +179,25 @@ impl CommandValidator {
 
         // Check for dangerous patterns in command
         self.check_dangerous_patterns(command)?;
+
+        // Check argument count limit
+        if args.len() > self.max_arg_count {
+            return Err(anyhow!(
+                "Too many arguments: {} (max: {})",
+                args.len(),
+                self.max_arg_count
+            ));
+        }
+
+        // Check total command line length
+        let total_length: usize = command.len() + args.iter().map(|a| a.len() + 1).sum::<usize>(); // +1 for space separators
+        if total_length > self.max_total_length {
+            return Err(anyhow!(
+                "Total command line too long: {} bytes (max: {})",
+                total_length,
+                self.max_total_length
+            ));
+        }
 
         // Validate all arguments
         self.validate_arguments(args)?;
@@ -174,8 +257,18 @@ impl CommandValidator {
         Ok(())
     }
 
+    /// Check if wildcard access is enabled (all commands allowed)
+    fn has_wildcard_access(&self) -> bool {
+        self.allowed_commands.iter().any(|allowed| allowed == "*")
+    }
+
     /// Check if command is in the allowlist
     fn check_allowlist(&self, cmd: &str) -> Result<()> {
+        // Check for wildcard - "*" means all commands are allowed
+        if self.has_wildcard_access() {
+            return Ok(());
+        }
+
         if !self.allowed_commands.iter().any(|allowed| allowed == cmd) {
             return Err(anyhow!(
                 "Command '{}' not in allowed list. Allowed commands: {:?}",
@@ -188,6 +281,12 @@ impl CommandValidator {
 
     /// Check for dangerous patterns in input
     fn check_dangerous_patterns(&self, input: &str) -> Result<()> {
+        // Bypass dangerous pattern checks when wildcard access is enabled
+        // This allows full system access for testing environments like terminal-bench
+        if self.has_wildcard_access() {
+            return Ok(());
+        }
+
         let input_lower = input.to_lowercase();
 
         for pattern in &self.dangerous_patterns {
@@ -572,10 +671,83 @@ mod tests {
     fn test_validate_argument_length() {
         let validator = CommandValidator::new(vec!["echo".to_string()]);
 
-        let long_arg = "a".repeat(2000);
+        // Default max_arg_length is 4096
+        let long_arg = "a".repeat(5000);
         let result = validator.validate("echo", &[long_arg]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too long"));
+    }
+
+    #[test]
+    fn test_validate_argument_count() {
+        let validator = CommandValidator::with_limits(
+            vec!["echo".to_string()],
+            100,
+            4096,
+            5, // Only allow 5 args
+            131072,
+        );
+
+        // 5 args should pass
+        let args: Vec<String> = (0..5).map(|i| format!("arg{}", i)).collect();
+        assert!(validator.validate("echo", &args).is_ok());
+
+        // 6 args should fail
+        let args: Vec<String> = (0..6).map(|i| format!("arg{}", i)).collect();
+        let result = validator.validate("echo", &args);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Too many arguments"));
+    }
+
+    #[test]
+    fn test_validate_total_length() {
+        let validator = CommandValidator::with_limits(
+            vec!["echo".to_string()],
+            100,
+            4096,
+            100,
+            100, // Only allow 100 bytes total
+        );
+
+        // Short command should pass
+        let args = vec!["hi".to_string()];
+        assert!(validator.validate("echo", &args).is_ok());
+
+        // Long args should fail
+        let long_arg = "a".repeat(200);
+        let result = validator.validate("echo", &[long_arg]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Total command line too long"));
+    }
+
+    #[test]
+    fn test_custom_limits() {
+        let validator = CommandValidator::with_limits(
+            vec!["test".to_string()],
+            50,  // max command length
+            100, // max arg length
+            10,  // max arg count
+            500, // max total length
+        );
+
+        // Command name at limit
+        let cmd = "test";
+        assert!(validator.validate(cmd, &[]).is_ok());
+
+        // Arg at limit should pass
+        let arg = "a".repeat(100);
+        assert!(validator.validate("test", &[arg]).is_ok());
+
+        // Arg over limit should fail
+        let arg = "a".repeat(101);
+        let result = validator.validate("test", &[arg]);
+        assert!(result.is_err());
     }
 
     #[test]

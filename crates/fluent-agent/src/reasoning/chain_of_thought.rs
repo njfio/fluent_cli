@@ -778,6 +778,7 @@ RATIONALE: [Why this alternative is better]"#,
 }
 
 /// Result of attempting to generate a reasoning step
+#[allow(clippy::large_enum_variant)]
 enum StepResult {
     Success(ReasoningStep),
     Failure(String),

@@ -35,7 +35,14 @@ impl MLFramework {
     pub fn keywords(&self) -> Vec<&'static str> {
         match self {
             MLFramework::PyTorch => vec!["pytorch", "torch", ".pt", ".pth", "torchscript", ".ckpt"],
-            MLFramework::TensorFlow => vec!["tensorflow", "tf", ".pb", ".h5", "savedmodel", "saved_model"],
+            MLFramework::TensorFlow => vec![
+                "tensorflow",
+                "tf",
+                ".pb",
+                ".h5",
+                "savedmodel",
+                "saved_model",
+            ],
             MLFramework::Keras => vec!["keras", ".keras", ".h5", "keras model"],
             MLFramework::ONNX => vec!["onnx", ".onnx", "open neural network"],
             MLFramework::TensorRT => vec!["tensorrt", "trt", ".engine", ".plan"],
@@ -82,11 +89,21 @@ impl MLFramework {
     /// Get primary language for this framework
     pub fn primary_language(&self) -> &'static str {
         match self {
-            MLFramework::PyTorch | MLFramework::TensorFlow | MLFramework::Keras |
-            MLFramework::ONNX | MLFramework::JAX | MLFramework::MXNet |
-            MLFramework::PaddlePaddle | MLFramework::TVM | MLFramework::SafeTensors => "Python",
-            MLFramework::TensorRT | MLFramework::OpenVINO | MLFramework::NCNN |
-            MLFramework::Caffe | MLFramework::Caffe2 | MLFramework::Triton => "C++/Python",
+            MLFramework::PyTorch
+            | MLFramework::TensorFlow
+            | MLFramework::Keras
+            | MLFramework::ONNX
+            | MLFramework::JAX
+            | MLFramework::MXNet
+            | MLFramework::PaddlePaddle
+            | MLFramework::TVM
+            | MLFramework::SafeTensors => "Python",
+            MLFramework::TensorRT
+            | MLFramework::OpenVINO
+            | MLFramework::NCNN
+            | MLFramework::Caffe
+            | MLFramework::Caffe2
+            | MLFramework::Triton => "C++/Python",
             MLFramework::CoreML | MLFramework::MLX => "Swift/Python",
             MLFramework::TFLite => "Java/Python/C++",
         }
@@ -937,11 +954,8 @@ outputs = model(**inputs)"#.to_string()),
         let optimization_categories = self.detect_categories(&lower_desc);
 
         // Find matching patterns
-        let matching_patterns = self.find_matching_patterns(
-            &lower_desc,
-            source_framework,
-            target_framework,
-        );
+        let matching_patterns =
+            self.find_matching_patterns(&lower_desc, source_framework, target_framework);
 
         // Calculate overall confidence
         let confidence = self.calculate_confidence(
@@ -1002,12 +1016,7 @@ outputs = model(**inputs)"#.to_string()),
         ];
 
         let context_keywords = [
-            "convert",
-            "export",
-            "deploy",
-            "optimize",
-            "quantize",
-            "compress",
+            "convert", "export", "deploy", "optimize", "quantize", "compress",
         ];
 
         let ml_keywords = [
@@ -1039,7 +1048,7 @@ outputs = model(**inputs)"#.to_string()),
         // Order matters: more specific frameworks (TFLite) must come before
         // more general ones (TensorFlow) to avoid incorrect matches
         let frameworks = [
-            MLFramework::TFLite,      // Must be before TensorFlow
+            MLFramework::TFLite, // Must be before TensorFlow
             MLFramework::TensorRT,
             MLFramework::CoreML,
             MLFramework::OpenVINO,
@@ -1081,10 +1090,9 @@ outputs = model(**inputs)"#.to_string()),
                         .filter_map(|w| lower_desc.find(w))
                         .collect();
 
-                    if let (Some(kw_pos), Some(&conv_pos)) = (keyword_pos, conversion_words.first()) {
-                        if is_source && kw_pos < conv_pos {
-                            return Some(framework);
-                        } else if !is_source && kw_pos > conv_pos {
+                    if let (Some(kw_pos), Some(&conv_pos)) = (keyword_pos, conversion_words.first())
+                    {
+                        if (is_source && kw_pos < conv_pos) || (!is_source && kw_pos > conv_pos) {
                             return Some(framework);
                         }
                     }
@@ -1120,18 +1128,54 @@ outputs = model(**inputs)"#.to_string()),
         let mut categories = Vec::new();
 
         let category_keywords: Vec<(ConversionCategory, &[&str])> = vec![
-            (ConversionCategory::FrameworkConversion, &["convert", "export", "to onnx", "to tflite"]),
-            (ConversionCategory::Quantization, &["quantiz", "int8", "fp16", "reduce precision"]),
-            (ConversionCategory::Pruning, &["prun", "spars", "remove weights"]),
-            (ConversionCategory::Distillation, &["distill", "student", "teacher", "knowledge transfer"]),
-            (ConversionCategory::GraphOptimization, &["graph optim", "fusion", "optimize graph"]),
-            (ConversionCategory::OperatorFusion, &["fuse", "fusion", "operator fusion"]),
-            (ConversionCategory::DynamicShapes, &["dynamic shape", "variable batch", "variable length"]),
-            (ConversionCategory::CustomOperators, &["custom op", "custom layer", "plugin"]),
-            (ConversionCategory::BatchOptimization, &["batch size", "batching", "throughput"]),
-            (ConversionCategory::MemoryOptimization, &["memory", "reduce size", "smaller model"]),
-            (ConversionCategory::PlatformDeployment, &["deploy", "mobile", "edge", "embedded", "ios", "android"]),
-            (ConversionCategory::Serialization, &["save", "serialize", "checkpoint"]),
+            (
+                ConversionCategory::FrameworkConversion,
+                &["convert", "export", "to onnx", "to tflite"],
+            ),
+            (
+                ConversionCategory::Quantization,
+                &["quantiz", "int8", "fp16", "reduce precision"],
+            ),
+            (
+                ConversionCategory::Pruning,
+                &["prun", "spars", "remove weights"],
+            ),
+            (
+                ConversionCategory::Distillation,
+                &["distill", "student", "teacher", "knowledge transfer"],
+            ),
+            (
+                ConversionCategory::GraphOptimization,
+                &["graph optim", "fusion", "optimize graph"],
+            ),
+            (
+                ConversionCategory::OperatorFusion,
+                &["fuse", "fusion", "operator fusion"],
+            ),
+            (
+                ConversionCategory::DynamicShapes,
+                &["dynamic shape", "variable batch", "variable length"],
+            ),
+            (
+                ConversionCategory::CustomOperators,
+                &["custom op", "custom layer", "plugin"],
+            ),
+            (
+                ConversionCategory::BatchOptimization,
+                &["batch size", "batching", "throughput"],
+            ),
+            (
+                ConversionCategory::MemoryOptimization,
+                &["memory", "reduce size", "smaller model"],
+            ),
+            (
+                ConversionCategory::PlatformDeployment,
+                &["deploy", "mobile", "edge", "embedded", "ios", "android"],
+            ),
+            (
+                ConversionCategory::Serialization,
+                &["save", "serialize", "checkpoint"],
+            ),
         ];
 
         for (category, keywords) in category_keywords {
@@ -1182,7 +1226,12 @@ outputs = model(**inputs)"#.to_string()),
 
         // Pattern matches contribute most
         if !patterns.is_empty() {
-            confidence += patterns.iter().map(|p| p.confidence).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0) * 0.5;
+            confidence += patterns
+                .iter()
+                .map(|p| p.confidence)
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or(0.0)
+                * 0.5;
         }
 
         // Framework detection contributes
@@ -1219,20 +1268,29 @@ outputs = model(**inputs)"#.to_string()),
         if let Some(src) = source {
             augmented.push_str(&format!("**Source Framework**: {:?}\n", src));
             augmented.push_str(&format!("- Primary language: {}\n", src.primary_language()));
-            augmented.push_str(&format!("- File extensions: {}\n\n", src.file_extensions().join(", ")));
+            augmented.push_str(&format!(
+                "- File extensions: {}\n\n",
+                src.file_extensions().join(", ")
+            ));
         }
 
         if let Some(tgt) = target {
             augmented.push_str(&format!("**Target Framework**: {:?}\n", tgt));
             augmented.push_str(&format!("- Primary language: {}\n", tgt.primary_language()));
-            augmented.push_str(&format!("- File extensions: {}\n\n", tgt.file_extensions().join(", ")));
+            augmented.push_str(&format!(
+                "- File extensions: {}\n\n",
+                tgt.file_extensions().join(", ")
+            ));
         }
 
         // Quantization info
         if let Some(quant) = quantization {
             augmented.push_str(&format!("**Quantization**: {:?}\n", quant));
             augmented.push_str(&format!("- Size ratio vs FP32: {}x\n", quant.size_ratio()));
-            augmented.push_str(&format!("- Accuracy impact: {}\n\n", quant.accuracy_impact()));
+            augmented.push_str(&format!(
+                "- Accuracy impact: {}\n\n",
+                quant.accuracy_impact()
+            ));
         }
 
         // Categories
@@ -1241,7 +1299,7 @@ outputs = model(**inputs)"#.to_string()),
             for cat in categories {
                 augmented.push_str(&format!("- {:?}\n", cat));
             }
-            augmented.push_str("\n");
+            augmented.push('\n');
         }
 
         // Pattern-specific guidance
@@ -1255,13 +1313,13 @@ outputs = model(**inputs)"#.to_string()),
                 for (i, step) in pattern.guidance.steps.iter().enumerate() {
                     augmented.push_str(&format!("{}. {}\n", i + 1, step));
                 }
-                augmented.push_str("\n");
+                augmented.push('\n');
 
                 augmented.push_str("**Dependencies**:\n");
                 for dep in &pattern.guidance.dependencies {
                     augmented.push_str(&format!("- {}\n", dep));
                 }
-                augmented.push_str("\n");
+                augmented.push('\n');
 
                 if let Some(code) = &pattern.guidance.code_example {
                     augmented.push_str("**Code Example**:\n```python\n");
@@ -1273,14 +1331,14 @@ outputs = model(**inputs)"#.to_string()),
                 for pitfall in &pattern.guidance.pitfalls {
                     augmented.push_str(&format!("- {}\n", pitfall));
                 }
-                augmented.push_str("\n");
+                augmented.push('\n');
 
                 if !pattern.guidance.validation_steps.is_empty() {
                     augmented.push_str("**Validation Steps**:\n");
                     for step in &pattern.guidance.validation_steps {
                         augmented.push_str(&format!("- {}\n", step));
                     }
-                    augmented.push_str("\n");
+                    augmented.push('\n');
                 }
             }
         }
@@ -1312,7 +1370,8 @@ fn contains_word(text: &str, word: &str) -> bool {
 
             // Check word boundary after
             let after_pos = abs_pos + word.len();
-            let after_ok = after_pos >= text_bytes.len() || !text_bytes[after_pos].is_ascii_alphanumeric();
+            let after_ok =
+                after_pos >= text_bytes.len() || !text_bytes[after_pos].is_ascii_alphanumeric();
 
             if before_ok && after_ok {
                 return true;
@@ -1349,7 +1408,9 @@ mod tests {
 
         assert!(result.is_conversion_task);
         assert_eq!(result.quantization, Some(QuantizationLevel::INT8));
-        assert!(result.optimization_categories.contains(&ConversionCategory::Quantization));
+        assert!(result
+            .optimization_categories
+            .contains(&ConversionCategory::Quantization));
     }
 
     #[test]
@@ -1360,7 +1421,9 @@ mod tests {
         assert!(result.is_conversion_task);
         assert_eq!(result.source_framework, Some(MLFramework::TensorFlow));
         assert_eq!(result.target_framework, Some(MLFramework::TFLite));
-        assert!(result.optimization_categories.contains(&ConversionCategory::PlatformDeployment));
+        assert!(result
+            .optimization_categories
+            .contains(&ConversionCategory::PlatformDeployment));
     }
 
     #[test]
@@ -1410,7 +1473,10 @@ mod tests {
         assert!(result.is_conversion_task);
         assert!(!result.matching_patterns.is_empty());
         // Should match the HuggingFace to ONNX pattern
-        let has_hf_pattern = result.matching_patterns.iter().any(|p| p.name.contains("Hugging Face"));
+        let has_hf_pattern = result
+            .matching_patterns
+            .iter()
+            .any(|p| p.name.contains("Hugging Face"));
         assert!(has_hf_pattern);
     }
 

@@ -85,7 +85,7 @@ pub fn validate_engine_config(config: &EngineConfig) -> Result<()> {
     }
 
     // Check if API key is available in parameters
-    if config.parameters.get("api_key").is_none() && config.engine != "local" {
+    if !config.parameters.contains_key("api_key") && config.engine != "local" {
         return Err(anyhow!(
             "API key is required for engine type: {}",
             config.engine

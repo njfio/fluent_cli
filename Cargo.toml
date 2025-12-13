@@ -147,6 +147,8 @@ lru = "0.12.4"
 lz4_flex = "0.11.3"
 # Hex encoding/decoding - pin to exact version
 hex = "0.4.3"
+# OS-specific data directories
+directories = "5.0.1"
 # Additional dependencies from fluent-agent
 # WebSocket support - pin to exact version
 tokio-tungstenite = "0.20.1"

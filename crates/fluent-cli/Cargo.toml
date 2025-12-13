@@ -7,6 +7,9 @@ default-run = "fluent-cli"
 [lib]
 doctest = false
 
+[features]
+# Some integration tests are kept behind flags to avoid CI/network coupling.
+legacy_cli_integration = []
 
 [dependencies]
 clap = { workspace = true, features = ["derive"] }

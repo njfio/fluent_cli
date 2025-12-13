@@ -56,8 +56,9 @@ pub mod collaboration_bridge;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
-pub mod execution;
+pub mod error;
 pub mod ethical_guardrails;
+pub mod execution;
 pub mod goal;
 pub mod human_collaboration;
 pub mod mcp_adapter;
@@ -68,10 +69,12 @@ pub mod memory;
 pub mod monitoring;
 pub mod observation;
 pub mod orchestrator;
+pub mod paths;
 pub mod performance;
 pub mod planning;
 pub mod production_mcp;
 pub mod profiling;
+pub mod project_identity;
 pub mod prompts;
 pub mod reasoning;
 pub mod reflection;
@@ -104,6 +107,10 @@ pub use autonomy::{
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
 pub use collaboration_bridge::{ApprovalConfig, CollaborativeOrchestrator, ControlAction};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
+pub use error::{
+    codes as error_codes, AgentError, AgentResult, ConfigError, MemoryError, OrchestrationError,
+    ReasoningError, ToolError,
+};
 pub use ethical_guardrails::{
     EthicalEvaluation, EthicalGuardrailsSystem, EthicalRecommendation, FilterResult, HarmCategory,
     RiskLevel,
@@ -122,11 +129,17 @@ pub use memory::{
     MemoryContent, MemoryItem, MemoryStats, MemorySystem, WorkingMemory,
 };
 pub use monitoring::{
-    AdaptiveStrategySystem, ErrorInstance, ErrorRecoverySystem, ErrorSeverity, ErrorType,
-    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult,
+    AdaptiveStrategySystem, AggregatedStats, CircuitBreaker, CircuitBreakerConfig,
+    CircuitBreakerError, CircuitBreakerStats, CircuitState, DistributedTracer, ErrorInstance,
+    ErrorRecoverySystem, ErrorSeverity, ErrorType, MetricsConfig, MetricsExporter,
+    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult, SpanId,
+    TraceContext, TraceId, TracerConfig,
 };
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
-pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use orchestrator::{
+    AgentOrchestrator, AgentState as AdvancedAgentState, CheckpointInfo, OrchestrationMetrics,
+    OrchestratorExecutionAdapter, RecoveryInfo,
+};
 pub use planning::{
     CompletePlanningResult, CompositePlanner, DependencyAnalyzer, DynamicReplanner, HTNConfig,
     HTNPlanner, HTNResult,

@@ -95,6 +95,7 @@ pub mod openai;
 pub mod perplexity;
 pub mod pipeline;
 pub mod pipeline_executor;
+pub mod pipeline_loop_adapter;
 pub mod stabilityai;
 pub mod webhook;
 

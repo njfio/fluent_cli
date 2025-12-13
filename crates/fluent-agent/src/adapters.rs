@@ -573,12 +573,17 @@ impl act::ActionPlanner for LongFormWriterPlanner {
 
 pub struct McpRegistryExecutor {
     client_mgr: std::sync::Arc<ProductionMcpClientManager>,
+    policy: crate::tools::ToolExecutionConfig,
 }
 
 impl McpRegistryExecutor {
-    pub fn new(manager: std::sync::Arc<ProductionMcpManager>) -> Self {
+    pub fn new(
+        manager: std::sync::Arc<ProductionMcpManager>,
+        policy: crate::tools::ToolExecutionConfig,
+    ) -> Self {
         Self {
             client_mgr: manager.client_manager(),
+            policy,
         }
     }
 }
@@ -649,10 +654,31 @@ impl crate::tools::ToolExecutor for McpRegistryExecutor {
 
     fn validate_tool_request(
         &self,
-        _tool_name: &str,
-        _parameters: &std::collections::HashMap<String, serde_json::Value>,
+        tool_name: &str,
+        parameters: &std::collections::HashMap<String, serde_json::Value>,
     ) -> anyhow::Result<()> {
-        // Basic pass-through validation; MCP server handles schema
+        // Enforce the same basic policy checks as local tools.
+        // MCP servers may have their own validation, but we do not delegate safety.
+        if self.policy.read_only {
+            let lower = tool_name.to_lowercase();
+            if lower.contains("write") || lower.contains("create") || lower.contains("delete") {
+                return Err(anyhow::anyhow!(
+                    "MCP tool '{}' is blocked in read-only mode",
+                    tool_name
+                ));
+            }
+        }
+
+        for key in ["path", "file_path", "out_path", "dest", "directory", "dir"] {
+            if let Some(v) = parameters.get(key).and_then(|v| v.as_str()) {
+                let _ = validation::validate_path(v, &self.policy.allowed_paths)?;
+            }
+        }
+
+        if let Some(cmd) = parameters.get("command").and_then(|v| v.as_str()) {
+            validation::validate_command(cmd, &self.policy.allowed_commands)?;
+        }
+
         Ok(())
     }
 }
@@ -689,11 +715,11 @@ impl act::ToolExecutor for RegistryToolAdapter {
 
 /// Simple LLM-backed code generator
 pub struct LlmCodeGenerator {
-    engine: Arc<Box<dyn Engine>>,
+    engine: Arc<dyn Engine>,
 }
 
 impl LlmCodeGenerator {
-    pub fn new(engine: Arc<Box<dyn Engine>>) -> Self {
+    pub fn new(engine: Arc<dyn Engine>) -> Self {
         Self { engine }
     }
 }

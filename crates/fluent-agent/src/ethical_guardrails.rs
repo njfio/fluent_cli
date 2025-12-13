@@ -319,6 +319,12 @@ pub enum EscalationPriority {
 
 // Implementation
 
+impl Default for EthicalGuardrailsSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EthicalGuardrailsSystem {
     /// Create a new ethical guardrails system
     pub fn new() -> Self {
@@ -920,3 +926,480 @@ pub struct OverrideMechanism;
 pub struct EthicalScenarioDatabase;
 pub struct AdaptationMechanism;
 pub struct EthicalPerformanceTracker;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== Data Structure Tests ==========
+
+    #[test]
+    fn test_principle_config_creation() {
+        let config = PrincipleConfig {
+            enabled: true,
+            priority: 8,
+            strictness: 0.75,
+            custom_rules: vec!["rule1".to_string(), "rule2".to_string()],
+        };
+
+        assert!(config.enabled);
+        assert_eq!(config.priority, 8);
+        assert!((config.strictness - 0.75).abs() < f64::EPSILON);
+        assert_eq!(config.custom_rules.len(), 2);
+    }
+
+    #[test]
+    fn test_ethical_principles_default() {
+        let principles = EthicalPrinciples::default();
+
+        // All principles should be enabled by default
+        assert!(principles.respect_for_autonomy.enabled);
+        assert!(principles.non_maleficence.enabled);
+        assert!(principles.beneficence.enabled);
+        assert!(principles.justice.enabled);
+        assert!(principles.transparency.enabled);
+        assert!(principles.privacy.enabled);
+        assert!(principles.accountability.enabled);
+        assert!(principles.sustainability.enabled);
+
+        // Non-maleficence should have highest strictness
+        assert!((principles.non_maleficence.strictness - 1.0).abs() < f64::EPSILON);
+
+        // Autonomy and privacy should have high priority
+        assert_eq!(principles.respect_for_autonomy.priority, 10);
+        assert_eq!(principles.privacy.priority, 9);
+    }
+
+    #[test]
+    fn test_risk_level_ordering() {
+        assert!(RiskLevel::Low < RiskLevel::Medium);
+        assert!(RiskLevel::Medium < RiskLevel::High);
+        assert!(RiskLevel::High < RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_proposed_action_creation() {
+        let mut params = HashMap::new();
+        params.insert("key".to_string(), serde_json::json!("value"));
+
+        let action = ProposedAction {
+            action_type: "file_write".to_string(),
+            description: "Write to output.txt".to_string(),
+            parameters: params,
+            risk_level: RiskLevel::Low,
+            affected_entities: vec!["output.txt".to_string()],
+        };
+
+        assert_eq!(action.action_type, "file_write");
+        assert_eq!(action.risk_level, RiskLevel::Low);
+        assert_eq!(action.affected_entities.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_result_variants() {
+        let allow = FilterResult::Allow;
+        assert!(matches!(allow, FilterResult::Allow));
+
+        let deny = FilterResult::Deny {
+            reason: "Not allowed".to_string(),
+        };
+        assert!(matches!(deny, FilterResult::Deny { .. }));
+
+        let escalate = FilterResult::Escalate {
+            reason: "Needs review".to_string(),
+            priority: EscalationPriority::High,
+        };
+        assert!(matches!(escalate, FilterResult::Escalate { .. }));
+    }
+
+    #[test]
+    fn test_bias_assessment_creation() {
+        let assessment = BiasAssessment {
+            bias_detected: true,
+            bias_types: vec!["gender".to_string(), "age".to_string()],
+            severity: 0.6,
+            affected_groups: vec!["women".to_string(), "elderly".to_string()],
+            recommendations: vec!["Review language".to_string()],
+        };
+
+        assert!(assessment.bias_detected);
+        assert_eq!(assessment.bias_types.len(), 2);
+        assert!((assessment.severity - 0.6).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_harm_categories() {
+        let categories = vec![
+            HarmCategory::PhysicalHarm,
+            HarmCategory::PsychologicalHarm,
+            HarmCategory::FinancialHarm,
+            HarmCategory::PrivacyViolation,
+            HarmCategory::Discrimination,
+            HarmCategory::Misinformation,
+            HarmCategory::SystemInstability,
+            HarmCategory::ResourceExhaustion,
+        ];
+
+        assert_eq!(categories.len(), 8);
+
+        // Test that categories can be used as HashMap keys
+        let mut map: HashMap<HarmCategory, i32> = HashMap::new();
+        for (i, cat) in categories.iter().enumerate() {
+            map.insert(cat.clone(), i as i32);
+        }
+        assert_eq!(map.len(), 8);
+    }
+
+    #[test]
+    fn test_harm_prevention_rules() {
+        let rules = HarmPreventionRules {
+            category: HarmCategory::PrivacyViolation,
+            prevention_measures: vec!["encrypt data".to_string()],
+            detection_patterns: vec!["password".to_string(), "ssn".to_string()],
+            mitigation_strategies: vec!["redact".to_string()],
+            reporting_required: true,
+        };
+
+        assert_eq!(rules.category, HarmCategory::PrivacyViolation);
+        assert!(rules.reporting_required);
+        assert_eq!(rules.detection_patterns.len(), 2);
+    }
+
+    #[test]
+    fn test_ethical_scenario_creation() {
+        let mut context = HashMap::new();
+        context.insert("user".to_string(), "test_user".to_string());
+
+        let scenario = EthicalScenario {
+            scenario_id: "scenario-001".to_string(),
+            description: "Test scenario".to_string(),
+            context,
+            ethical_dilemmas: vec!["privacy vs utility".to_string()],
+            stakeholder_impacts: vec![StakeholderImpact {
+                stakeholder: "user".to_string(),
+                impact_type: ImpactType::Positive,
+                severity: 0.3,
+                description: "Improved experience".to_string(),
+            }],
+            timestamp: SystemTime::now(),
+        };
+
+        assert_eq!(scenario.scenario_id, "scenario-001");
+        assert_eq!(scenario.stakeholder_impacts.len(), 1);
+    }
+
+    #[test]
+    fn test_impact_type_variants() {
+        let positive = ImpactType::Positive;
+        let negative = ImpactType::Negative;
+        let neutral = ImpactType::Neutral;
+        let unknown = ImpactType::Unknown;
+
+        assert!(matches!(positive, ImpactType::Positive));
+        assert!(matches!(negative, ImpactType::Negative));
+        assert!(matches!(neutral, ImpactType::Neutral));
+        assert!(matches!(unknown, ImpactType::Unknown));
+    }
+
+    #[test]
+    fn test_ethical_outcome_creation() {
+        let outcome = EthicalOutcome {
+            decision_made: "Proceed with safeguards".to_string(),
+            consequences: vec!["User protected".to_string(), "Data secured".to_string()],
+            ethical_score: 0.85,
+            lessons_learned: vec!["Always validate input".to_string()],
+        };
+
+        assert_eq!(outcome.decision_made, "Proceed with safeguards");
+        assert!((outcome.ethical_score - 0.85).abs() < f64::EPSILON);
+        assert_eq!(outcome.consequences.len(), 2);
+    }
+
+    #[test]
+    fn test_learning_result_creation() {
+        let result = LearningResult {
+            insights_gained: vec!["Pattern identified".to_string()],
+            rules_updated: vec!["Rule-001".to_string()],
+            confidence_improved: 0.15,
+        };
+
+        assert_eq!(result.insights_gained.len(), 1);
+        assert!((result.confidence_improved - 0.15).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_escalation_priority_variants() {
+        let priorities = vec![
+            EscalationPriority::Low,
+            EscalationPriority::Medium,
+            EscalationPriority::High,
+            EscalationPriority::Critical,
+        ];
+        assert_eq!(priorities.len(), 4);
+    }
+
+    // ========== Evaluation Structure Tests ==========
+
+    #[test]
+    fn test_ethical_evaluation_default() {
+        let eval = EthicalEvaluation::default();
+
+        assert!((eval.principles_check.autonomy_violation - 0.0).abs() < f64::EPSILON);
+        assert!((eval.principles_check.harm_potential - 0.0).abs() < f64::EPSILON);
+        assert!(!eval.safety_check.blocked);
+        assert!(!eval.safety_check.rate_limited);
+        assert!(!eval.bias_check.bias_detected);
+        assert!((eval.harm_assessment.risk_score - 0.0).abs() < f64::EPSILON);
+        assert!(matches!(
+            eval.overall_recommendation,
+            EthicalRecommendation::Allow
+        ));
+    }
+
+    #[test]
+    fn test_principles_check_creation() {
+        let check = PrinciplesCheck {
+            autonomy_violation: 0.1,
+            harm_potential: 0.2,
+            benefit_potential: 0.8,
+            fairness_assessment: 0.9,
+            overall_compliance: 0.85,
+        };
+
+        assert!((check.overall_compliance - 0.85).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_safety_check_creation() {
+        let check = SafetyCheck {
+            blocked: true,
+            modifications: vec!["Modified for safety".to_string()],
+            escalations: vec![("Needs review".to_string(), EscalationPriority::High)],
+            rate_limited: false,
+            circuit_breaker_tripped: false,
+        };
+
+        assert!(check.blocked);
+        assert_eq!(check.modifications.len(), 1);
+        assert_eq!(check.escalations.len(), 1);
+    }
+
+    #[test]
+    fn test_bias_check_creation() {
+        let check = BiasCheck {
+            bias_detected: true,
+            severity: 0.7,
+            bias_types: vec!["gender".to_string()],
+            mitigation_applied: true,
+        };
+
+        assert!(check.bias_detected);
+        assert!(check.mitigation_applied);
+    }
+
+    #[test]
+    fn test_harm_assessment_creation() {
+        let assessment = HarmAssessment {
+            potential_harms: vec![HarmCategory::PrivacyViolation],
+            risk_score: 0.4,
+            mitigation_required: false,
+            prevention_measures: Vec::new(),
+        };
+
+        assert_eq!(assessment.potential_harms.len(), 1);
+        assert!(!assessment.mitigation_required);
+    }
+
+    #[test]
+    fn test_ethical_recommendation_variants() {
+        let allow = EthicalRecommendation::Allow;
+        assert!(matches!(allow, EthicalRecommendation::Allow));
+
+        let deny = EthicalRecommendation::Deny {
+            reason: "Too risky".to_string(),
+        };
+        if let EthicalRecommendation::Deny { reason } = deny {
+            assert_eq!(reason, "Too risky");
+        }
+
+        let escalate = EthicalRecommendation::Escalate {
+            reasons: vec!["Concern 1".to_string(), "Concern 2".to_string()],
+            priority: EscalationPriority::Critical,
+        };
+        if let EthicalRecommendation::Escalate { reasons, priority } = escalate {
+            assert_eq!(reasons.len(), 2);
+            assert!(matches!(priority, EscalationPriority::Critical));
+        }
+    }
+
+    // ========== System Tests ==========
+
+    #[test]
+    fn test_ethical_guardrails_system_new() {
+        let system = EthicalGuardrailsSystem::new();
+        // Just verify it creates without panic
+        // The internal state is wrapped in Arc<RwLock<_>> so we can't easily inspect
+        assert!(true); // System created successfully
+    }
+
+    #[test]
+    fn test_safety_mechanisms_new() {
+        let safety = SafetyMechanisms::new();
+        assert!(safety.action_filters.is_empty());
+        assert!(safety.content_filters.is_empty());
+        assert!(safety.circuit_breakers.is_empty());
+        assert!(safety.emergency_stops.is_empty());
+    }
+
+    #[test]
+    fn test_bias_detection_system_new() {
+        let bias_system = BiasDetectionSystem::new();
+        assert!(bias_system.detectors.is_empty());
+        assert!(bias_system.mitigation_strategies.is_empty());
+    }
+
+    #[test]
+    fn test_harm_prevention_system_new() {
+        let harm_system = HarmPreventionSystem::new();
+        assert!(harm_system.harm_categories.is_empty());
+        assert!(harm_system.mitigation_actions.is_empty());
+    }
+
+    #[test]
+    fn test_transparency_system_new() {
+        let _transparency = TransparencySystem::new();
+        // Just verify it creates without panic
+        assert!(true);
+    }
+
+    #[test]
+    fn test_human_oversight_system_new() {
+        let oversight = HumanOversightSystem::new();
+        assert!(oversight.oversight_triggers.is_empty());
+        assert!(oversight.escalation_procedures.is_empty());
+        assert!(oversight.override_mechanisms.is_empty());
+    }
+
+    #[test]
+    fn test_ethical_learning_system_new() {
+        let learning = EthicalLearningSystem::new();
+        assert!(learning.learning_algorithms.is_empty());
+        assert!(learning.adaptation_mechanisms.is_empty());
+    }
+
+    // ========== Rate Limiter Tests ==========
+
+    #[tokio::test]
+    async fn test_rate_limiter_allows_by_default() {
+        let limiter = RateLimiter::new();
+        let result = limiter
+            .check_limit("test_action".to_string())
+            .await
+            .unwrap();
+        assert!(result.allowed);
+    }
+
+    // ========== Decision Logger Tests ==========
+
+    #[tokio::test]
+    async fn test_decision_logger_logs_evaluation() {
+        let logger = DecisionLogger;
+        let eval = EthicalEvaluation::default();
+
+        // Should not error
+        let result = logger.log_evaluation(&eval).await;
+        assert!(result.is_ok());
+    }
+
+    // ========== Compliance Score Calculation Tests ==========
+
+    #[test]
+    fn test_calculate_compliance_score_perfect() {
+        let system = EthicalGuardrailsSystem::new();
+
+        // Perfect scores: no violation, no harm, full benefit, full fairness
+        let score = system.calculate_compliance_score(&0.0, &0.0, &1.0, &1.0);
+
+        // Expected: (1.0 - 0) * 0.3 + (1.0 - 0) * 0.3 + 1.0 * 0.2 + 1.0 * 0.2 = 1.0
+        assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_calculate_compliance_score_worst() {
+        let system = EthicalGuardrailsSystem::new();
+
+        // Worst scores: full violation, full harm, no benefit, no fairness
+        let score = system.calculate_compliance_score(&1.0, &1.0, &0.0, &0.0);
+
+        // Expected: (1.0 - 1.0) * 0.3 + (1.0 - 1.0) * 0.3 + 0.0 * 0.2 + 0.0 * 0.2 = 0.0
+        assert!((score - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_calculate_compliance_score_mixed() {
+        let system = EthicalGuardrailsSystem::new();
+
+        // Mixed scores
+        let score = system.calculate_compliance_score(&0.3, &0.5, &0.6, &0.8);
+
+        // Expected: (0.7) * 0.3 + (0.5) * 0.3 + 0.6 * 0.2 + 0.8 * 0.2
+        //         = 0.21 + 0.15 + 0.12 + 0.16 = 0.64
+        assert!((score - 0.64).abs() < 0.01);
+    }
+
+    // ========== Serialization Tests ==========
+
+    #[test]
+    fn test_principle_config_serialization() {
+        let config = PrincipleConfig {
+            enabled: true,
+            priority: 8,
+            strictness: 0.75,
+            custom_rules: vec!["rule1".to_string()],
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: PrincipleConfig = serde_json::from_str(&json).unwrap();
+
+        assert!(deserialized.enabled);
+        assert_eq!(deserialized.priority, 8);
+    }
+
+    #[test]
+    fn test_proposed_action_serialization() {
+        let action = ProposedAction {
+            action_type: "test".to_string(),
+            description: "Test action".to_string(),
+            parameters: HashMap::new(),
+            risk_level: RiskLevel::Medium,
+            affected_entities: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: ProposedAction = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.action_type, "test");
+        assert_eq!(deserialized.risk_level, RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_ethical_evaluation_serialization() {
+        let eval = EthicalEvaluation::default();
+
+        let json = serde_json::to_string(&eval).unwrap();
+        let deserialized: EthicalEvaluation = serde_json::from_str(&json).unwrap();
+
+        assert!(matches!(
+            deserialized.overall_recommendation,
+            EthicalRecommendation::Allow
+        ));
+    }
+
+    #[test]
+    fn test_harm_category_serialization() {
+        let category = HarmCategory::PrivacyViolation;
+        let json = serde_json::to_string(&category).unwrap();
+        let deserialized: HarmCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, HarmCategory::PrivacyViolation);
+    }
+}

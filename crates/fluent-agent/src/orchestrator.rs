@@ -261,7 +261,11 @@ impl ConvergenceTracker {
         let normalized = Self::normalize_output(output);
 
         // Check similarity with recent outputs
-        if self.recent_reasoning.iter().any(|prev| Self::similarity(prev, &normalized) >= SIMILARITY_THRESHOLD) {
+        if self
+            .recent_reasoning
+            .iter()
+            .any(|prev| Self::similarity(prev, &normalized) >= SIMILARITY_THRESHOLD)
+        {
             self.similar_count += 1;
         } else {
             self.similar_count = 0;
@@ -315,6 +319,7 @@ impl ConvergenceTracker {
 
 impl AgentOrchestrator {
     /// Create a new agent orchestrator with the specified components
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         reasoning_engine: Box<dyn ReasoningEngine>,
         action_planner: Box<dyn ActionPlanner>,
@@ -346,6 +351,7 @@ impl AgentOrchestrator {
     }
 
     /// Create a new agent orchestrator from runtime configuration
+    #[allow(clippy::too_many_arguments)]
     pub async fn from_config(
         runtime_config: AgentRuntimeConfig,
         action_planner: Box<dyn ActionPlanner>,
@@ -393,6 +399,28 @@ impl AgentOrchestrator {
     pub async fn execute_goal(&self, goal: Goal) -> Result<GoalResult> {
         let start_time = SystemTime::now();
         let mut context = ExecutionContext::new(goal.clone());
+
+        // Tool metadata from the caller (CLI)
+        let tool_descriptions_markdown = goal
+            .metadata
+            .get("tool_descriptions_markdown")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        if let Some(tools) = goal
+            .metadata
+            .get("available_tools")
+            .and_then(|v| v.as_array())
+        {
+            context.available_tools = tools
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+        }
+
+        if let Some(project_id) = goal.metadata.get("project_id").and_then(|v| v.as_str()) {
+            context.set_variable("project_id".to_string(), project_id.to_string());
+        }
 
         // Initialize agent state
         self.initialize_state(goal.clone(), &context).await?;
@@ -451,12 +479,45 @@ impl AgentOrchestrator {
 
             // Retry reasoning with exponential backoff
             let reasoning_output = {
-                let context_summary = context.get_summary();
+                // Build the full prompt (system + user prompt) so the model has
+                // consistent ReAct instructions and an up-to-date tool list.
+                let tools_md = tool_descriptions_markdown.clone().unwrap_or_else(|| {
+                    if context.available_tools.is_empty() {
+                        "(no tools available)".to_string()
+                    } else {
+                        context.available_tools.join("\n")
+                    }
+                });
+
+                let recent_observations: Vec<String> = context
+                    .observations
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .map(|o| o.content.clone())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+
+                let user_prompt = crate::prompts::format_reasoning_prompt(
+                    &goal.description,
+                    iteration_count,
+                    max_iterations,
+                    &recent_observations,
+                    &tools_md,
+                );
+                let full_prompt = format!(
+                    "{}\n\n---\n\n{}",
+                    crate::prompts::AGENT_SYSTEM_PROMPT,
+                    user_prompt
+                );
+
                 let mut last_error = None;
                 let mut reasoning_result = None;
 
                 for attempt in 0..MAX_REASONING_RETRIES {
-                    match self.reasoning_engine.reason(&context_summary, &context).await {
+                    match self.reasoning_engine.reason(&full_prompt, &context).await {
                         Ok(output) => {
                             reasoning_result = Some(output);
                             break;
@@ -483,7 +544,9 @@ impl AgentOrchestrator {
                     anyhow!(
                         "Reasoning failed after {} attempts: {}",
                         MAX_REASONING_RETRIES,
-                        last_error.map(|e| e.to_string()).unwrap_or_else(|| "Unknown error".to_string())
+                        last_error
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "Unknown error".to_string())
                     )
                 })?
             };
@@ -727,14 +790,13 @@ impl AgentOrchestrator {
     ) -> Result<bool> {
         // 1) Check explicit success criteria on the goal if provided (highest priority)
         if let Some(goal) = context.get_current_goal() {
-            if !goal.success_criteria.is_empty() {
-                if self
+            if !goal.success_criteria.is_empty()
+                && self
                     .check_success_criteria(context, &goal.success_criteria)
                     .await?
-                {
-                    tracing::info!("react.goal_check explicit_criteria=passed");
-                    return Ok(true);
-                }
+            {
+                tracing::info!("react.goal_check explicit_criteria=passed");
+                return Ok(true);
             }
         }
 
@@ -758,10 +820,10 @@ impl AgentOrchestrator {
         context: &ExecutionContext,
         reasoning: &ReasoningResult,
     ) -> GoalAchievementSignals {
-        let mut signals = GoalAchievementSignals::default();
-
-        // Signal 1: Reasoning confidence
-        signals.reasoning_confidence = reasoning.goal_achieved_confidence;
+        let mut signals = GoalAchievementSignals {
+            reasoning_confidence: reasoning.goal_achieved_confidence,
+            ..Default::default()
+        };
 
         // Signal 2: Parse structured output for assessment
         let structured = StructuredReasoningOutput::from_raw_output(&reasoning.reasoning_output);
@@ -796,12 +858,16 @@ impl AgentOrchestrator {
         // Signal 4: Command execution success patterns
         let recent_observations: Vec<_> = context.observations.iter().rev().take(5).collect();
         let success_patterns = [
-            "successfully", "completed", "done", "finished",
-            "created", "generated", "built", "compiled",
+            "successfully",
+            "completed",
+            "done",
+            "finished",
+            "created",
+            "generated",
+            "built",
+            "compiled",
         ];
-        let failure_patterns = [
-            "error", "failed", "cannot", "unable", "exception", "panic",
-        ];
+        let failure_patterns = ["error", "failed", "cannot", "unable", "exception", "panic"];
 
         let mut success_count = 0;
         let mut failure_count = 0;
@@ -822,7 +888,8 @@ impl AgentOrchestrator {
         }
 
         if success_count > 0 && failure_count == 0 {
-            signals.execution_success = (success_count as f64 / recent_observations.len() as f64).min(1.0);
+            signals.execution_success =
+                (success_count as f64 / recent_observations.len() as f64).min(1.0);
         } else if failure_count > success_count {
             signals.execution_success = 0.0;
         } else {
@@ -864,7 +931,10 @@ impl AgentOrchestrator {
             signals.structured_assessment > 0.8,
             signals.file_evidence > 0.8,
             signals.execution_success > 0.8,
-        ].iter().filter(|&&x| x).count();
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count();
 
         if strong_signals >= 3 {
             (score * 1.1).min(1.0) // 10% bonus for agreement
@@ -980,7 +1050,9 @@ impl AgentOrchestrator {
             .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_reasoning_step"))?;
         let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
             .await
-            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_reasoning_step"))?;
+            .map_err(|_| {
+                anyhow!("Timeout acquiring performance_metrics lock in record_reasoning_step")
+            })?;
 
         state.reasoning_history.push(step);
         // Enforce memory bounds: keep most recent entries, evict oldest
@@ -1037,7 +1109,9 @@ impl AgentOrchestrator {
             .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_action_step"))?;
         let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
             .await
-            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_action_step"))?;
+            .map_err(|_| {
+                anyhow!("Timeout acquiring performance_metrics lock in record_action_step")
+            })?;
 
         state.last_action = Some(step);
         metrics.total_actions_taken += 1;
@@ -1068,7 +1142,9 @@ impl AgentOrchestrator {
             .map_err(|_| anyhow!("Timeout acquiring metrics lock in record_observation"))?;
         let mut perf = timeout(LOCK_TIMEOUT, self.performance_metrics.write())
             .await
-            .map_err(|_| anyhow!("Timeout acquiring performance_metrics lock in record_observation"))?;
+            .map_err(|_| {
+                anyhow!("Timeout acquiring performance_metrics lock in record_observation")
+            })?;
 
         state.observations.push(observation.clone());
         // Enforce memory bounds: keep most recent entries, evict oldest
@@ -1161,7 +1237,9 @@ impl AgentOrchestrator {
         match timeout(LOCK_TIMEOUT, self.state_manager.current_state.read()).await {
             Ok(state) => state.clone(),
             Err(_) => {
-                tracing::warn!("Timeout acquiring state lock in get_current_state - returning default");
+                tracing::warn!(
+                    "Timeout acquiring state lock in get_current_state - returning default"
+                );
                 AgentState::default()
             }
         }
@@ -1230,6 +1308,12 @@ impl StateManager {
             current_state: tokio::sync::RwLock::new(AgentState::default()),
             state_history: tokio::sync::RwLock::new(Vec::new()),
         }
+    }
+}
+
+impl Default for StateManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1343,7 +1427,11 @@ mod tests {
         // Base: 0.9*0.25 + 0.7*0.25 + 0.0*0.20 + 0.5*0.20 + 0.5*0.10 = 0.55
         // Only 1 strong signal, no bonus
         let score = calculate_weighted_score_test(&signals);
-        assert!(score > 0.5 && score < 0.7, "Score should be ~0.55, got {}", score);
+        assert!(
+            score > 0.5 && score < 0.7,
+            "Score should be ~0.55, got {}",
+            score
+        );
     }
 
     #[test]
@@ -1380,7 +1468,10 @@ mod tests {
             signals.structured_assessment > 0.8,
             signals.file_evidence > 0.8,
             signals.execution_success > 0.8,
-        ].iter().filter(|&&x| x).count();
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count();
 
         if strong_signals >= 3 {
             (score * 1.1).min(1.0)
@@ -1437,7 +1528,11 @@ mod tests {
         // Should be bounded
         assert_eq!(history.len(), MAX_REASONING_HISTORY_SIZE);
         // Most recent should be preserved
-        assert!(history.last().unwrap().step_id.contains(&(MAX_REASONING_HISTORY_SIZE + 99).to_string()));
+        assert!(history
+            .last()
+            .unwrap()
+            .step_id
+            .contains(&(MAX_REASONING_HISTORY_SIZE + 99).to_string()));
     }
 
     #[test]
@@ -1557,8 +1652,7 @@ impl OrchestratorExecutionAdapter {
             .map(|cp| CheckpointInfo {
                 checkpoint_id: format!(
                     "orchestrator-{}-{}",
-                    self.context.context_id,
-                    cp.iteration_count
+                    self.context.context_id, cp.iteration_count
                 ),
                 context_id: self.context.context_id.clone(),
                 checkpoint_type: format!("{:?}", cp.checkpoint_type),
@@ -1580,8 +1674,7 @@ impl OrchestratorExecutionAdapter {
         let latest_checkpoint = self.context.checkpoints.last().map(|cp| CheckpointInfo {
             checkpoint_id: format!(
                 "orchestrator-{}-{}",
-                self.context.context_id,
-                cp.iteration_count
+                self.context.context_id, cp.iteration_count
             ),
             context_id: self.context.context_id.clone(),
             checkpoint_type: format!("{:?}", cp.checkpoint_type),
@@ -1614,21 +1707,21 @@ impl OrchestratorExecutionAdapter {
 
         Ok(format!(
             "orchestrator-{}-{}",
-            self.context.context_id,
-            self.execution_state.iteration
+            self.context.context_id, self.execution_state.iteration
         ))
     }
 
     /// Resume from the most recent checkpoint
     pub async fn resume_from_latest(&mut self) -> Result<()> {
-        let latest = self.context.checkpoints.last().ok_or_else(|| {
-            anyhow!("No checkpoints available to resume from")
-        })?;
+        let latest = self
+            .context
+            .checkpoints
+            .last()
+            .ok_or_else(|| anyhow!("No checkpoints available to resume from"))?;
 
         let checkpoint_id = format!(
             "orchestrator-{}-{}",
-            self.context.context_id,
-            self.context.iteration_count
+            self.context.context_id, self.context.iteration_count
         );
 
         self.restore_checkpoint(&checkpoint_id).await
@@ -1753,7 +1846,9 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
                         reasoning_result = Some(ReasoningResult {
                             reasoning_output: output,
                             confidence_score: structured.confidence,
-                            goal_achieved_confidence: structured.goal_assessment.achievement_confidence,
+                            goal_achieved_confidence: structured
+                                .goal_assessment
+                                .achievement_confidence,
                             next_actions: structured
                                 .proposed_actions
                                 .iter()
@@ -1806,7 +1901,8 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
                 "CONVERGENCE DETECTED: Please try a fundamentally different approach.".to_string(),
             );
 
-            if self.execution_state.iteration > self.execution_state.max_iterations.unwrap_or(50) / 2
+            if self.execution_state.iteration
+                > self.execution_state.max_iterations.unwrap_or(50) / 2
             {
                 return Ok(StepResult::failure(
                     step_id,
@@ -1889,7 +1985,9 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
             .process(action_result.clone(), &self.context)
             .await?;
 
-        self.orchestrator.record_observation(observation.clone()).await?;
+        self.orchestrator
+            .record_observation(observation.clone())
+            .await?;
 
         // Apply guardrails if supervisor present
         if let Some(supervisor) = &self.orchestrator.autonomy_supervisor {
@@ -1933,7 +2031,9 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
         } else {
             StepResult::failure(
                 step_id,
-                action_result.error.unwrap_or_else(|| "Unknown error".to_string()),
+                action_result
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
                 step_start.elapsed(),
             )
         };
@@ -2014,15 +2114,17 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
     async fn save_checkpoint(&self) -> Result<String> {
         let checkpoint_id = format!(
             "orchestrator-{}-{}",
-            self.context.context_id,
-            self.execution_state.iteration
+            self.context.context_id, self.execution_state.iteration
         );
 
         self.orchestrator
             .persistent_state_manager
             .create_checkpoint(
                 CheckpointType::Manual,
-                format!("ExecutionLoop checkpoint at iteration {}", self.execution_state.iteration),
+                format!(
+                    "ExecutionLoop checkpoint at iteration {}",
+                    self.execution_state.iteration
+                ),
             )
             .await?;
 
@@ -2037,9 +2139,9 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
         }
 
         let context_id = parts[1];
-        let saved_iteration: u32 = parts[2].parse().map_err(|_| {
-            anyhow!("Invalid iteration in checkpoint ID: '{}'", parts[2])
-        })?;
+        let saved_iteration: u32 = parts[2]
+            .parse()
+            .map_err(|_| anyhow!("Invalid iteration in checkpoint ID: '{}'", parts[2]))?;
 
         // Find the checkpoint ID from the context's checkpoints
         // The checkpoint was created at this iteration
@@ -2055,14 +2157,20 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
                 .checkpoints
                 .iter()
                 .find(|cp| {
-                    cp.description.contains(&format!("iteration {}", saved_iteration))
+                    cp.description
+                        .contains(&format!("iteration {}", saved_iteration))
                         || cp.checkpoint_id.contains(&saved_iteration.to_string())
                 })
                 .or_else(|| context.checkpoints.last());
 
             match checkpoint {
                 Some(cp) => cp.checkpoint_id.clone(),
-                None => return Err(anyhow!("No checkpoint found for iteration {}", saved_iteration)),
+                None => {
+                    return Err(anyhow!(
+                        "No checkpoint found for iteration {}",
+                        saved_iteration
+                    ))
+                }
             }
         };
 
@@ -2136,7 +2244,10 @@ impl ExecutionLoop for OrchestratorExecutionAdapter {
             .persistent_state_manager
             .create_checkpoint(
                 CheckpointType::OnError,
-                format!("Error at iteration {}: {}", self.execution_state.iteration, error),
+                format!(
+                    "Error at iteration {}: {}",
+                    self.execution_state.iteration, error
+                ),
             )
             .await?;
 

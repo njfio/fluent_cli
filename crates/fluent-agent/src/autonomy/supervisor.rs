@@ -271,7 +271,7 @@ impl AutonomySupervisor {
         }
 
         if let Some(stderr) = action_result.metadata.get("stderr") {
-            if stderr.as_str().unwrap_or_default().len() > 0 {
+            if !stderr.as_str().unwrap_or_default().is_empty() {
                 score += 0.1;
                 triggers.push("stderr_present".to_string());
             }
@@ -287,7 +287,7 @@ impl AutonomySupervisor {
             stage: SupervisorStage::PostAction,
             risk_score: score,
             risk_level,
-            confidence: action_result.success.then(|| 0.8).unwrap_or(0.3),
+            confidence: if action_result.success { 0.8 } else { 0.3 },
             triggers,
             recommended_action: decision,
         })

@@ -8,7 +8,6 @@ use fluent_agent::{
 use fluent_agent::profiling::ReflectionMemoryProfiler;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use tokio;
 
 /// Enhanced reasoning engine with memory profiling
 struct ProfiledReasoningEngine {

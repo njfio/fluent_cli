@@ -88,8 +88,8 @@ pub struct ProgressData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProgressMilestone {
     Started,
-    Quarter,    // 25%
-    Half,       // 50%
+    Quarter,       // 25%
+    Half,          // 50%
     ThreeQuarters, // 75%
     NearComplete,  // 90%+
     Completed,
@@ -541,9 +541,9 @@ impl ExecutionContext {
 
     /// Check if goal is unclear
     pub fn is_goal_unclear(&self) -> bool {
-        self.current_goal.as_ref().map_or(true, |goal| {
-            goal.description.len() < 10 || goal.success_criteria.is_empty()
-        })
+        self.current_goal
+            .as_ref()
+            .is_none_or(|goal| goal.description.len() < 10 || goal.success_criteria.is_empty())
     }
 
     /// Check if task decomposition is needed
@@ -663,7 +663,7 @@ impl ExecutionContext {
     /// Check if an automatic checkpoint should be created
     pub fn should_create_auto_checkpoint(&self) -> bool {
         if let Some(interval) = self.auto_checkpoint_interval {
-            self.iteration_count > 0 && self.iteration_count % interval == 0
+            self.iteration_count > 0 && self.iteration_count.is_multiple_of(interval)
         } else {
             false
         }
@@ -856,7 +856,9 @@ impl ExecutionContext {
 
         // Check if we should create a progress checkpoint
         if self.should_create_progress_checkpoint() {
-            let milestone_str = self.last_milestone.as_ref()
+            let milestone_str = self
+                .last_milestone
+                .as_ref()
                 .map(|m| format!("{:?}", m))
                 .unwrap_or_else(|| "none".to_string());
             let description = format!(
@@ -903,9 +905,7 @@ impl ExecutionContext {
     /// Calculate completion percentage based on iterations and max_iterations
     pub fn calculate_completion_percentage(&self) -> f64 {
         match self.max_iterations {
-            Some(max) if max > 0 => {
-                (self.iteration_count as f64 / max as f64 * 100.0).min(100.0)
-            }
+            Some(max) if max > 0 => (self.iteration_count as f64 / max as f64 * 100.0).min(100.0),
             _ => {
                 // Estimate based on successful actions if no max_iterations
                 // Assume ~20 actions for a typical goal
@@ -949,7 +949,7 @@ impl ExecutionContext {
     /// Check if we should create a progress checkpoint
     pub fn should_create_progress_checkpoint(&self) -> bool {
         if let Some(interval) = self.progress_checkpoint_interval {
-            self.iteration_count > 0 && self.iteration_count % interval == 0
+            self.iteration_count > 0 && self.iteration_count.is_multiple_of(interval)
         } else {
             false
         }
@@ -964,10 +964,7 @@ impl ExecutionContext {
             1.0
         };
 
-        let elapsed_seconds = self.start_time
-            .elapsed()
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let elapsed_seconds = self.start_time.elapsed().map(|d| d.as_secs()).unwrap_or(0);
 
         ProgressData {
             current_iteration: self.iteration_count,
@@ -995,7 +992,9 @@ impl ExecutionContext {
         }
 
         if !self.active_tasks.is_empty() {
-            let task_names: Vec<_> = self.active_tasks.iter()
+            let task_names: Vec<_> = self
+                .active_tasks
+                .iter()
                 .take(3)
                 .map(|t| t.description.as_str())
                 .collect();
@@ -1050,13 +1049,23 @@ impl ExecutionContext {
         self.last_update = SystemTime::now();
 
         // Keep only the last 20 checkpoints for progress (more than regular checkpoints)
-        let progress_count = self.checkpoints.iter()
-            .filter(|c| matches!(c.checkpoint_type, CheckpointType::Progress | CheckpointType::Milestone))
+        let progress_count = self
+            .checkpoints
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.checkpoint_type,
+                    CheckpointType::Progress | CheckpointType::Milestone
+                )
+            })
             .count();
         if progress_count > 20 {
             // Remove oldest progress checkpoint
             if let Some(idx) = self.checkpoints.iter().position(|c| {
-                matches!(c.checkpoint_type, CheckpointType::Progress | CheckpointType::Milestone)
+                matches!(
+                    c.checkpoint_type,
+                    CheckpointType::Progress | CheckpointType::Milestone
+                )
             }) {
                 self.checkpoints.remove(idx);
             }
@@ -1068,7 +1077,10 @@ impl ExecutionContext {
     /// Get the latest progress checkpoint
     pub fn get_latest_progress_checkpoint(&self) -> Option<&ContextCheckpoint> {
         self.checkpoints.iter().rev().find(|c| {
-            matches!(c.checkpoint_type, CheckpointType::Progress | CheckpointType::Milestone)
+            matches!(
+                c.checkpoint_type,
+                CheckpointType::Progress | CheckpointType::Milestone
+            )
         })
     }
 
@@ -1078,7 +1090,8 @@ impl ExecutionContext {
 
         // Determine resumption strategy based on context
         let resumption_strategy = if self.failed_actions > 0
-            && self.failed_actions as f64 / (self.successful_actions + self.failed_actions) as f64 > 0.5
+            && self.failed_actions as f64 / (self.successful_actions + self.failed_actions) as f64
+                > 0.5
         {
             ResumptionStrategy::RebuildContext
         } else if checkpoint.context_snapshot.last_action_summary.is_some() {
@@ -1094,8 +1107,7 @@ impl ExecutionContext {
                 .map(|p| p.estimated_completion_percentage)
                 .unwrap_or(0.0),
             recovered_variables: checkpoint.context_snapshot.key_variables.clone(),
-            last_successful_action: progress_data
-                .and_then(|p| p.last_successful_action.clone()),
+            last_successful_action: progress_data.and_then(|p| p.last_successful_action.clone()),
             resumption_strategy,
         }
     }
@@ -1128,8 +1140,7 @@ impl ExecutionContext {
             event_type: ExecutionEventType::ContextRestored,
             description: format!(
                 "Context resumed from progress checkpoint: {} (iteration {})",
-                checkpoint.checkpoint_id,
-                checkpoint.iteration_count
+                checkpoint.checkpoint_id, checkpoint.iteration_count
             ),
             metadata: {
                 let mut meta = HashMap::new();
@@ -1137,10 +1148,7 @@ impl ExecutionContext {
                     "checkpoint_id".to_string(),
                     serde_json::json!(checkpoint.checkpoint_id),
                 );
-                meta.insert(
-                    "checkpoint_type".to_string(),
-                    serde_json::json!("progress"),
-                );
+                meta.insert("checkpoint_type".to_string(), serde_json::json!("progress"));
                 if let Some(progress) = &checkpoint.progress_data {
                     meta.insert(
                         "completion_percentage".to_string(),
@@ -1183,11 +1191,7 @@ impl ExecutionContext {
 
         format!(
             "Progress: {:.1}% | Actions: {} ({:.0}% success) | API calls: {} | Tokens: {}",
-            pct,
-            total_actions,
-            success_rate,
-            self.api_calls_made,
-            self.tokens_used
+            pct, total_actions, success_rate, self.api_calls_made, self.tokens_used
         )
     }
 }
@@ -1493,7 +1497,10 @@ mod tests {
 
         assert_eq!(context.successful_actions, 2);
         assert_eq!(context.failed_actions, 1);
-        assert_eq!(context.last_successful_action, Some("Wrote content".to_string()));
+        assert_eq!(
+            context.last_successful_action,
+            Some("Wrote content".to_string())
+        );
     }
 
     #[test]
@@ -1555,11 +1562,17 @@ mod tests {
 
         // Three-quarters milestone (75%)
         context.iteration_count = 75;
-        assert_eq!(context.calculate_milestone(), ProgressMilestone::ThreeQuarters);
+        assert_eq!(
+            context.calculate_milestone(),
+            ProgressMilestone::ThreeQuarters
+        );
 
         // Near complete (90%)
         context.iteration_count = 90;
-        assert_eq!(context.calculate_milestone(), ProgressMilestone::NearComplete);
+        assert_eq!(
+            context.calculate_milestone(),
+            ProgressMilestone::NearComplete
+        );
 
         // Completed (100%)
         context.iteration_count = 100;
@@ -1596,7 +1609,8 @@ mod tests {
         context.record_action_success("Test action");
         context.record_api_call(Some(1000));
 
-        let checkpoint_id = context.create_progress_checkpoint("Test progress checkpoint".to_string());
+        let checkpoint_id =
+            context.create_progress_checkpoint("Test progress checkpoint".to_string());
 
         assert!(!checkpoint_id.is_empty());
 
@@ -1677,7 +1691,10 @@ mod tests {
         assert_eq!(new_context.failed_actions, 3);
         assert_eq!(new_context.tokens_used, 10000);
         assert_eq!(new_context.api_calls_made, 25);
-        assert_eq!(new_context.last_successful_action, Some("Analyzed data".to_string()));
+        assert_eq!(
+            new_context.last_successful_action,
+            Some("Analyzed data".to_string())
+        );
     }
 
     #[test]
@@ -1711,11 +1728,25 @@ mod tests {
 
     #[test]
     fn test_milestone_rank() {
-        assert!(milestone_rank(&ProgressMilestone::Started) < milestone_rank(&ProgressMilestone::Quarter));
-        assert!(milestone_rank(&ProgressMilestone::Quarter) < milestone_rank(&ProgressMilestone::Half));
-        assert!(milestone_rank(&ProgressMilestone::Half) < milestone_rank(&ProgressMilestone::ThreeQuarters));
-        assert!(milestone_rank(&ProgressMilestone::ThreeQuarters) < milestone_rank(&ProgressMilestone::NearComplete));
-        assert!(milestone_rank(&ProgressMilestone::NearComplete) < milestone_rank(&ProgressMilestone::Completed));
+        assert!(
+            milestone_rank(&ProgressMilestone::Started)
+                < milestone_rank(&ProgressMilestone::Quarter)
+        );
+        assert!(
+            milestone_rank(&ProgressMilestone::Quarter) < milestone_rank(&ProgressMilestone::Half)
+        );
+        assert!(
+            milestone_rank(&ProgressMilestone::Half)
+                < milestone_rank(&ProgressMilestone::ThreeQuarters)
+        );
+        assert!(
+            milestone_rank(&ProgressMilestone::ThreeQuarters)
+                < milestone_rank(&ProgressMilestone::NearComplete)
+        );
+        assert!(
+            milestone_rank(&ProgressMilestone::NearComplete)
+                < milestone_rank(&ProgressMilestone::Completed)
+        );
     }
 
     #[tokio::test]
@@ -1742,7 +1773,10 @@ mod tests {
 
         // Save to disk
         let temp_dir = tempdir().unwrap();
-        let result = context.save_progress_checkpoint_to_disk(temp_dir.path()).await.unwrap();
+        let result = context
+            .save_progress_checkpoint_to_disk(temp_dir.path())
+            .await
+            .unwrap();
 
         assert!(result.is_some());
         let file_path = result.unwrap();

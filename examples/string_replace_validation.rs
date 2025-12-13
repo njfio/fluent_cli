@@ -51,6 +51,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };

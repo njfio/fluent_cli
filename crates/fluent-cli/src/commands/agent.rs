@@ -53,6 +53,7 @@ impl AgentCommand {
     }
 
     /// Run real agentic mode with goal-oriented execution using the agentic framework
+    #[allow(clippy::too_many_arguments)]
     async fn run_agentic_mode(
         &mut self,
         goal_description: &str,
@@ -309,8 +310,6 @@ impl CommandHandler for AgentCommand {
                 .unwrap_or("agent_config.json");
 
             let max_iterations = max_iters_override.unwrap_or(max_iterations);
-
-            let enable_tools = enable_tools;
 
             let config_path = matches
                 .get_one::<String>("config")

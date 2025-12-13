@@ -14,6 +14,15 @@ use uuid::Uuid;
 
 use crate::context::ExecutionContext;
 
+/// Maximum size for focus history to prevent unbounded growth
+const MAX_FOCUS_HISTORY_SIZE: usize = 1000;
+
+/// Maximum size for access log (already enforced, kept for documentation)
+const MAX_ACCESS_LOG_SIZE: usize = 10000;
+
+/// Maximum size for pressure history to prevent unbounded growth
+const MAX_PRESSURE_HISTORY_SIZE: usize = 500;
+
 /// Working memory system with attention and relevance mechanisms
 pub struct WorkingMemory {
     config: WorkingMemoryConfig,
@@ -645,8 +654,8 @@ impl WorkingMemory {
             relevance_boost: 0.1,
         });
 
-        // Keep only recent access events
-        while store.access_log.len() > 10000 {
+        // Keep only recent access events (enforce memory bounds)
+        while store.access_log.len() > MAX_ACCESS_LOG_SIZE {
             store.access_log.pop_front();
         }
 

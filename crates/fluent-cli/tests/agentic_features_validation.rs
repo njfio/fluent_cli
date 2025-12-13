@@ -135,7 +135,7 @@ async fn test_complete_agentic_workflow() -> Result<()> {
 
     // 1. Create agent command
     let _agent_command = AgentCommand::new();
-    let config = create_test_config();
+    let _config = create_test_config();
 
     // 2. Test the public agentic function
     let goal_result = fluent_cli::run_agentic_mode(

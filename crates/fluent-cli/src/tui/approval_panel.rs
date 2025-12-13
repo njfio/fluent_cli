@@ -219,7 +219,7 @@ impl ApprovalPanel {
     }
 
     fn render_controls(&self, f: &mut Frame, area: Rect) {
-        let actions = vec!["[A]pprove", "[R]eject", "[V]iew Details"];
+        let actions = ["[A]pprove", "[R]eject", "[V]iew Details"];
         let mut items = Vec::new();
 
         for (i, action) in actions.iter().enumerate() {

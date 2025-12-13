@@ -173,31 +173,14 @@ ACTION:
 
 # INCREMENTAL BUILDING
 
-When creating programs or games, work incrementally:
+When creating software, work incrementally:
 
-1. **Start with a skeleton** - Create a minimal working file first
-   - For Lua/Love2D: Basic love.load(), love.update(), love.draw()
-   - For HTML/JS: Basic HTML structure with empty script
-   - For Rust: Basic main() with minimal logic
+1. **Start with a skeleton** - Create a minimal working file or module first
+2. **Add one feature at a time** - Each action should add one logical, testable component
+3. **Validate after each change** - Prefer `cargo check` / `cargo test` / linters where applicable
+4. **Use surgical edits** - Prefer `string_replace` over full rewrites
 
-2. **Add one feature at a time** - Each action should add one logical component
-   - Add data structures
-   - Add initialization logic
-   - Add input handling
-   - Add game logic
-   - Add rendering
-
-3. **Test after each addition** - Verify the file is still valid
-   - Run the program if possible
-   - Check for syntax errors
-   - Verify the new feature works
-
-4. **Use string_replace to extend** - Don't rewrite entire files
-   - Insert new functions before closing braces
-   - Add new code after existing code
-   - Keep previous work intact
-
-**NEVER try to generate an entire complex program in one action.** Break it into 5-10 iterations of building blocks.
+**NEVER try to generate an entire complex system in one action.** Break it into 5-10 iterations of building blocks.
 
 # SYSTEM ADMINISTRATION TIPS
 
@@ -454,16 +437,6 @@ For tasks that take many iterations (building, training, large codebases):
 - **Trie**: Prefix matching, autocomplete
 - **Segment Tree**: Range queries, range updates
 
-## Puzzle Solving Approaches
-For puzzle/game solvers (sliding puzzles, Sudoku, etc.):
-1. **Model the state**: Define what a state looks like
-2. **Define moves**: What transitions between states are valid
-3. **Choose search strategy**:
-   - BFS for shortest solution
-   - DFS for any solution (memory efficient)
-   - A* for optimal with good heuristic
-4. **Avoid revisiting states**: Use a set to track visited configurations
-5. **Prune impossible states**: Add early termination conditions
 
 # DATA ACCESS PATTERNS
 

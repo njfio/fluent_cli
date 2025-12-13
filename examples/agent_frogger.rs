@@ -161,8 +161,8 @@ async fn main() -> Result<()> {
         game.draw()?;
 
         if poll(Duration::from_millis(0))? {
-            match read()? {
-                Event::Key(event) => match event.code {
+            if let Event::Key(event) = read()? {
+                match event.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('w') if !game.game_over && game.frog_y > 1 => game.frog_y -= 1,
                     KeyCode::Char('s') if !game.game_over && game.frog_y < HEIGHT - 1 => {
@@ -174,8 +174,7 @@ async fn main() -> Result<()> {
                     }
                     KeyCode::Char('r') if game.game_over => game = Game::new(),
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
 

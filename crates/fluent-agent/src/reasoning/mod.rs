@@ -18,26 +18,26 @@ pub use algorithmic_patterns::{
     AlgorithmCategory, AlgorithmGuidance, AlgorithmPattern, AlgorithmPatternDetector,
     PatternDetectionResult,
 };
-pub use sysadmin_patterns::{
-    SysadminCategory, SysadminDetectionResult, SysadminGuidance, SysadminPattern,
-    SysadminPatternDetector,
-};
-pub use code_porting_patterns::{
-    CodePortingDetectionResult, CodePortingPatternDetector, LanguagePairPattern,
-    PortingCategory, PortingGuidance, ProgrammingLanguage,
-};
-pub use ml_model_patterns::{
-    ConversionCategory, ConversionGuidance, FrameworkConversionPattern, MLConversionDetectionResult,
-    MLConversionPatternDetector, MLFramework, QuantizationLevel,
-};
 pub use chain_of_thought::{ChainOfThoughtEngine, CoTConfig, CoTReasoningResult};
+pub use code_porting_patterns::{
+    CodePortingDetectionResult, CodePortingPatternDetector, LanguagePairPattern, PortingCategory,
+    PortingGuidance, ProgrammingLanguage,
+};
 pub use enhanced_multi_modal::{
     EnhancedMultiModalEngine, EnhancedReasoningConfig, EnhancedReasoningResult,
 };
 pub use meta_reasoning::{MetaConfig, MetaReasoningEngine, MetaReasoningResult};
+pub use ml_model_patterns::{
+    ConversionCategory, ConversionGuidance, FrameworkConversionPattern,
+    MLConversionDetectionResult, MLConversionPatternDetector, MLFramework, QuantizationLevel,
+};
 pub use multi_modal::{
     AudioData, BinaryData, CodeContent, CrossModalRelationship, ImageData, MultiModalInput,
     MultiModalReasoningEngine, MultiModalReasoningResult, StructuredData,
+};
+pub use sysadmin_patterns::{
+    SysadminCategory, SysadminDetectionResult, SysadminGuidance, SysadminPattern,
+    SysadminPatternDetector,
 };
 pub use tree_of_thought::{ToTConfig, ToTReasoningResult, TreeOfThoughtEngine};
 
@@ -219,14 +219,15 @@ impl StructuredReasoningOutput {
     /// This attempts to extract structure from unstructured LLM output
     /// using heuristics and pattern matching.
     pub fn from_raw_output(raw: &str) -> Self {
-        let mut output = Self::default();
-        output.summary = Self::extract_summary(raw);
-        output.reasoning_chain = Self::extract_reasoning_chain(raw);
-        output.goal_assessment = Self::extract_goal_assessment(raw);
-        output.proposed_actions = Self::extract_proposed_actions(raw);
-        output.confidence = Self::estimate_confidence(raw);
-        output.blockers = Self::extract_blockers(raw);
-        output
+        Self {
+            summary: Self::extract_summary(raw),
+            reasoning_chain: Self::extract_reasoning_chain(raw),
+            goal_assessment: Self::extract_goal_assessment(raw),
+            proposed_actions: Self::extract_proposed_actions(raw),
+            confidence: Self::estimate_confidence(raw),
+            blockers: Self::extract_blockers(raw),
+            ..Self::default()
+        }
     }
 
     /// Validate the structured output
@@ -299,11 +300,22 @@ impl StructuredReasoningOutput {
             let is_list_item = trimmed.starts_with('-')
                 || trimmed.starts_with('*')
                 || trimmed.starts_with("•")
-                || trimmed.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+                || trimmed
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false);
 
             if is_list_item {
                 let content = trimmed
-                    .trim_start_matches(|c: char| c == '-' || c == '*' || c == '•' || c.is_ascii_digit() || c == '.' || c == ')')
+                    .trim_start_matches(|c: char| {
+                        c == '-'
+                            || c == '*'
+                            || c == '•'
+                            || c.is_ascii_digit()
+                            || c == '.'
+                            || c == ')'
+                    })
                     .trim()
                     .to_string();
 
@@ -333,9 +345,15 @@ impl StructuredReasoningOutput {
             ThoughtType::Solution
         } else if lower.contains("decide") || lower.contains("will") || lower.contains("should") {
             ThoughtType::Decision
-        } else if lower.contains("consider") || lower.contains("alternative") || lower.contains("option") {
+        } else if lower.contains("consider")
+            || lower.contains("alternative")
+            || lower.contains("option")
+        {
             ThoughtType::Consideration
-        } else if lower.contains("therefore") || lower.contains("conclude") || lower.contains("result") {
+        } else if lower.contains("therefore")
+            || lower.contains("conclude")
+            || lower.contains("result")
+        {
             ThoughtType::Conclusion
         } else {
             ThoughtType::Analysis
@@ -472,7 +490,14 @@ impl StructuredReasoningOutput {
         let lower = raw.to_lowercase();
 
         // Common blocker patterns
-        let blocker_keywords = ["blocked by", "cannot", "unable to", "need to", "waiting for", "requires"];
+        let blocker_keywords = [
+            "blocked by",
+            "cannot",
+            "unable to",
+            "need to",
+            "waiting for",
+            "requires",
+        ];
 
         for line in raw.lines() {
             let line_lower = line.to_lowercase();
@@ -731,7 +756,11 @@ Finally, execute the tests
 
         assert!(!output.proposed_actions.is_empty());
         // Check that action types are correctly identified
-        let action_types: Vec<_> = output.proposed_actions.iter().map(|a| &a.action_type).collect();
+        let action_types: Vec<_> = output
+            .proposed_actions
+            .iter()
+            .map(|a| &a.action_type)
+            .collect();
         assert!(action_types.contains(&&ProposedActionType::WriteCode));
         assert!(action_types.contains(&&ProposedActionType::ReadFile));
     }

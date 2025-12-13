@@ -7,7 +7,6 @@ use fluent_agent::{
 };
 use std::collections::HashMap;
 use std::time::SystemTime;
-use tokio;
 
 /// Mock reasoning engine for demonstration
 struct MockReasoningEngine;

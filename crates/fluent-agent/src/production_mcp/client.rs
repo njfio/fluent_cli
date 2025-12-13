@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument, warn as tracing_warn};
 use uuid::Uuid;
 
@@ -35,6 +36,8 @@ pub struct ProductionMcpClientManager {
     connection_pool: Arc<ConnectionPool>,
     #[allow(dead_code)]
     error_recovery: Arc<ErrorRecoveryManager>,
+    /// Cancellation token for background tasks (health monitoring, connection maintenance)
+    cancellation_token: CancellationToken,
 }
 
 impl ProductionMcpClientManager {
@@ -54,6 +57,7 @@ impl ProductionMcpClientManager {
             health_monitor,
             connection_pool,
             error_recovery,
+            cancellation_token: CancellationToken::new(),
         })
     }
 
@@ -187,6 +191,9 @@ impl ProductionMcpClientManager {
 
     /// Shutdown all clients
     pub async fn shutdown(&self) -> Result<(), McpError> {
+        // Cancel background tasks first
+        self.cancellation_token.cancel();
+
         let mut clients = self.clients.write().await;
 
         for (_, client) in clients.drain() {
@@ -226,18 +233,27 @@ impl ProductionMcpClientManager {
         let clients = self.clients.clone();
         let health_monitor = self.health_monitor.clone();
         let check_interval = self.config.health_check_interval;
+        let cancellation_token = self.cancellation_token.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(check_interval);
             loop {
-                interval.tick().await;
-                let clients_guard = clients.read().await;
+                tokio::select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => {
+                        tracing::debug!("Health monitoring task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let clients_guard = clients.read().await;
 
-                for (name, client) in clients_guard.iter() {
-                    let health_status = client.check_health().await;
-                    health_monitor
-                        .update_client_health(name, health_status)
-                        .await;
+                        for (name, client) in clients_guard.iter() {
+                            let health_status = client.check_health().await;
+                            health_monitor
+                                .update_client_health(name, health_status)
+                                .await;
+                        }
+                    }
                 }
             }
         });
@@ -249,16 +265,25 @@ impl ProductionMcpClientManager {
     async fn start_connection_maintenance(&self) -> Result<(), McpError> {
         let clients = self.clients.clone();
         let maintenance_interval = Duration::from_secs(60);
+        let cancellation_token = self.cancellation_token.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(maintenance_interval);
             loop {
-                interval.tick().await;
-                let clients_guard = clients.read().await;
+                tokio::select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => {
+                        tracing::debug!("Connection maintenance task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let clients_guard = clients.read().await;
 
-                for client in clients_guard.values() {
-                    if let Err(e) = client.maintain_connection().await {
-                        tracing::warn!("Connection maintenance failed: {}", e);
+                        for client in clients_guard.values() {
+                            if let Err(e) = client.maintain_connection().await {
+                                tracing::warn!("Connection maintenance failed: {}", e);
+                            }
+                        }
                     }
                 }
             }
@@ -632,6 +657,12 @@ pub struct ErrorRecoveryManager {
 impl ErrorRecoveryManager {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+impl Default for ErrorRecoveryManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

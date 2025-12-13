@@ -34,21 +34,11 @@ use tokio::sync::RwLock;
 /// Backward compatibility types
 pub type MemorySystem = IntegratedMemorySystem;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryConfig {
     pub working_config: WorkingMemoryConfig,
     pub compressor_config: CompressorConfig,
     pub persistence_config: PersistenceConfig,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self {
-            working_config: WorkingMemoryConfig::default(),
-            compressor_config: CompressorConfig::default(),
-            persistence_config: PersistenceConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

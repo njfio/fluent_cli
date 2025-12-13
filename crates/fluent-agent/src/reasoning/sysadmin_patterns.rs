@@ -123,8 +123,7 @@ impl SysadminPatternDetector {
             }
 
             if keyword_matches > 0 || characteristic_matches > 0 {
-                let keyword_score =
-                    keyword_matches as f64 / pattern.keywords.len().max(1) as f64;
+                let keyword_score = keyword_matches as f64 / pattern.keywords.len().max(1) as f64;
                 let char_score =
                     characteristic_matches as f64 / pattern.characteristics.len().max(1) as f64;
                 let confidence = (keyword_score * 0.7 + char_score * 0.3).min(1.0);
@@ -181,10 +180,7 @@ impl SysadminPatternDetector {
                 pattern.name, pattern.category
             ));
 
-            augmentation.push_str(&format!(
-                "**Approach**: {}\n\n",
-                pattern.guidance.approach
-            ));
+            augmentation.push_str(&format!("**Approach**: {}\n\n", pattern.guidance.approach));
 
             if !pattern.guidance.required_tools.is_empty() {
                 augmentation.push_str("**Required Tools**:\n");
@@ -884,10 +880,14 @@ mod tests {
         let detector = SysadminPatternDetector::new();
         let result = detector.detect("Create a QEMU virtual machine to install Windows XP");
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
-        let has_vm = result.patterns.iter().any(|p| {
-            p.category == SysadminCategory::Virtualization || p.name.contains("QEMU")
-        });
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
+        let has_vm = result
+            .patterns
+            .iter()
+            .any(|p| p.category == SysadminCategory::Virtualization || p.name.contains("QEMU"));
         assert!(has_vm, "Should detect VM/QEMU pattern");
     }
 
@@ -896,10 +896,14 @@ mod tests {
         let detector = SysadminPatternDetector::new();
         let result = detector.detect("Convert raw disk image to qcow2 format");
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
-        let has_disk = result.patterns.iter().any(|p| {
-            p.category == SysadminCategory::DiskManagement
-        });
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
+        let has_disk = result
+            .patterns
+            .iter()
+            .any(|p| p.category == SysadminCategory::DiskManagement);
         assert!(has_disk, "Should detect disk management pattern");
     }
 
@@ -908,10 +912,14 @@ mod tests {
         let detector = SysadminPatternDetector::new();
         let result = detector.detect("Configure static IP address on network interface eth0");
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
-        let has_network = result.patterns.iter().any(|p| {
-            p.category == SysadminCategory::Networking
-        });
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
+        let has_network = result
+            .patterns
+            .iter()
+            .any(|p| p.category == SysadminCategory::Networking);
         assert!(has_network, "Should detect networking pattern");
     }
 
@@ -920,10 +928,14 @@ mod tests {
         let detector = SysadminPatternDetector::new();
         let result = detector.detect("Install Ubuntu 22.04 from ISO");
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
-        let has_install = result.patterns.iter().any(|p| {
-            p.category == SysadminCategory::OsInstallation
-        });
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
+        let has_install = result
+            .patterns
+            .iter()
+            .any(|p| p.category == SysadminCategory::OsInstallation);
         assert!(has_install, "Should detect OS installation pattern");
     }
 
@@ -932,10 +944,14 @@ mod tests {
         let detector = SysadminPatternDetector::new();
         let result = detector.detect("Start nginx service and enable it at boot using systemctl");
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
-        let has_service = result.patterns.iter().any(|p| {
-            p.category == SysadminCategory::ServiceManagement
-        });
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
+        let has_service = result
+            .patterns
+            .iter()
+            .any(|p| p.category == SysadminCategory::ServiceManagement);
         assert!(has_service, "Should detect service management pattern");
     }
 
@@ -945,7 +961,10 @@ mod tests {
         let result = detector.detect("Write a function to calculate fibonacci numbers");
 
         // Should have low overall confidence
-        assert!(result.overall_confidence < 0.3, "Should have low confidence for non-sysadmin task");
+        assert!(
+            result.overall_confidence < 0.3,
+            "Should have low confidence for non-sysadmin task"
+        );
     }
 
     #[test]
@@ -957,14 +976,21 @@ mod tests {
 
         assert!(!augmentation.is_empty(), "Should generate augmentation");
         assert!(augmentation.contains("QEMU"), "Should mention QEMU");
-        assert!(augmentation.contains("Steps") || augmentation.contains("steps"), "Should include steps");
+        assert!(
+            augmentation.contains("Steps") || augmentation.contains("steps"),
+            "Should include steps"
+        );
     }
 
     #[test]
     fn test_multiple_patterns_detected() {
         let detector = SysadminPatternDetector::new();
-        let result = detector.detect("Install Ubuntu in a QEMU VM and configure static IP networking");
+        let result =
+            detector.detect("Install Ubuntu in a QEMU VM and configure static IP networking");
 
-        assert!(result.patterns.len() >= 2, "Should detect multiple patterns");
+        assert!(
+            result.patterns.len() >= 2,
+            "Should detect multiple patterns"
+        );
     }
 }

@@ -117,11 +117,11 @@ pub fn extract_code_blocks(content: &str) -> Vec<(Option<String>, String)> {
     while i < lines.len() {
         let line = lines[i].trim();
 
-        if line.starts_with("```") {
-            let language = if line.len() > 3 {
-                Some(line[3..].trim().to_string())
-            } else {
+        if let Some(stripped) = line.strip_prefix("```") {
+            let language = if stripped.trim().is_empty() {
                 None
+            } else {
+                Some(stripped.trim().to_string())
             };
 
             i += 1;

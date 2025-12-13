@@ -443,7 +443,7 @@ impl AgentTui {
         f.render_widget(time, status_chunks[2]);
 
         // Tools/Reflection status
-        let features = vec![
+        let features = [
             if state.tools_enabled { "🔧" } else { "⚪" },
             if state.reflection_enabled {
                 "🧠"
@@ -605,6 +605,12 @@ pub struct AsciiTui {
     run_id: String,
     log_persist_path: Option<std::path::PathBuf>,
     max_logs: usize,
+}
+
+impl Default for AsciiTui {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AsciiTui {
@@ -834,8 +840,8 @@ impl AsciiTui {
                 cyan, reset
             );
             println!(
-                "{}│{}🤖 FLUENT AGENTIC MODE{}                                        {}│{}",
-                bold, reset, " ", cyan, reset
+                "{}│{}🤖 FLUENT AGENTIC MODE                                        {}│{}",
+                bold, reset, cyan, reset
             );
             println!(
                 "{}├────────────────────────────────────────────────────────────────┤{}",
@@ -1014,8 +1020,8 @@ impl AsciiTui {
         println!();
         if self.state.awaiting_approval {
             println!(
-                "{}🎮 CONTROLS:{} {}",
-                green, reset, "Q/Esc=Quit | A=Approve | R=Reject | I=Input | M=Modify | H/?=Help"
+                "{}🎮 CONTROLS:{} Q/Esc=Quit | A=Approve | R=Reject | I=Input | M=Modify | H/?=Help",
+                green, reset
             );
             println!(
                 "{}⚠️  ACTION AWAITING APPROVAL:{} Press 'A' to approve or 'R' to reject",
@@ -1023,10 +1029,8 @@ impl AsciiTui {
             );
         } else {
             println!(
-                "{}🎮 CONTROLS:{} {}",
-                green,
-                reset,
-                "Q/Esc=Quit | P=Pause/Resume | I=Input | A=Approve | M=Modify | H/?=Help"
+                "{}🎮 CONTROLS:{} Q/Esc=Quit | P=Pause/Resume | I=Input | A=Approve | M=Modify | H/?=Help",
+                green, reset
             );
             println!(
                 "{}💡 TIP:{} Press 'I' to provide input or 'P' to pause execution",
@@ -1067,8 +1071,8 @@ impl AsciiTui {
             cyan, reset
         );
         println!(
-            "{}│{}🤖 ASCII Interface with Human-in-the-Loop Capabilities{}         {}│{}",
-            bold, reset, " ", cyan, reset
+            "{}│{}🤖 ASCII Interface with Human-in-the-Loop Capabilities         {}│{}",
+            bold, reset, cyan, reset
         );
         println!(
             "{}├──────────────────────────────────────────────────────────────────┤{}",
@@ -1080,32 +1084,32 @@ impl AsciiTui {
             cyan, reset
         );
         println!(
-            "{}│ {}Q{} or {}Esc{}    - Quit and return to terminal                   {}│{} {}",
-            green, " ", reset, green, " ", reset, blue, reset
+            "{}│ Q{} or {}Esc{}    - Quit and return to terminal                   {}│{}",
+            green, reset, green, reset, blue, reset
         );
         println!(
-            "{}│ {}P{}          - Pause/Resume agent execution                     {}│{}",
-            green, " ", reset, blue, reset
+            "{}│ P{}          - Pause/Resume agent execution                     {}│{}",
+            green, reset, blue, reset
         );
         println!(
-            "{}│ {}I{}          - Provide human input/advice to agent              {}│{}",
-            green, " ", reset, blue, reset
+            "{}│ I{}          - Provide human input/advice to agent              {}│{}",
+            green, reset, blue, reset
         );
         println!(
-            "{}│ {}A{}          - Approve current agent action                     {}│{}",
-            green, " ", reset, blue, reset
+            "{}│ A{}          - Approve current agent action                     {}│{}",
+            green, reset, blue, reset
         );
         println!(
-            "{}│ {}R{}          - Reject current agent action                      {}│{}",
-            green, " ", reset, blue, reset
+            "{}│ R{}          - Reject current agent action                      {}│{}",
+            green, reset, blue, reset
         );
         println!(
-            "{}│ {}M{}          - Modify agent goal or parameters                  {}│{}",
-            green, " ", reset, blue, reset
+            "{}│ M{}          - Modify agent goal or parameters                  {}│{}",
+            green, reset, blue, reset
         );
         println!(
-            "{}│ {}H{} or {}?{}     - Show this help screen                          {}│{} {}",
-            green, " ", reset, green, " ", reset, blue, reset
+            "{}│ H{} or {}?{}     - Show this help screen                          {}│{}",
+            green, reset, green, reset, blue, reset
         );
         println!(
             "{}├─ DISPLAY INFORMATION ─────────────────────────────────────────────┤{}",
@@ -1214,8 +1218,8 @@ impl AsciiTui {
             cyan, reset
         );
         println!(
-            "{}│{}🤖 Provide guidance or additional context to the agent{}         {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│{}🤖 Provide guidance or additional context to the agent         {}│{}",
+            green, reset, cyan, reset
         );
         println!(
             "{}├──────────────────────────────────────────────────────────────────┤{}",
@@ -1288,8 +1292,8 @@ impl AsciiTui {
             cyan, reset
         );
         println!(
-            "{}│{}🎯 Modify agent goal or execution parameters{}                   {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│{}🎯 Modify agent goal or execution parameters                   {}│{}",
+            green, reset, cyan, reset
         );
         println!(
             "{}├──────────────────────────────────────────────────────────────────┤{}",
@@ -1312,24 +1316,24 @@ impl AsciiTui {
             cyan, reset
         );
         println!(
-            "{}│ {}1. Modify goal description{}                                   {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│ 1. Modify goal description{}                                   {}│{}",
+            green, reset, cyan, reset
         );
         println!(
-            "{}│ {}2. Change max iterations{}                                     {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│ 2. Change max iterations{}                                     {}│{}",
+            green, reset, cyan, reset
         );
         println!(
-            "{}│ {}3. Toggle tool usage{}                                         {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│ 3. Toggle tool usage{}                                         {}│{}",
+            green, reset, cyan, reset
         );
         println!(
-            "{}│ {}4. Toggle reflection{}                                         {}│{}",
-            green, reset, " ", cyan, reset
+            "{}│ 4. Toggle reflection{}                                         {}│{}",
+            green, reset, cyan, reset
         );
         println!(
-            "{}│ {}0. Cancel{}                                                    {}│{}",
-            red, reset, " ", cyan, reset
+            "{}│ 0. Cancel{}                                                    {}│{}",
+            red, reset, cyan, reset
         );
         println!(
             "{}├──────────────────────────────────────────────────────────────────┤{}",
@@ -1421,13 +1425,14 @@ impl TuiManager {
                 .map(|v| v == "1")
                 .unwrap_or(false)
             {
-                self.ascii_tui = Some(AsciiTui::new());
-                self.fallback_mode = true;
-                let ansi_status = if self.ascii_tui.as_ref().unwrap().use_ansi {
+                let ascii_tui = AsciiTui::new();
+                let ansi_status = if ascii_tui.use_ansi {
                     "with colors"
                 } else {
                     "plain text"
                 };
+                self.ascii_tui = Some(ascii_tui);
+                self.fallback_mode = true;
                 println!(
                     "✅ ASCII interface initialized ({}) - Q=quit, S=status, H=help",
                     ansi_status
@@ -1514,13 +1519,14 @@ impl TuiManager {
             }
 
             // Fall back to ASCII mode
-            self.ascii_tui = Some(AsciiTui::new());
-            self.fallback_mode = true;
-            let ansi_status = if self.ascii_tui.as_ref().unwrap().use_ansi {
+            let ascii_tui = AsciiTui::new();
+            let ansi_status = if ascii_tui.use_ansi {
                 "with colors"
             } else {
                 "plain text"
             };
+            self.ascii_tui = Some(ascii_tui);
+            self.fallback_mode = true;
             println!(
                 "✅ ASCII interface initialized ({}) - Q=quit, S=status, H=help",
                 ansi_status
@@ -1572,27 +1578,23 @@ impl TuiManager {
 
     /// Spawn SimpleTUI in a separate task and return the task handle
     pub fn spawn_simple_tui(&mut self) -> Option<tokio::task::JoinHandle<()>> {
-        if let Some(mut tui) = self.simple_tui.take() {
-            Some(tokio::spawn(async move {
+        self.simple_tui.take().map(|mut tui| {
+            tokio::spawn(async move {
                 if let Err(e) = tui.run().await {
                     eprintln!("TUI error: {}", e);
                 }
-            }))
-        } else {
-            None
-        }
+            })
+        })
     }
 
     pub fn spawn_collab_tui(&mut self) -> Option<tokio::task::JoinHandle<()>> {
-        if let Some(mut tui) = self.collaborative_tui.take() {
-            Some(tokio::spawn(async move {
+        self.collaborative_tui.take().map(|mut tui| {
+            tokio::spawn(async move {
                 if let Err(e) = tui.run().await {
                     eprintln!("Collaborative TUI error: {}", e);
                 }
-            }))
-        } else {
-            None
-        }
+            })
+        })
     }
 
     pub fn set_current_action(&mut self, action: String) {

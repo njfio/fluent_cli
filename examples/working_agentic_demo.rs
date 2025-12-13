@@ -304,11 +304,13 @@ async fn demo_config_system() -> Result<()> {
         action_engine: "openai".to_string(),
         reflection_engine: "openai".to_string(),
         memory_database: "sqlite://./demo_agent_memory.db".to_string(),
+        memory_enabled: true,
         tools: fluent_agent::config::ToolConfig {
             file_operations: true,
             shell_commands: true,
             rust_compiler: true,
             git_operations: false,
+            web_browsing: true,
             allowed_paths: Some(vec!["./".to_string(), "./examples/".to_string()]),
             allowed_commands: Some(vec!["cargo".to_string(), "rustc".to_string()]),
         },
@@ -318,6 +320,7 @@ async fn demo_config_system() -> Result<()> {
         performance: None,
         state_management: None,
         supervisor: None,
+        rate_limit: None,
     };
 
     // Validate configuration

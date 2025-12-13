@@ -439,6 +439,12 @@ impl Default for ReflectionConfig {
     }
 }
 
+impl Default for ReflectionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReflectionEngine {
     /// Create a new reflection engine with default configuration
     pub fn new() -> Self {
@@ -464,7 +470,9 @@ impl ReflectionEngine {
     pub fn should_reflect(&self, context: &ExecutionContext) -> Option<ReflectionTrigger> {
         // Check for scheduled reflection (but not at iteration 0)
         if context.iteration_count() > 0
-            && context.iteration_count() % self.reflection_config.reflection_frequency == 0
+            && context
+                .iteration_count()
+                .is_multiple_of(self.reflection_config.reflection_frequency)
         {
             return Some(ReflectionTrigger::ScheduledInterval);
         }
@@ -610,7 +618,9 @@ impl ReflectionEngine {
     ) -> ReflectionType {
         match trigger {
             ReflectionTrigger::ScheduledInterval => {
-                if context.iteration_count() % self.reflection_config.deep_reflection_frequency == 0
+                if context
+                    .iteration_count()
+                    .is_multiple_of(self.reflection_config.deep_reflection_frequency)
                 {
                     ReflectionType::Deep
                 } else {
@@ -643,7 +653,7 @@ impl ReflectionEngine {
             + (quality_score * quality_weight)
             - (bottleneck_penalty * bottleneck_weight);
 
-        weighted_score.max(0.0).min(1.0)
+        weighted_score.clamp(0.0, 1.0)
     }
 
     /// Calculate performance assessment from analysis
@@ -904,7 +914,7 @@ impl ReflectionEngine {
         }
 
         // Identify tool usage improvements
-        if context.get_available_tools().len() > 0 {
+        if !context.get_available_tools().is_empty() {
             opportunities.push(LearningOpportunity {
                 opportunity_id: uuid::Uuid::new_v4().to_string(),
                 description: "Optimize tool usage patterns".to_string(),

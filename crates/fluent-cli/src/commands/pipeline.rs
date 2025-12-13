@@ -181,11 +181,11 @@ impl CommandHandler for PipelineCommand {
                                 println!(
                                     "{}",
                                     serde_json::json!({
-                                        "success": true,
-                                        "pipeline_file": pipeline_file,
-                                        "dry_run": true,
-                                        "message": "Dry-run validation successful: pipeline file is present and syntactically valid."
-                                    }).to_string()
+                                       "success": true,
+                                       "pipeline_file": pipeline_file,
+                                       "dry_run": true,
+                                       "message": "Dry-run validation successful: pipeline file is present and syntactically valid."
+                                    })
                                 );
                             } else {
                                 println!(
@@ -200,12 +200,11 @@ impl CommandHandler for PipelineCommand {
                                 println!(
                                     "{}",
                                     serde_json::json!({
-                                        "success": false,
-                                        "error": &error_message,
-                                        "pipeline_file": pipeline_file,
-                                        "dry_run": true,
+                                       "success": false,
+                                       "error": &error_message,
+                                       "pipeline_file": pipeline_file,
+                                       "dry_run": true,
                                     })
-                                    .to_string()
                                 );
                             } else {
                                 eprintln!("❌ Dry-run validation failed: {}", error_message);
@@ -227,7 +226,6 @@ impl CommandHandler for PipelineCommand {
                                 "pipeline_file": pipeline_file,
                                 "dry_run": true,
                             })
-                            .to_string()
                         );
                     } else {
                         eprintln!("❌ Dry-run validation failed: {}", error_message);

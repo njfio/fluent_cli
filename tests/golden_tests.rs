@@ -1,11 +1,11 @@
 use assert_cmd::Command;
 use serde_json::Value;
 
-/// Golden tests for response formatting and output consistency
-///
-/// These tests ensure that output formatting remains consistent across CLI commands
-/// and help catch unintended changes to the output format.
-
+// Golden tests for response formatting and output consistency
+//
+// These tests ensure that output formatting remains consistent across CLI commands
+// and help catch unintended changes to the output format.
+//
 // =============================================================================
 // Help Output Format Tests
 // =============================================================================
@@ -187,7 +187,7 @@ fn test_tools_list_format() {
 
     // Tools list should show tools in some structured format
     // Looking for common tool names that should always be available
-    assert!(stdout.len() > 0, "Tools list should produce output");
+    assert!(!stdout.is_empty(), "Tools list should produce output");
 }
 
 /// Test tools list JSON output format

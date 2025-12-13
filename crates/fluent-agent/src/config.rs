@@ -31,7 +31,7 @@ impl Default for RateLimitConfig {
         Self {
             enabled: true,
             reasoning_rps: 5.0,  // 5 requests per second
-            action_rps: 10.0,   // 10 requests per second
+            action_rps: 10.0,    // 10 requests per second
             reflection_rps: 3.0, // 3 requests per second
         }
     }
@@ -82,6 +82,8 @@ pub struct AgentEngineConfig {
     pub action_engine: String,
     pub reflection_engine: String,
     pub memory_database: String,
+    #[serde(default = "default_memory_enabled")]
+    pub memory_enabled: bool,
     pub tools: ToolConfig,
     pub config_path: Option<String>,
     pub max_iterations: Option<u32>,
@@ -109,12 +111,16 @@ fn default_web_browsing() -> bool {
     true
 }
 
+fn default_memory_enabled() -> bool {
+    true
+}
+
 /// Runtime configuration with loaded engines and credentials
 #[derive(Clone)]
 pub struct AgentRuntimeConfig {
-    pub reasoning_engine: Arc<Box<dyn Engine>>,
-    pub action_engine: Arc<Box<dyn Engine>>,
-    pub reflection_engine: Arc<Box<dyn Engine>>,
+    pub reasoning_engine: Arc<dyn Engine>,
+    pub action_engine: Arc<dyn Engine>,
+    pub reflection_engine: Arc<dyn Engine>,
     pub config: AgentEngineConfig,
     pub credentials: HashMap<String, String>,
     pub supervisor: Option<AutonomySupervisorConfig>,
@@ -129,11 +135,7 @@ pub struct AgentRuntimeConfig {
 impl AgentRuntimeConfig {
     /// Get the base engine for enhanced reasoning
     pub fn get_base_engine(&self) -> Option<Arc<dyn Engine>> {
-        // Return a clone of the reasoning engine for use as base engine
-        // We need to convert from Arc<Box<dyn Engine>> to Arc<dyn Engine>
-        // This is a workaround - we can't directly cast, so we'll return None for now
-        // In a real implementation, we'd need to restructure to avoid this type mismatch
-        None
+        Some(self.reasoning_engine.clone())
     }
 
     /// Acquire a rate limit token for reasoning operations
@@ -276,52 +278,42 @@ impl AgentEngineConfig {
         };
 
         // Create reflection engine (can be the same as reasoning)
-        let reflection_engine = if self.reflection_engine == self.reasoning_engine {
-            // Create a new instance of the same engine
-            self.create_engine(
+        let reflection_engine = self
+            .create_engine(
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
                 model_override,
             )
-            .await?
-        } else if self.reflection_engine == self.action_engine {
-            // Create a new instance of the same engine
-            self.create_engine(
-                &fluent_config_content,
-                &self.reflection_engine,
-                &credentials,
-                model_override,
-            )
-            .await?
-        } else {
-            self.create_engine(
-                &fluent_config_content,
-                &self.reflection_engine,
-                &credentials,
-                model_override,
-            )
-            .await?
-        };
+            .await?;
 
         // Initialize rate limiters based on config
-        let rate_limit_config = self.rate_limit.clone().unwrap_or_else(RateLimitConfig::from_environment);
+        let rate_limit_config = self
+            .rate_limit
+            .clone()
+            .unwrap_or_else(RateLimitConfig::from_environment);
 
         let (reasoning_rate_limiter, action_rate_limiter, reflection_rate_limiter) =
             if rate_limit_config.enabled {
                 (
-                    Some(Arc::new(fluent_engines::RateLimiter::new(rate_limit_config.reasoning_rps))),
-                    Some(Arc::new(fluent_engines::RateLimiter::new(rate_limit_config.action_rps))),
-                    Some(Arc::new(fluent_engines::RateLimiter::new(rate_limit_config.reflection_rps))),
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.reasoning_rps,
+                    ))),
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.action_rps,
+                    ))),
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.reflection_rps,
+                    ))),
                 )
             } else {
                 (None, None, None)
             };
 
         Ok(AgentRuntimeConfig {
-            reasoning_engine: Arc::new(reasoning_engine),
-            action_engine: Arc::new(action_engine),
-            reflection_engine: Arc::new(reflection_engine),
+            reasoning_engine: Arc::from(reasoning_engine),
+            action_engine: Arc::from(action_engine),
+            reflection_engine: Arc::from(reflection_engine),
             config: self.clone(),
             credentials,
             supervisor: self.supervisor.clone(),
@@ -332,6 +324,31 @@ impl AgentEngineConfig {
             action_rate_limiter,
             reflection_rate_limiter,
         })
+    }
+
+    /// Resolve the configured SQLite memory database to a filesystem path.
+    ///
+    /// Supported forms:
+    /// - `sqlite://global` (default)
+    /// - `sqlite://:memory:`
+    /// - `sqlite:///absolute/path/to/db`
+    /// - `sqlite://./relative/path/to/db`
+    pub fn resolve_memory_db_path(&self) -> std::path::PathBuf {
+        let url = self.memory_database.trim();
+        let Some(rest) = url.strip_prefix("sqlite://") else {
+            return crate::paths::global_agent_memory_db_path();
+        };
+
+        if rest.is_empty() || rest == "global" {
+            return crate::paths::global_agent_memory_db_path();
+        }
+        if rest == ":memory:" {
+            return std::path::PathBuf::from(":memory:");
+        }
+
+        // `sqlite:///abs/path` yields rest like "/abs/path" (keep it absolute)
+        // `sqlite://./rel/path` yields rest like "./rel/path"
+        std::path::PathBuf::from(rest)
     }
 
     pub fn supervisor_config(&self) -> AutonomySupervisorConfig {
@@ -531,7 +548,8 @@ impl AgentEngineConfig {
             reasoning_engine: "sonnet3.5".to_string(),
             action_engine: "gpt-4o".to_string(),
             reflection_engine: "gemini-flash".to_string(),
-            memory_database: "sqlite://./agent_memory.db".to_string(),
+            memory_database: "sqlite://global".to_string(),
+            memory_enabled: true,
             tools: ToolConfig {
                 file_operations: true,
                 shell_commands: false, // Disabled by default for security
@@ -627,8 +645,7 @@ pub mod credentials {
 
         // Load CREDENTIAL_ prefixed variables (fluent_cli pattern)
         for (key, value) in env::vars() {
-            if key.starts_with("CREDENTIAL_") {
-                let credential_key = &key[11..]; // Remove CREDENTIAL_ prefix
+            if let Some(credential_key) = key.strip_prefix("CREDENTIAL_") {
                 credentials.insert(credential_key.to_string(), value);
             }
         }

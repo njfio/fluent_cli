@@ -191,16 +191,29 @@ impl CodePortingPatternDetector {
 
         // Check for porting-related keywords (these are strong indicators)
         let strong_porting_keywords = [
-            "port", "porting", "convert to", "translate to", "rewrite in",
-            "migrate to", "migration", "transpile", "from rust", "from c ",
-            "from python", "from javascript", "from java", "to rust", "to go",
-            "to python", "to java", "to typescript", "convert from",
+            "port",
+            "porting",
+            "convert to",
+            "translate to",
+            "rewrite in",
+            "migrate to",
+            "migration",
+            "transpile",
+            "from rust",
+            "from c ",
+            "from python",
+            "from javascript",
+            "from java",
+            "to rust",
+            "to go",
+            "to python",
+            "to java",
+            "to typescript",
+            "convert from",
         ];
 
         // These keywords require additional context to indicate porting
-        let context_porting_keywords = [
-            "convert", "translate", "rewrite", "migrate",
-        ];
+        let context_porting_keywords = ["convert", "translate", "rewrite", "migrate"];
 
         let has_strong_keyword = strong_porting_keywords
             .iter()
@@ -248,9 +261,17 @@ impl CodePortingPatternDetector {
 
             // Check if languages match
             let source_matches = source_lang.map(|l| l == pattern.source).unwrap_or(false)
-                || pattern.source.keywords().iter().any(|k| lower_desc.contains(k));
+                || pattern
+                    .source
+                    .keywords()
+                    .iter()
+                    .any(|k| lower_desc.contains(k));
             let target_matches = target_lang.map(|l| l == pattern.target).unwrap_or(false)
-                || pattern.target.keywords().iter().any(|k| lower_desc.contains(k));
+                || pattern
+                    .target
+                    .keywords()
+                    .iter()
+                    .any(|k| lower_desc.contains(k));
 
             if source_matches && target_matches {
                 keyword_matches += 2;
@@ -363,11 +384,10 @@ impl CodePortingPatternDetector {
         while i <= text_bytes.len().saturating_sub(word_bytes.len()) {
             if let Some(pos) = text[i..].find(word) {
                 let abs_pos = i + pos;
-                let before_ok = abs_pos == 0
-                    || !text_bytes[abs_pos - 1].is_ascii_alphanumeric();
+                let before_ok = abs_pos == 0 || !text_bytes[abs_pos - 1].is_ascii_alphanumeric();
                 let after_pos = abs_pos + word.len();
-                let after_ok = after_pos >= text_bytes.len()
-                    || !text_bytes[after_pos].is_ascii_alphanumeric();
+                let after_ok =
+                    after_pos >= text_bytes.len() || !text_bytes[after_pos].is_ascii_alphanumeric();
 
                 if before_ok && after_ok {
                     return true;
@@ -407,10 +427,7 @@ impl CodePortingPatternDetector {
                 pattern.name, pattern.source, pattern.target
             ));
 
-            augmentation.push_str(&format!(
-                "**Approach**: {}\n\n",
-                pattern.guidance.approach
-            ));
+            augmentation.push_str(&format!("**Approach**: {}\n\n", pattern.guidance.approach));
 
             augmentation.push_str("**Porting Steps**:\n");
             for (i, step) in pattern.guidance.steps.iter().enumerate() {
@@ -938,9 +955,10 @@ mod tests {
 
         assert!(result.should_augment, "Should augment for porting task");
         assert!(!result.patterns.is_empty(), "Should detect patterns");
-        let has_c_rust = result.patterns.iter().any(|p| {
-            p.source == ProgrammingLanguage::C && p.target == ProgrammingLanguage::Rust
-        });
+        let has_c_rust = result
+            .patterns
+            .iter()
+            .any(|p| p.source == ProgrammingLanguage::C && p.target == ProgrammingLanguage::Rust);
         assert!(has_c_rust, "Should detect C to Rust pattern");
     }
 
@@ -1023,7 +1041,10 @@ mod tests {
         // Lua should be detected
         let has_lua = result.source_language == Some(ProgrammingLanguage::Lua)
             || result.target_language == Some(ProgrammingLanguage::Lua)
-            || result.matched_keywords.iter().any(|k| k.to_lowercase().contains("lua"));
+            || result
+                .matched_keywords
+                .iter()
+                .any(|k| k.to_lowercase().contains("lua"));
 
         // Since we don't have a Python-to-Lua pattern, just check we detected some porting keywords
         assert!(result.should_augment || result.overall_confidence > 0.0);

@@ -740,7 +740,7 @@ Respond with just the numerical score (e.g., 0.75)"#,
 
         // Remove pruned branches from the tree
         for branch_id in &branches_to_prune {
-            self.remove_branch_recursive(branch_id, &mut tree);
+            Self::remove_branch_recursive(branch_id, &mut tree);
         }
 
         // Update parent's children list
@@ -775,7 +775,7 @@ Respond with just the numerical score (e.g., 0.75)"#,
     }
 
     /// Recursively remove a branch and all its descendants
-    fn remove_branch_recursive(&self, branch_id: &str, tree: &mut ThoughtTree) {
+    fn remove_branch_recursive(branch_id: &str, tree: &mut ThoughtTree) {
         // Get children before removing the node
         let children: Vec<String> = {
             if let Some(node) = tree.nodes.get(branch_id) {
@@ -787,7 +787,7 @@ Respond with just the numerical score (e.g., 0.75)"#,
 
         // Recursively remove all children first
         for child_id in children {
-            self.remove_branch_recursive(&child_id, tree);
+            Self::remove_branch_recursive(&child_id, tree);
         }
 
         // Remove this node

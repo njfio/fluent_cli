@@ -27,7 +27,11 @@ pub struct CrossSessionPersistence {
 /// Configuration for persistence system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistenceConfig {
-    pub storage_path: PathBuf,
+    /// If false, persistence is a no-op (no DB is opened).
+    #[serde(default = "default_persistence_enabled")]
+    pub enabled: bool,
+    /// SQLite database path ("agent memory")
+    pub database_path: PathBuf,
     pub enable_automatic_save: bool,
     pub save_interval_secs: u64,
     pub max_session_history: u32,
@@ -39,7 +43,8 @@ pub struct PersistenceConfig {
 impl Default for PersistenceConfig {
     fn default() -> Self {
         Self {
-            storage_path: PathBuf::from("./fluent_persistence"),
+            enabled: true,
+            database_path: crate::paths::global_agent_memory_db_path(),
             enable_automatic_save: true,
             save_interval_secs: 300, // 5 minutes
             max_session_history: 100,
@@ -48,6 +53,10 @@ impl Default for PersistenceConfig {
             backup_retention_days: 30,
         }
     }
+}
+
+fn default_persistence_enabled() -> bool {
+    true
 }
 
 /// Manager for session state and history
@@ -319,20 +328,12 @@ impl CrossSessionPersistence {
 
     /// Initialize persistence system and load existing state
     pub async fn initialize(&self) -> Result<()> {
-        // Create storage directory if it doesn't exist
-        if !self.config.storage_path.exists() {
-            tokio::fs::create_dir_all(&self.config.storage_path).await?;
+        if !self.config.enabled {
+            return Ok(());
         }
 
-        // Load existing persistent state
-        self.load_persistent_state().await?;
-
-        // Load session history
-        self.load_session_history().await?;
-
-        // Load learning repository
-        self.load_learning_data().await?;
-
+        self.ensure_db().await?;
+        self.load_from_db().await?;
         Ok(())
     }
 
@@ -401,7 +402,7 @@ impl CrossSessionPersistence {
             // Save to disk if auto-save is enabled
             if self.config.enable_automatic_save {
                 drop(manager);
-                self.persist_session_to_disk().await?;
+                self.persist_to_db().await?;
             }
         }
 
@@ -488,7 +489,7 @@ impl CrossSessionPersistence {
 
             // Persist final state
             drop(manager);
-            self.persist_session_to_disk().await?;
+            self.persist_to_db().await?;
         }
 
         Ok(())
@@ -561,58 +562,142 @@ impl CrossSessionPersistence {
         Ok(relevant_patterns)
     }
 
-    // Helper methods (simplified implementations)
+    // SQLite persistence backend
 
-    async fn load_persistent_state(&self) -> Result<()> {
-        let state_path = self.config.storage_path.join("persistent_state.json");
-        if state_path.exists() {
-            let content = tokio::fs::read_to_string(state_path).await?;
-            if let Ok(state) = serde_json::from_str::<StateStore>(&content) {
+    async fn ensure_db(&self) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        if let Some(parent) = self.config.database_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
+        let db_path = self.config.database_path.clone();
+        let conn = tokio_rusqlite::Connection::open(db_path).await?;
+        conn.call(|conn| {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);\n\
+                 INSERT INTO schema_version(version)\n\
+                 SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM schema_version);\n\
+                 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            )?;
+            Ok(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    async fn load_from_db(&self) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+
+        let db_path = self.config.database_path.clone();
+        let conn = tokio_rusqlite::Connection::open(db_path).await?;
+
+        let (state_store_json, session_history_json, learning_json, current_session_json): (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .call(|conn| {
+                let mut stmt = conn.prepare("SELECT key, value FROM kv")?;
+                let mut state = None;
+                let mut history = None;
+                let mut learning = None;
+                let mut current = None;
+
+                let rows = stmt.query_map([], |row| {
+                    let k: String = row.get(0)?;
+                    let v: String = row.get(1)?;
+                    Ok((k, v))
+                })?;
+
+                for r in rows {
+                    let (k, v) = r?;
+                    match k.as_str() {
+                        "state_store" => state = Some(v),
+                        "session_history" => history = Some(v),
+                        "learning_repository" => learning = Some(v),
+                        "current_session" => current = Some(v),
+                        _ => {}
+                    }
+                }
+
+                Ok((state, history, learning, current))
+            })
+            .await?;
+
+        if let Some(json) = state_store_json {
+            if let Ok(state) = serde_json::from_str::<StateStore>(&json) {
                 *self.state_store.write().await = state;
             }
         }
-        Ok(())
-    }
 
-    async fn load_session_history(&self) -> Result<()> {
-        let history_path = self.config.storage_path.join("session_history.json");
-        if history_path.exists() {
-            let content = tokio::fs::read_to_string(history_path).await?;
-            if let Ok(history) = serde_json::from_str::<Vec<SessionRecord>>(&content) {
+        if let Some(json) = session_history_json {
+            if let Ok(history) = serde_json::from_str::<Vec<SessionRecord>>(&json) {
                 self.session_manager.write().await.session_history = history;
             }
         }
-        Ok(())
-    }
 
-    async fn load_learning_data(&self) -> Result<()> {
-        let learning_path = self.config.storage_path.join("learning_repository.json");
-        if learning_path.exists() {
-            let content = tokio::fs::read_to_string(learning_path).await?;
-            if let Ok(learning) = serde_json::from_str::<LearningRepository>(&content) {
+        if let Some(json) = learning_json {
+            if let Ok(learning) = serde_json::from_str::<LearningRepository>(&json) {
                 *self.learning_repository.write().await = learning;
             }
         }
+
+        if let Some(json) = current_session_json {
+            if let Ok(session) = serde_json::from_str::<SessionState>(&json) {
+                let mut mgr = self.session_manager.write().await;
+                mgr.current_session = Some(session.clone());
+                mgr.active_sessions
+                    .insert(session.session_id.clone(), session);
+            }
+        }
+
         Ok(())
     }
 
-    async fn persist_session_to_disk(&self) -> Result<()> {
-        let manager = self.session_manager.read().await;
-
-        // Save current session
-        if let Some(session) = &manager.current_session {
-            let session_path = self
-                .config
-                .storage_path
-                .join(format!("session_{}.json", session.session_id));
-            let content = serde_json::to_string_pretty(session)?;
-            tokio::fs::write(session_path, content).await?;
+    async fn persist_to_db(&self) -> Result<()> {
+        if !self.config.enabled {
+            return Ok(());
         }
 
-        // Save session history
-        let history_path = self.config.storage_path.join("session_history.json");
-        let history_content = serde_json::to_string_pretty(&manager.session_history)?;
-        tokio::fs::write(history_path, history_content).await?;
+        if let Some(parent) = self.config.database_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
+        let manager = self.session_manager.read().await;
+        let state_store = self.state_store.read().await;
+        let learning = self.learning_repository.read().await;
+
+        let state_store_json = serde_json::to_string(&*state_store)?;
+        let session_history_json = serde_json::to_string(&manager.session_history)?;
+        let learning_json = serde_json::to_string(&*learning)?;
+        let current_session_json = manager
+            .current_session
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+
+        let db_path = self.config.database_path.clone();
+        let conn = tokio_rusqlite::Connection::open(db_path).await?;
+        conn.call(move |conn| {
+            let tx = conn.transaction()?;
+
+            upsert_kv(&tx, "state_store", &state_store_json)?;
+            upsert_kv(&tx, "session_history", &session_history_json)?;
+            upsert_kv(&tx, "learning_repository", &learning_json)?;
+            if let Some(cs) = &current_session_json {
+                upsert_kv(&tx, "current_session", cs)?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+        .await?;
 
         Ok(())
     }
@@ -690,4 +775,13 @@ impl CrossSessionPersistence {
         };
         Ok(history_count + active_count)
     }
+}
+
+fn upsert_kv(conn: &rusqlite::Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO kv(key, value) VALUES(?1, ?2)\n\
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )?;
+    Ok(())
 }

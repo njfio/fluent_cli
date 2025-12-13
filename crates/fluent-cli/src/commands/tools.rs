@@ -52,6 +52,7 @@ impl ToolsCommand {
             shell_commands: false, // Default to false for security
             rust_compiler: true,
             git_operations: false,
+            web_browsing: true,
             allowed_paths: Some(vec![
                 "./".to_string(),
                 "./src".to_string(),
@@ -307,19 +308,20 @@ impl ToolsCommand {
         let start_time = Instant::now();
         println!("🔧 Executing tool: {tool_name}");
 
-        let result = {
+        let registry = {
             let registry_lock = registry_guard.lock().map_err(|e| {
                 CliError::Unknown(format!(
                     "Failed to acquire registry lock for execution: {}",
                     e
                 ))
             })?;
-            let registry = registry_lock
+            registry_lock
                 .as_ref()
-                .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
-
-            registry.execute_tool(tool_name, &parameters).await
+                .ok_or_else(|| anyhow!("Tool registry not initialized"))?
+                .clone()
         };
+
+        let result = registry.execute_tool(tool_name, &parameters).await;
         let execution_time = start_time.elapsed();
 
         match result {

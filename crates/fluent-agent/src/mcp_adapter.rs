@@ -309,7 +309,7 @@ impl ServerHandler for FluentMcpAdapter {
         );
 
         ServerInfo {
-            instructions: Some(instructions.into()),
+            instructions: Some(instructions),
             ..Default::default()
         }
     }
@@ -505,7 +505,7 @@ impl FluentMcpServer {
             println!("⚠️  Warning: No tools registered in tool registry");
         } else {
             println!("🔧 Available tools:");
-            for tool in tools.iter().take(5) {
+            for tool in &tools {
                 println!("   - {}", tool);
             }
             if tools.len() > 5 {

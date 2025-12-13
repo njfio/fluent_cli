@@ -166,7 +166,7 @@ impl ReflectionMemoryProfiler {
         let max_memory = profiles.iter().map(|p| p.peak_bytes).max().unwrap_or(0);
         let total_duration: Duration = profiles.iter().map(|p| p.duration).sum();
 
-        report.push_str(&format!("Summary:\n"));
+        report.push_str("Summary:\n");
         report.push_str(&format!("  Total Operations: {}\n", total_operations));
         report.push_str(&format!("  Total Memory Used: {} bytes\n", total_memory));
         report.push_str(&format!(
@@ -302,7 +302,7 @@ fn get_process_memory_usage_macos() -> Result<usize> {
     use std::process::Command;
 
     let output = Command::new("ps")
-        .args(&["-o", "rss", "-p"])
+        .args(["-o", "rss", "-p"])
         .arg(std::process::id().to_string())
         .output()
         .map_err(|e| anyhow!("Failed to run ps command: {}", e))?;

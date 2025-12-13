@@ -58,10 +58,7 @@ pub async fn run_modular() -> Result<()> {
     let requires_config = match matches.subcommand() {
         Some(("tools", _)) => false,
         Some(("completions", _)) => false,
-        Some(("engine", sub_m)) => match sub_m.subcommand() {
-            Some(("list", _)) => false,
-            _ => true,
-        },
+        Some(("engine", sub_m)) => !matches!(sub_m.subcommand(), Some(("list", _))),
         _ => true,
     };
 

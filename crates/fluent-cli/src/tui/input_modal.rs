@@ -150,20 +150,45 @@ impl InputModal {
             return;
         }
 
-        let mut new_pos = self.cursor_position - 1;
+        // Convert to chars for safe unicode handling
+        let chars: Vec<char> = self.input.chars().collect();
+        let char_count = chars.len();
+
+        // Clamp cursor position to valid char range
+        let mut char_pos = self.cursor_position.min(char_count);
+        if char_pos == 0 {
+            return;
+        }
+
+        char_pos -= 1;
 
         // Skip whitespace
-        while new_pos > 0 && self.input.chars().nth(new_pos).unwrap().is_whitespace() {
-            new_pos -= 1;
+        while char_pos > 0 {
+            if let Some(&c) = chars.get(char_pos) {
+                if !c.is_whitespace() {
+                    break;
+                }
+            }
+            char_pos -= 1;
         }
 
         // Delete word
-        while new_pos > 0 && !self.input.chars().nth(new_pos - 1).unwrap().is_whitespace() {
-            new_pos -= 1;
+        while char_pos > 0 {
+            if let Some(&c) = chars.get(char_pos - 1) {
+                if c.is_whitespace() {
+                    break;
+                }
+            }
+            char_pos -= 1;
         }
 
-        self.input.drain(new_pos..self.cursor_position);
-        self.cursor_position = new_pos;
+        // Rebuild string from remaining chars
+        let new_input: String = chars[..char_pos]
+            .iter()
+            .chain(chars[self.cursor_position.min(char_count)..].iter())
+            .collect();
+        self.input = new_input;
+        self.cursor_position = char_pos;
     }
 
     /// Get the current input value

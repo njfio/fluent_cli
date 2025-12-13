@@ -211,6 +211,12 @@ pub struct McpClient {
     cancellation_token: CancellationToken,
 }
 
+impl Default for McpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl McpClient {
     /// Create a new MCP client with default configuration
     pub fn new() -> Self {
@@ -831,7 +837,7 @@ impl Drop for McpClient {
 
         // Kill server process if still running
         if let Some(mut process) = self.server_process.take() {
-            let _ = futures::executor::block_on(async {
+            futures::executor::block_on(async {
                 if let Err(e) = process.kill().await {
                     eprintln!("Warning: Failed to kill MCP server process in Drop: {}", e);
                 }
@@ -844,6 +850,12 @@ impl Drop for McpClient {
 pub struct McpClientManager {
     clients: HashMap<String, McpClient>,
     default_config: McpClientConfig,
+}
+
+impl Default for McpClientManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl McpClientManager {
@@ -972,7 +984,7 @@ impl McpClientManager {
         tool_name: &str,
         arguments: Value,
     ) -> Result<McpToolResult> {
-        for (_server_name, client) in &self.clients {
+        for client in self.clients.values() {
             let tools = client.get_tools().await;
             if tools.iter().any(|t| t.name == tool_name) {
                 return client.call_tool(tool_name, arguments).await;
@@ -1107,7 +1119,9 @@ mod tests {
     #[tokio::test]
     async fn test_mcp_client_manager_call_tool_no_server() {
         let manager = McpClientManager::new();
-        let result = manager.call_tool("nonexistent", "test_tool", json!({})).await;
+        let result = manager
+            .call_tool("nonexistent", "test_tool", json!({}))
+            .await;
         assert!(result.is_err());
     }
 
@@ -1268,7 +1282,9 @@ mod tests {
     async fn test_connect_to_server_disallowed_command() {
         let mut client = McpClient::new();
         // Commands not in allow list should fail validation
-        let result = client.connect_to_server("curl", &["http://example.com"]).await;
+        let result = client
+            .connect_to_server("curl", &["http://example.com"])
+            .await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("validation failed"));
@@ -1296,7 +1312,11 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         // Node is blocked because it's in the dangerous patterns list
-        assert!(err_msg.contains("dangerous pattern"), "Expected 'dangerous pattern' but got: {}", err_msg);
+        assert!(
+            err_msg.contains("dangerous pattern"),
+            "Expected 'dangerous pattern' but got: {}",
+            err_msg
+        );
     }
 
     #[tokio::test]
@@ -1312,7 +1332,11 @@ mod tests {
         let result = client.connect_to_server("python", &["server.py"]).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("dangerous pattern"), "Expected 'dangerous pattern' but got: {}", err_msg);
+        assert!(
+            err_msg.contains("dangerous pattern"),
+            "Expected 'dangerous pattern' but got: {}",
+            err_msg
+        );
     }
 
     #[tokio::test]

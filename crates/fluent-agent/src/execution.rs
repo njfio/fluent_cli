@@ -197,7 +197,11 @@ pub struct StepResult {
 
 impl StepResult {
     /// Create a successful step result
-    pub fn success(step_id: impl Into<String>, output: impl Into<String>, duration: Duration) -> Self {
+    pub fn success(
+        step_id: impl Into<String>,
+        output: impl Into<String>,
+        duration: Duration,
+    ) -> Self {
         Self {
             step_id: step_id.into(),
             success: true,
@@ -209,7 +213,11 @@ impl StepResult {
     }
 
     /// Create a failed step result
-    pub fn failure(step_id: impl Into<String>, error: impl Into<String>, duration: Duration) -> Self {
+    pub fn failure(
+        step_id: impl Into<String>,
+        error: impl Into<String>,
+        duration: Duration,
+    ) -> Self {
         Self {
             step_id: step_id.into(),
             success: false,
@@ -299,9 +307,7 @@ impl ExecutionState {
 
     /// Get elapsed time
     pub fn elapsed(&self) -> Duration {
-        self.started_at
-            .elapsed()
-            .unwrap_or(Duration::from_secs(0))
+        self.started_at.elapsed().unwrap_or(Duration::from_secs(0))
     }
 }
 
@@ -392,7 +398,10 @@ impl UniversalExecutor {
     /// if not is_complete():
     ///     return Err("Max iterations reached")
     /// ```
-    pub async fn execute<T: ExecutionLoop>(&mut self, executor: &mut T) -> Result<ExecutionSummary> {
+    pub async fn execute<T: ExecutionLoop>(
+        &mut self,
+        executor: &mut T,
+    ) -> Result<ExecutionSummary> {
         self.start_time = Some(Instant::now());
         let mut summary = ExecutionSummary::default();
 
@@ -409,7 +418,8 @@ impl UniversalExecutor {
 
             if executor.should_terminate()? {
                 summary.status = ExecutionStatus::Terminated;
-                summary.termination_reason = Some("Execution terminated by should_terminate()".to_string());
+                summary.termination_reason =
+                    Some("Execution terminated by should_terminate()".to_string());
                 return Ok(summary);
             }
 
@@ -450,7 +460,8 @@ impl UniversalExecutor {
                         }
 
                         summary.status = ExecutionStatus::Failed;
-                        summary.termination_reason = Some("Step execution failed after retries".to_string());
+                        summary.termination_reason =
+                            Some("Step execution failed after retries".to_string());
                         return Ok(summary);
                     }
                 }
@@ -468,7 +479,8 @@ impl UniversalExecutor {
                 Ok(true) => {
                     tracing::info!("execution.loop.complete iter={}", executor.iteration());
                     summary.status = ExecutionStatus::Completed;
-                    summary.total_duration = self.start_time.map(|t| t.elapsed()).unwrap_or_default();
+                    summary.total_duration =
+                        self.start_time.map(|t| t.elapsed()).unwrap_or_default();
                     summary.final_iteration = executor.iteration();
                     return Ok(summary);
                 }
@@ -590,10 +602,17 @@ mod tests {
             let step_id = format!("step-{}", self.state.iteration);
 
             if Some(self.state.iteration) == self.fail_on_step {
-                return Err(anyhow::anyhow!("Simulated failure on step {}", self.state.iteration));
+                return Err(anyhow::anyhow!(
+                    "Simulated failure on step {}",
+                    self.state.iteration
+                ));
             }
 
-            Ok(StepResult::success(step_id, "Test output", Duration::from_millis(10)))
+            Ok(StepResult::success(
+                step_id,
+                "Test output",
+                Duration::from_millis(10),
+            ))
         }
 
         fn current_step_id(&self) -> String {
@@ -645,7 +664,12 @@ mod tests {
         }
 
         fn get_recent_observations(&self, n: usize) -> Vec<String> {
-            self.state.recent_observations.iter().take(n).cloned().collect()
+            self.state
+                .recent_observations
+                .iter()
+                .take(n)
+                .cloned()
+                .collect()
         }
     }
 
@@ -684,5 +708,335 @@ mod tests {
 
         assert_eq!(state.recent_observations.len(), 3);
         assert_eq!(state.recent_observations[0], "obs2");
+    }
+
+    // ========== Integration Tests ==========
+
+    /// Test executor that can be configured for various failure scenarios
+    struct ConfigurableExecutor {
+        state: ExecutionState,
+        steps_to_run: u32,
+        fail_on_steps: Vec<u32>,
+        terminate_at_step: Option<u32>,
+        is_retryable: bool,
+        last_error: Option<String>,
+        checkpoint_data: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    }
+
+    impl ConfigurableExecutor {
+        fn new(steps: u32) -> Self {
+            Self {
+                state: ExecutionState::new(Some(steps + 10)),
+                steps_to_run: steps,
+                fail_on_steps: Vec::new(),
+                terminate_at_step: None,
+                is_retryable: true,
+                last_error: None,
+                checkpoint_data: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            }
+        }
+
+        fn fail_on_steps(mut self, steps: Vec<u32>) -> Self {
+            self.fail_on_steps = steps;
+            self
+        }
+
+        fn terminate_at(mut self, step: u32) -> Self {
+            self.terminate_at_step = Some(step);
+            self
+        }
+
+        fn non_retryable(mut self) -> Self {
+            self.is_retryable = false;
+            self
+        }
+    }
+
+    #[async_trait]
+    impl ExecutionLoop for ConfigurableExecutor {
+        type State = ExecutionState;
+
+        async fn initialize(&mut self) -> Result<()> {
+            self.state.status = ExecutionStatus::Running;
+            self.state.add_observation("Initialized".to_string(), 10);
+            Ok(())
+        }
+
+        async fn execute_step(&mut self) -> Result<StepResult> {
+            // Only increment iteration on first attempt (not on retries)
+            // We detect a retry by checking if last_error is set
+            if self.last_error.is_none() {
+                self.state.next_iteration();
+            }
+            let step_id = format!("step-{}", self.state.iteration);
+
+            if self.fail_on_steps.contains(&self.state.iteration) {
+                self.last_error = Some(format!(
+                    "Simulated failure on step {}",
+                    self.state.iteration
+                ));
+                return Err(anyhow::anyhow!(
+                    "Simulated failure on step {}",
+                    self.state.iteration
+                ));
+            }
+
+            self.state
+                .add_observation(format!("Completed step {}", self.state.iteration), 10);
+            Ok(StepResult::success(
+                step_id,
+                format!("Output for step {}", self.state.iteration),
+                Duration::from_millis(10),
+            ))
+        }
+
+        fn is_step_retryable(&self) -> bool {
+            self.is_retryable
+        }
+
+        fn current_step_id(&self) -> String {
+            format!("step-{}", self.state.iteration)
+        }
+
+        fn should_continue(&self) -> bool {
+            self.state.iteration < self.steps_to_run
+        }
+
+        fn is_retryable_error(&self) -> bool {
+            self.last_error.is_some() && self.is_retryable
+        }
+
+        fn is_complete(&self) -> Result<bool> {
+            Ok(self.state.iteration >= self.steps_to_run)
+        }
+
+        fn should_terminate(&self) -> Result<bool> {
+            if let Some(term_step) = self.terminate_at_step {
+                if self.state.iteration >= term_step {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+
+        fn get_state(&self) -> &Self::State {
+            &self.state
+        }
+
+        fn get_state_mut(&mut self) -> &mut Self::State {
+            &mut self.state
+        }
+
+        async fn save_checkpoint(&self) -> Result<String> {
+            let checkpoint_id = format!("checkpoint-{}", self.state.iteration);
+            let data = serde_json::to_string(&self.state)?;
+            *self.checkpoint_data.lock().unwrap() = Some(data);
+            Ok(checkpoint_id)
+        }
+
+        async fn restore_checkpoint(&mut self, _id: &str) -> Result<()> {
+            if let Some(data) = self.checkpoint_data.lock().unwrap().clone() {
+                self.state = serde_json::from_str(&data)?;
+            }
+            Ok(())
+        }
+
+        fn iteration(&self) -> u32 {
+            self.state.iteration
+        }
+
+        fn max_iterations(&self) -> Option<u32> {
+            self.state.max_iterations
+        }
+
+        fn elapsed_time(&self) -> Duration {
+            self.state.elapsed()
+        }
+
+        async fn handle_error(&mut self, error: anyhow::Error) -> Result<()> {
+            self.state.error_count += 1;
+            self.state.add_observation(format!("Error: {}", error), 10);
+            Ok(())
+        }
+
+        fn reset_error_state(&mut self) {
+            self.last_error = None;
+        }
+
+        fn get_metrics(&self) -> serde_json::Value {
+            serde_json::json!({
+                "iteration": self.state.iteration,
+                "error_count": self.state.error_count,
+                "observations": self.state.recent_observations.len(),
+            })
+        }
+
+        fn get_recent_observations(&self, n: usize) -> Vec<String> {
+            self.state
+                .recent_observations
+                .iter()
+                .rev()
+                .take(n)
+                .cloned()
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_executor_with_early_termination() {
+        let mut executor = ConfigurableExecutor::new(10).terminate_at(3);
+        let mut universal = UniversalExecutor::default();
+
+        let summary = universal.execute(&mut executor).await.unwrap();
+
+        assert_eq!(summary.status, ExecutionStatus::Terminated);
+        assert!(summary.final_iteration <= 3);
+    }
+
+    #[tokio::test]
+    async fn test_executor_with_retryable_failures() {
+        // Fail on step 2, but retry should succeed
+        let mut executor = ConfigurableExecutor::new(5).fail_on_steps(vec![2]);
+        let config = ExecutorConfig {
+            max_retries_per_step: 2,
+            backoff_base_ms: 10,
+            backoff_max_ms: 100,
+            backoff_multiplier: 1.5,
+            use_jitter: false,
+        };
+        let mut universal = UniversalExecutor::new(config);
+
+        let summary = universal.execute(&mut executor).await.unwrap();
+
+        // Step 2 will fail but since it's always going to fail, it should result in failure
+        // after max retries
+        assert_eq!(summary.status, ExecutionStatus::Failed);
+        assert!(summary.retry_count > 0);
+    }
+
+    #[tokio::test]
+    async fn test_executor_non_retryable_failure() {
+        let mut executor = ConfigurableExecutor::new(5)
+            .fail_on_steps(vec![2])
+            .non_retryable();
+        let mut universal = UniversalExecutor::default();
+
+        let summary = universal.execute(&mut executor).await.unwrap();
+
+        // Should fail immediately without retries
+        assert_eq!(summary.status, ExecutionStatus::Failed);
+        assert_eq!(summary.retry_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_executor_checkpointing() {
+        let mut executor = ConfigurableExecutor::new(5);
+        let mut universal = UniversalExecutor::default();
+
+        // Run a few steps
+        executor.initialize().await.unwrap();
+        executor.execute_step().await.unwrap();
+        executor.execute_step().await.unwrap();
+
+        // Save checkpoint
+        let checkpoint_id = executor.save_checkpoint().await.unwrap();
+        assert!(checkpoint_id.contains("checkpoint"));
+
+        // Modify state
+        let original_iteration = executor.state.iteration;
+        executor.state.iteration = 100;
+
+        // Restore checkpoint
+        executor.restore_checkpoint(&checkpoint_id).await.unwrap();
+        assert_eq!(executor.state.iteration, original_iteration);
+    }
+
+    #[tokio::test]
+    async fn test_executor_observations_tracking() {
+        let mut executor = ConfigurableExecutor::new(5);
+        let mut universal = UniversalExecutor::default();
+
+        let _summary = universal.execute(&mut executor).await.unwrap();
+
+        // Should have observations for init + each step
+        let observations = executor.get_recent_observations(10);
+        assert!(!observations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_executor_metrics() {
+        let mut executor = ConfigurableExecutor::new(3);
+        let mut universal = UniversalExecutor::default();
+
+        let _summary = universal.execute(&mut executor).await.unwrap();
+
+        let metrics = executor.get_metrics();
+        assert_eq!(metrics["iteration"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_execution_state_max_iterations() {
+        let state = ExecutionState::new(Some(10));
+        assert!(!state.is_max_iterations_exceeded());
+
+        let mut state2 = ExecutionState::new(Some(3));
+        state2.iteration = 3;
+        assert!(state2.is_max_iterations_exceeded());
+
+        let state3 = ExecutionState::new(None);
+        assert!(!state3.is_max_iterations_exceeded());
+    }
+
+    #[tokio::test]
+    async fn test_step_result_with_metadata() {
+        let result = StepResult::success("test", "output", Duration::from_secs(1))
+            .with_metadata("key", serde_json::json!("value"))
+            .with_metadata("count", serde_json::json!(42));
+
+        assert_eq!(result.metadata.len(), 2);
+        assert_eq!(result.metadata["key"], "value");
+        assert_eq!(result.metadata["count"], 42);
+    }
+
+    #[tokio::test]
+    async fn test_executor_config_backoff_calculation() {
+        let config = ExecutorConfig {
+            max_retries_per_step: 5,
+            backoff_base_ms: 100,
+            backoff_max_ms: 1000,
+            backoff_multiplier: 2.0,
+            use_jitter: false,
+        };
+        let executor = UniversalExecutor::new(config);
+
+        // Test that backoff increases exponentially
+        let delay1 = executor.calculate_backoff(1);
+        let delay2 = executor.calculate_backoff(2);
+        let delay3 = executor.calculate_backoff(3);
+
+        assert!(delay2 > delay1);
+        assert!(delay3 > delay2);
+        assert!(delay3.as_millis() <= 1000); // Respects max
+    }
+
+    #[tokio::test]
+    async fn test_execution_summary_serialization() {
+        let summary = ExecutionSummary {
+            status: ExecutionStatus::Completed,
+            total_duration: Duration::from_secs(10),
+            final_iteration: 5,
+            steps_executed: 5,
+            successful_steps: 4,
+            failed_steps: 1,
+            error_count: 1,
+            retry_count: 2,
+            termination_reason: None,
+        };
+
+        let json = serde_json::to_string(&summary).unwrap();
+        let parsed: ExecutionSummary = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.final_iteration, 5);
+        assert_eq!(parsed.successful_steps, 4);
     }
 }

@@ -10,17 +10,17 @@ use std::sync::Arc;
 
 /// High-level workflow tools that orchestrate multi-step operations
 pub struct WorkflowExecutor {
-    engine: Arc<Box<dyn Engine>>,
+    engine: Arc<dyn Engine>,
     config: ToolExecutionConfig,
 }
 
 impl WorkflowExecutor {
-    pub fn new(engine: Arc<Box<dyn Engine>>, config: ToolExecutionConfig) -> Self {
+    pub fn new(engine: Arc<dyn Engine>, config: ToolExecutionConfig) -> Self {
         Self { engine, config }
     }
 
     /// Create a workflow executor with default configuration
-    pub fn with_defaults(engine: Arc<Box<dyn Engine>>) -> Self {
+    pub fn with_defaults(engine: Arc<dyn Engine>) -> Self {
         Self::new(engine, ToolExecutionConfig::default())
     }
 

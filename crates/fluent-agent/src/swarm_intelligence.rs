@@ -19,12 +19,14 @@ use crate::goal::{Goal, GoalPriority};
 use crate::memory::MemorySystem;
 use crate::reasoning::ReasoningEngine;
 
+type CommunicationChannels = Arc<RwLock<HashMap<(Uuid, Uuid), mpsc::UnboundedSender<Message>>>>;
+
 /// Swarm intelligence coordinator for multi-agent collaboration
 pub struct SwarmCoordinator {
     /// All agents in the swarm
     agents: Arc<RwLock<HashMap<Uuid, SwarmAgent>>>,
     /// Communication channels between agents
-    communication_channels: Arc<RwLock<HashMap<(Uuid, Uuid), mpsc::UnboundedSender<Message>>>>,
+    communication_channels: CommunicationChannels,
     /// Global swarm memory
     swarm_memory: Arc<MemorySystem>,
     /// Consensus mechanism
@@ -58,7 +60,7 @@ pub struct SwarmAgent {
 }
 
 /// Agent specialization types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum AgentSpecialization {
     /// Code analysis and generation
     CodeSpecialist,
@@ -77,6 +79,7 @@ pub enum AgentSpecialization {
     /// Integration and deployment
     IntegrationSpecialist,
     /// General purpose agent
+    #[default]
     GeneralPurpose,
 }
 
@@ -792,11 +795,5 @@ impl SpecializationRegistry {
             .specialization_counts
             .entry(specialization)
             .or_insert(0) += 1;
-    }
-}
-
-impl Default for AgentSpecialization {
-    fn default() -> Self {
-        AgentSpecialization::GeneralPurpose
     }
 }

@@ -57,7 +57,7 @@ impl Manager for HttpClientManager {
     ) -> Result<(), deadpool::managed::RecycleError<Self::Error>> {
         // Validate connection health by making a simple request
         let response = client
-            .get(&format!("{}/health", self.base_url))
+            .get(format!("{}/health", self.base_url))
             .timeout(Duration::from_secs(5))
             .send()
             .await;

@@ -148,7 +148,11 @@ impl AlgorithmPatternDetector {
         }
 
         // Sort by confidence descending
-        matched_patterns.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        matched_patterns.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Deduplicate keywords and characteristics
         all_keywords.sort();
@@ -818,12 +822,19 @@ mod tests {
     fn test_detect_bfs_pattern() {
         let detector = AlgorithmPatternDetector::new();
         // BFS keywords: "bfs", "breadth first", "shortest path", "minimum steps", "fewest moves", "nearest"
-        let result = detector.detect("Use BFS to find shortest path with minimum steps and fewest moves to nearest goal");
+        let result = detector.detect(
+            "Use BFS to find shortest path with minimum steps and fewest moves to nearest goal",
+        );
 
-        assert!(!result.patterns.is_empty(), "Should detect at least one pattern");
+        assert!(
+            !result.patterns.is_empty(),
+            "Should detect at least one pattern"
+        );
         // Check that BFS-related pattern is in the results
         let has_bfs = result.patterns.iter().any(|p| {
-            p.name.contains("BFS") || p.name.contains("Breadth") || p.category == AlgorithmCategory::Search
+            p.name.contains("BFS")
+                || p.name.contains("Breadth")
+                || p.category == AlgorithmCategory::Search
         });
         assert!(has_bfs, "Should detect a search/BFS pattern");
     }
@@ -831,25 +842,35 @@ mod tests {
     #[test]
     fn test_detect_sliding_puzzle_pattern() {
         let detector = AlgorithmPatternDetector::new();
-        let result = detector.detect("Solve the Huarong Dao sliding puzzle to reach the goal configuration");
+        let result =
+            detector.detect("Solve the Huarong Dao sliding puzzle to reach the goal configuration");
 
         assert!(!result.patterns.is_empty());
-        assert!(result.patterns.iter().any(|p| p.name.contains("Sliding") || p.name.contains("State Space")));
+        assert!(result
+            .patterns
+            .iter()
+            .any(|p| p.name.contains("Sliding") || p.name.contains("State Space")));
     }
 
     #[test]
     fn test_detect_dp_pattern() {
         let detector = AlgorithmPatternDetector::new();
-        let result = detector.detect("Find the maximum profit with overlapping subproblems using optimal substructure");
+        let result = detector.detect(
+            "Find the maximum profit with overlapping subproblems using optimal substructure",
+        );
 
         assert!(!result.patterns.is_empty());
-        assert!(result.patterns.iter().any(|p| p.category == AlgorithmCategory::DynamicProgramming));
+        assert!(result
+            .patterns
+            .iter()
+            .any(|p| p.category == AlgorithmCategory::DynamicProgramming));
     }
 
     #[test]
     fn test_detect_a_star_pattern() {
         let detector = AlgorithmPatternDetector::new();
-        let result = detector.detect("Find the optimal path in a weighted graph using a heuristic estimate");
+        let result =
+            detector.detect("Find the optimal path in a weighted graph using a heuristic estimate");
 
         assert!(!result.patterns.is_empty());
         assert!(result.patterns.iter().any(|p| p.name.contains("A*")));
@@ -878,7 +899,8 @@ mod tests {
     #[test]
     fn test_multiple_patterns_detected() {
         let detector = AlgorithmPatternDetector::new();
-        let result = detector.detect("Find the shortest path using optimal search in a graph with weighted edges");
+        let result = detector
+            .detect("Find the shortest path using optimal search in a graph with weighted edges");
 
         // Should detect multiple relevant patterns
         assert!(result.patterns.len() >= 2);

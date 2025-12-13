@@ -116,6 +116,7 @@ pub async fn run_mcp_server(sub_matches: &ArgMatches) -> Result<()> {
 }
 
 /// Run agentic mode with goal-based execution
+#[allow(clippy::too_many_arguments)]
 pub async fn run_agentic_mode(
     goal_description: &str,
     agent_config_path: &str,

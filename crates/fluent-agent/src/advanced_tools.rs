@@ -249,7 +249,7 @@ impl AdvancedToolRegistry {
 
         self.tools_by_category
             .entry(category)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(tool.clone());
         self.tools_by_name.insert(name.clone(), tool);
 

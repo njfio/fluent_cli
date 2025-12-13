@@ -30,7 +30,9 @@ impl Default for WebConfig {
         Self {
             timeout_seconds: 30,
             max_response_size: 512 * 1024, // 512KB
-            user_agent: "Mozilla/5.0 (compatible; FluentAgent/1.0; +https://github.com/njfio/fluent_cli)".to_string(),
+            user_agent:
+                "Mozilla/5.0 (compatible; FluentAgent/1.0; +https://github.com/njfio/fluent_cli)"
+                    .to_string(),
             allowed_domains: vec![],
             blocked_domains: vec![],
         }
@@ -276,9 +278,8 @@ fn parse_duckduckgo_results(html: &str, max_results: usize) -> Vec<SearchResultI
 
     // Fallback: try simpler regex if the above didn't match
     if results.is_empty() {
-        let simple_re = regex::Regex::new(
-            r#"(?is)<a[^>]*href="(https?://[^"]+)"[^>]*>([^<]+)</a>"#,
-        );
+        let simple_re =
+            regex::Regex::new(r#"(?is)<a[^>]*href="(https?://[^"]+)"[^>]*>([^<]+)</a>"#);
 
         if let Ok(re) = simple_re {
             for cap in re.captures_iter(html) {
@@ -290,9 +291,7 @@ fn parse_duckduckgo_results(html: &str, max_results: usize) -> Vec<SearchResultI
                 let title = cap.get(2).map(|m| m.as_str()).unwrap_or("");
 
                 // Skip common non-result URLs
-                if url.contains("duckduckgo.com")
-                    || url.contains("javascript:")
-                    || title.len() < 5
+                if url.contains("duckduckgo.com") || url.contains("javascript:") || title.len() < 5
                 {
                     continue;
                 }

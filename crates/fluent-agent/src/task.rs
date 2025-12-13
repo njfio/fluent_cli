@@ -240,9 +240,9 @@ impl Task {
     /// Get task summary
     pub fn get_summary(&self) -> String {
         format!(
-            "Task: {} ({}), Status: {:?}, Priority: {:?}",
+            "Task: {} ({:?}), Status: {:?}, Priority: {:?}",
             self.description,
-            format!("{:?}", self.task_type),
+            self.task_type,
             self.get_status(),
             self.priority
         )

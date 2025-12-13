@@ -544,7 +544,7 @@ impl ErrorRecoverySystem {
             .collect();
 
         if candidates.is_empty() {
-            return Ok(self.create_default_strategy(error).await?);
+            return self.create_default_strategy(error).await;
         }
 
         // Sort by confidence score and effectiveness
@@ -735,5 +735,395 @@ impl ErrorRecoverySystem {
                 recovery_recommendations: Vec::new(),
             })
         }
+    }
+
+    /// Predict potential failures based on current system state
+    pub async fn predict_failures(&self) -> Result<Vec<FailurePredictor>> {
+        if !self.config.enable_predictive_detection {
+            return Ok(Vec::new());
+        }
+
+        let mut analyzer = self.error_analyzer.write().await;
+        let mut predictions = Vec::new();
+
+        // Analyze error patterns for increasing frequency
+        for (pattern_key, pattern) in &analyzer.error_patterns {
+            if pattern.frequency >= 3 {
+                predictions.push(FailurePredictor {
+                    predictor_id: Uuid::new_v4().to_string(),
+                    predictor_type: PredictorType::ErrorRateIncrease,
+                    confidence: (pattern.frequency as f64 / 10.0).min(0.9),
+                    warning_indicators: vec![
+                        format!(
+                            "Error type {:?} occurred {} times",
+                            pattern.pattern_type, pattern.frequency
+                        ),
+                        format!("Common context: {}", pattern.typical_context),
+                    ],
+                    prediction_horizon: Duration::from_secs(300),
+                });
+            }
+        }
+
+        // Check for pattern-based predictions
+        let history = self.failure_history.read().await;
+        let recent_incidents: Vec<_> = history
+            .incidents
+            .iter()
+            .filter(|i| {
+                i.error_instance
+                    .timestamp
+                    .elapsed()
+                    .map(|d| d < Duration::from_secs(3600))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if recent_incidents.len() >= 5 {
+            predictions.push(FailurePredictor {
+                predictor_id: Uuid::new_v4().to_string(),
+                predictor_type: PredictorType::PatternMatching,
+                confidence: 0.7,
+                warning_indicators: vec![format!(
+                    "{} incidents in the last hour",
+                    recent_incidents.len()
+                )],
+                prediction_horizon: Duration::from_secs(600),
+            });
+        }
+
+        // Store predictors for future reference
+        analyzer.failure_predictors = predictions.clone();
+
+        Ok(predictions)
+    }
+
+    /// Update health indicators based on current system state
+    pub async fn update_health_indicators(&self) -> Result<Vec<HealthIndicator>> {
+        let mut monitor = self.resilience_monitor.write().await;
+        let history = self.failure_history.read().await;
+
+        let mut indicators = Vec::new();
+
+        // Error rate indicator
+        let recent_errors = history
+            .incidents
+            .iter()
+            .filter(|i| {
+                i.error_instance
+                    .timestamp
+                    .elapsed()
+                    .map(|d| d < Duration::from_secs(3600))
+                    .unwrap_or(false)
+            })
+            .count();
+
+        let error_rate = recent_errors as f64;
+        indicators.push(HealthIndicator {
+            indicator_id: "error_rate".to_string(),
+            indicator_name: "Error Rate (per hour)".to_string(),
+            current_value: error_rate,
+            threshold_warning: 5.0,
+            threshold_critical: 10.0,
+            trend: if error_rate > 10.0 {
+                HealthTrend::Critical
+            } else if error_rate > 5.0 {
+                HealthTrend::Degrading
+            } else if error_rate > 2.0 {
+                HealthTrend::Stable
+            } else {
+                HealthTrend::Improving
+            },
+        });
+
+        // Recovery success rate indicator
+        let total = history.recovery_statistics.total_incidents;
+        let success_rate = if total > 0 {
+            history.recovery_statistics.successful_recoveries as f64 / total as f64
+        } else {
+            1.0
+        };
+
+        indicators.push(HealthIndicator {
+            indicator_id: "recovery_success".to_string(),
+            indicator_name: "Recovery Success Rate".to_string(),
+            current_value: success_rate,
+            threshold_warning: 0.7,
+            threshold_critical: 0.5,
+            trend: if success_rate < 0.5 {
+                HealthTrend::Critical
+            } else if success_rate < 0.7 {
+                HealthTrend::Degrading
+            } else if success_rate < 0.9 {
+                HealthTrend::Stable
+            } else {
+                HealthTrend::Improving
+            },
+        });
+
+        // Mean time to recovery indicator
+        let mttr_secs = monitor.resilience_metrics.mean_time_to_recovery.as_secs() as f64;
+        indicators.push(HealthIndicator {
+            indicator_id: "mttr".to_string(),
+            indicator_name: "Mean Time to Recovery (seconds)".to_string(),
+            current_value: mttr_secs,
+            threshold_warning: 60.0,
+            threshold_critical: 180.0,
+            trend: if mttr_secs > 180.0 {
+                HealthTrend::Critical
+            } else if mttr_secs > 60.0 {
+                HealthTrend::Degrading
+            } else if mttr_secs > 30.0 {
+                HealthTrend::Stable
+            } else {
+                HealthTrend::Improving
+            },
+        });
+
+        monitor.health_indicators = indicators.clone();
+        Ok(indicators)
+    }
+
+    /// Generate learning insights from failure history
+    pub async fn generate_learning_insights(&self) -> Result<Vec<LearningInsight>> {
+        let mut history = self.failure_history.write().await;
+        let analyzer = self.error_analyzer.read().await;
+        let mut insights = Vec::new();
+
+        // Insight: Most common error types
+        if !analyzer.error_patterns.is_empty() {
+            let mut patterns: Vec<_> = analyzer.error_patterns.values().collect();
+            patterns.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+
+            if let Some(most_common) = patterns.first() {
+                if most_common.frequency >= 3 {
+                    insights.push(LearningInsight {
+                        insight_id: Uuid::new_v4().to_string(),
+                        insight_type: InsightType::SystemWeakness,
+                        description: format!(
+                            "Error type {:?} is most frequent ({} occurrences). Consider implementing preventive measures.",
+                            most_common.pattern_type, most_common.frequency
+                        ),
+                        applicability: vec![format!("{:?}", most_common.pattern_type)],
+                        confidence: 0.8,
+                        derived_from: vec!["error_pattern_analysis".to_string()],
+                    });
+                }
+            }
+        }
+
+        // Insight: Effective recovery strategies
+        let strategies = self.recovery_strategies.read().await;
+        for (strategy_id, effectiveness) in &strategies.strategy_effectiveness {
+            if effectiveness.success_rate > 0.8 && effectiveness.usage_count >= 3 {
+                insights.push(LearningInsight {
+                    insight_id: Uuid::new_v4().to_string(),
+                    insight_type: InsightType::BetterRecovery,
+                    description: format!(
+                        "Strategy '{}' is highly effective ({:.0}% success rate over {} uses)",
+                        strategy_id,
+                        effectiveness.success_rate * 100.0,
+                        effectiveness.usage_count
+                    ),
+                    applicability: vec![strategy_id.clone()],
+                    confidence: effectiveness.success_rate,
+                    derived_from: vec!["strategy_effectiveness_analysis".to_string()],
+                });
+            }
+        }
+
+        // Insight: Prevention recommendations from repeated failures
+        let mut error_contexts: HashMap<String, u32> = HashMap::new();
+        for incident in history.incidents.iter() {
+            *error_contexts
+                .entry(incident.error_instance.context.clone())
+                .or_insert(0) += 1;
+        }
+
+        for (context, count) in error_contexts {
+            if count >= 2 {
+                insights.push(LearningInsight {
+                    insight_id: Uuid::new_v4().to_string(),
+                    insight_type: InsightType::PreventionStrategy,
+                    description: format!(
+                        "Context '{}' has caused {} failures. Consider adding validation or guards.",
+                        context, count
+                    ),
+                    applicability: vec![context],
+                    confidence: 0.7,
+                    derived_from: vec!["incident_context_analysis".to_string()],
+                });
+            }
+        }
+
+        history.learning_insights = insights.clone();
+        Ok(insights)
+    }
+
+    /// Apply adaptive policy to strategy selection
+    pub async fn apply_adaptive_policy(&self, error: &ErrorInstance) -> Result<Option<String>> {
+        if !self.config.enable_adaptive_strategies {
+            return Ok(None);
+        }
+
+        let manager = self.recovery_strategies.read().await;
+
+        // Find applicable adaptive policies
+        for policy in &manager.adaptive_policies {
+            // Check if conditions match
+            let conditions_met = policy.conditions.iter().all(|condition| {
+                // Simple condition matching based on error context
+                error.context.contains(condition)
+                    || format!("{:?}", error.error_type).contains(condition)
+                    || error.description.contains(condition)
+            });
+
+            if conditions_met && !policy.strategy_preferences.is_empty() {
+                // Return the first preferred strategy
+                return Ok(Some(policy.strategy_preferences[0].clone()));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Register an adaptive policy for strategy selection
+    pub async fn register_adaptive_policy(&self, policy: AdaptivePolicy) -> Result<()> {
+        let mut manager = self.recovery_strategies.write().await;
+        manager.adaptive_policies.push(policy);
+        Ok(())
+    }
+
+    /// Update strategy effectiveness metrics after a recovery attempt
+    pub async fn update_strategy_effectiveness(
+        &self,
+        strategy_id: &str,
+        success: bool,
+        recovery_time: Duration,
+    ) -> Result<()> {
+        let mut manager = self.recovery_strategies.write().await;
+
+        let metrics = manager
+            .strategy_effectiveness
+            .entry(strategy_id.to_string())
+            .or_insert(EffectivenessMetrics {
+                success_rate: 0.5,
+                average_recovery_time: Duration::from_secs(0),
+                resource_efficiency: 0.5,
+                side_effect_frequency: 0.0,
+                usage_count: 0,
+            });
+
+        // Update metrics with exponential moving average
+        let alpha = 0.3;
+        metrics.success_rate =
+            metrics.success_rate * (1.0 - alpha) + (if success { 1.0 } else { 0.0 }) * alpha;
+
+        let current_avg = metrics.average_recovery_time.as_secs_f64();
+        let new_avg = current_avg * (1.0 - alpha) + recovery_time.as_secs_f64() * alpha;
+        metrics.average_recovery_time = Duration::from_secs_f64(new_avg);
+
+        metrics.usage_count += 1;
+
+        Ok(())
+    }
+
+    /// Get improvement suggestions based on current system state
+    pub async fn get_improvement_suggestions(&self) -> Result<Vec<ImprovementSuggestion>> {
+        let monitor = self.resilience_monitor.read().await;
+        let history = self.failure_history.read().await;
+        let mut suggestions = Vec::new();
+
+        // Suggestion based on low success rate
+        let total = history.recovery_statistics.total_incidents;
+        let success_rate = if total > 0 {
+            history.recovery_statistics.successful_recoveries as f64 / total as f64
+        } else {
+            1.0
+        };
+
+        if success_rate < 0.7 && total >= 5 {
+            suggestions.push(ImprovementSuggestion {
+                suggestion_id: Uuid::new_v4().to_string(),
+                improvement_type: ImprovementType::RecoveryOptimization,
+                description: format!(
+                    "Recovery success rate is {:.0}%. Consider adding more recovery strategies or improving existing ones.",
+                    success_rate * 100.0
+                ),
+                expected_benefit: 0.3,
+                implementation_effort: 0.5,
+                priority: Priority::High,
+            });
+        }
+
+        // Suggestion based on high MTTR
+        let mttr = monitor.resilience_metrics.mean_time_to_recovery;
+        if mttr > Duration::from_secs(60) {
+            suggestions.push(ImprovementSuggestion {
+                suggestion_id: Uuid::new_v4().to_string(),
+                improvement_type: ImprovementType::PerformanceImprovement,
+                description: format!(
+                    "Mean time to recovery is {} seconds. Consider optimizing recovery actions or adding faster alternatives.",
+                    mttr.as_secs()
+                ),
+                expected_benefit: 0.4,
+                implementation_effort: 0.6,
+                priority: Priority::Medium,
+            });
+        }
+
+        // Suggestion based on availability
+        let availability = monitor.resilience_metrics.availability_percentage;
+        if availability < 0.95 {
+            suggestions.push(ImprovementSuggestion {
+                suggestion_id: Uuid::new_v4().to_string(),
+                improvement_type: ImprovementType::RedundancyAddition,
+                description: format!(
+                    "System availability is {:.1}%. Consider adding redundancy or failover mechanisms.",
+                    availability * 100.0
+                ),
+                expected_benefit: 0.5,
+                implementation_effort: 0.7,
+                priority: Priority::High,
+            });
+        }
+
+        // Suggestion for monitoring enhancement
+        if monitor.health_indicators.is_empty() {
+            suggestions.push(ImprovementSuggestion {
+                suggestion_id: Uuid::new_v4().to_string(),
+                improvement_type: ImprovementType::MonitoringEnhancement,
+                description: "No health indicators configured. Call update_health_indicators() regularly for better monitoring.".to_string(),
+                expected_benefit: 0.3,
+                implementation_effort: 0.2,
+                priority: Priority::Medium,
+            });
+        }
+
+        Ok(suggestions)
+    }
+
+    /// Get recovery statistics
+    pub async fn get_recovery_statistics(&self) -> Result<RecoveryStatistics> {
+        let history = self.failure_history.read().await;
+        Ok(history.recovery_statistics.clone())
+    }
+
+    /// Get all health indicators
+    pub async fn get_health_indicators(&self) -> Result<Vec<HealthIndicator>> {
+        let monitor = self.resilience_monitor.read().await;
+        Ok(monitor.health_indicators.clone())
+    }
+
+    /// Clear old incidents from history (keep last N)
+    pub async fn prune_history(&self, keep_last: usize) -> Result<u32> {
+        let mut history = self.failure_history.write().await;
+        let original_len = history.incidents.len();
+
+        while history.incidents.len() > keep_last {
+            history.incidents.pop_front();
+        }
+
+        Ok((original_len - history.incidents.len()) as u32)
     }
 }

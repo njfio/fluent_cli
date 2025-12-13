@@ -248,7 +248,8 @@ impl ConversationPanel {
         let mut current_line = String::new();
 
         for word in words {
-            if current_line.len() + word.len() + 1 <= max_width {
+            let separator_len = if current_line.is_empty() { 0 } else { 1 };
+            if current_line.len() + word.len() + separator_len <= max_width {
                 if !current_line.is_empty() {
                     current_line.push(' ');
                 }

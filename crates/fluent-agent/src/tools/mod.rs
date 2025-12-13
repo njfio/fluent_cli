@@ -76,6 +76,7 @@ pub trait ToolExecutor: Send + Sync {
 }
 
 /// Registry for managing multiple tool executors
+#[derive(Clone)]
 pub struct ToolRegistry {
     executors: HashMap<String, Arc<dyn ToolExecutor>>,
 }
@@ -109,7 +110,9 @@ impl ToolRegistry {
         // The actual_tool_name is what the executor expects in execute_tool()
         let (executor_key, actual_tool_name): (&str, &str) = match tool_lower.as_str() {
             // Shell command tools - executor is registered as "shell"
-            "run_command" | "execute_command" | "command" | "bash" | "exec" => ("shell", "run_command"),
+            "run_command" | "execute_command" | "command" | "bash" | "exec" => {
+                ("shell", "run_command")
+            }
             "run_script" => ("shell", "run_script"),
             "get_working_directory" => ("shell", "get_working_directory"),
             "check_command_available" => ("shell", "check_command_available"),
@@ -178,7 +181,10 @@ impl ToolRegistry {
 
         // Fallback: search all executors for one that provides this tool
         for executor in self.executors.values() {
-            if executor.get_available_tools().contains(&tool_name.to_string()) {
+            if executor
+                .get_available_tools()
+                .contains(&tool_name.to_string())
+            {
                 executor.validate_tool_request(tool_name, parameters)?;
                 let result = executor.execute_tool(tool_name, parameters).await;
 
@@ -784,14 +790,15 @@ pub mod validation {
         // Check for no-op replacement (identical strings)
         if old_string == new_string {
             return SemanticValidationResult::Warning(
-                "string_replace: old_string and new_string are identical - this is a no-op".to_string()
+                "string_replace: old_string and new_string are identical - this is a no-op"
+                    .to_string(),
             );
         }
 
         // Check for empty old_string (would match everything)
         if old_string.is_empty() {
             return SemanticValidationResult::Error(
-                "string_replace: old_string cannot be empty".to_string()
+                "string_replace: old_string cannot be empty".to_string(),
             );
         }
 
@@ -810,27 +817,32 @@ pub mod validation {
             .unwrap_or("");
 
         // Detect language indicators in the new content
-        let has_rust_syntax = new_string.contains("fn ") || new_string.contains("let ")
-            || new_string.contains("impl ") || new_string.contains("::");
-        let has_python_syntax = new_string.contains("def ") || new_string.contains("import ")
+        let has_rust_syntax = new_string.contains("fn ")
+            || new_string.contains("let ")
+            || new_string.contains("impl ")
+            || new_string.contains("::");
+        let has_python_syntax = new_string.contains("def ")
+            || new_string.contains("import ")
             || new_string.contains("self.") && !new_string.contains("::");
-        let has_js_syntax = new_string.contains("function ") || new_string.contains("const ")
-            || new_string.contains("=>") || new_string.contains("require(");
+        let has_js_syntax = new_string.contains("function ")
+            || new_string.contains("const ")
+            || new_string.contains("=>")
+            || new_string.contains("require(");
 
         // Warn about potential language mismatches
         if file_ext == "rs" && has_python_syntax && !has_rust_syntax {
             return SemanticValidationResult::Warning(
-                "string_replace: Python-like syntax detected in a .rs file".to_string()
+                "string_replace: Python-like syntax detected in a .rs file".to_string(),
             );
         }
         if file_ext == "py" && has_rust_syntax && !has_python_syntax {
             return SemanticValidationResult::Warning(
-                "string_replace: Rust-like syntax detected in a .py file".to_string()
+                "string_replace: Rust-like syntax detected in a .py file".to_string(),
             );
         }
         if file_ext == "js" && has_rust_syntax && !has_js_syntax {
             return SemanticValidationResult::Warning(
-                "string_replace: Rust-like syntax detected in a .js file".to_string()
+                "string_replace: Rust-like syntax detected in a .js file".to_string(),
             );
         }
 
@@ -846,18 +858,31 @@ pub mod validation {
         let file_ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         // Check for writing to backup files
-        if file_path.ends_with(".bak") || file_path.ends_with(".orig")
-            || file_path.ends_with(".backup") || file_path.ends_with("~") {
+        if file_path.ends_with(".bak")
+            || file_path.ends_with(".orig")
+            || file_path.ends_with(".backup")
+            || file_path.ends_with("~")
+        {
             return SemanticValidationResult::Warning(
-                "write_file: Writing to a backup file pattern - is this intentional?".to_string()
+                "write_file: Writing to a backup file pattern - is this intentional?".to_string(),
             );
         }
 
         // Check for hidden files (except common ones like .gitignore)
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let allowed_hidden = [".gitignore", ".gitattributes", ".editorconfig",
-                             ".env", ".env.example", ".dockerignore", ".prettierrc",
-                             ".eslintrc", ".cargo", ".rustfmt.toml", ".clippy.toml"];
+        let allowed_hidden = [
+            ".gitignore",
+            ".gitattributes",
+            ".editorconfig",
+            ".env",
+            ".env.example",
+            ".dockerignore",
+            ".prettierrc",
+            ".eslintrc",
+            ".cargo",
+            ".rustfmt.toml",
+            ".clippy.toml",
+        ];
         if file_name.starts_with('.') && !allowed_hidden.iter().any(|h| file_name.starts_with(h)) {
             return SemanticValidationResult::Warning(format!(
                 "write_file: Creating hidden file '{}' - verify this is intentional",
@@ -868,13 +893,19 @@ pub mod validation {
         // Check for empty content
         if content.is_empty() {
             return SemanticValidationResult::Warning(
-                "write_file: Writing empty content to file".to_string()
+                "write_file: Writing empty content to file".to_string(),
             );
         }
 
         // Check for content that looks like it might overwrite important files
-        let sensitive_patterns = ["PRIVATE KEY", "BEGIN RSA", "password=", "secret=",
-                                  "api_key=", "AWS_SECRET"];
+        let sensitive_patterns = [
+            "PRIVATE KEY",
+            "BEGIN RSA",
+            "password=",
+            "secret=",
+            "api_key=",
+            "AWS_SECRET",
+        ];
         for pattern in sensitive_patterns {
             if content.contains(pattern) {
                 return SemanticValidationResult::Warning(format!(
@@ -885,19 +916,21 @@ pub mod validation {
         }
 
         // Check content type matches file extension
-        if file_ext == "json" && !content.trim().is_empty() {
-            if !content.trim().starts_with('{') && !content.trim().starts_with('[') {
-                return SemanticValidationResult::Warning(
-                    "write_file: Content doesn't look like JSON for .json file".to_string()
-                );
-            }
+        if file_ext == "json"
+            && !content.trim().is_empty()
+            && !content.trim().starts_with('{')
+            && !content.trim().starts_with('[')
+        {
+            return SemanticValidationResult::Warning(
+                "write_file: Content doesn't look like JSON for .json file".to_string(),
+            );
         }
 
         if file_ext == "yaml" || file_ext == "yml" {
             // YAML files shouldn't start with { unless they're JSON
             if content.trim().starts_with('{') {
                 return SemanticValidationResult::Warning(
-                    "write_file: Content looks like JSON for .yaml file".to_string()
+                    "write_file: Content looks like JSON for .yaml file".to_string(),
                 );
             }
         }
@@ -910,13 +943,14 @@ pub mod validation {
         let path = Path::new(file_path);
 
         // Warn about reading very large binary file types
-        let binary_extensions = ["exe", "dll", "so", "dylib", "bin", "o", "a",
-                                 "jpg", "jpeg", "png", "gif", "bmp", "ico", "webp",
-                                 "mp3", "mp4", "avi", "mov", "mkv", "wav",
-                                 "zip", "tar", "gz", "rar", "7z", "bz2",
-                                 "pdf", "doc", "docx", "xls", "xlsx"];
+        let binary_extensions = [
+            "exe", "dll", "so", "dylib", "bin", "o", "a", "jpg", "jpeg", "png", "gif", "bmp",
+            "ico", "webp", "mp3", "mp4", "avi", "mov", "mkv", "wav", "zip", "tar", "gz", "rar",
+            "7z", "bz2", "pdf", "doc", "docx", "xls", "xlsx",
+        ];
 
-        let file_ext = path.extension()
+        let file_ext = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -930,8 +964,11 @@ pub mod validation {
 
         // Warn about reading lock files
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if file_name.ends_with(".lock") || file_name == "package-lock.json"
-            || file_name == "yarn.lock" || file_name == "Cargo.lock" {
+        if file_name.ends_with(".lock")
+            || file_name == "package-lock.json"
+            || file_name == "yarn.lock"
+            || file_name == "Cargo.lock"
+        {
             return SemanticValidationResult::Warning(format!(
                 "read_file: '{}' is a lock file - usually auto-generated and very large",
                 file_name
@@ -942,10 +979,7 @@ pub mod validation {
     }
 
     /// Semantic validation for command execution
-    pub fn validate_command_semantic(
-        command: &str,
-        args: &[String],
-    ) -> SemanticValidationResult {
+    pub fn validate_command_semantic(command: &str, args: &[String]) -> SemanticValidationResult {
         let full_command = if args.is_empty() {
             command.to_string()
         } else {
@@ -958,7 +992,10 @@ pub mod validation {
             ("rm -rf ~", "Attempting to remove home directory"),
             ("rm -rf *", "Recursive deletion with wildcard"),
             ("chmod 777", "Setting world-writable permissions"),
-            ("chmod -R 777", "Recursively setting world-writable permissions"),
+            (
+                "chmod -R 777",
+                "Recursively setting world-writable permissions",
+            ),
             ("dd if=", "Low-level disk write operation"),
             ("mkfs", "Filesystem format operation"),
             (":(){:|:&};:", "Fork bomb pattern detected"),
@@ -980,8 +1017,14 @@ pub mod validation {
             ("chmod -R", "Recursive permission change"),
             ("chown -R", "Recursive ownership change"),
             ("find . -delete", "Find with delete - very dangerous"),
-            ("git reset --hard", "Hard reset will discard uncommitted changes"),
-            ("git push --force", "Force push can overwrite remote history"),
+            (
+                "git reset --hard",
+                "Hard reset will discard uncommitted changes",
+            ),
+            (
+                "git push --force",
+                "Force push can overwrite remote history",
+            ),
             ("git clean -fd", "Clean will remove untracked files"),
             ("npm install -g", "Global npm install affects system"),
             ("pip install", "Installing Python packages"),
@@ -1014,8 +1057,12 @@ pub mod validation {
         let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         // Check for suspicious directory names
-        if dir_name.starts_with('.') && dir_name != ".github" && dir_name != ".vscode"
-            && dir_name != ".cargo" && dir_name != ".config" {
+        if dir_name.starts_with('.')
+            && dir_name != ".github"
+            && dir_name != ".vscode"
+            && dir_name != ".cargo"
+            && dir_name != ".config"
+        {
             return SemanticValidationResult::Warning(format!(
                 "create_directory: Creating hidden directory '{}' - verify this is intentional",
                 dir_name
@@ -1023,8 +1070,18 @@ pub mod validation {
         }
 
         // Check for temp/cache directory patterns
-        let temp_patterns = ["tmp", "temp", "cache", ".cache", "node_modules",
-                            "__pycache__", ".pytest_cache", "target", "build", "dist"];
+        let temp_patterns = [
+            "tmp",
+            "temp",
+            "cache",
+            ".cache",
+            "node_modules",
+            "__pycache__",
+            ".pytest_cache",
+            "target",
+            "build",
+            "dist",
+        ];
         if temp_patterns.contains(&dir_name) {
             return SemanticValidationResult::Warning(format!(
                 "create_directory: '{}' is typically an auto-generated directory - verify this is needed",
@@ -1069,7 +1126,11 @@ pub mod validation {
         if !unknown.is_empty() {
             return SemanticValidationResult::Warning(format!(
                 "Unknown parameters (may be ignored): {}",
-                unknown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                unknown
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
 
@@ -1083,15 +1144,18 @@ pub mod validation {
     ) -> SemanticValidationResult {
         match tool_name {
             "string_replace" | "str_replace_editor" => {
-                let old_string = params.get("old_string")
+                let old_string = params
+                    .get("old_string")
                     .or_else(|| params.get("old_str"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let new_string = params.get("new_string")
+                let new_string = params
+                    .get("new_string")
                     .or_else(|| params.get("new_str"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let file_path = params.get("path")
+                let file_path = params
+                    .get("path")
                     .or_else(|| params.get("file_path"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
@@ -1099,18 +1163,18 @@ pub mod validation {
                 validate_string_replace_semantic(old_string, new_string, file_path)
             }
             "write_file" | "write" => {
-                let file_path = params.get("path")
+                let file_path = params
+                    .get("path")
                     .or_else(|| params.get("file_path"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let content = params.get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let content = params.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
                 validate_file_write_semantic(file_path, content)
             }
             "read_file" | "read" => {
-                let file_path = params.get("path")
+                let file_path = params
+                    .get("path")
                     .or_else(|| params.get("file_path"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
@@ -1118,25 +1182,30 @@ pub mod validation {
                 validate_file_read_semantic(file_path)
             }
             "run_command" | "shell" | "bash" | "execute" => {
-                let command = params.get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let args: Vec<String> = params.get("args")
+                let command = params.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let args: Vec<String> = params
+                    .get("args")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(String::from)
+                            .collect()
+                    })
                     .unwrap_or_default();
 
                 validate_command_semantic(command, &args)
             }
             "create_directory" | "mkdir" => {
-                let dir_path = params.get("path")
+                let dir_path = params
+                    .get("path")
                     .or_else(|| params.get("directory"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
 
                 validate_create_directory_semantic(dir_path)
             }
-            _ => SemanticValidationResult::Ok
+            _ => SemanticValidationResult::Ok,
         }
     }
 }
@@ -1464,9 +1533,7 @@ mod tests {
 
     #[test]
     fn test_string_replace_semantic_identical_strings() {
-        let result = validation::validate_string_replace_semantic(
-            "hello", "hello", "test.rs"
-        );
+        let result = validation::validate_string_replace_semantic("hello", "hello", "test.rs");
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("no-op"));
@@ -1475,9 +1542,7 @@ mod tests {
 
     #[test]
     fn test_string_replace_semantic_empty_old_string() {
-        let result = validation::validate_string_replace_semantic(
-            "", "new", "test.rs"
-        );
+        let result = validation::validate_string_replace_semantic("", "new", "test.rs");
         assert!(result.is_error());
         if let validation::SemanticValidationResult::Error(msg) = result {
             assert!(msg.contains("empty"));
@@ -1486,9 +1551,7 @@ mod tests {
 
     #[test]
     fn test_string_replace_semantic_short_old_string() {
-        let result = validation::validate_string_replace_semantic(
-            "ab", "newvalue", "test.rs"
-        );
+        let result = validation::validate_string_replace_semantic("ab", "newvalue", "test.rs");
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("short"));
@@ -1498,7 +1561,9 @@ mod tests {
     #[test]
     fn test_string_replace_semantic_valid() {
         let result = validation::validate_string_replace_semantic(
-            "fn old_function() {}", "fn new_function() {}", "test.rs"
+            "fn old_function() {}",
+            "fn new_function() {}",
+            "test.rs",
         );
         assert!(result.is_ok());
     }
@@ -1506,7 +1571,9 @@ mod tests {
     #[test]
     fn test_string_replace_semantic_language_mismatch_python_in_rust() {
         let result = validation::validate_string_replace_semantic(
-            "old_code", "def new_function():\n    import os", "test.rs"
+            "old_code",
+            "def new_function():\n    import os",
+            "test.rs",
         );
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
@@ -1517,7 +1584,9 @@ mod tests {
     #[test]
     fn test_string_replace_semantic_language_mismatch_rust_in_python() {
         let result = validation::validate_string_replace_semantic(
-            "old_code", "fn new_function() -> i32 { let x = 5; }", "test.py"
+            "old_code",
+            "fn new_function() -> i32 { let x = 5; }",
+            "test.py",
         );
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
@@ -1571,9 +1640,7 @@ mod tests {
 
     #[test]
     fn test_file_write_semantic_sensitive_content() {
-        let result = validation::validate_file_write_semantic(
-            "config.txt", "password=secret123"
-        );
+        let result = validation::validate_file_write_semantic("config.txt", "password=secret123");
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("sensitive"));
@@ -1582,9 +1649,7 @@ mod tests {
 
     #[test]
     fn test_file_write_semantic_json_mismatch() {
-        let result = validation::validate_file_write_semantic(
-            "config.json", "not json content"
-        );
+        let result = validation::validate_file_write_semantic("config.json", "not json content");
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("JSON"));
@@ -1593,17 +1658,13 @@ mod tests {
 
     #[test]
     fn test_file_write_semantic_valid_json() {
-        let result = validation::validate_file_write_semantic(
-            "config.json", r#"{"key": "value"}"#
-        );
+        let result = validation::validate_file_write_semantic("config.json", r#"{"key": "value"}"#);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_file_write_semantic_yaml_with_json() {
-        let result = validation::validate_file_write_semantic(
-            "config.yaml", r#"{"key": "value"}"#
-        );
+        let result = validation::validate_file_write_semantic("config.yaml", r#"{"key": "value"}"#);
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("JSON"));
@@ -1645,26 +1706,32 @@ mod tests {
 
     #[test]
     fn test_command_semantic_destructive_operations() {
-        let result = validation::validate_command_semantic("rm", &["-rf".to_string(), "/".to_string()]);
+        let result =
+            validation::validate_command_semantic("rm", &["-rf".to_string(), "/".to_string()]);
         assert!(result.is_error());
         if let validation::SemanticValidationResult::Error(msg) = result {
             assert!(msg.contains("root filesystem"));
         }
 
-        let result2 = validation::validate_command_semantic("chmod", &["777".to_string(), "file".to_string()]);
+        let result2 = validation::validate_command_semantic(
+            "chmod",
+            &["777".to_string(), "file".to_string()],
+        );
         assert!(result2.is_error());
     }
 
     #[test]
     fn test_command_semantic_warning_operations() {
-        let result = validation::validate_command_semantic("rm", &["-r".to_string(), "dir".to_string()]);
+        let result =
+            validation::validate_command_semantic("rm", &["-r".to_string(), "dir".to_string()]);
         assert!(result.is_warning());
         if let validation::SemanticValidationResult::Warning(msg) = result {
             assert!(msg.contains("Recursive deletion"));
         }
 
         let result2 = validation::validate_command_semantic(
-            "git", &["push".to_string(), "--force".to_string()]
+            "git",
+            &["push".to_string(), "--force".to_string()],
         );
         assert!(result2.is_warning());
     }
@@ -1683,14 +1750,10 @@ mod tests {
 
     #[test]
     fn test_command_semantic_valid() {
-        let result = validation::validate_command_semantic(
-            "ls", &["-la".to_string()]
-        );
+        let result = validation::validate_command_semantic("ls", &["-la".to_string()]);
         assert!(result.is_ok());
 
-        let result2 = validation::validate_command_semantic(
-            "cargo", &["build".to_string()]
-        );
+        let result2 = validation::validate_command_semantic("cargo", &["build".to_string()]);
         assert!(result2.is_ok());
     }
 
@@ -1738,7 +1801,8 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("optional".to_string(), serde_json::json!("value"));
 
-        let result = validation::validate_schema(&params, &["required1", "required2"], &["optional"]);
+        let result =
+            validation::validate_schema(&params, &["required1", "required2"], &["optional"]);
         assert!(result.is_error());
         if let validation::SemanticValidationResult::Error(msg) = result {
             assert!(msg.contains("required1"));
