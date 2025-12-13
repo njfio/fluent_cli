@@ -7,7 +7,6 @@ use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::{debug, warn};
 use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -17,6 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::{debug, warn};
 
 pub struct FlowiseChainEngine {
     config: EngineConfig,
@@ -70,7 +70,7 @@ pub struct FlowiseChainConfigProcessor;
 impl EngineConfigProcessor for FlowiseChainConfigProcessor {
     fn process_config(&self, config: &EngineConfig) -> Result<serde_json::Value> {
         debug!("FlowiseConfigProcessor::process_config");
-        debug!("Config: {:#?}", config);
+        // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
 
         let mut payload = json!({
             "question": "", // This will be filled later with the actual request
@@ -183,7 +183,7 @@ impl Engine for FlowiseChainEngine {
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let client = Client::new();
-            debug!("Config: {:?}", self.config);
+            // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
 
             let mut payload = self.config_processor.process_config(&self.config)?;
 
@@ -320,7 +320,7 @@ impl Engine for FlowiseChainEngine {
             if response_body.get("error").is_some()
                 || response_body["text"]
                     .as_str()
-                    .map_or(false, |s| s.contains("no image provided"))
+                    .is_some_and(|s| s.contains("no image provided"))
             {
                 warn!(
                     "FlowiseAI did not process the image. Full response: {:?}",

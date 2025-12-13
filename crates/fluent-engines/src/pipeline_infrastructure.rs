@@ -10,7 +10,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Infrastructure implementations for the modular pipeline executor
-
 /// Simple variable expander with template support
 pub struct SimpleVariableExpander;
 
@@ -142,6 +141,12 @@ impl StateStore for FileStateStore {
 pub struct MemoryStateStore {
     contexts: Arc<RwLock<HashMap<String, ExecutionContext>>>,
     pipeline_states: Arc<RwLock<HashMap<String, crate::pipeline_executor::PipelineState>>>,
+}
+
+impl Default for MemoryStateStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemoryStateStore {
@@ -306,6 +311,12 @@ pub struct PipelineMetrics {
     pub step_durations: HashMap<String, Vec<u64>>, // step_name -> durations in ms
 }
 
+impl Default for MetricsEventListener {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsEventListener {
     pub fn new() -> Self {
         Self {
@@ -365,6 +376,12 @@ pub struct PipelineExecutorBuilder {
     state_store: Option<Arc<dyn StateStore>>,
     variable_expander: Option<Arc<dyn VariableExpander>>,
     event_listeners: Vec<Arc<dyn EventListener>>,
+}
+
+impl Default for PipelineExecutorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PipelineExecutorBuilder {

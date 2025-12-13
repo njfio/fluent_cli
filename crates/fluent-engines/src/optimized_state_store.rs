@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use lru::LruCache;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
@@ -103,7 +103,7 @@ impl OptimizedStateStore {
     /// Flush dirty states to disk
     async fn flush_dirty_states(
         cache: &Arc<RwLock<LruCache<String, CachedState>>>,
-        directory: &PathBuf,
+        directory: &Path,
         enable_compression: bool,
     ) -> Result<()> {
         let mut dirty_states = Vec::new();
@@ -129,7 +129,7 @@ impl OptimizedStateStore {
 
     /// Write a single state to disk
     async fn write_state_to_disk(
-        directory: &PathBuf,
+        directory: &Path,
         key: &str,
         state: &PipelineState,
         enable_compression: bool,
@@ -152,7 +152,7 @@ impl OptimizedStateStore {
 
     /// Read a state from disk
     async fn read_state_from_disk(
-        directory: &PathBuf,
+        directory: &Path,
         key: &str,
         enable_compression: bool,
     ) -> Result<Option<PipelineState>> {
@@ -309,6 +309,12 @@ pub struct StateBatch {
 enum StateOperation {
     Save { key: String, state: PipelineState },
     Load { key: String },
+}
+
+impl Default for StateBatch {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StateBatch {

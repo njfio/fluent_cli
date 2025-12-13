@@ -4,12 +4,8 @@
 //! with real-time TUI updates, approvals, and interactive controls.
 
 use anyhow::Result;
-use fluent_agent::{
-    agent_control::{
-        AgentControlChannel, AgentStatus, ControlMessageType, LogLevel, StateUpdate,
-        StateUpdateType,
-    },
-    ApprovalConfig, CollaborativeOrchestrator,
+use fluent_agent::agent_control::{
+    AgentControlChannel, AgentStatus, ControlMessageType, LogLevel, StateUpdate, StateUpdateType,
 };
 use fluent_cli::tui::SimpleTui;
 use std::sync::Arc;
@@ -19,7 +15,7 @@ use tokio::time::sleep;
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    env_logger::init();
+    fluent_core::logging::init_logging();
 
     println!("🚀 Starting Collaborative Agent Demo");
     println!("This demo shows a working human-in-the-loop agent with TUI");
@@ -30,9 +26,7 @@ async fn main() -> Result<()> {
 
     // Spawn mock agent that sends realistic updates
     let agent_channel = channel.clone();
-    let agent_handle = tokio::spawn(async move {
-        run_mock_agent(agent_channel).await
-    });
+    let agent_handle = tokio::spawn(async move { run_mock_agent(agent_channel).await });
 
     // Small delay to let agent start
     sleep(Duration::from_millis(100)).await;
@@ -148,9 +142,10 @@ async fn run_mock_agent(channel: Arc<AgentControlChannel>) -> Result<()> {
                 }
                 ControlMessageType::EmergencyStop { reason } => {
                     channel
-                        .send_state(StateUpdate::status_change(
-                            AgentStatus::Failed(format!("Emergency stop: {}", reason)),
-                        ))
+                        .send_state(StateUpdate::status_change(AgentStatus::Failed(format!(
+                            "Emergency stop: {}",
+                            reason
+                        ))))
                         .await?;
                     return Ok(());
                 }

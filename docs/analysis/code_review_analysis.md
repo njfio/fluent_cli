@@ -113,7 +113,7 @@ The `args.rs` file contains a `FluentArgs` struct using clap's derive API, but t
 pub struct FluentArgs {
     #[command(subcommand)]
     pub command: Commands,
-    
+
     #[arg(global = true, short, long)]
     pub config: Option<PathBuf>,
 }
@@ -236,11 +236,11 @@ import subprocess
 def execute_fluent_secure(command_parts):
     # Use subprocess with shell=False and proper argument escaping
     safe_command = [shlex.quote(part) for part in command_parts]
-    
+
     # Run in restricted environment
     env = os.environ.copy()
     env['PATH'] = '/usr/local/bin:/usr/bin'  # Restrict PATH
-    
+
     result = subprocess.run(
         safe_command,
         shell=False,
@@ -275,7 +275,7 @@ def execute_fluent():
 def safe_error_response(error, status_code=500):
     # Log full error internally
     app.logger.error(f"Error: {error}")
-    
+
     # Return sanitized message to user
     if isinstance(error, ValidationError):
         return jsonify({'error': str(error)}), 400
@@ -394,7 +394,7 @@ fn test_pipeline_execution() {
         .args(&["pipeline", "--file", "test.yaml"])
         .output()
         .expect("Failed to execute");
-    
+
     assert!(output.status.success());
 }
 ```

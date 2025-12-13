@@ -67,7 +67,7 @@ impl SystemMetrics {
             .entry(operation.to_string())
             .and_modify(|e| *e += duration)
             .or_insert(duration);
-        
+
         self.call_counts
             .entry(operation.to_string())
             .and_modify(|e| *e += 1)
@@ -90,7 +90,7 @@ impl SelfReflection {
         }
     }
 
-    pub fn measure_operation<F, T>(&self, operation: &str, f: F) -> T 
+    pub fn measure_operation<F, T>(&self, operation: &str, f: F) -> T
     where
         F: FnOnce() -> T,
     {
@@ -112,7 +112,7 @@ impl SelfReflection {
 
     pub fn generate_insights(&self) -> Result<SystemInsights, String> {
         let metrics = self.metrics.lock().map_err(|e| e.to_string())?;
-        
+
         let total_time: Duration = metrics.execution_times.values().sum();
         let total_memory: usize = metrics.memory_usage.values().sum();
         let total_calls: usize = metrics.call_counts.values().sum();
@@ -245,18 +245,18 @@ impl SystemMetrics {
 }
 
 // Add async support
-pub async fn measure_operation_async<F, T>(&self, operation: &str, f: F) -> T 
+pub async fn measure_operation_async<F, T>(&self, operation: &str, f: F) -> T
 where
     F: Future<Output = T>,
 {
     let start = Instant::now();
     let result = f.await;
     let duration = start.elapsed();
-    
+
     if let Ok(mut metrics) = self.metrics.lock() {
         metrics.record_execution(operation, duration);
     }
-    
+
     result
 }
 ```
@@ -301,4 +301,3 @@ These optimizations would significantly improve the system's performance, memory
 `src/profiling/reflection_profiler.rs`
 
 Create this new file to implement the memory profiling system for the reflection engine. This will be a core component for measuring and analyzing performance metrics.
-

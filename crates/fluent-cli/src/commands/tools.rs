@@ -52,6 +52,7 @@ impl ToolsCommand {
             shell_commands: false, // Default to false for security
             rust_compiler: true,
             git_operations: false,
+            web_browsing: true,
             allowed_paths: Some(vec![
                 "./".to_string(),
                 "./src".to_string(),
@@ -169,7 +170,19 @@ impl ToolsCommand {
         Self::with_tool_registry(config, |registry| {
             // Check if tool exists
             if !registry.is_tool_available(tool_name) {
-                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+                let available_tools: Vec<String> = registry
+                    .get_all_available_tools()
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect();
+                let error_msg = format!(
+                    "Tool '{}' not found.\n\n\
+                    Available tools:\n  {}\n\n\
+                    Use 'fluent tools list' to see all available tools.",
+                    tool_name,
+                    available_tools.join("\n  ")
+                );
+                return Err(CliError::Validation(error_msg).into());
             }
 
             // Get tool information from available tools
@@ -232,7 +245,19 @@ impl ToolsCommand {
                 .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
 
             if !registry.is_tool_available(tool_name) {
-                return Err(CliError::Validation(format!("Tool '{}' not found", tool_name)).into());
+                let available_tools: Vec<String> = registry
+                    .get_all_available_tools()
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect();
+                let error_msg = format!(
+                    "Tool '{}' not found.\n\n\
+                    Available tools:\n  {}\n\n\
+                    Use 'fluent tools list' to see all available tools with descriptions.",
+                    tool_name,
+                    available_tools.join("\n  ")
+                );
+                return Err(CliError::Validation(error_msg).into());
             }
         }
 
@@ -283,19 +308,20 @@ impl ToolsCommand {
         let start_time = Instant::now();
         println!("🔧 Executing tool: {tool_name}");
 
-        let result = {
+        let registry = {
             let registry_lock = registry_guard.lock().map_err(|e| {
                 CliError::Unknown(format!(
                     "Failed to acquire registry lock for execution: {}",
                     e
                 ))
             })?;
-            let registry = registry_lock
+            registry_lock
                 .as_ref()
-                .ok_or_else(|| anyhow!("Tool registry not initialized"))?;
-
-            registry.execute_tool(tool_name, &parameters).await
+                .ok_or_else(|| anyhow!("Tool registry not initialized"))?
+                .clone()
         };
+
+        let result = registry.execute_tool(tool_name, &parameters).await;
         let execution_time = start_time.elapsed();
 
         match result {

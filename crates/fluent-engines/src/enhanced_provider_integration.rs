@@ -655,7 +655,7 @@ impl EnhancedProviderSystem {
     pub async fn execute_request(&self, request: &Request, context: Option<&str>) -> Result<Response> {
         // Select the best provider for this request
         let selected_provider = self.select_optimal_provider(request, context).await?;
-        
+
         // Execute with fallback support
         self.execute_with_fallback(request, &selected_provider).await
     }
@@ -677,7 +677,7 @@ impl EnhancedProviderSystem {
     /// Execute request with fallback support
     async fn execute_with_fallback(&self, request: &Request, provider_id: &str) -> Result<Response> {
         let providers = self.providers.read().await;
-        
+
         if let Some(provider) = providers.get(provider_id) {
             match provider.engine.execute(request).await {
                 Ok(response) => {
@@ -699,7 +699,7 @@ impl EnhancedProviderSystem {
     /// Try fallback providers
     async fn try_fallback(&self, request: &Request, failed_provider: &str) -> Result<Response> {
         let fallback_manager = self.fallback_manager.read().await;
-        
+
         if let Some(chain) = fallback_manager.fallback_chains.get(failed_provider) {
             for fallback_provider in &chain.fallback_providers {
                 if let Ok(response) = self.execute_with_provider(request, fallback_provider).await {
@@ -707,14 +707,14 @@ impl EnhancedProviderSystem {
                 }
             }
         }
-        
+
         Err(anyhow::anyhow!("All fallback providers failed"))
     }
 
     /// Execute with specific provider
     async fn execute_with_provider(&self, request: &Request, provider_id: &str) -> Result<Response> {
         let providers = self.providers.read().await;
-        
+
         if let Some(provider) = providers.get(provider_id) {
             provider.engine.execute(request).await
         } else {

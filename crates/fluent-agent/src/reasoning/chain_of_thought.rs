@@ -466,7 +466,7 @@ Generate an alternative reasoning approach that addresses these issues:
 
 Format your response as:
 ALTERNATIVE_REASONING: [Your alternative reasoning]
-ALTERNATIVE_CONCLUSION: [The alternative conclusion]  
+ALTERNATIVE_CONCLUSION: [The alternative conclusion]
 CONFIDENCE: [0.0-1.0]
 RATIONALE: [Why this alternative is better]"#,
             failed_step.premise,
@@ -778,6 +778,7 @@ RATIONALE: [Why this alternative is better]"#,
 }
 
 /// Result of attempting to generate a reasoning step
+#[allow(clippy::large_enum_variant)]
 enum StepResult {
     Success(ReasoningStep),
     Failure(String),
@@ -797,7 +798,7 @@ impl VerificationEngine {
             r#"Verify this reasoning step:
 
 Premise: {}
-Reasoning: {}  
+Reasoning: {}
 Conclusion: {}
 Confidence: {}
 

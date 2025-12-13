@@ -9,7 +9,6 @@ use crate::neo4j_client::Neo4jClient;
 use crate::types::{ExtractedContent, Request, Response, UpsertRequest, UpsertResponse};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::debug;
 use pdf_extract::extract_text;
 use serde_json::{json, Value};
 use std::future::Future;
@@ -17,6 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 
 /// Trait for handling file uploads and processing
 ///
@@ -179,14 +179,14 @@ pub trait EngineConfigProcessor {
 pub struct AnthropicConfigProcessor;
 impl EngineConfigProcessor for AnthropicConfigProcessor {
     fn process_config(&self, config: &EngineConfig) -> Result<serde_json::Value> {
-        debug!("AnthropicConfigProcessor::process_config");
-        debug!("Config: {:#?}", config);
+        // Note: Detailed logging moved to anthropic.rs after content is added
+        // This creates a template that gets filled with actual content later
 
         let mut payload = json!({
             "messages": [
                 {
                     "role": "user",
-                    "content": "" // This will be filled later with the actual request
+                    "content": "" // Filled by anthropic.rs execute() with actual request
                 }
             ],
             "model": config.parameters.get("modelName")
@@ -219,7 +219,6 @@ impl EngineConfigProcessor for AnthropicConfigProcessor {
             }
         }
 
-        debug!("Anthropic Payload: {:#?}", payload);
         Ok(payload)
     }
 }

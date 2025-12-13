@@ -129,6 +129,14 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
         "html" => "```html",
         "js" | "javascript" => "```javascript",
         "rs" | "rust" => "```rust",
+        "lua" => "```lua",
+        "py" | "python" => "```python",
+        "ts" | "typescript" => "```typescript",
+        "go" => "```go",
+        "c" => "```c",
+        "cpp" | "c++" => "```cpp",
+        "java" => "```java",
+        "sh" | "bash" => "```bash",
         _ => "```",
     };
 
@@ -137,13 +145,21 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
         if let Some(end_pos) = response[code_start..].find("```") {
             let code_end = code_start + end_pos;
             return response[code_start..code_end].trim().to_string();
+        } else {
+            // No closing fence found (truncated response) - take everything after the opening
+            // Skip the language identifier line if present
+            let content = &response[code_start..];
+            if let Some(newline) = content.find('\n') {
+                return content[newline + 1..].trim().to_string();
+            }
+            return content.trim().to_string();
         }
     }
 
-    // Try generic code blocks
+    // Try generic code blocks - skip language identifier on first line
     if let Some(start) = response.find("```") {
         let code_start = start + 3;
-        // Skip language identifier if present
+        // Skip language identifier if present (first line after ```)
         let actual_start = if let Some(newline) = response[code_start..].find('\n') {
             code_start + newline + 1
         } else {
@@ -152,7 +168,13 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
 
         if let Some(end_pos) = response[actual_start..].find("```") {
             let code_end = actual_start + end_pos;
-            return response[actual_start..code_end].trim().to_string();
+            let code = response[actual_start..code_end].trim();
+            // Double-check: if first line is just a language identifier, skip it
+            return strip_language_marker(code).to_string();
+        } else {
+            // No closing fence (truncated) - take everything after language identifier line
+            let code = response[actual_start..].trim();
+            return strip_language_marker(code).to_string();
         }
     }
 
@@ -180,11 +202,11 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
                 Err(_) => return response.trim().to_string(),
             };
 
-            let mut extracted_code = Vec::new();
+            let mut extracted_code: Vec<String> = Vec::new();
 
             for captures in re.captures_iter(response) {
                 if let Some(code) = captures.get(1) {
-                    extracted_code.push(code.as_str().trim());
+                    extracted_code.push(code.as_str().trim().to_string());
                 }
             }
 
@@ -194,9 +216,10 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
                 if let Ok(generic_re) = Regex::new(generic_pattern) {
                     for captures in generic_re.captures_iter(response) {
                         if let Some(code) = captures.get(1) {
-                            let code_text = code.as_str().trim();
+                            // Strip language marker if present
+                            let code_text = strip_language_marker(code.as_str().trim());
                             // Basic heuristic to check if it matches the file type
-                            if matches_file_type(code_text, file_type) {
+                            if matches_file_type(&code_text, file_type) {
                                 extracted_code.push(code_text);
                             }
                         }
@@ -211,6 +234,66 @@ pub fn extract_code(response: &str, file_type: &str) -> String {
             }
         }
     }
+}
+
+/// Strip language marker from first line if present (e.g., "lua\n--code" -> "--code")
+fn strip_language_marker(code: &str) -> String {
+    // Common language identifiers that might appear on the first line
+    const LANG_MARKERS: &[&str] = &[
+        "lua",
+        "python",
+        "py",
+        "rust",
+        "rs",
+        "javascript",
+        "js",
+        "typescript",
+        "ts",
+        "go",
+        "golang",
+        "c",
+        "cpp",
+        "c++",
+        "java",
+        "ruby",
+        "rb",
+        "php",
+        "swift",
+        "kotlin",
+        "scala",
+        "r",
+        "perl",
+        "shell",
+        "bash",
+        "sh",
+        "zsh",
+        "powershell",
+        "sql",
+        "html",
+        "css",
+        "xml",
+        "json",
+        "yaml",
+        "toml",
+        "markdown",
+        "md",
+    ];
+
+    // Check if first line is just a language identifier
+    if let Some(first_newline) = code.find('\n') {
+        let first_line = code[..first_newline].trim().to_lowercase();
+        if LANG_MARKERS.contains(&first_line.as_str()) {
+            return code[first_newline + 1..].to_string();
+        }
+    } else {
+        // Single line - check if it's just a language marker
+        let lower = code.trim().to_lowercase();
+        if LANG_MARKERS.contains(&lower.as_str()) {
+            return String::new();
+        }
+    }
+
+    code.to_string()
 }
 
 /// Check if code content matches the expected file type
@@ -233,6 +316,19 @@ fn matches_file_type(code: &str, file_type: &str) -> bool {
                 || code.contains("const ")
                 || code.contains("let ")
                 || code.contains("var ")
+        }
+        "lua" => {
+            code.contains("function ")
+                || code.contains("local ")
+                || code.contains("love.")
+                || code.contains("require(")
+                || code.contains("end")
+        }
+        "go" | "golang" => {
+            code.contains("func ")
+                || code.contains("package ")
+                || code.contains("import ")
+                || code.contains("type ")
         }
         "html" => code.contains("<html") || code.contains("<!DOCTYPE") || code.contains("<body"),
         "json" => code.trim_start().starts_with('{') || code.trim_start().starts_with('['),
@@ -361,5 +457,39 @@ mod tests {
         assert!(matches_file_type("function test() {}", "javascript"));
         assert!(matches_file_type("{\"key\": \"value\"}", "json"));
         assert!(!matches_file_type("SELECT * FROM table", "rust"));
+        // Test Lua
+        assert!(matches_file_type("function love.load()\nend", "lua"));
+        assert!(matches_file_type("local x = 1", "lua"));
+    }
+
+    #[test]
+    fn test_extract_code_lua() {
+        // Test that Lua code extraction works with ```lua blocks
+        let response =
+            "Here's a Love2D game:\n```lua\nfunction love.load()\n  print('Hello')\nend\n```";
+        let result = extract_code(response, "lua");
+        assert!(result.contains("function love.load()"));
+        assert!(result.contains("print('Hello')"));
+        assert!(
+            !result.contains("lua"),
+            "Should not contain the language marker"
+        );
+    }
+
+    #[test]
+    fn test_strip_language_marker() {
+        // Test stripping language marker from first line
+        assert_eq!(strip_language_marker("lua\n-- comment"), "-- comment");
+        assert_eq!(strip_language_marker("python\nimport os"), "import os");
+        // Should not strip if first line is not just a language marker
+        assert_eq!(
+            strip_language_marker("-- This is lua code\nlocal x = 1"),
+            "-- This is lua code\nlocal x = 1"
+        );
+        // Should handle code without language marker
+        assert_eq!(
+            strip_language_marker("function love.load()\nend"),
+            "function love.load()\nend"
+        );
     }
 }

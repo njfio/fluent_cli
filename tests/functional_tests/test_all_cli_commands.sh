@@ -25,18 +25,18 @@ run_test() {
     local test_name="$1"
     local command="$2"
     local expected_exit_code="${3:-0}"
-    
+
     TOTAL=$((TOTAL + 1))
     echo -e "${BLUE}Running test: $test_name${NC}"
     echo "Command: $command"
-    
+
     # Run the command and capture exit code
     if eval "$command" >/dev/null 2>&1; then
         exit_code=0
     else
         exit_code=$?
     fi
-    
+
     # Check if exit code matches expected
     if [ $exit_code -eq $expected_exit_code ]; then
         echo -e "${GREEN}✅ PASSED${NC}"
@@ -57,18 +57,18 @@ run_success_test() {
 run_parse_test() {
     local test_name="$1"
     local command="$2"
-    
+
     TOTAL=$((TOTAL + 1))
     echo -e "${BLUE}Running test: $test_name${NC}"
     echo "Command: $command"
-    
+
     # Run the command and capture exit code
     if eval "$command" >/dev/null 2>&1; then
         exit_code=0
     else
         exit_code=$?
     fi
-    
+
     # For parsing tests, we're mainly checking that the command is recognized
     # Exit code 2 typically means argument parsing issues, which we want to catch
     # Exit codes 0 or other values might be OK for parsing tests

@@ -1,3 +1,37 @@
+//! # DEPRECATED - Legacy Error Fixer
+//!
+//! This file is kept for historical reference only.
+//! It is NOT compiled or used by the main codebase.
+//!
+//! For automated error fixing, consider:
+//! - Using `cargo fix` for automatic fixable errors
+//! - Using `cargo check --message-format=json` for structured diagnostics
+//! - Using rust-analyzer for IDE-integrated fixes
+//!
+//! ## Why This Was Deprecated
+//! - Hardcoded line numbers are fragile and break with any code changes
+//! - Limited error pattern coverage (only handles 3 specific error types)
+//! - Better tools exist (cargo fix, rust-analyzer) with comprehensive support
+//! - String-based error parsing is unreliable compared to structured JSON diagnostics
+//! - Manual file manipulation is error-prone compared to compiler-driven fixes
+//!
+//! ## Recommended Alternatives
+//!
+//! ### 1. cargo fix (Automatic Fixes)
+//! ```bash
+//! cargo fix --allow-dirty
+//! ```
+//!
+//! ### 2. Structured Diagnostics
+//! ```bash
+//! cargo check --message-format=json 2>&1 | jq
+//! ```
+//!
+//! ### 3. IDE Integration
+//! Use rust-analyzer for real-time diagnostics and quick fixes.
+//!
+//! See `docs/guides/error_diagnostics.md` for more details.
+
 use std::process::Command;
 use std::fs;
 use std::path::Path;
@@ -27,7 +61,7 @@ impl RustErrorFixer {
 
     pub fn parse_errors(&self, error_output: &str) -> Vec<RustError> {
         let mut errors = Vec::new();
-        
+
         // Parse the specific errors we know about
         if error_output.contains("expected `;`, found `}`") {
             errors.push(RustError {
@@ -38,7 +72,7 @@ impl RustErrorFixer {
                 suggestion: "Add semicolon".to_string(),
             });
         }
-        
+
         if error_output.contains("expected `bool`, found `(_, _)`") {
             errors.push(RustError {
                 error_type: ErrorType::TypeMismatch,
@@ -48,7 +82,7 @@ impl RustErrorFixer {
                 suggestion: "Fix return type".to_string(),
             });
         }
-        
+
         if error_output.contains("unused variable: `y`") {
             errors.push(RustError {
                 error_type: ErrorType::UnusedVariable,
@@ -58,7 +92,7 @@ impl RustErrorFixer {
                 suggestion: "Prefix with underscore".to_string(),
             });
         }
-        
+
         if error_output.contains("unused variable: `x`") {
             errors.push(RustError {
                 error_type: ErrorType::UnusedVariable,
@@ -68,13 +102,13 @@ impl RustErrorFixer {
                 suggestion: "Prefix with underscore".to_string(),
             });
         }
-        
+
         errors
     }
 
     pub fn apply_fixes(&self, errors: Vec<RustError>) -> Result<(), String> {
         let file_path = format!("{}/src/main.rs", self.project_path);
-        
+
         for error in errors {
             match error.error_type {
                 ErrorType::MissingSemicolon => {
@@ -88,14 +122,14 @@ impl RustErrorFixer {
                 }
             }
         }
-        
+
         Ok(())
     }
 
     fn fix_missing_semicolon(&self, file_path: &str, line_number: usize) -> Result<(), String> {
         let content = fs::read_to_string(file_path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        
+
         let lines: Vec<&str> = content.lines().collect();
         if line_number > 0 && line_number <= lines.len() {
             let target_line = lines[line_number - 1];
@@ -103,13 +137,13 @@ impl RustErrorFixer {
                 // Add semicolon to the previous line
                 let mut new_lines = lines.to_vec();
                 new_lines[line_number - 2] = &format!("{};", new_lines[line_number - 2]);
-                
+
                 let new_content = new_lines.join("\n");
                 fs::write(file_path, new_content)
                     .map_err(|e| format!("Failed to write file: {}", e))?;
             }
         }
-        
+
         Ok(())
     }
 
@@ -122,7 +156,7 @@ impl RustErrorFixer {
     fn fix_unused_variable(&self, file_path: &str, line_number: usize) -> Result<(), String> {
         let content = fs::read_to_string(file_path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        
+
         let lines: Vec<&str> = content.lines().collect();
         if line_number > 0 && line_number <= lines.len() {
             let target_line = lines[line_number - 1];
@@ -133,15 +167,15 @@ impl RustErrorFixer {
             } else {
                 target_line.to_string()
             };
-            
+
             let mut new_lines = lines.to_vec();
             new_lines[line_number - 1] = &new_line;
-            
+
             let new_content = new_lines.join("\n");
             fs::write(file_path, new_content)
                 .map_err(|e| format!("Failed to write file: {}", e))?;
         }
-        
+
         Ok(())
     }
 }

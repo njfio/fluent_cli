@@ -7,14 +7,14 @@ use crossterm::{
         disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
-    Result,
 };
 use rand::Rng;
 use std::{
     collections::VecDeque,
-    io::{stdout, Write},
+    io::{self, stdout, Write},
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Position {
@@ -186,14 +186,14 @@ impl Game {
     }
 
     fn get_speed(&self) -> Duration {
-        let base_speed = 200;
-        let speed_increase = self.score / 50;
+        let base_speed: u64 = 200;
+        let speed_increase = (self.score / 50) as u64;
         let current_speed = base_speed.saturating_sub(speed_increase * 10).max(50);
         Duration::from_millis(current_speed)
     }
 }
 
-fn draw_game(game: &Game) -> Result<()> {
+fn draw_game(game: &Game) -> io::Result<()> {
     let mut stdout = stdout();
 
     execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
@@ -293,7 +293,7 @@ fn draw_game(game: &Game) -> Result<()> {
     Ok(())
 }
 
-fn handle_input(game: &mut Game) -> Result<bool> {
+fn handle_input(game: &mut Game) -> io::Result<bool> {
     if poll(Duration::from_millis(0))? {
         if let Event::Key(KeyEvent { code, .. }) = read()? {
             match code {
@@ -325,7 +325,8 @@ fn handle_input(game: &mut Game) -> Result<bool> {
     Ok(true)
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
@@ -349,7 +350,7 @@ fn main() -> Result<()> {
             break Err(e);
         }
 
-        std::thread::sleep(Duration::from_millis(10));
+        sleep(Duration::from_millis(10)).await;
     };
 
     execute!(stdout(), Show, LeaveAlternateScreen)?;

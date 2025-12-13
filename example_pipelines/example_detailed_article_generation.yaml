@@ -34,7 +34,7 @@ steps:
         name: generate_section
         command: |
           fluent openai '' <<EOM
-          Write a detailed section for the following part of the article outline: 
+          Write a detailed section for the following part of the article outline:
 
           ${article_outline}
 
@@ -101,7 +101,7 @@ steps:
       from bs4 import BeautifulSoup
       import json
       import re
-      
+
       topic = """${article_topic}"""
       topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '+')
       url = f'https://news.google.com/search?q={topic}&hl=en-US&gl=US&ceid=US:en'
@@ -134,8 +134,8 @@ steps:
     command: |
       fluent gemini-flash ''  --parse-code <<EOM
       Create a Python script using matplotlib to visualize the relationship between technology and nature based on the article we've been working on. Use the following topic as inspiration: ${article_topic}
-      No pip installs.  
-      Only output the python script.  
+      No pip installs.
+      Only output the python script.
       Save the plot as output.png
       EOM
     save_output: data_viz_script
@@ -152,7 +152,7 @@ steps:
     name: generate_image_prompt
     command: |
       fluent sonnet3.5 '' <<EOM
-      Create a detailed prompt for an AI image generator to create an image that represents the intersection of technology and nature, based on our article topic: 
+      Create a detailed prompt for an AI image generator to create an image that represents the intersection of technology and nature, based on our article topic:
       ${conclusion}
       Output the prompt only.
       EOM
@@ -184,7 +184,7 @@ steps:
     name: generate_social_media_post
     command: |
       fluent openai '' <<EOM
-      Create an engaging social media post (280 characters max) to promote our article on the topic: ${article_topic}. 
+      Create an engaging social media post (280 characters max) to promote our article on the topic: ${article_topic}.
       Include a call-to-action and relevant hashtags.
       EOM
     save_output: social_media_post
@@ -210,13 +210,13 @@ steps:
     name: print_summary
     value: |
       ======= AI-Powered Content Creator and Analyzer Pipeline Complete =======
-      
+
       ${process_summary}
-      
+
       You can find the full report in ai_content_creator_report.md
       The data visualization is saved as data_visualization.png
       The AI-generated image is saved in the output directory
-      
+
       Thank you for using the AI-Powered Content Creator and Analyzer Pipeline!
       =======================================================================
 

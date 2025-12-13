@@ -95,11 +95,23 @@ impl ApprovalPanel {
 
         let header = Paragraph::new(vec![Line::from(vec![
             Span::styled("⚠️  ", Style::default().fg(Color::Yellow)),
-            Span::styled("ACTION REQUIRES APPROVAL", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "ACTION REQUIRES APPROVAL",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" - Risk: ", Style::default().fg(Color::White)),
-            Span::styled(risk_text, Style::default().fg(risk_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                risk_text,
+                Style::default().fg(risk_color).add_modifier(Modifier::BOLD),
+            ),
         ])])
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow)),
+        )
         .alignment(Alignment::Center);
 
         f.render_widget(header, area);
@@ -119,14 +131,19 @@ impl ApprovalPanel {
                 Span::styled(&approval.action_type, Style::default().fg(Color::White)),
             ]),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Description: ", Style::default().fg(Color::Cyan)),
-            ]),
-            Line::from(Span::styled(&approval.action_description, Style::default().fg(Color::White))),
+            Line::from(vec![Span::styled(
+                "Description: ",
+                Style::default().fg(Color::Cyan),
+            )]),
+            Line::from(Span::styled(
+                &approval.action_description,
+                Style::default().fg(Color::White),
+            )),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Risk Factors:", Style::default().fg(Color::Cyan)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Risk Factors:",
+                Style::default().fg(Color::Cyan),
+            )]),
         ];
 
         let mut all_lines = details_lines;
@@ -138,24 +155,33 @@ impl ApprovalPanel {
         }
 
         let details = Paragraph::new(all_lines)
-            .block(Block::default().borders(Borders::ALL).title("Action Details"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Action Details"),
+            )
             .wrap(Wrap { trim: true });
 
         f.render_widget(details, chunks[0]);
 
         // Right: Context and reasoning
         let mut context_lines = vec![
-            Line::from(vec![
-                Span::styled("Reasoning:", Style::default().fg(Color::Cyan)),
-            ]),
-            Line::from(Span::styled(&approval.context.reasoning, Style::default().fg(Color::White))),
+            Line::from(vec![Span::styled(
+                "Reasoning:",
+                Style::default().fg(Color::Cyan),
+            )]),
+            Line::from(Span::styled(
+                &approval.context.reasoning,
+                Style::default().fg(Color::White),
+            )),
             Line::from(""),
         ];
 
         if !approval.context.affected_files.is_empty() {
-            context_lines.push(Line::from(vec![
-                Span::styled("Affected Files:", Style::default().fg(Color::Cyan)),
-            ]));
+            context_lines.push(Line::from(vec![Span::styled(
+                "Affected Files:",
+                Style::default().fg(Color::Cyan),
+            )]));
             for file in &approval.context.affected_files {
                 context_lines.push(Line::from(vec![
                     Span::styled("  📄 ", Style::default()),
@@ -166,9 +192,10 @@ impl ApprovalPanel {
         }
 
         if let Some(ref cmd) = approval.context.command {
-            context_lines.push(Line::from(vec![
-                Span::styled("Command:", Style::default().fg(Color::Cyan)),
-            ]));
+            context_lines.push(Line::from(vec![Span::styled(
+                "Command:",
+                Style::default().fg(Color::Cyan),
+            )]));
             context_lines.push(Line::from(vec![
                 Span::styled("  $ ", Style::default().fg(Color::Green)),
                 Span::styled(cmd, Style::default().fg(Color::White)),
@@ -178,7 +205,10 @@ impl ApprovalPanel {
 
         context_lines.push(Line::from(vec![
             Span::styled("Agent Recommends: ", Style::default().fg(Color::Cyan)),
-            Span::styled(&approval.context.agent_recommendation, Style::default().fg(Color::Green)),
+            Span::styled(
+                &approval.context.agent_recommendation,
+                Style::default().fg(Color::Green),
+            ),
         ]));
 
         let context = Paragraph::new(context_lines)
@@ -189,12 +219,15 @@ impl ApprovalPanel {
     }
 
     fn render_controls(&self, f: &mut Frame, area: Rect) {
-        let actions = vec!["[A]pprove", "[R]eject", "[V]iew Details"];
+        let actions = ["[A]pprove", "[R]eject", "[V]iew Details"];
         let mut items = Vec::new();
 
         for (i, action) in actions.iter().enumerate() {
             let style = if i == self.selected_action {
-                Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -210,10 +243,15 @@ impl ApprovalPanel {
     }
 
     fn render_empty(&self, f: &mut Frame, area: Rect) {
-        let empty = Paragraph::new(vec![Line::from(vec![
-            Span::styled("No pending approvals", Style::default().fg(Color::Gray)),
-        ])])
-        .block(Block::default().borders(Borders::ALL).title("Approval Panel"))
+        let empty = Paragraph::new(vec![Line::from(vec![Span::styled(
+            "No pending approvals",
+            Style::default().fg(Color::Gray),
+        )])])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Approval Panel"),
+        )
         .alignment(Alignment::Center);
 
         f.render_widget(empty, area);
@@ -231,8 +269,17 @@ pub fn render_approval_indicator(f: &mut Frame, area: Rect, has_pending: bool) {
     if has_pending {
         let indicator = Paragraph::new(vec![Line::from(vec![
             Span::styled("⚠️  ", Style::default().fg(Color::Yellow)),
-            Span::styled("APPROVAL REQUIRED", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD).add_modifier(Modifier::SLOW_BLINK)),
-            Span::styled(" - Press 'A' to approve or 'R' to reject", Style::default().fg(Color::White)),
+            Span::styled(
+                "APPROVAL REQUIRED",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
+            Span::styled(
+                " - Press 'A' to approve or 'R' to reject",
+                Style::default().fg(Color::White),
+            ),
         ])])
         .style(Style::default().bg(Color::DarkGray))
         .alignment(Alignment::Center);
@@ -244,9 +291,9 @@ pub fn render_approval_indicator(f: &mut Frame, area: Rect, has_pending: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
-    use std::time::SystemTime;
     use fluent_agent::agent_control::{ApprovalContext, DefaultAction};
+    use std::time::SystemTime;
+    use uuid::Uuid;
 
     #[test]
     fn test_approval_panel_creation() {

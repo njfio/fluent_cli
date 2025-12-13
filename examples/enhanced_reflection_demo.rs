@@ -8,7 +8,6 @@ use fluent_agent::{
 use fluent_agent::profiling::ReflectionMemoryProfiler;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use tokio;
 
 /// Enhanced reasoning engine with memory profiling
 struct ProfiledReasoningEngine {
@@ -22,6 +21,7 @@ impl ProfiledReasoningEngine {
         }
     }
 
+    #[allow(dead_code)]
     fn get_profiler(&self) -> &ReflectionMemoryProfiler {
         &self.profiler
     }
@@ -29,7 +29,7 @@ impl ProfiledReasoningEngine {
 
 #[async_trait]
 impl ReasoningEngine for ProfiledReasoningEngine {
-    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
+    async fn reason(&self, prompt: &str, _context: &ExecutionContext) -> Result<String> {
         // Profile the reasoning operation
         let (result, profile) = self
             .profiler

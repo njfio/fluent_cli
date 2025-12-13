@@ -1,11 +1,9 @@
 // Real Agentic System Demo - No Mocks, Real Implementation
 use anyhow::Result;
 use fluent_agent::{
-    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig, ToolConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    memory::AsyncSqliteMemoryStore,
     tools::ToolRegistry,
 };
 
@@ -13,6 +11,12 @@ use fluent_agent::{
 async fn main() -> Result<()> {
     println!("🤖 Real Agentic System Demo");
     println!("============================");
+    println!();
+
+    // Note: This demo doesn't make actual LLM API calls, but if you want to
+    // extend it to use real engines, you'll need API keys set:
+    // export OPENAI_API_KEY=your-key-here
+    // export ANTHROPIC_API_KEY=your-key-here
 
     // Demo 1: Real Memory System
     println!("\n📚 Demo 1: Real Memory System");
@@ -233,6 +237,7 @@ async fn demo_tool_system() -> Result<()> {
         shell_commands: true,
         rust_compiler: true,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![
             "./".to_string(),
             "./examples/".to_string(),
@@ -285,17 +290,23 @@ async fn demo_config_system() -> Result<()> {
         action_engine: "openai".to_string(),
         reflection_engine: "openai".to_string(),
         memory_database: "sqlite://./demo_agent_memory.db".to_string(),
+        memory_enabled: true,
         tools: ToolConfig {
             file_operations: true,
             shell_commands: true,
             rust_compiler: true,
             git_operations: true,
+            web_browsing: true,
             allowed_paths: Some(vec!["./".to_string(), "./examples/".to_string()]),
             allowed_commands: Some(vec!["cargo".to_string(), "rustc".to_string()]),
         },
         config_path: None,
         max_iterations: Some(50),
         timeout_seconds: Some(300),
+        supervisor: None,
+        performance: None,
+        state_management: None,
+        rate_limit: None,
     };
 
     // Validate configuration

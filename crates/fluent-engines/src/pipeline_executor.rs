@@ -20,7 +20,7 @@ use crate::pipeline::{
     VariableExpander,
 };
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use schemars::JsonSchema;
 use uuid::Uuid;
@@ -113,6 +113,15 @@ pub enum PipelineStep {
 pub struct RetryConfig {
     pub max_attempts: u32,
     pub delay_ms: u64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            delay_ms: 1000,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]

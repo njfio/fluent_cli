@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::ArgMatches;
 use fluent_core::config::Config;
-use log::info;
 use std::io::IsTerminal;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tracing::info;
 
 // Import minimal agentic framework components for type checking
 // The actual implementation uses the existing agentic infrastructure from lib.rs
@@ -53,6 +53,7 @@ impl AgentCommand {
     }
 
     /// Run real agentic mode with goal-oriented execution using the agentic framework
+    #[allow(clippy::too_many_arguments)]
     async fn run_agentic_mode(
         &mut self,
         goal_description: &str,
@@ -236,7 +237,6 @@ impl CommandHandler for AgentCommand {
             .get_one::<u32>("max-iterations")
             .copied()
             .unwrap_or(10);
-        let enable_tools = matches.get_flag("enable-tools");
         let reflection = matches.get_flag("reflection");
 
         // Check for different agent subcommands
@@ -245,7 +245,23 @@ impl CommandHandler for AgentCommand {
             || matches.get_one::<String>("goal-file").is_some()
             || matches.get_flag("dry-run");
 
-        println!("🔍 run_agentic = {}, agentic flag = {}, goal provided = {}", run_agentic, matches.get_flag("agentic"), matches.get_one::<String>("goal").is_some());
+        // Enable tools by default in agentic mode unless explicitly disabled
+        // Use --no-tools to disable
+        let enable_tools = if matches.get_flag("no-tools") {
+            false
+        } else if run_agentic || matches.get_flag("agentic") {
+            // Default to enabled in agentic mode
+            true
+        } else {
+            matches.get_flag("enable-tools")
+        };
+
+        println!(
+            "🔍 run_agentic = {}, agentic flag = {}, goal provided = {}",
+            run_agentic,
+            matches.get_flag("agentic"),
+            matches.get_one::<String>("goal").is_some()
+        );
 
         if run_agentic {
             // Load goal from --goal-file if provided, otherwise --goal string
@@ -295,8 +311,6 @@ impl CommandHandler for AgentCommand {
 
             let max_iterations = max_iters_override.unwrap_or(max_iterations);
 
-            let enable_tools = enable_tools;
-
             let config_path = matches
                 .get_one::<String>("config")
                 .map(|s| s.as_str())
@@ -312,6 +326,38 @@ impl CommandHandler for AgentCommand {
 
             let dry_run = matches.get_flag("dry-run");
             let enable_tui = matches.get_flag("tui");
+
+            // TUI mode flags
+            if matches.get_flag("ascii") {
+                std::env::set_var("FLUENT_FORCE_ASCII", "1");
+                std::env::set_var("NO_COLOR", "1");
+            }
+            if let Some(mode) = matches.get_one::<String>("tui-mode").map(|s| s.as_str()) {
+                match mode {
+                    "collab" => {
+                        std::env::set_var("FLUENT_USE_COLLAB_TUI", "1");
+                        std::env::remove_var("FLUENT_USE_OLD_TUI");
+                        std::env::remove_var("FLUENT_FORCE_ASCII");
+                    }
+                    "simple" => {
+                        std::env::remove_var("FLUENT_USE_COLLAB_TUI");
+                        std::env::remove_var("FLUENT_FORCE_ASCII");
+                        std::env::remove_var("FLUENT_USE_OLD_TUI");
+                    }
+                    "full" => {
+                        std::env::remove_var("FLUENT_USE_COLLAB_TUI");
+                        std::env::remove_var("FLUENT_FORCE_ASCII");
+                        // Set to use old TUI (AgentTui) by disabling SimpleTUI
+                        std::env::set_var("FLUENT_USE_OLD_TUI", "1");
+                    }
+                    "ascii" => {
+                        std::env::set_var("FLUENT_FORCE_ASCII", "1");
+                        std::env::set_var("NO_COLOR", "1");
+                        std::env::remove_var("FLUENT_USE_COLLAB_TUI");
+                    }
+                    _ => {}
+                }
+            }
 
             let result = agent_command
                 .run_agentic_mode(

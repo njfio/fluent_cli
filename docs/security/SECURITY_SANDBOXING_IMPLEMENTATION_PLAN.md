@@ -135,21 +135,21 @@ impl CapabilityManager {
         let sessions = self.active_sessions.read().await;
         let session = sessions.get(session_id)
             .ok_or_else(|| SecurityError::SessionNotFound)?;
-            
+
         // Check if capability exists
         let capability = session.granted_capabilities.iter()
             .find(|cap| self.matches_resource(&cap.resource_type, resource))
             .ok_or_else(|| SecurityError::CapabilityNotGranted)?;
-            
+
         // Check constraints
         self.validate_constraints(capability, resource, session).await?;
-        
+
         // Log access attempt
         self.audit_logger.log_access_attempt(session_id, resource, true).await?;
-        
+
         Ok(PermissionResult::Granted)
     }
-    
+
     async fn validate_constraints(
         &self,
         capability: &Capability,
@@ -215,22 +215,22 @@ impl SandboxedExecutor {
         // Check permissions first
         let resource_request = self.tool_request_to_resource_request(&tool_request);
         self.capability_manager.check_permission(session_id, &resource_request).await?;
-        
+
         match self.sandbox_config.use_containers {
             true => self.execute_in_container(session_id, tool_request).await,
             false => self.execute_in_process_sandbox(session_id, tool_request).await,
         }
     }
-    
+
     async fn execute_in_container(
         &self,
         session_id: &str,
         tool_request: ToolRequest,
     ) -> Result<ToolResult> {
         use bollard::{Docker, container::{CreateContainerOptions, Config}};
-        
+
         let docker = Docker::connect_with_local_defaults()?;
-        
+
         let container_config = Config {
             image: self.sandbox_config.container_image.clone(),
             memory: Some(self.sandbox_config.memory_limit as i64),
@@ -241,32 +241,32 @@ impl SandboxedExecutor {
             cmd: Some(self.build_container_command(&tool_request)?),
             ..Default::default()
         };
-        
+
         let container_name = format!("fluent-sandbox-{}", session_id);
         let container = docker.create_container(
             Some(CreateContainerOptions { name: &container_name }),
             container_config,
         ).await?;
-        
+
         // Start container and monitor execution
         docker.start_container(&container.id, None).await?;
-        
+
         // Monitor resource usage
         let monitor_handle = self.resource_monitor.start_monitoring(&container.id).await?;
-        
+
         // Wait for completion with timeout
         let result = tokio::time::timeout(
             Duration::from_secs(self.sandbox_config.max_execution_time),
             self.wait_for_container_completion(&docker, &container.id),
         ).await??;
-        
+
         // Stop monitoring and cleanup
         monitor_handle.stop().await?;
         docker.remove_container(&container.id, None).await?;
-        
+
         Ok(result)
     }
-    
+
     async fn execute_in_process_sandbox(
         &self,
         session_id: &str,
@@ -277,10 +277,10 @@ impl SandboxedExecutor {
             ForkResult::Parent { child } => {
                 // Parent process - monitor child
                 let monitor_handle = self.resource_monitor.start_process_monitoring(child).await?;
-                
+
                 let status = waitpid(child, None)?;
                 monitor_handle.stop().await?;
-                
+
                 match status {
                     WaitStatus::Exited(_, code) => {
                         if code == 0 {
@@ -300,7 +300,7 @@ impl SandboxedExecutor {
             }
         }
     }
-    
+
     fn setup_child_sandbox(&self, tool_request: &ToolRequest) -> Result<()> {
         // Drop privileges
         if let Some(uid) = self.sandbox_config.sandbox_uid {
@@ -309,15 +309,15 @@ impl SandboxedExecutor {
         if let Some(gid) = self.sandbox_config.sandbox_gid {
             setgid(gid)?;
         }
-        
+
         // Set up filesystem isolation
         if self.sandbox_config.filesystem_isolation {
             self.setup_filesystem_jail()?;
         }
-        
+
         // Set resource limits
         self.set_resource_limits()?;
-        
+
         Ok(())
     }
 }
@@ -341,30 +341,30 @@ impl WasmSandbox {
         args: Vec<Value>,
     ) -> Result<Value> {
         let module = Module::new(&self.engine, wasm_bytes)?;
-        
+
         let wasi_ctx = WasiCtxBuilder::new()
             .inherit_stdio()
             .preopened_dir("/tmp/sandbox", "/")?
             .build();
-            
+
         let mut store = Store::new(&self.engine, wasi_ctx);
-        
+
         // Add host functions with security checks
         let security_check = Func::wrap(&mut store, |caller: Caller<'_, WasiCtx>, ptr: i32, len: i32| {
             // Validate memory access
             self.validate_memory_access(caller, ptr, len)
         });
-        
+
         let instance = Instance::new(&mut store, &module, &[security_check.into()])?;
-        
+
         let func = instance.get_typed_func::<(i32, i32), i32>(&mut store, function_name)?;
-        
+
         // Execute with timeout and resource monitoring
         let result = tokio::time::timeout(
             Duration::from_secs(30),
             async { func.call(&mut store, (args[0].as_i32()?, args[1].as_i32()?)) }
         ).await??;
-        
+
         Ok(Value::I32(result))
     }
 }
@@ -411,7 +411,7 @@ impl InputValidator {
         parameters: &HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>> {
         let mut validated_params = HashMap::new();
-        
+
         for (param_name, value) in parameters {
             let rule_key = format!("{}:{}", tool_name, param_name);
             if let Some(rule) = self.validation_rules.get(&rule_key) {
@@ -421,27 +421,27 @@ impl InputValidator {
                 return Err(ValidationError::UnknownParameter(param_name.clone()));
             }
         }
-        
+
         Ok(validated_params)
     }
-    
+
     fn validate_parameter(&self, value: &Value, rule: &ValidationRule) -> Result<Value> {
         // Type validation
         self.validate_data_type(value, &rule.data_type)?;
-        
+
         // Constraint validation
         for constraint in &rule.constraints {
             self.validate_constraint(value, constraint)?;
         }
-        
+
         // Sanitization
         if let Some(sanitization) = &rule.sanitization {
             return self.sanitize_value(value, sanitization);
         }
-        
+
         Ok(value.clone())
     }
-    
+
     fn validate_constraint(&self, value: &Value, constraint: &ValidationConstraint) -> Result<()> {
         match constraint {
             ValidationConstraint::PathTraversal => {
@@ -524,7 +524,7 @@ impl SecurityAuditLogger {
         result: &ToolResult,
     ) -> Result<()> {
         let risk_score = self.calculate_risk_score(tool_name, parameters, result);
-        
+
         let event = AuditEvent {
             event_id: Uuid::new_v4().to_string(),
             timestamp: Utc::now(),
@@ -544,21 +544,21 @@ impl SecurityAuditLogger {
                 "memory_usage": result.memory_usage,
             }).as_object().unwrap().clone(),
         };
-        
+
         // Encrypt sensitive data
         let encrypted_event = self.encrypt_audit_event(&event)?;
-        
+
         // Store audit event
         self.log_storage.store_event(encrypted_event).await?;
-        
+
         // Check for security alerts
         if risk_score > 70 {
             self.alert_manager.send_security_alert(&event).await?;
         }
-        
+
         Ok(())
     }
-    
+
     fn calculate_risk_score(
         &self,
         tool_name: &str,
@@ -566,7 +566,7 @@ impl SecurityAuditLogger {
         result: &ToolResult,
     ) -> u8 {
         let mut score = 0u8;
-        
+
         // Base risk by tool type
         score += match tool_name {
             "shell.run_command" => 50,
@@ -574,7 +574,7 @@ impl SecurityAuditLogger {
             "filesystem.read_file" => 10,
             _ => 5,
         };
-        
+
         // Parameter-based risk
         for (key, value) in parameters {
             if key.contains("password") || key.contains("secret") {
@@ -586,12 +586,12 @@ impl SecurityAuditLogger {
                 }
             }
         }
-        
+
         // Result-based risk
         if let ToolResult::Error(_) = result {
             score += 15;
         }
-        
+
         score.min(100)
     }
 }
@@ -619,20 +619,20 @@ impl SecureToolRegistry {
         // 1. Validate inputs
         let validated_params = self.input_validator
             .validate_tool_parameters(tool_name, parameters)?;
-        
+
         // 2. Check capabilities
         let resource_request = ResourceRequest::from_tool_request(tool_name, &validated_params);
         self.capability_manager.check_permission(session_id, &resource_request).await?;
-        
+
         // 3. Execute in sandbox
         let tool_request = ToolRequest {
             name: tool_name.to_string(),
             parameters: validated_params.clone(),
         };
-        
+
         let result = self.sandbox_executor
             .execute_tool_sandboxed(session_id, tool_request).await?;
-        
+
         // 4. Audit logging
         self.audit_logger.log_tool_execution(
             session_id,
@@ -640,7 +640,7 @@ impl SecureToolRegistry {
             &validated_params,
             &result,
         ).await?;
-        
+
         Ok(result.output)
     }
 }

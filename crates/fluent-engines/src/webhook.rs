@@ -14,8 +14,8 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
+use tracing::debug;
 
 pub struct WebhookEngine {
     config: EngineConfig,
@@ -238,7 +238,8 @@ impl Engine for WebhookEngine {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(60000);
 
-            debug!("Url: {}, payload: {:?}, timeout: {}", url, payload, timeout);
+            // Avoid logging full payload as it may contain sensitive data from config parameters
+            debug!("Webhook request to URL: {}, timeout: {}ms", url, timeout);
             let response = self
                 .client
                 .post(&url)

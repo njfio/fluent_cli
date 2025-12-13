@@ -8,12 +8,12 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 /// OpenAI engine with streaming support
 pub struct OpenAIStreamingEngine {
@@ -27,15 +27,8 @@ pub struct OpenAIStreamingEngine {
 impl OpenAIStreamingEngine {
     /// Create a new OpenAI streaming engine
     pub async fn new(config: EngineConfig) -> Result<Self> {
-        // Create optimized HTTP client
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create optimized HTTP client using secure defaults
+        let client = fluent_core::create_secure_client()?;
 
         // Initialize Neo4j client if configured
         let neo4j_client = if let Some(neo4j_config) = &config.neo4j {
@@ -203,17 +196,15 @@ impl Engine for OpenAIStreamingEngine {
 
     fn extract_content(&self, value: &Value) -> Option<ExtractedContent> {
         // Extract content from OpenAI response format
-        if let Some(content) = value["choices"][0]["message"]["content"].as_str() {
-            Some(ExtractedContent {
+        value["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|content| ExtractedContent {
                 main_content: content.to_string(),
                 sentiment: None,
                 clusters: None,
                 themes: None,
                 keywords: None,
             })
-        } else {
-            None
-        }
     }
 
     fn upload_file<'a>(
@@ -381,21 +372,21 @@ mod tests {
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let config = create_openai_config();
 ///     let engine = OpenAIStreamingEngine::new(config).await?;
-///     
+///
 ///     let request = Request {
 ///         flowname: "test".to_string(),
 ///         payload: "Hello, how are you?".to_string(),
 ///     };
-///     
+///
 ///     // Option 1: Use streaming with progress callback
 ///     let response = engine.execute_with_progress(&request, |chunk| {
 ///         print!("{}", chunk); // Print each chunk as it arrives
 ///         // Note: In real async code, use tokio::io::stdout().flush().await
 ///     }).await?;
-///     
+///
 ///     // Option 2: Use streaming and collect into single response
 ///     let response = engine.execute_collected(&request).await?;
-///     
+///
 ///     // Option 3: Use raw streaming
 ///     let mut stream = engine.execute_streaming(&request).await?;
 ///     while let Some(chunk) = stream.next().await {
@@ -407,7 +398,7 @@ mod tests {
 ///             break;
 ///         }
 ///     }
-///     
+///
 ///     Ok(())
 /// }
 /// ```

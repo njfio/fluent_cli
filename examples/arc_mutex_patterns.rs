@@ -120,6 +120,7 @@ async fn demonstrate_nested_arc_avoidance() -> Result<(), Box<dyn std::error::Er
 
     // ✅ GOOD: Single Arc with internal synchronization
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct State {
         value: i32,
         timestamp: std::time::SystemTime,

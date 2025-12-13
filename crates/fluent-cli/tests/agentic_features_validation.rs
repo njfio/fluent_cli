@@ -41,8 +41,19 @@ async fn test_agentic_run_function_exists() -> Result<()> {
     // This validates the public API structure
 
     let goal = "Test goal processing";
-    let result =
-        fluent_cli::run_agentic_mode(goal, "test_config.json", 3, true, "test_config.toml").await;
+    let result = fluent_cli::run_agentic_mode(
+        goal,
+        "test_config.json",
+        3,
+        true,
+        false, // enable_reflection
+        "test_config.toml",
+        None,  // model_override
+        None,  // gen_retries
+        None,  // min_html_size
+        false, // enable_tui
+    )
+    .await;
 
     // The result may fail due to missing LLM configuration, but the structure should work
     // We're testing that the code path executes without panicking
@@ -64,7 +75,7 @@ async fn test_agentic_run_function_exists() -> Result<()> {
 #[tokio::test]
 async fn test_agent_command_structure_validation() -> Result<()> {
     // Test that the agent command structure is valid
-    let agent_command = AgentCommand::new();
+    let _agent_command = AgentCommand::new();
 
     // Verify the agent command can be created and has the expected structure
     // This is a basic structural validation test
@@ -124,7 +135,7 @@ async fn test_complete_agentic_workflow() -> Result<()> {
 
     // 1. Create agent command
     let _agent_command = AgentCommand::new();
-    let config = create_test_config();
+    let _config = create_test_config();
 
     // 2. Test the public agentic function
     let goal_result = fluent_cli::run_agentic_mode(
@@ -132,7 +143,12 @@ async fn test_complete_agentic_workflow() -> Result<()> {
         "test_config.json",
         2,
         true,
+        false, // enable_reflection
         "test_config.toml",
+        None,  // model_override
+        None,  // gen_retries
+        None,  // min_html_size
+        false, // enable_tui
     )
     .await;
 

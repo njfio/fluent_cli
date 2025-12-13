@@ -1,0 +1,11 @@
+goal_description = "Conduct a comprehensive research and implementation sprint on scalable, low-latency LLM inference: 1) survey state-of-the-art batching, speculative decoding, KV cache management, tensor parallelism, and on-the-fly quantization; 2) benchmark three optimization strategies on representative prompts and workloads; 3) generate a structured report with visual summaries and actionable recommendations; 4) produce a prototype plan with code scaffolding and TODOs for integrating an optimized inference path into a Rust-based CLI including metrics, tracing, and rollback hooks. Deliver outputs to the configured research directory and ensure the plan is testable with clear success criteria."
+max_iterations = 30
+output_dir = "./outputs/research_llm_inference"
+chapters = 6
+success_criteria = [
+  "Report includes at least 3 distinct optimization strategies with trade-offs",
+  "Benchmarks capture latency, throughput, and cost across 2 workloads",
+  "Actionable integration plan with measurable milestones and rollback steps",
+  "Prototype scaffolding compiles and includes metrics and tracing hooks",
+  "Clear validation and test strategy aligned to success criteria"
+]

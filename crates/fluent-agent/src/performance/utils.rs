@@ -1,4 +1,4 @@
-use log::{debug, info};
+use tracing::{debug, info};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
@@ -34,24 +34,24 @@ impl PerformanceCounter {
             })),
         }
     }
-    
+
     pub fn record_request(&self, duration: Duration, is_error: bool) {
         let mut stats = match self.stats.lock() {
             Ok(stats) => stats,
             Err(_) => {
                 // Mutex is poisoned, but we can still continue with degraded functionality
-                log::warn!("Performance stats mutex poisoned, skipping stats update");
+                tracing::warn!("Performance stats mutex poisoned, skipping stats update");
                 return;
             }
         };
-        
+
         stats.total_requests += 1;
         if is_error {
             stats.total_errors += 1;
         }
-        
+
         stats.total_duration += duration;
-        
+
         // Update min/max
         stats.min_duration = Some(
             stats.min_duration.map_or(duration, |min| min.min(duration))
@@ -59,29 +59,29 @@ impl PerformanceCounter {
         stats.max_duration = Some(
             stats.max_duration.map_or(duration, |max| max.max(duration))
         );
-        
+
         // Update averages
         if stats.total_requests > 0 {
             stats.average_duration = stats.total_duration / stats.total_requests as u32;
             stats.error_rate = stats.total_errors as f64 / stats.total_requests as f64;
         }
     }
-    
+
     pub fn get_stats(&self) -> PerformanceStats {
         match self.stats.lock() {
             Ok(stats) => stats.clone(),
             Err(_) => {
-                log::warn!("Performance stats mutex poisoned, returning default stats");
+                tracing::warn!("Performance stats mutex poisoned, returning default stats");
                 PerformanceStats::default()
             }
         }
     }
-    
+
     pub fn reset(&self) {
         let mut stats = match self.stats.lock() {
             Ok(stats) => stats,
             Err(_) => {
-                log::warn!("Performance stats mutex poisoned, cannot reset stats");
+                tracing::warn!("Performance stats mutex poisoned, cannot reset stats");
                 return;
             }
         };
@@ -118,43 +118,43 @@ impl MemoryTracker {
             peak_usage: Arc::new(Mutex::new(initial)),
         }
     }
-    
+
     pub fn get_current_usage(&self) -> u64 {
         let current = Self::get_memory_usage();
-        
+
         // Update peak usage
         let mut peak = match self.peak_usage.lock() {
             Ok(peak) => peak,
             Err(_) => {
-                log::warn!("Memory tracker peak usage mutex poisoned");
+                tracing::warn!("Memory tracker peak usage mutex poisoned");
                 return;
             }
         };
         if current > *peak {
             *peak = current;
         }
-        
+
         current
     }
-    
+
     pub fn get_peak_usage(&self) -> u64 {
         match self.peak_usage.lock() {
             Ok(peak) => *peak,
             Err(_) => {
-                log::warn!("Memory tracker peak usage mutex poisoned, returning 0");
+                tracing::warn!("Memory tracker peak usage mutex poisoned, returning 0");
                 0
             }
         }
     }
-    
+
     pub fn get_initial_usage(&self) -> u64 {
         self.initial_usage
     }
-    
+
     pub fn get_usage_delta(&self) -> i64 {
         self.get_current_usage() as i64 - self.initial_usage as i64
     }
-    
+
     fn get_memory_usage() -> u64 {
         get_current_process_memory().unwrap_or_else(|_| {
             // Fallback: return a simulated value based on time
@@ -186,16 +186,16 @@ impl ResourceLimiter {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
         }
     }
-    
+
     pub async fn acquire(&self) -> Result<tokio::sync::SemaphorePermit<'_>, anyhow::Error> {
         self.semaphore.acquire().await
             .map_err(|e| anyhow::anyhow!("Failed to acquire semaphore permit: {}", e))
     }
-    
+
     pub fn try_acquire(&self) -> Option<tokio::sync::SemaphorePermit<'_>> {
         self.semaphore.try_acquire().ok()
     }
-    
+
     pub fn available_permits(&self) -> usize {
         self.semaphore.available_permits()
     }
@@ -218,7 +218,7 @@ impl PerformanceTestUtils {
         let counter = PerformanceCounter::new();
         let memory_tracker = MemoryTracker::new();
         let start_time = Instant::now();
-        
+
         info!("Running performance test: {}", name);
 
         for i in 0..num_operations {
@@ -232,11 +232,11 @@ impl PerformanceTestUtils {
                 debug!("  Progress: {}/{}", i + 1, num_operations);
             }
         }
-        
+
         let total_duration = start_time.elapsed();
         let stats = counter.get_stats();
         let peak_memory = memory_tracker.get_peak_usage();
-        
+
         PerformanceTestResult {
             test_name: name.to_string(),
             total_duration,
@@ -245,7 +245,7 @@ impl PerformanceTestUtils {
             operations_per_second: num_operations as f64 / total_duration.as_secs_f64(),
         }
     }
-    
+
     /// Run a concurrent performance test
     pub async fn run_concurrent_test<F, Fut>(
         name: &str,
@@ -260,39 +260,39 @@ impl PerformanceTestUtils {
         let counter = PerformanceCounter::new();
         let memory_tracker = MemoryTracker::new();
         let start_time = Instant::now();
-        
+
         println!("Running concurrent performance test: {} (concurrency: {})", name, concurrency);
-        
+
         let mut handles = Vec::new();
         let ops_per_task = num_operations / concurrency;
-        
+
         for task_id in 0..concurrency {
             let counter_clone = counter.clone();
             let operation = &operation;
-            
+
             let handle = tokio::spawn(async move {
                 for op_id in 0..ops_per_task {
                     let op_start = Instant::now();
                     let result = operation(task_id * ops_per_task + op_id).await;
                     let op_duration = op_start.elapsed();
-                    
+
                     counter_clone.record_request(op_duration, result.is_err());
                 }
             });
             handles.push(handle);
         }
-        
+
         // Wait for all tasks to complete
         for handle in handles {
             if let Err(e) = handle.await {
-                log::warn!("Task failed during performance test: {}", e);
+                tracing::warn!("Task failed during performance test: {}", e);
             }
         }
-        
+
         let total_duration = start_time.elapsed();
         let stats = counter.get_stats();
         let peak_memory = memory_tracker.get_peak_usage();
-        
+
         PerformanceTestResult {
             test_name: name.to_string(),
             total_duration,
@@ -325,12 +325,12 @@ impl PerformanceTestResult {
         info!("  Average Operation Time: {:?}", self.stats.average_duration);
         info!("  Min Operation Time: {:?}", self.stats.min_duration.unwrap_or_default());
         println!("  Max Operation Time: {:?}", self.stats.max_duration.unwrap_or_default());
-        println!("  Peak Memory Usage: {} bytes ({:.2} MB)", 
-                 self.peak_memory_usage, 
+        println!("  Peak Memory Usage: {} bytes ({:.2} MB)",
+                 self.peak_memory_usage,
                  self.peak_memory_usage as f64 / 1024.0 / 1024.0);
         println!("=== End Results ===\n");
     }
-    
+
     pub fn assert_requirements(&self, requirements: &PerformanceRequirements) -> Result<(), anyhow::Error> {
         if let Some(max_duration) = requirements.max_duration {
             if self.total_duration > max_duration {
@@ -340,7 +340,7 @@ impl PerformanceTestResult {
                 ));
             }
         }
-        
+
         if let Some(min_ops_per_sec) = requirements.min_operations_per_second {
             if self.operations_per_second < min_ops_per_sec {
                 return Err(anyhow::anyhow!(
@@ -349,7 +349,7 @@ impl PerformanceTestResult {
                 ));
             }
         }
-        
+
         if let Some(max_error_rate) = requirements.max_error_rate {
             if self.stats.error_rate > max_error_rate {
                 return Err(anyhow::anyhow!(
@@ -358,7 +358,7 @@ impl PerformanceTestResult {
                 ));
             }
         }
-        
+
         Ok(())
     }
 }

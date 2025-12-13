@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use log::{debug, info};
 use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
@@ -13,6 +12,7 @@ use termimad::crossterm::style::Color;
 use termimad::{MadSkin, StyledChar};
 use tokio::fs;
 use tokio::process::Command;
+use tracing::{debug, info};
 use url::Url;
 use uuid::Uuid;
 
@@ -416,7 +416,7 @@ impl OutputProcessor {
     fn get_command_whitelist() -> Vec<String> {
         // Check if custom whitelist is provided via environment variable
         if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
-            log::info!("Using custom command whitelist from environment");
+            tracing::info!("Using custom command whitelist from environment");
 
             // Parse comma-separated list and validate each command
             let mut commands = Vec::new();
@@ -425,7 +425,7 @@ impl OutputProcessor {
                 if !trimmed.is_empty() && Self::is_safe_command(trimmed) {
                     commands.push(trimmed.to_string());
                 } else {
-                    log::warn!("Skipping potentially unsafe command: {}", trimmed);
+                    tracing::warn!("Skipping potentially unsafe command: {}", trimmed);
                 }
             }
 
@@ -433,7 +433,7 @@ impl OutputProcessor {
             if !commands.is_empty() {
                 return commands;
             } else {
-                log::warn!("No valid commands in custom whitelist, falling back to defaults");
+                tracing::warn!("No valid commands in custom whitelist, falling back to defaults");
             }
         }
 

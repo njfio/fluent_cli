@@ -31,30 +31,30 @@ impl Orchestrator {
         while let Some(task) = self.tasks.pop() {
             let executor = Executor::new(task);
             let result = executor.execute().await?;
-            
+
             // Process result, update state, and potentially add new tasks
             self.process_result(result).await?;
-            
+
             // Check if goal is achieved
             if self.is_goal_achieved().await? {
                 break;
             }
-            
+
             // Decompose remaining work into new tasks
             let new_tasks = self.task_decomposer.decompose(&self.current_goal).await?;
             self.tasks.extend(new_tasks);
         }
-        
+
         Ok(self.generate_final_result())
     }
-    
+
     async fn process_result(&mut self, result: ExecutionResult) -> Result<()> {
         // Update internal state based on execution result
         self.state_manager.update(result).await?;
-        
+
         // Learn from the execution for future improvements
         self.learn_from_execution(result).await?;
-        
+
         Ok(())
     }
 }
@@ -97,16 +97,16 @@ impl ToolRegistry {
     pub async fn execute_tool(&self, name: &str, args: Value, context: &ExecutionContext) -> Result<ToolResult, ToolError> {
         let tool = self.tools.get(name)
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
-        
+
         // Check permissions
         self.permissions.check_permissions(tool.required_permissions(), context)?;
-        
+
         // Execute with timeout and resource limits
         let result = tokio::time::timeout(
             Duration::from_secs(30),
             tool.execute(args)
         ).await??;
-        
+
         Ok(result)
     }
 }
@@ -120,21 +120,21 @@ pub struct CodeAnalysisTool {
 #[async_trait]
 impl Tool for CodeAnalysisTool {
     fn name(&self) -> &str { "code_analysis" }
-    
-    fn description(&self) -> &str { 
-        "Analyze code structure, dependencies, and semantic relationships" 
+
+    fn description(&self) -> &str {
+        "Analyze code structure, dependencies, and semantic relationships"
     }
-    
+
     async fn execute(&self, args: Value) -> Result<ToolResult, ToolError> {
         let file_path = args["file_path"].as_str()
             .ok_or_else(|| ToolError::InvalidArgs("file_path required".to_string()))?;
-        
+
         let ast = self.ast_parser.parse_file(file_path).await?;
         let analysis = self.semantic_analyzer.analyze(&ast).await?;
-        
+
         Ok(ToolResult::Analysis(analysis))
     }
-    
+
     fn required_permissions(&self) -> Vec<Permission> {
         vec![Permission::ReadFile, Permission::ExecuteAnalysis]
     }
@@ -166,14 +166,14 @@ impl CodeIntelligenceSystem {
     pub async fn index_codebase(&self, root_path: &Path) -> Result<IndexingResult> {
         let files = self.discover_source_files(root_path).await?;
         let mut indexing_stats = IndexingStats::new();
-        
+
         // Parallel processing for performance
         let results = stream::iter(files)
             .map(|file| self.index_file(file))
             .buffer_unordered(10) // Process 10 files concurrently
             .collect::<Vec<_>>()
             .await;
-        
+
         for result in results {
             match result {
                 Ok(file_index) => {
@@ -185,39 +185,39 @@ impl CodeIntelligenceSystem {
                 }
             }
         }
-        
+
         Ok(IndexingResult { stats: indexing_stats })
     }
-    
+
     pub async fn semantic_search(&self, query: &str, context: &SearchContext) -> Result<Vec<CodeMatch>> {
         // Generate query embedding
         let query_embedding = self.vector_store.embed_query(query).await?;
-        
+
         // Search vector store
         let candidates = self.vector_store.similarity_search(
-            query_embedding, 
+            query_embedding,
             context.max_results.unwrap_or(50)
         ).await?;
-        
+
         // Re-rank using knowledge graph relationships
         let ranked_results = self.rerank_with_graph_context(candidates, context).await?;
-        
+
         Ok(ranked_results)
     }
-    
+
     pub async fn generate_contextual_code(&self, request: CodeGenerationRequest) -> Result<GeneratedCode> {
         // Gather relevant context from knowledge graph and vector search
         let context = self.gather_generation_context(&request).await?;
-        
+
         // Build enhanced prompt with context
         let prompt = self.build_contextual_prompt(&request, &context).await?;
-        
+
         // Generate code using the most appropriate model
         let generated = self.model_router.generate_code(prompt).await?;
-        
+
         // Validate generated code against existing codebase
         let validation = self.validate_generated_code(&generated, &context).await?;
-        
+
         Ok(GeneratedCode {
             code: generated,
             validation,
@@ -266,26 +266,26 @@ impl AgentCollaborationSystem {
     pub async fn execute_collaborative_task(&self, task: ComplexTask) -> Result<TaskResult> {
         // Decompose task into subtasks
         let subtasks = self.supervisor.decompose_task(task).await?;
-        
+
         // Assign subtasks to appropriate agents
         let mut task_handles = Vec::new();
-        
+
         for subtask in subtasks {
             let agent_type = self.determine_best_agent(&subtask);
             let (tx, rx) = oneshot::channel();
-            
+
             self.message_bus.send(AgentMessage::TaskAssignment {
                 task: subtask,
                 response_channel: tx,
             }).await?;
-            
+
             task_handles.push(rx);
         }
-        
+
         // Collect results and synthesize final output
         let results = futures::future::try_join_all(task_handles).await?;
         let final_result = self.supervisor.synthesize_results(results).await?;
-        
+
         Ok(final_result)
     }
 }
@@ -300,17 +300,17 @@ impl CodeWriterAgent {
     pub async fn write_code(&self, specification: CodeSpec) -> Result<GeneratedCode> {
         // Gather context from codebase
         let context = self.context_manager.gather_context(&specification).await?;
-        
+
         // Generate code following style guide
         let code = self.code_generator.generate_with_style(
             &specification,
             &context,
             &self.style_guide
         ).await?;
-        
+
         // Self-review generated code
         let review = self.self_review(&code, &specification).await?;
-        
+
         Ok(GeneratedCode {
             code,
             review,
@@ -350,12 +350,12 @@ impl AgentStreamingService {
     pub async fn handle_websocket(&self, ws: WebSocketUpgrade, session_id: String) -> impl IntoResponse {
         let broadcaster = self.event_broadcaster.clone();
         let sessions = self.active_sessions.clone();
-        
+
         ws.on_upgrade(move |socket| async move {
             Self::handle_socket(socket, session_id, broadcaster, sessions).await
         })
     }
-    
+
     async fn handle_socket(
         mut socket: WebSocket,
         session_id: String,
@@ -363,13 +363,13 @@ impl AgentStreamingService {
         sessions: Arc<RwLock<HashMap<String, SessionInfo>>>,
     ) {
         let mut event_receiver = broadcaster.subscribe();
-        
+
         // Register session
         {
             let mut sessions_guard = sessions.write().await;
             sessions_guard.insert(session_id.clone(), SessionInfo::new());
         }
-        
+
         loop {
             tokio::select! {
                 // Handle incoming messages from client
@@ -384,7 +384,7 @@ impl AgentStreamingService {
                         _ => {}
                     }
                 }
-                
+
                 // Stream agent events to client
                 event = event_receiver.recv() => {
                     if let Ok(agent_event) = event {
@@ -398,7 +398,7 @@ impl AgentStreamingService {
                 }
             }
         }
-        
+
         // Cleanup session
         {
             let mut sessions_guard = sessions.write().await;
@@ -459,41 +459,41 @@ impl WASMPluginManager {
         let mut config = Config::new();
         config.wasm_component_model(true);
         config.async_support(true);
-        
+
         let engine = Engine::new(&config)?;
-        
+
         Ok(Self {
             engine,
             plugins: HashMap::new(),
             plugin_store: PluginStore::new(),
         })
     }
-    
+
     pub async fn load_plugin(&mut self, plugin_path: &Path) -> Result<String> {
         // Read and validate plugin
         let wasm_bytes = std::fs::read(plugin_path)?;
         let metadata = self.extract_plugin_metadata(&wasm_bytes)?;
-        
+
         // Security validation
         self.validate_plugin_security(&metadata)?;
-        
+
         // Create isolated store for plugin
         let mut store = Store::new(&self.engine, PluginState::new());
-        
+
         // Compile and instantiate
         let module = Module::from_binary(&self.engine, &wasm_bytes)?;
         let instance = Instance::new(&mut store, &module, &[]).await?;
-        
+
         let plugin_id = metadata.id.clone();
         self.plugins.insert(plugin_id.clone(), LoadedPlugin {
             instance,
             store,
             metadata,
         });
-        
+
         Ok(plugin_id)
     }
-    
+
     pub async fn execute_plugin_function(
         &mut self,
         plugin_id: &str,
@@ -502,16 +502,16 @@ impl WASMPluginManager {
     ) -> Result<Vec<Value>> {
         let plugin = self.plugins.get_mut(plugin_id)
             .ok_or_else(|| anyhow!("Plugin not found: {}", plugin_id))?;
-        
+
         let func = plugin.instance
             .get_typed_func::<(i32, i32), i32>(&mut plugin.store, function_name)?;
-        
+
         // Execute with timeout and resource limits
         let result = tokio::time::timeout(
             Duration::from_secs(10),
             func.call_async(&mut plugin.store, (args[0].unwrap_i32(), args[1].unwrap_i32()))
         ).await??;
-        
+
         Ok(vec![Value::I32(result)])
     }
 }
@@ -562,11 +562,11 @@ impl PerformanceOptimizedIndexer {
     pub async fn incremental_index(&self, root_path: &Path) -> Result<IndexingResult> {
         // Detect changed files since last indexing
         let changed_files = self.change_detector.detect_changes(root_path).await?;
-        
+
         if changed_files.is_empty() {
             return Ok(IndexingResult::no_changes());
         }
-        
+
         // Process files in parallel batches
         let results: Vec<_> = changed_files
             .par_chunks(100) // Process in batches of 100
@@ -577,7 +577,7 @@ impl PerformanceOptimizedIndexer {
             })
             .flatten()
             .collect();
-        
+
         // Update cache and database
         for result in results {
             match result {
@@ -590,10 +590,10 @@ impl PerformanceOptimizedIndexer {
                 }
             }
         }
-        
+
         Ok(IndexingResult::success(changed_files.len()))
     }
-    
+
     async fn index_file_optimized(&self, file_path: &Path) -> Result<FileIndex> {
         // Check cache first
         if let Some(cached) = self.file_cache.get(file_path).await {
@@ -601,13 +601,13 @@ impl PerformanceOptimizedIndexer {
                 return Ok(cached);
             }
         }
-        
+
         // Parse and index file
         let content = tokio::fs::read_to_string(file_path).await?;
         let ast = self.parse_ast(&content).await?;
         let symbols = self.extract_symbols(&ast).await?;
         let embeddings = self.generate_embeddings(&symbols).await?;
-        
+
         Ok(FileIndex {
             path: file_path.to_path_buf(),
             ast,
@@ -660,26 +660,26 @@ impl LanguageServer for FluentLanguageServer {
             ..Default::default()
         })
     }
-    
+
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        
+
         // Get AI-powered completions
         let completions = self.agent_client.get_completions(uri, position).await
             .map_err(|e| tower_lsp::jsonrpc::Error::internal_error())?;
-        
+
         Ok(Some(CompletionResponse::Array(completions)))
     }
-    
+
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = params.text_document.uri;
         let range = params.range;
-        
+
         // Get AI-powered code actions (refactoring, fixes, etc.)
         let actions = self.agent_client.get_code_actions(uri, range).await
             .map_err(|e| tower_lsp::jsonrpc::Error::internal_error())?;
-        
+
         Ok(Some(actions))
     }
 }

@@ -12,6 +12,7 @@ predicates = "3.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
+regex = "1.10"
 
 [[test]]
 name = "integration"
@@ -36,3 +37,15 @@ path = "e2e_cli_tests.rs"
 [[test]]
 name = "exit_code_tests"
 path = "exit_code_tests.rs"
+
+[[test]]
+name = "golden_tests"
+path = "golden_tests.rs"
+
+[[test]]
+name = "json_output_tests"
+path = "json_output_tests.rs"
+
+[[test]]
+name = "config_cli_tests"
+path = "config_cli_tests.rs"

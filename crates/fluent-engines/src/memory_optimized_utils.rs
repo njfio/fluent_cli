@@ -305,7 +305,7 @@ impl MemoryPool {
 
     /// Get a string buffer from the pool or create a new one
     pub fn get_string_buffer(&mut self) -> StringBuffer {
-        self.string_buffers.pop().unwrap_or_else(StringBuffer::new)
+        self.string_buffers.pop().unwrap_or_default()
     }
 
     /// Return a string buffer to the pool
@@ -319,9 +319,7 @@ impl MemoryPool {
 
     /// Get a payload builder from the pool
     pub fn get_payload_builder(&mut self) -> PayloadBuilder {
-        self.payload_builders
-            .pop()
-            .unwrap_or_else(PayloadBuilder::new)
+        self.payload_builders.pop().unwrap_or_default()
     }
 
     /// Return a payload builder to the pool
@@ -333,7 +331,7 @@ impl MemoryPool {
 
     /// Get a file buffer from the pool
     pub fn get_file_buffer(&mut self) -> FileBuffer {
-        self.file_buffers.pop().unwrap_or_else(FileBuffer::new)
+        self.file_buffers.pop().unwrap_or_default()
     }
 
     /// Return a file buffer to the pool
@@ -346,9 +344,7 @@ impl MemoryPool {
 
     /// Get a response parser from the pool
     pub fn get_response_parser(&mut self) -> ResponseParser {
-        self.response_parsers
-            .pop()
-            .unwrap_or_else(ResponseParser::new)
+        self.response_parsers.pop().unwrap_or_default()
     }
 
     /// Return a response parser to the pool

@@ -67,16 +67,38 @@ impl PipelineCommand {
             .await
             .map_err(|e| {
                 CliError::Config(format!(
-                    "Failed to read pipeline file '{}': {}",
+                    "Failed to read pipeline file '{}':\n  {}\n\n\
+                    Troubleshooting:\n  \
+                    • Verify the file path is correct\n  \
+                    • Check file permissions (must be readable)\n  \
+                    • See example pipelines in example_pipelines/\n  \
+                    • Use absolute paths or paths relative to current directory",
                     pipeline_file, e
                 ))
             })?;
 
-        Self::validate_pipeline_yaml(&yaml_str)
-            .map_err(|e| CliError::Validation(format!("Pipeline validation failed: {}", e)))?;
+        Self::validate_pipeline_yaml(&yaml_str).map_err(|e| {
+            CliError::Validation(format!(
+                "Pipeline validation failed:\n  {}\n\n\
+                Troubleshooting:\n  \
+                • Check YAML syntax is valid\n  \
+                • Ensure required fields are present (name, steps, etc.)\n  \
+                • See example pipelines for correct structure",
+                e
+            ))
+        })?;
 
-        let pipeline: Pipeline = serde_yaml::from_str(&yaml_str)
-            .map_err(|e| CliError::Validation(format!("Failed to parse pipeline YAML: {}", e)))?;
+        let pipeline: Pipeline = serde_yaml::from_str(&yaml_str).map_err(|e| {
+            CliError::Validation(format!(
+                "Failed to parse pipeline YAML:\n  {}\n\n\
+                Troubleshooting:\n  \
+                • Verify YAML syntax (proper indentation, colons, etc.)\n  \
+                • Check for typos in field names\n  \
+                • Use 'fluent pipeline --dry-run -f <file>' to validate\n  \
+                • See example_pipelines/ for reference",
+                e
+            ))
+        })?;
 
         // Setup state store
         let state_store_dir = Self::get_state_store_dir()?;
@@ -159,11 +181,11 @@ impl CommandHandler for PipelineCommand {
                                 println!(
                                     "{}",
                                     serde_json::json!({
-                                        "success": true,
-                                        "pipeline_file": pipeline_file,
-                                        "dry_run": true,
-                                        "message": "Dry-run validation successful: pipeline file is present and syntactically valid."
-                                    }).to_string()
+                                       "success": true,
+                                       "pipeline_file": pipeline_file,
+                                       "dry_run": true,
+                                       "message": "Dry-run validation successful: pipeline file is present and syntactically valid."
+                                    })
                                 );
                             } else {
                                 println!(
@@ -178,12 +200,11 @@ impl CommandHandler for PipelineCommand {
                                 println!(
                                     "{}",
                                     serde_json::json!({
-                                        "success": false,
-                                        "error": &error_message,
-                                        "pipeline_file": pipeline_file,
-                                        "dry_run": true,
+                                       "success": false,
+                                       "error": &error_message,
+                                       "pipeline_file": pipeline_file,
+                                       "dry_run": true,
                                     })
-                                    .to_string()
                                 );
                             } else {
                                 eprintln!("❌ Dry-run validation failed: {}", error_message);
@@ -205,7 +226,6 @@ impl CommandHandler for PipelineCommand {
                                 "pipeline_file": pipeline_file,
                                 "dry_run": true,
                             })
-                            .to_string()
                         );
                     } else {
                         eprintln!("❌ Dry-run validation failed: {}", error_message);

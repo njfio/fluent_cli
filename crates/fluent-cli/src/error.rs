@@ -10,6 +10,8 @@ pub enum CliError {
     Engine(String),
     #[error("network error: {0}")]
     Network(String),
+    #[error("authentication error: {0}")]
+    Authentication(String),
     #[error("validation error: {0}")]
     Validation(String),
     #[error("unknown error: {0}")]

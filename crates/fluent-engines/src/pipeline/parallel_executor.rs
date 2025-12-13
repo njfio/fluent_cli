@@ -6,10 +6,10 @@
 use crate::pipeline::step_executor::StepExecutor;
 use crate::pipeline_executor::{PipelineState, PipelineStep};
 use anyhow::Error;
-use log::debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinSet;
+use tracing::debug;
 
 /// Handles execution of parallel pipeline steps
 pub struct ParallelExecutor;
@@ -25,7 +25,8 @@ impl ParallelExecutor {
         let state_arc = Arc::new(tokio::sync::Mutex::new(state.clone()));
         let mut set = JoinSet::new();
 
-        for sub_step in steps.iter().cloned() {
+        for sub_step in steps.iter() {
+            let sub_step = sub_step.clone();
             let state_clone = Arc::clone(&state_arc);
             set.spawn(async move {
                 let mut guard = state_clone.lock().await;

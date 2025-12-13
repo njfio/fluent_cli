@@ -161,7 +161,7 @@ async fn test_mcp_client_connection_performance() -> Result<()> {
 #[tokio::test]
 async fn test_concurrent_mcp_operations() -> Result<()> {
     let base_registry = Arc::new(ToolRegistry::new());
-    let registry = McpToolRegistry::new(base_registry);
+    let _registry = McpToolRegistry::new(base_registry);
     let num_concurrent = 50;
     let operations_per_task = 20;
 

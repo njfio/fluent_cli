@@ -1,3 +1,23 @@
+//! String replacement editor for surgical file modifications.
+//!
+//! This module provides the [`StringReplaceEditor`] tool for making precise,
+//! targeted edits to files by replacing specific strings with new content.
+//! Similar to Anthropic's string_replace_editor tool used in Claude Code.
+//!
+//! # Features
+//!
+//! - Exact string matching with optional case sensitivity
+//! - Path-based security restrictions
+//! - Automatic backup creation before edits
+//! - Size limits to prevent accidental large file edits
+//! - Support for multiple replacements in a single operation
+//!
+//! # Security
+//!
+//! - Only files within `allowed_paths` can be modified
+//! - Maximum file size limit (default 10MB)
+//! - Maximum replacements per operation (default 100)
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -55,18 +75,13 @@ pub struct StringReplaceParams {
 }
 
 /// Specifies which occurrence(s) to replace
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum ReplaceOccurrence {
+    #[default]
     First,
     Last,
     All,
     Index(usize), // 1-based index
-}
-
-impl Default for ReplaceOccurrence {
-    fn default() -> Self {
-        ReplaceOccurrence::First
-    }
 }
 
 /// Result of a string replacement operation
@@ -79,6 +94,56 @@ pub struct StringReplaceResult {
     pub backup_path: Option<String>,
     pub preview: Option<String>,
     pub error: Option<String>,
+}
+
+/// Structured result for dry-run operations with JSON diff output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DryRunResult {
+    pub file_path: String,
+    pub would_change: bool,
+    pub matches_found: usize,
+    pub preview: Vec<ChangePreview>,
+}
+
+/// Preview of a single change showing before/after for a specific line
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePreview {
+    pub line_number: usize,
+    pub before: String,
+    pub after: String,
+}
+
+/// Pattern replacement pair for multi-pattern operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternReplacement {
+    pub pattern: String,
+    pub replacement: String,
+}
+
+/// Parameters for multi-pattern replacement operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiPatternParams {
+    pub file_path: String,
+    pub patterns: Vec<PatternReplacement>,
+    pub create_backup: Option<bool>,
+    pub dry_run: Option<bool>,
+}
+
+/// Result of a multi-pattern replacement operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiPatternResult {
+    pub success: bool,
+    pub patterns_applied: usize,
+    pub total_replacements: usize,
+    pub backup_path: Option<String>,
+    pub preview: Option<String>,
+    pub error: Option<String>,
+}
+
+impl Default for StringReplaceEditor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StringReplaceEditor {
@@ -442,6 +507,166 @@ impl StringReplaceEditor {
             diff.join("\n")
         }
     }
+
+    /// Perform a dry-run and return JSON-serializable structured results
+    ///
+    /// This method provides a detailed preview of what changes would be made
+    /// without actually modifying the file. Returns structured data suitable
+    /// for JSON output with line-by-line before/after previews.
+    pub async fn dry_run_json(
+        &self,
+        file: &str,
+        pattern: &str,
+        replacement: &str,
+    ) -> Result<DryRunResult> {
+        // Validate file path
+        let file_path = validation::validate_path(file, &self.config.allowed_paths)?;
+
+        // Check if file exists
+        if !file_path.exists() {
+            return Err(anyhow!("File does not exist: {}", file));
+        }
+
+        // Read file content
+        let content = fs::read_to_string(&file_path).await?;
+
+        let mut previews = Vec::new();
+        let mut matches = 0;
+
+        let search_pattern = if self.config.case_sensitive {
+            pattern.to_string()
+        } else {
+            pattern.to_lowercase()
+        };
+
+        // Scan through each line to find matches
+        for (i, line) in content.lines().enumerate() {
+            let search_line = if self.config.case_sensitive {
+                line.to_string()
+            } else {
+                line.to_lowercase()
+            };
+
+            if search_line.contains(&search_pattern) {
+                matches += 1;
+                let after = if self.config.case_sensitive {
+                    line.replace(pattern, replacement)
+                } else {
+                    self.case_insensitive_replace_all(line, pattern, replacement)
+                };
+
+                previews.push(ChangePreview {
+                    line_number: i + 1,
+                    before: line.to_string(),
+                    after,
+                });
+            }
+        }
+
+        Ok(DryRunResult {
+            file_path: file.to_string(),
+            would_change: matches > 0,
+            matches_found: matches,
+            preview: previews,
+        })
+    }
+
+    /// Apply multiple pattern replacements in a single pass
+    ///
+    /// This method allows you to apply multiple search-and-replace operations
+    /// sequentially to a file. Each pattern is applied in order, with subsequent
+    /// patterns operating on the result of previous replacements.
+    pub async fn replace_multiple(&self, params: MultiPatternParams) -> Result<MultiPatternResult> {
+        // Validate file path
+        let file_path = validation::validate_path(&params.file_path, &self.config.allowed_paths)?;
+
+        // Check if file exists
+        if !file_path.exists() {
+            return Ok(MultiPatternResult {
+                success: false,
+                patterns_applied: 0,
+                total_replacements: 0,
+                backup_path: None,
+                preview: None,
+                error: Some(format!("File does not exist: {}", params.file_path)),
+            });
+        }
+
+        // Check file size
+        let metadata = fs::metadata(&file_path).await?;
+        if metadata.len() > self.config.max_file_size as u64 {
+            return Ok(MultiPatternResult {
+                success: false,
+                patterns_applied: 0,
+                total_replacements: 0,
+                backup_path: None,
+                preview: None,
+                error: Some(format!(
+                    "File too large: {} bytes (max: {})",
+                    metadata.len(),
+                    self.config.max_file_size
+                )),
+            });
+        }
+
+        // Read original content
+        let original_content = fs::read_to_string(&file_path).await?;
+        let mut content = original_content.clone();
+        let mut total_replacements = 0;
+
+        // Apply each pattern replacement sequentially
+        for pr in &params.patterns {
+            let count = if self.config.case_sensitive {
+                content.matches(&pr.pattern).count()
+            } else {
+                content
+                    .to_lowercase()
+                    .matches(&pr.pattern.to_lowercase())
+                    .count()
+            };
+
+            content = if self.config.case_sensitive {
+                content.replace(&pr.pattern, &pr.replacement)
+            } else {
+                self.case_insensitive_replace_all(&content, &pr.pattern, &pr.replacement)
+            };
+
+            total_replacements += count;
+        }
+
+        // If dry run, return preview
+        if params.dry_run.unwrap_or(false) {
+            let preview = self.create_diff_preview(&original_content, &content);
+            return Ok(MultiPatternResult {
+                success: true,
+                patterns_applied: params.patterns.len(),
+                total_replacements,
+                backup_path: None,
+                preview: Some(preview),
+                error: None,
+            });
+        }
+
+        // Create backup if enabled
+        let backup_path = if params.create_backup.unwrap_or(self.config.backup_enabled) {
+            let backup_path = self.create_backup(&file_path, &original_content).await?;
+            Some(backup_path)
+        } else {
+            None
+        };
+
+        // Write new content to file
+        fs::write(&file_path, &content).await?;
+
+        Ok(MultiPatternResult {
+            success: true,
+            patterns_applied: params.patterns.len(),
+            total_replacements,
+            backup_path,
+            preview: None,
+            error: None,
+        })
+    }
 }
 
 #[async_trait]
@@ -460,12 +685,23 @@ impl ToolExecutor for StringReplaceEditor {
                 let result = self.replace_string(params).await?;
                 Ok(serde_json::to_string_pretty(&result)?)
             }
+            "string_replace_multiple" => {
+                let params: MultiPatternParams = serde_json::from_value(
+                    serde_json::Value::Object(parameters.clone().into_iter().collect()),
+                )?;
+
+                let result = self.replace_multiple(params).await?;
+                Ok(serde_json::to_string_pretty(&result)?)
+            }
             _ => Err(anyhow!("Unknown tool: {}", tool_name)),
         }
     }
 
     fn get_available_tools(&self) -> Vec<String> {
-        vec!["string_replace".to_string()]
+        vec![
+            "string_replace".to_string(),
+            "string_replace_multiple".to_string(),
+        ]
     }
 
     fn get_tool_description(&self, tool_name: &str) -> Option<String> {
@@ -474,6 +710,12 @@ impl ToolExecutor for StringReplaceEditor {
                 "Replace specific strings in files with surgical precision. \
                 Supports first/last/all/indexed occurrences, line ranges, \
                 case sensitivity, dry runs, and automatic backups."
+                    .to_string(),
+            ),
+            "string_replace_multiple" => Some(
+                "Apply multiple pattern replacements to a file in a single operation. \
+                Each pattern is applied sequentially, with later patterns operating on \
+                the results of earlier replacements. Supports dry runs and automatic backups."
                     .to_string(),
             ),
             _ => None,
@@ -501,6 +743,33 @@ impl ToolExecutor for StringReplaceEditor {
                 // Validate file path
                 if let Some(file_path) = parameters.get("file_path").and_then(|v| v.as_str()) {
                     validation::validate_path(file_path, &self.config.allowed_paths)?;
+                }
+
+                Ok(())
+            }
+            "string_replace_multiple" => {
+                // Validate required parameters
+                if !parameters.contains_key("file_path") {
+                    return Err(anyhow!("Missing required parameter: file_path"));
+                }
+                if !parameters.contains_key("patterns") {
+                    return Err(anyhow!("Missing required parameter: patterns"));
+                }
+
+                // Validate file path
+                if let Some(file_path) = parameters.get("file_path").and_then(|v| v.as_str()) {
+                    validation::validate_path(file_path, &self.config.allowed_paths)?;
+                }
+
+                // Validate patterns array
+                if let Some(patterns) = parameters.get("patterns") {
+                    if !patterns.is_array() {
+                        return Err(anyhow!("Parameter 'patterns' must be an array"));
+                    }
+                    let patterns_array = patterns.as_array().unwrap();
+                    if patterns_array.is_empty() {
+                        return Err(anyhow!("Parameter 'patterns' cannot be empty"));
+                    }
                 }
 
                 Ok(())
@@ -692,5 +961,254 @@ mod tests {
         let new_content = fs::read_to_string(&file_path).await.unwrap();
         let expected = "Line 1: foo\nLine 2: baz bar baz\nLine 3: foo";
         assert_eq!(new_content, expected);
+    }
+
+    #[tokio::test]
+    async fn test_dry_run_json() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.rs");
+
+        // Create test file with multiple occurrences
+        // Line 1: fn foo() {            - contains "foo"
+        // Line 2:     let x = foo();    - contains "foo"
+        // Line 3:     let y = bar();    - no "foo"
+        // Line 4:     foo()             - contains "foo"
+        // Line 5: }                      - no "foo"
+        let original_content = "fn foo() {\n    let x = foo();\n    let y = bar();\n    foo()\n}";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        // Test dry_run_json method
+        let result = editor
+            .dry_run_json(&file_path.to_string_lossy(), "foo", "bar")
+            .await
+            .unwrap();
+
+        // Verify result structure
+        assert_eq!(result.file_path, file_path.to_string_lossy());
+        assert!(result.would_change);
+        assert_eq!(result.matches_found, 3); // "foo" appears on 3 lines (lines 1, 2, 4)
+
+        // Verify all preview entries contain "bar" in the after field
+        assert!(result.preview.iter().all(|p| p.after.contains("bar")));
+
+        // Verify line numbers are correct
+        assert!(result.preview.iter().any(|p| p.line_number == 1)); // fn foo()
+        assert!(result.preview.iter().any(|p| p.line_number == 2)); // let x = foo()
+        assert!(result.preview.iter().any(|p| p.line_number == 4)); // foo()
+
+        // Verify before/after content is different
+        for preview in &result.preview {
+            assert_ne!(preview.before, preview.after);
+        }
+
+        // File should remain unchanged
+        let file_content = fs::read_to_string(&file_path).await.unwrap();
+        assert_eq!(file_content, original_content);
+    }
+
+    #[tokio::test]
+    async fn test_dry_run_json_no_matches() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        let original_content = "Hello world\nThis is a test";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        let result = editor
+            .dry_run_json(&file_path.to_string_lossy(), "nonexistent", "replacement")
+            .await
+            .unwrap();
+
+        assert!(!result.would_change);
+        assert_eq!(result.matches_found, 0);
+        assert!(result.preview.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_multi_pattern() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file
+        let original_content = "foo bar baz qux foo";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        let patterns = vec![
+            PatternReplacement {
+                pattern: "foo".to_string(),
+                replacement: "FOO".to_string(),
+            },
+            PatternReplacement {
+                pattern: "baz".to_string(),
+                replacement: "BAZ".to_string(),
+            },
+        ];
+
+        let params = MultiPatternParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            patterns,
+            create_backup: Some(false),
+            dry_run: Some(false),
+        };
+
+        let result = editor.replace_multiple(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.patterns_applied, 2);
+        assert_eq!(result.total_replacements, 3); // 2 "foo" + 1 "baz"
+
+        let new_content = fs::read_to_string(&file_path).await.unwrap();
+        assert_eq!(new_content, "FOO bar BAZ qux FOO");
+    }
+
+    #[tokio::test]
+    async fn test_multi_pattern_dry_run() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        let original_content = "foo bar baz";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        let patterns = vec![
+            PatternReplacement {
+                pattern: "foo".to_string(),
+                replacement: "FOO".to_string(),
+            },
+            PatternReplacement {
+                pattern: "baz".to_string(),
+                replacement: "BAZ".to_string(),
+            },
+        ];
+
+        let params = MultiPatternParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            patterns,
+            create_backup: Some(false),
+            dry_run: Some(true),
+        };
+
+        let result = editor.replace_multiple(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.patterns_applied, 2);
+        assert_eq!(result.total_replacements, 2); // 1 "foo" + 1 "baz"
+        assert!(result.preview.is_some());
+
+        // File should remain unchanged
+        let file_content = fs::read_to_string(&file_path).await.unwrap();
+        assert_eq!(file_content, original_content);
+    }
+
+    #[tokio::test]
+    async fn test_multi_pattern_sequential() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Test that patterns are applied sequentially
+        // First pattern changes "foo" to "bar"
+        // Second pattern should then change "bar" (including newly created ones) to "baz"
+        let original_content = "foo bar";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        let patterns = vec![
+            PatternReplacement {
+                pattern: "foo".to_string(),
+                replacement: "bar".to_string(),
+            },
+            PatternReplacement {
+                pattern: "bar".to_string(),
+                replacement: "baz".to_string(),
+            },
+        ];
+
+        let params = MultiPatternParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            patterns,
+            create_backup: Some(false),
+            dry_run: Some(false),
+        };
+
+        let result = editor.replace_multiple(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.patterns_applied, 2);
+        // First pattern: "foo" -> "bar" (1 replacement)
+        // Second pattern: "bar bar" -> "baz baz" (2 replacements, including the newly created one)
+        assert_eq!(result.total_replacements, 3);
+
+        let new_content = fs::read_to_string(&file_path).await.unwrap();
+        assert_eq!(new_content, "baz baz");
+    }
+
+    #[tokio::test]
+    async fn test_multi_pattern_case_insensitive() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        let original_content = "Foo FOO foo";
+        fs::write(&file_path, original_content).await.unwrap();
+
+        let config = StringReplaceConfig {
+            allowed_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+            case_sensitive: false,
+            ..Default::default()
+        };
+
+        let editor = StringReplaceEditor::with_config(config);
+
+        let patterns = vec![PatternReplacement {
+            pattern: "foo".to_string(),
+            replacement: "bar".to_string(),
+        }];
+
+        let params = MultiPatternParams {
+            file_path: file_path.to_string_lossy().to_string(),
+            patterns,
+            create_backup: Some(false),
+            dry_run: Some(false),
+        };
+
+        let result = editor.replace_multiple(params).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.total_replacements, 3); // All 3 variations should be replaced
+
+        let new_content = fs::read_to_string(&file_path).await.unwrap();
+        assert_eq!(new_content, "bar bar bar");
     }
 }

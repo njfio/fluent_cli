@@ -14,11 +14,11 @@ use ratatui::{
 /// Input mode types
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMode {
-    Normal,        // Not accepting input
-    Guidance,      // Providing guidance
-    GoalModify,    // Modifying goal
-    Comment,       // Adding comment to approval
-    RejectReason,  // Providing rejection reason
+    Normal,       // Not accepting input
+    Guidance,     // Providing guidance
+    GoalModify,   // Modifying goal
+    Comment,      // Adding comment to approval
+    RejectReason, // Providing rejection reason
 }
 
 /// Input modal state
@@ -59,7 +59,8 @@ impl InputModal {
         self.input.clear();
         self.cursor_position = 0;
         self.prompt = "Provide guidance to the agent:".to_string();
-        self.placeholder = "Enter your guidance here... (Ctrl+Enter to submit, Esc to cancel)".to_string();
+        self.placeholder =
+            "Enter guidance... (Ctrl+Enter=Send, Ctrl+Shift+Enter=Queue, Esc=Cancel)".to_string();
         self.context = context;
     }
 
@@ -70,7 +71,7 @@ impl InputModal {
         self.input = current_goal;
         self.cursor_position = self.input.len();
         self.prompt = "Modify the agent's goal:".to_string();
-        self.placeholder = "Enter new goal... (Ctrl+Enter to submit, Esc to cancel)".to_string();
+        self.placeholder = "Enter new goal... (Ctrl+Enter=Apply, Esc=Cancel)".to_string();
         self.context = None;
     }
 
@@ -81,7 +82,7 @@ impl InputModal {
         self.input.clear();
         self.cursor_position = 0;
         self.prompt = "Add comment (optional):".to_string();
-        self.placeholder = "Enter your comment... (Ctrl+Enter to submit, Esc to skip)".to_string();
+        self.placeholder = "Enter comment... (Ctrl+Enter=Submit, Esc=Skip)".to_string();
         self.context = None;
     }
 
@@ -92,7 +93,7 @@ impl InputModal {
         self.input.clear();
         self.cursor_position = 0;
         self.prompt = "Why are you rejecting this action?".to_string();
-        self.placeholder = "Enter rejection reason... (Ctrl+Enter to submit, Esc to cancel)".to_string();
+        self.placeholder = "Enter rejection reason... (Ctrl+Enter=Submit, Esc=Cancel)".to_string();
         self.context = None;
     }
 
@@ -149,20 +150,45 @@ impl InputModal {
             return;
         }
 
-        let mut new_pos = self.cursor_position - 1;
+        // Convert to chars for safe unicode handling
+        let chars: Vec<char> = self.input.chars().collect();
+        let char_count = chars.len();
+
+        // Clamp cursor position to valid char range
+        let mut char_pos = self.cursor_position.min(char_count);
+        if char_pos == 0 {
+            return;
+        }
+
+        char_pos -= 1;
 
         // Skip whitespace
-        while new_pos > 0 && self.input.chars().nth(new_pos).unwrap().is_whitespace() {
-            new_pos -= 1;
+        while char_pos > 0 {
+            if let Some(&c) = chars.get(char_pos) {
+                if !c.is_whitespace() {
+                    break;
+                }
+            }
+            char_pos -= 1;
         }
 
         // Delete word
-        while new_pos > 0 && !self.input.chars().nth(new_pos - 1).unwrap().is_whitespace() {
-            new_pos -= 1;
+        while char_pos > 0 {
+            if let Some(&c) = chars.get(char_pos - 1) {
+                if c.is_whitespace() {
+                    break;
+                }
+            }
+            char_pos -= 1;
         }
 
-        self.input.drain(new_pos..self.cursor_position);
-        self.cursor_position = new_pos;
+        // Rebuild string from remaining chars
+        let new_input: String = chars[..char_pos]
+            .iter()
+            .chain(chars[self.cursor_position.min(char_count)..].iter())
+            .collect();
+        self.input = new_input;
+        self.cursor_position = char_pos;
     }
 
     /// Get the current input value
@@ -197,11 +223,11 @@ impl InputModal {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),  // Title
-                Constraint::Length(5),  // Context (if any)
-                Constraint::Length(3),  // Prompt
-                Constraint::Min(5),     // Input area
-                Constraint::Length(3),  // Help text
+                Constraint::Length(3), // Title
+                Constraint::Length(5), // Context (if any)
+                Constraint::Length(3), // Prompt
+                Constraint::Min(5),    // Input area
+                Constraint::Length(3), // Help text
             ])
             .split(modal_area);
 
@@ -233,9 +259,17 @@ impl InputModal {
         };
 
         let title_widget = Paragraph::new(title)
-            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            );
 
         f.render_widget(title_widget, area);
     }
@@ -253,7 +287,11 @@ impl InputModal {
 
     fn render_prompt(&self, f: &mut Frame, area: Rect) {
         let prompt_widget = Paragraph::new(self.prompt.as_str())
-            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Left)
             .block(Block::default().borders(Borders::ALL));
 
@@ -273,7 +311,7 @@ impl InputModal {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Green))
-                    .title("Input")
+                    .title("Input"),
             );
 
         f.render_widget(input_widget, area);
@@ -291,16 +329,34 @@ impl InputModal {
     }
 
     fn render_help(&self, f: &mut Frame, area: Rect) {
-        let help_lines = vec![
-            Line::from(vec![
-                Span::styled("Ctrl+Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                Span::raw(" Submit  "),
-                Span::styled("Esc", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-                Span::raw(" Cancel  "),
-                Span::styled("Ctrl+W", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::raw(" Delete Word"),
-            ]),
-        ];
+        let help_lines = vec![Line::from(vec![
+            Span::styled(
+                "Ctrl+Enter",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" Send  "),
+            Span::styled(
+                "Ctrl+Shift+Enter",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" Queue  "),
+            Span::styled(
+                "Esc",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" Cancel  "),
+            Span::styled(
+                "Ctrl+W",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" Delete Word"),
+        ])];
 
         let help_widget = Paragraph::new(help_lines)
             .alignment(Alignment::Center)

@@ -1,3 +1,6 @@
+// This test file is disabled because it tests deprecated MCP client APIs
+#![cfg(feature = "deprecated_mcp_tests")]
+
 use anyhow::Result;
 use fluent_agent::{
     mcp_adapter::FluentMcpAdapter,

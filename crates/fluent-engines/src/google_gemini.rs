@@ -10,12 +10,12 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 
 pub struct GoogleGeminiEngine {
     config: EngineConfig,
@@ -31,15 +31,8 @@ impl GoogleGeminiEngine {
             None
         };
 
-        // Create optimized HTTP client with connection pooling
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create optimized HTTP client with secure defaults
+        let client = fluent_core::create_secure_client()?;
 
         Ok(Self {
             config,
@@ -75,7 +68,9 @@ impl GoogleGeminiEngine {
             .parameters
             .get("bearer_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("API key not found in configuration"))?;
+            .ok_or_else(|| anyhow!(
+                "Google Gemini API key not found in configuration. Set GOOGLE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+            ))?;
 
         let model = self
             .config
@@ -84,9 +79,10 @@ impl GoogleGeminiEngine {
             .and_then(|v| v.as_str())
             .unwrap_or("gemini-1.5-pro-latest");
 
+        // Build URL without API key - key will be sent via header for security
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
         );
 
         let mut content = vec![json!({
@@ -114,12 +110,13 @@ impl GoogleGeminiEngine {
             }
         });
 
-        debug!("Google Gemini Request: {:?}", request_body);
+        debug!("Google Gemini Request to {}: {:?}", url, request_body);
 
         let response = self
             .client
             .post(&url)
             .header("Content-Type", "application/json")
+            .header("x-goog-api-key", api_key)
             .json(&request_body)
             .send()
             .await?;

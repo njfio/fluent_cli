@@ -11,8 +11,8 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
+use tracing::debug;
 
 pub struct PerplexityEngine {
     config: EngineConfig,
@@ -60,7 +60,9 @@ impl PerplexityEngine {
             .parameters
             .get("bearer_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+            .ok_or_else(|| anyhow!(
+                "Perplexity API key not found in configuration. Set PERPLEXITY_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+            ))?;
 
         let response = self
             .client

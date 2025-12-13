@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use tokio::process::Command;
 
 /// Concrete step executors for common pipeline operations
-
 /// Command step executor for running shell commands
 pub struct CommandStepExecutor;
 
@@ -99,6 +98,12 @@ impl CommandStepExecutor {
 /// HTTP request step executor
 pub struct HttpStepExecutor {
     client: reqwest::Client,
+}
+
+impl Default for HttpStepExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HttpStepExecutor {

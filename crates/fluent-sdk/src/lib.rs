@@ -12,9 +12,31 @@ use std::collections::HashMap;
 use strum::{Display, EnumString};
 pub mod openai;
 
+/// Explicit error types for SDK operations.
+#[derive(Debug, thiserror::Error)]
+pub enum SdkError {
+    #[error("Invalid configuration: {field} - {message}")]
+    InvalidConfig { field: String, message: String },
+
+    #[error("Missing required field: {0}")]
+    MissingField(String),
+
+    #[error("Invalid override: {key} - {reason}")]
+    InvalidOverride { key: String, reason: String },
+
+    #[error("Request failed: {0}")]
+    RequestFailed(String),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+
+    #[error("Other error: {0}")]
+    Other(#[from] anyhow::Error),
+}
+
 pub mod prelude {
     pub use crate::openai::*;
-    pub use crate::{FluentRequest, FluentSdkRequest, KeyValue};
+    pub use crate::{FluentRequest, FluentSdkRequest, KeyValue, SdkError};
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -152,14 +174,118 @@ impl FluentRequestBuilder {
         self
     }
 
+    /// Validates the current builder state.
+    pub fn validate(&self) -> Result<(), SdkError> {
+        // Validate required fields
+        if self.request.engine.is_none() {
+            return Err(SdkError::MissingField("engine".to_string()));
+        }
+
+        if let Some(ref req) = self.request.request {
+            if req.is_empty() {
+                return Err(SdkError::MissingField("request".to_string()));
+            }
+        } else {
+            return Err(SdkError::MissingField("request".to_string()));
+        }
+
+        // Validate overrides
+        if let Some(ref overrides) = self.request.overrides {
+            for (key, value) in overrides {
+                self.validate_override(key, value)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validates a single override parameter.
+    fn validate_override(&self, key: &str, value: &Value) -> Result<(), SdkError> {
+        match key {
+            "temperature" => {
+                if let Some(t) = value.as_f64() {
+                    if !(0.0..=2.0).contains(&t) {
+                        return Err(SdkError::InvalidOverride {
+                            key: key.to_string(),
+                            reason: "temperature must be between 0.0 and 2.0".to_string(),
+                        });
+                    }
+                } else {
+                    return Err(SdkError::InvalidOverride {
+                        key: key.to_string(),
+                        reason: "temperature must be a number".to_string(),
+                    });
+                }
+            }
+            "max_tokens" => {
+                if let Some(t) = value.as_i64() {
+                    if t <= 0 {
+                        return Err(SdkError::InvalidOverride {
+                            key: key.to_string(),
+                            reason: "max_tokens must be positive".to_string(),
+                        });
+                    }
+                } else {
+                    return Err(SdkError::InvalidOverride {
+                        key: key.to_string(),
+                        reason: "max_tokens must be an integer".to_string(),
+                    });
+                }
+            }
+            "top_p" => {
+                if let Some(t) = value.as_f64() {
+                    if !(0.0..=1.0).contains(&t) {
+                        return Err(SdkError::InvalidOverride {
+                            key: key.to_string(),
+                            reason: "top_p must be between 0.0 and 1.0".to_string(),
+                        });
+                    }
+                } else {
+                    return Err(SdkError::InvalidOverride {
+                        key: key.to_string(),
+                        reason: "top_p must be a number".to_string(),
+                    });
+                }
+            }
+            "frequency_penalty" | "presence_penalty" => {
+                if let Some(p) = value.as_f64() {
+                    if !(-2.0..=2.0).contains(&p) {
+                        return Err(SdkError::InvalidOverride {
+                            key: key.to_string(),
+                            reason: format!("{} must be between -2.0 and 2.0", key),
+                        });
+                    }
+                } else {
+                    return Err(SdkError::InvalidOverride {
+                        key: key.to_string(),
+                        reason: format!("{} must be a number", key),
+                    });
+                }
+            }
+            "n" => {
+                if let Some(n) = value.as_i64() {
+                    if n <= 0 || n > 128 {
+                        return Err(SdkError::InvalidOverride {
+                            key: key.to_string(),
+                            reason: "n must be between 1 and 128".to_string(),
+                        });
+                    }
+                } else {
+                    return Err(SdkError::InvalidOverride {
+                        key: key.to_string(),
+                        reason: "n must be an integer".to_string(),
+                    });
+                }
+            }
+            _ => {} // Allow unknown overrides
+        }
+        Ok(())
+    }
+
     /// Finalises the builder returning a [`FluentRequest`].
     pub fn build(self) -> anyhow::Result<FluentRequest> {
-        if self.request.engine.is_none() {
-            return Err(anyhow!("Engine is required"));
-        }
-        if self.request.request.is_none() {
-            return Err(anyhow!("Request is required"));
-        }
+        // Use the validation method
+        self.validate()?;
         Ok(self.request)
     }
 }
@@ -315,4 +441,340 @@ impl<K: Into<String>, V: Into<String>> From<(K, V)> for KeyValue {
 pub struct OverrideValue {
     pub key: String,
     pub value: Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_validate_missing_engine() {
+        let builder = FluentRequestBuilder::default().request("test prompt");
+        let result = builder.validate();
+        assert!(matches!(result, Err(SdkError::MissingField(field)) if field == "engine"));
+    }
+
+    #[test]
+    fn test_validate_missing_request() {
+        let builder = FluentRequestBuilder::default().engine(EngineTemplate::OpenAIChatCompletions);
+        let result = builder.validate();
+        assert!(matches!(result, Err(SdkError::MissingField(field)) if field == "request"));
+    }
+
+    #[test]
+    fn test_validate_empty_request() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("");
+        let result = builder.validate();
+        assert!(matches!(result, Err(SdkError::MissingField(field)) if field == "request"));
+    }
+
+    #[test]
+    fn test_validate_invalid_temperature_too_high() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!(3.0));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "temperature" && reason.contains("between 0.0 and 2.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_temperature_too_low() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!(-0.1));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "temperature" && reason.contains("between 0.0 and 2.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_temperature_not_number() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!("not a number"));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "temperature" && reason.contains("must be a number")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_temperature() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!(0.7));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_max_tokens_negative() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("max_tokens", json!(-100));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "max_tokens" && reason.contains("must be positive")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_max_tokens_zero() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("max_tokens", json!(0));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "max_tokens" && reason.contains("must be positive")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_max_tokens_not_integer() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("max_tokens", json!(100.5));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "max_tokens" && reason.contains("must be an integer")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_max_tokens() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("max_tokens", json!(1000));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_top_p_too_high() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("top_p", json!(1.5));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "top_p" && reason.contains("between 0.0 and 1.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_top_p_negative() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("top_p", json!(-0.1));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "top_p" && reason.contains("between 0.0 and 1.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_top_p() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("top_p", json!(0.9));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_frequency_penalty_too_high() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("frequency_penalty", json!(2.5));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "frequency_penalty" && reason.contains("between -2.0 and 2.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_frequency_penalty_too_low() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("frequency_penalty", json!(-2.5));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "frequency_penalty" && reason.contains("between -2.0 and 2.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_frequency_penalty() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("frequency_penalty", json!(0.5));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_presence_penalty() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("presence_penalty", json!(3.0));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "presence_penalty" && reason.contains("between -2.0 and 2.0")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_presence_penalty() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("presence_penalty", json!(-0.5));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_n_too_high() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("n", json!(129));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "n" && reason.contains("between 1 and 128")
+        ));
+    }
+
+    #[test]
+    fn test_validate_invalid_n_zero() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("n", json!(0));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, reason })
+            if key == "n" && reason.contains("between 1 and 128")
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_n() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("n", json!(5));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_unknown_override_allowed() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("custom_param", json!("custom_value"));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_multiple_overrides() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!(0.8))
+            .override_param("max_tokens", json!(500))
+            .override_param("top_p", json!(0.95));
+        assert!(builder.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_multiple_overrides_with_invalid() {
+        let builder = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test")
+            .override_param("temperature", json!(0.8))
+            .override_param("max_tokens", json!(-100))
+            .override_param("top_p", json!(0.95));
+        let result = builder.validate();
+        assert!(matches!(
+            result,
+            Err(SdkError::InvalidOverride { key, .. })
+            if key == "max_tokens"
+        ));
+    }
+
+    #[test]
+    fn test_build_with_valid_params() {
+        let result = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test prompt")
+            .override_param("temperature", json!(0.7))
+            .build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_with_invalid_params() {
+        let result = FluentRequestBuilder::default()
+            .engine(EngineTemplate::OpenAIChatCompletions)
+            .request("test prompt")
+            .override_param("temperature", json!(5.0))
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sdk_error_display() {
+        let error = SdkError::MissingField("test_field".to_string());
+        assert_eq!(error.to_string(), "Missing required field: test_field");
+
+        let error = SdkError::InvalidOverride {
+            key: "temperature".to_string(),
+            reason: "out of range".to_string(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "Invalid override: temperature - out of range"
+        );
+    }
 }

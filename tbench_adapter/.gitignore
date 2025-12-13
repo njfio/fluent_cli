@@ -1,0 +1,10 @@
+# Compiled Python files
+__pycache__/
+*.pyc
+
+# Build artifacts
+install_fluent.sh
+linux_binary/
+
+# Test runs
+runs/

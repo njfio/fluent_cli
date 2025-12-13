@@ -6,6 +6,9 @@ use std::time::Duration;
 pub mod engine;
 pub mod template;
 
+// Re-export engine items
+pub use engine::{WorkflowEngine, WorkflowExecutionAdapter};
+
 /// Workflow definition structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowDefinition {
@@ -241,7 +244,7 @@ impl WorkflowContext {
     pub fn set_step_output(&mut self, step_id: &str, key: &str, value: serde_json::Value) {
         self.step_outputs
             .entry(step_id.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(key.to_string(), value);
     }
 
@@ -316,17 +319,17 @@ pub mod utils {
     pub fn parse_duration(duration_str: &str) -> Result<Duration> {
         let duration_str = duration_str.trim();
 
-        if duration_str.ends_with("ms") {
-            let ms: u64 = duration_str[..duration_str.len() - 2].parse()?;
+        if let Some(ms_str) = duration_str.strip_suffix("ms") {
+            let ms: u64 = ms_str.parse()?;
             Ok(Duration::from_millis(ms))
-        } else if duration_str.ends_with('s') {
-            let secs: u64 = duration_str[..duration_str.len() - 1].parse()?;
+        } else if let Some(secs_str) = duration_str.strip_suffix('s') {
+            let secs: u64 = secs_str.parse()?;
             Ok(Duration::from_secs(secs))
-        } else if duration_str.ends_with('m') {
-            let mins: u64 = duration_str[..duration_str.len() - 1].parse()?;
+        } else if let Some(mins_str) = duration_str.strip_suffix('m') {
+            let mins: u64 = mins_str.parse()?;
             Ok(Duration::from_secs(mins * 60))
-        } else if duration_str.ends_with('h') {
-            let hours: u64 = duration_str[..duration_str.len() - 1].parse()?;
+        } else if let Some(hours_str) = duration_str.strip_suffix('h') {
+            let hours: u64 = hours_str.parse()?;
             Ok(Duration::from_secs(hours * 3600))
         } else {
             // Default to seconds if no unit specified
@@ -376,13 +379,13 @@ pub mod utils {
 
         // Check each node for cycles
         for step in &definition.steps {
-            if !visited.contains(&step.id) {
-                if has_cycle_dfs(&step.id, &graph, &mut visited, &mut rec_stack)? {
-                    return Err(anyhow::anyhow!(
-                        "Circular dependency detected in workflow starting from step: {}",
-                        step.id
-                    ));
-                }
+            if !visited.contains(&step.id)
+                && has_cycle_dfs(&step.id, &graph, &mut visited, &mut rec_stack)?
+            {
+                return Err(anyhow::anyhow!(
+                    "Circular dependency detected in workflow starting from step: {}",
+                    step.id
+                ));
             }
         }
 

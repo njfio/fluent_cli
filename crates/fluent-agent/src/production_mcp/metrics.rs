@@ -18,6 +18,12 @@ pub struct MetricsCollector {
     start_time: Instant,
 }
 
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsCollector {
     /// Create a new metrics collector
     pub fn new() -> Self {
@@ -145,6 +151,12 @@ pub struct ClientMetrics {
     pub server_connections: HashMap<String, ServerConnectionMetrics>,
 }
 
+impl Default for ClientMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClientMetrics {
     pub fn new() -> Self {
         Self {
@@ -173,7 +185,7 @@ impl ClientMetrics {
         let server_metrics = self
             .server_connections
             .entry(server_name.to_string())
-            .or_insert_with(ServerConnectionMetrics::new);
+            .or_default();
         server_metrics.connections_active += 1;
         server_metrics.connections_total += 1;
     }
@@ -199,6 +211,12 @@ pub struct ServerConnectionMetrics {
     pub last_connected: Option<chrono::DateTime<chrono::Utc>>,
     pub last_disconnected: Option<chrono::DateTime<chrono::Utc>>,
     pub connection_duration_total: Duration,
+}
+
+impl Default for ServerConnectionMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ServerConnectionMetrics {
@@ -229,6 +247,12 @@ pub struct ServerMetrics {
     pub processing_time_p99: Duration,
     pub memory_usage_mb: f64,
     pub cpu_usage_percent: f64,
+}
+
+impl Default for ServerMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ServerMetrics {
@@ -268,6 +292,12 @@ pub struct TransportMetrics {
     pub operation_latencies: HashMap<String, Vec<Duration>>,
 }
 
+impl Default for TransportMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransportMetrics {
     pub fn new() -> Self {
         Self {
@@ -290,7 +320,7 @@ impl TransportMetrics {
         let latencies = self
             .operation_latencies
             .entry(operation.to_string())
-            .or_insert_with(Vec::new);
+            .or_default();
 
         latencies.push(latency);
 
@@ -342,6 +372,12 @@ pub struct ToolMetrics {
     pub server_tool_usage: HashMap<String, HashMap<String, ToolUsageMetrics>>,
 }
 
+impl Default for ToolMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolMetrics {
     pub fn new() -> Self {
         Self {
@@ -360,20 +396,15 @@ impl ToolMetrics {
         self.tools_executed += 1;
         self.tools_successful += 1;
 
-        let tool_metrics = self
-            .tool_usage
-            .entry(tool_name.to_string())
-            .or_insert_with(ToolUsageMetrics::new);
+        let tool_metrics = self.tool_usage.entry(tool_name.to_string()).or_default();
         tool_metrics.executions += 1;
         tool_metrics.successes += 1;
 
         let server_tools = self
             .server_tool_usage
             .entry(server_name.to_string())
-            .or_insert_with(HashMap::new);
-        let server_tool_metrics = server_tools
-            .entry(tool_name.to_string())
-            .or_insert_with(ToolUsageMetrics::new);
+            .or_default();
+        let server_tool_metrics = server_tools.entry(tool_name.to_string()).or_default();
         server_tool_metrics.executions += 1;
         server_tool_metrics.successes += 1;
     }
@@ -387,20 +418,15 @@ impl ToolMetrics {
         self.tools_executed += 1;
         self.tools_failed += 1;
 
-        let tool_metrics = self
-            .tool_usage
-            .entry(tool_name.to_string())
-            .or_insert_with(ToolUsageMetrics::new);
+        let tool_metrics = self.tool_usage.entry(tool_name.to_string()).or_default();
         tool_metrics.executions += 1;
         tool_metrics.failures += 1;
 
         let server_tools = self
             .server_tool_usage
             .entry(server_name.to_string())
-            .or_insert_with(HashMap::new);
-        let server_tool_metrics = server_tools
-            .entry(tool_name.to_string())
-            .or_insert_with(ToolUsageMetrics::new);
+            .or_default();
+        let server_tool_metrics = server_tools.entry(tool_name.to_string()).or_default();
         server_tool_metrics.executions += 1;
         server_tool_metrics.failures += 1;
     }
@@ -414,6 +440,12 @@ pub struct ToolUsageMetrics {
     pub failures: u64,
     pub avg_execution_time: Duration,
     pub last_executed: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl Default for ToolUsageMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ToolUsageMetrics {
@@ -437,6 +469,12 @@ pub struct ResourceMetrics {
     pub cache_misses: u64,
     pub cache_hit_rate: f64,
     pub resource_access: HashMap<String, ResourceAccessMetrics>,
+}
+
+impl Default for ResourceMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceMetrics {
@@ -470,6 +508,12 @@ pub struct SystemMetrics {
     pub network_bytes_received: u64,
     pub open_file_descriptors: u64,
     pub thread_count: u64,
+}
+
+impl Default for SystemMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SystemMetrics {

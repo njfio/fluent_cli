@@ -5,7 +5,6 @@ use fluent_agent::{
 };
 use std::collections::HashMap;
 use tempfile::tempdir;
-use tokio;
 
 /// Demonstrates the enhanced execution context and state management capabilities
 #[tokio::main]

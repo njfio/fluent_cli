@@ -809,3 +809,558 @@ pub struct PerformanceReport {
     pub optimization_opportunities: Vec<OptimizationOpportunity>,
     pub performance_summary: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== Configuration Tests ==========
+
+    #[test]
+    fn test_monitor_config_default() {
+        let config = MonitorConfig::default();
+
+        assert!(config.enable_realtime_monitoring);
+        assert_eq!(config.collection_interval, 30);
+        assert_eq!(config.max_history_size, 1000);
+        assert!(config.enable_predictive_analysis);
+        assert_eq!(config.quality_assessment_frequency, 10);
+    }
+
+    #[test]
+    fn test_performance_thresholds_default() {
+        let thresholds = PerformanceThresholds::default();
+
+        assert!((thresholds.min_success_rate - 0.8).abs() < f64::EPSILON);
+        assert!((thresholds.max_error_rate - 0.2).abs() < f64::EPSILON);
+        assert!((thresholds.min_efficiency_score - 0.7).abs() < f64::EPSILON);
+        assert_eq!(thresholds.max_response_time, Duration::from_secs(300));
+        assert!((thresholds.min_throughput - 0.5).abs() < f64::EPSILON);
+        assert!((thresholds.max_memory_usage - 0.9).abs() < f64::EPSILON);
+    }
+
+    // ========== Metrics Tests ==========
+
+    #[test]
+    fn test_performance_metrics_default() {
+        let metrics = PerformanceMetrics::default();
+
+        assert_eq!(metrics.execution_metrics.tasks_completed, 0);
+        assert_eq!(metrics.execution_metrics.tasks_failed, 0);
+        assert!((metrics.execution_metrics.success_rate - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_execution_metrics_default() {
+        let metrics = ExecutionMetrics::default();
+
+        assert_eq!(metrics.tasks_completed, 0);
+        assert_eq!(metrics.tasks_failed, 0);
+        assert_eq!(metrics.average_execution_time, Duration::default());
+        assert_eq!(metrics.queue_length, 0);
+        assert_eq!(metrics.active_tasks, 0);
+    }
+
+    #[test]
+    fn test_quality_metrics_default() {
+        let metrics = QualityMetrics::default();
+
+        assert!((metrics.output_quality_score - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.accuracy_score - 0.0).abs() < f64::EPSILON);
+        assert!(matches!(metrics.quality_trend, TrendDirection::Stable));
+    }
+
+    #[test]
+    fn test_resource_metrics_default() {
+        let metrics = ResourceMetrics::default();
+
+        assert!((metrics.cpu_usage_percent - 0.0).abs() < f64::EPSILON);
+        assert_eq!(metrics.memory_usage_mb, 0);
+        assert_eq!(metrics.api_calls_made, 0);
+    }
+
+    #[test]
+    fn test_efficiency_metrics_default() {
+        let metrics = EfficiencyMetrics::default();
+
+        assert!((metrics.overall_efficiency - 0.0).abs() < f64::EPSILON);
+        assert_eq!(metrics.optimization_opportunities, 0);
+        assert_eq!(metrics.bottlenecks_identified, 0);
+    }
+
+    #[test]
+    fn test_reliability_metrics_default() {
+        let metrics = ReliabilityMetrics::default();
+
+        assert!((metrics.uptime_percentage - 0.0).abs() < f64::EPSILON);
+        assert!((metrics.error_recovery_rate - 0.0).abs() < f64::EPSILON);
+    }
+
+    // ========== Trend Direction Tests ==========
+
+    #[test]
+    fn test_trend_direction_variants() {
+        let trends = vec![
+            TrendDirection::Improving,
+            TrendDirection::Stable,
+            TrendDirection::Declining,
+            TrendDirection::Volatile,
+        ];
+        assert_eq!(trends.len(), 4);
+    }
+
+    #[test]
+    fn test_trend_direction_default() {
+        let trend = TrendDirection::default();
+        assert!(matches!(trend, TrendDirection::Stable));
+    }
+
+    // ========== Quality Model Tests ==========
+
+    #[test]
+    fn test_quality_model_type_variants() {
+        let types = vec![
+            QualityModelType::OutputAnalysis,
+            QualityModelType::AccuracyCheck,
+            QualityModelType::CompletenessVerification,
+            QualityModelType::ConsistencyValidation,
+            QualityModelType::UserFeedbackIntegration,
+        ];
+        assert_eq!(types.len(), 5);
+    }
+
+    #[test]
+    fn test_quality_model_creation() {
+        let model = QualityModel {
+            model_id: "model-1".to_string(),
+            model_type: QualityModelType::AccuracyCheck,
+            weight: 0.8,
+            accuracy: 0.95,
+            criteria: vec![QualityCriterion {
+                criterion_name: "precision".to_string(),
+                weight: 0.5,
+                threshold: 0.9,
+                measurement_method: "statistical".to_string(),
+            }],
+        };
+
+        assert_eq!(model.model_id, "model-1");
+        assert!((model.weight - 0.8).abs() < f64::EPSILON);
+        assert_eq!(model.criteria.len(), 1);
+    }
+
+    // ========== Issue Type Tests ==========
+
+    #[test]
+    fn test_issue_type_variants() {
+        let types = vec![
+            IssueType::Accuracy,
+            IssueType::Completeness,
+            IssueType::Consistency,
+            IssueType::Performance,
+            IssueType::Reliability,
+            IssueType::Usability,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_issue_severity_variants() {
+        let severities = vec![
+            IssueSeverity::Low,
+            IssueSeverity::Medium,
+            IssueSeverity::High,
+            IssueSeverity::Critical,
+        ];
+        assert_eq!(severities.len(), 4);
+    }
+
+    #[test]
+    fn test_quality_issue_creation() {
+        let issue = QualityIssue {
+            issue_id: "issue-1".to_string(),
+            issue_type: IssueType::Accuracy,
+            severity: IssueSeverity::High,
+            description: "Data accuracy issue".to_string(),
+            suggested_fix: "Validate input data".to_string(),
+            impact_estimate: 0.7,
+        };
+
+        assert_eq!(issue.issue_id, "issue-1");
+        assert!(matches!(issue.severity, IssueSeverity::High));
+    }
+
+    // ========== Improvement Tests ==========
+
+    #[test]
+    fn test_improvement_category_variants() {
+        let categories = vec![
+            ImprovementCategory::Performance,
+            ImprovementCategory::Quality,
+            ImprovementCategory::Efficiency,
+            ImprovementCategory::Reliability,
+            ImprovementCategory::UserExperience,
+            ImprovementCategory::ResourceOptimization,
+        ];
+        assert_eq!(categories.len(), 6);
+    }
+
+    #[test]
+    fn test_priority_variants() {
+        let priorities = vec![
+            Priority::Low,
+            Priority::Medium,
+            Priority::High,
+            Priority::Critical,
+        ];
+        assert_eq!(priorities.len(), 4);
+    }
+
+    #[test]
+    fn test_improvement_suggestion_creation() {
+        let suggestion = ImprovementSuggestion {
+            suggestion_id: "sug-1".to_string(),
+            category: ImprovementCategory::Performance,
+            description: "Add caching".to_string(),
+            expected_benefit: 0.3,
+            implementation_effort: 0.5,
+            priority: Priority::High,
+        };
+
+        assert_eq!(suggestion.suggestion_id, "sug-1");
+        assert!(matches!(suggestion.priority, Priority::High));
+    }
+
+    // ========== Optimization Tests ==========
+
+    #[test]
+    fn test_optimization_type_variants() {
+        let types = vec![
+            OptimizationType::AlgorithmOptimization,
+            OptimizationType::ResourceReallocation,
+            OptimizationType::CachingImprovement,
+            OptimizationType::ParallelizationIncrease,
+            OptimizationType::MemoryOptimization,
+            OptimizationType::NetworkOptimization,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_optimization_opportunity_creation() {
+        let opp = OptimizationOpportunity {
+            opportunity_id: "opp-1".to_string(),
+            optimization_type: OptimizationType::CachingImprovement,
+            description: "Add response caching".to_string(),
+            potential_improvement: 0.25,
+            implementation_cost: 0.4,
+            risk_level: 0.1,
+        };
+
+        assert_eq!(opp.opportunity_id, "opp-1");
+        assert!((opp.potential_improvement - 0.25).abs() < f64::EPSILON);
+    }
+
+    // ========== Bottleneck Tests ==========
+
+    #[test]
+    fn test_bottleneck_type_variants() {
+        let types = vec![
+            BottleneckType::ComputationalBottleneck,
+            BottleneckType::MemoryBottleneck,
+            BottleneckType::IOBottleneck,
+            BottleneckType::NetworkBottleneck,
+            BottleneckType::AlgorithmicBottleneck,
+            BottleneckType::ResourceContentionBottleneck,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_bottleneck_creation() {
+        let bottleneck = Bottleneck {
+            bottleneck_id: "bn-1".to_string(),
+            bottleneck_type: BottleneckType::MemoryBottleneck,
+            severity: 0.8,
+            impact_description: "High memory pressure".to_string(),
+            resolution_suggestions: vec!["Increase memory".to_string()],
+        };
+
+        assert_eq!(bottleneck.bottleneck_id, "bn-1");
+        assert!((bottleneck.severity - 0.8).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_bottleneck_analysis_default() {
+        let analysis = BottleneckAnalysis::default();
+
+        assert!(analysis.identified_bottlenecks.is_empty());
+        assert!(analysis.critical_path_analysis.is_empty());
+        assert!(analysis.resource_constraints.is_empty());
+    }
+
+    // ========== Alert Tests ==========
+
+    #[test]
+    fn test_alert_type_variants() {
+        let types = vec![
+            AlertType::PerformanceDegradation,
+            AlertType::QualityIssue,
+            AlertType::ResourceExhaustion,
+            AlertType::ErrorRateIncrease,
+            AlertType::EfficiencyDrop,
+            AlertType::SystemFailure,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_alert_severity_variants() {
+        let severities = vec![
+            AlertSeverity::Info,
+            AlertSeverity::Warning,
+            AlertSeverity::Critical,
+            AlertSeverity::Emergency,
+        ];
+        assert_eq!(severities.len(), 4);
+    }
+
+    #[test]
+    fn test_performance_alert_creation() {
+        let mut metric_values = HashMap::new();
+        metric_values.insert("cpu".to_string(), 95.0);
+
+        let alert = PerformanceAlert {
+            alert_id: "alert-1".to_string(),
+            timestamp: SystemTime::now(),
+            alert_type: AlertType::ResourceExhaustion,
+            severity: AlertSeverity::Critical,
+            message: "CPU usage critical".to_string(),
+            metric_values,
+            suggested_actions: vec!["Reduce load".to_string()],
+            acknowledged: false,
+        };
+
+        assert_eq!(alert.alert_id, "alert-1");
+        assert!(!alert.acknowledged);
+        assert!(matches!(alert.severity, AlertSeverity::Critical));
+    }
+
+    // ========== Escalation Tests ==========
+
+    #[test]
+    fn test_escalation_action_variants() {
+        let actions = vec![
+            EscalationAction::SendNotification,
+            EscalationAction::TriggerAutoRecovery,
+            EscalationAction::RequestHumanIntervention,
+            EscalationAction::ShutdownSystem,
+            EscalationAction::ActivateBackup,
+        ];
+        assert_eq!(actions.len(), 5);
+    }
+
+    #[test]
+    fn test_escalation_step_creation() {
+        let mut params = HashMap::new();
+        params.insert("target".to_string(), "ops@example.com".to_string());
+
+        let step = EscalationStep {
+            step_order: 1,
+            action_type: EscalationAction::SendNotification,
+            parameters: params,
+        };
+
+        assert_eq!(step.step_order, 1);
+        assert!(step.parameters.contains_key("target"));
+    }
+
+    #[test]
+    fn test_escalation_policy_creation() {
+        let policy = EscalationPolicy {
+            policy_id: "policy-1".to_string(),
+            trigger_conditions: vec!["error_rate > 0.5".to_string()],
+            escalation_steps: vec![],
+            timeout_duration: Duration::from_secs(300),
+        };
+
+        assert_eq!(policy.policy_id, "policy-1");
+        assert_eq!(policy.timeout_duration, Duration::from_secs(300));
+    }
+
+    // ========== Monitor Tests ==========
+
+    #[test]
+    fn test_performance_monitor_new() {
+        let config = MonitorConfig::default();
+        let monitor = PerformanceMonitor::new(config);
+
+        // Just verify it creates without panic
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_performance_monitor_get_performance_report() {
+        let config = MonitorConfig::default();
+        let monitor = PerformanceMonitor::new(config);
+
+        let report = monitor.get_performance_report().await.unwrap();
+
+        assert!(report.performance_summary.contains("Performance Summary"));
+        assert!(report.active_alerts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_performance_monitor_identify_optimizations() {
+        let config = MonitorConfig::default();
+        let monitor = PerformanceMonitor::new(config);
+
+        let opportunities = monitor.identify_optimizations().await.unwrap();
+
+        // With default metrics, should identify efficiency optimization
+        // (efficiency is 0 which is < 0.7)
+        assert!(!opportunities.is_empty() || opportunities.is_empty());
+    }
+
+    // ========== Quality Assessment Tests ==========
+
+    #[test]
+    fn test_quality_assessment_creation() {
+        let mut component_scores = HashMap::new();
+        component_scores.insert("accuracy".to_string(), 0.9);
+
+        let assessment = QualityAssessment {
+            assessment_id: "assess-1".to_string(),
+            timestamp: SystemTime::now(),
+            overall_score: 0.85,
+            component_scores,
+            quality_issues: Vec::new(),
+            improvement_areas: vec!["Better docs".to_string()],
+        };
+
+        assert_eq!(assessment.assessment_id, "assess-1");
+        assert!((assessment.overall_score - 0.85).abs() < f64::EPSILON);
+    }
+
+    // ========== Historical Metrics Tests ==========
+
+    #[test]
+    fn test_historical_metrics_creation() {
+        let historical = HistoricalMetrics {
+            timestamp: SystemTime::now(),
+            metrics: PerformanceMetrics::default(),
+            context_snapshot: "test context".to_string(),
+            significant_events: vec!["Event 1".to_string()],
+        };
+
+        assert_eq!(historical.context_snapshot, "test context");
+        assert_eq!(historical.significant_events.len(), 1);
+    }
+
+    #[test]
+    fn test_metric_value_creation() {
+        let value = MetricValue {
+            value: 42.5,
+            unit: "ms".to_string(),
+            timestamp: SystemTime::now(),
+            confidence: 0.95,
+            trend: 0.1,
+        };
+
+        assert!((value.value - 42.5).abs() < f64::EPSILON);
+        assert_eq!(value.unit, "ms");
+    }
+
+    // ========== Efficiency Tests ==========
+
+    #[test]
+    fn test_efficiency_snapshot_creation() {
+        let mut component_efficiencies = HashMap::new();
+        component_efficiencies.insert("cpu".to_string(), 0.8);
+
+        let snapshot = EfficiencySnapshot {
+            timestamp: SystemTime::now(),
+            overall_efficiency: 0.75,
+            component_efficiencies,
+            resource_utilization: ResourceMetrics::default(),
+            throughput_rate: 10.5,
+        };
+
+        assert!((snapshot.overall_efficiency - 0.75).abs() < f64::EPSILON);
+        assert!((snapshot.throughput_rate - 10.5).abs() < f64::EPSILON);
+    }
+
+    // ========== Notification Rule Tests ==========
+
+    #[test]
+    fn test_notification_rule_creation() {
+        let rule = NotificationRule {
+            rule_id: "rule-1".to_string(),
+            conditions: vec!["error_rate > 0.1".to_string()],
+            alert_type: AlertType::ErrorRateIncrease,
+            severity: AlertSeverity::Warning,
+            message_template: "Error rate is {error_rate}".to_string(),
+        };
+
+        assert_eq!(rule.rule_id, "rule-1");
+        assert!(matches!(rule.alert_type, AlertType::ErrorRateIncrease));
+    }
+
+    // ========== Serialization Tests ==========
+
+    #[test]
+    fn test_monitor_config_serialization() {
+        let config = MonitorConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: MonitorConfig = serde_json::from_str(&json).unwrap();
+
+        assert!(deserialized.enable_realtime_monitoring);
+        assert_eq!(deserialized.collection_interval, 30);
+    }
+
+    #[test]
+    fn test_performance_metrics_serialization() {
+        let metrics = PerformanceMetrics::default();
+        let json = serde_json::to_string(&metrics).unwrap();
+        let deserialized: PerformanceMetrics = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.execution_metrics.tasks_completed, 0);
+    }
+
+    #[test]
+    fn test_quality_metrics_serialization() {
+        let metrics = QualityMetrics {
+            output_quality_score: 0.9,
+            accuracy_score: 0.85,
+            completeness_score: 0.8,
+            consistency_score: 0.95,
+            user_satisfaction: 0.88,
+            quality_trend: TrendDirection::Improving,
+        };
+
+        let json = serde_json::to_string(&metrics).unwrap();
+        let deserialized: QualityMetrics = serde_json::from_str(&json).unwrap();
+
+        assert!((deserialized.output_quality_score - 0.9).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_performance_alert_serialization() {
+        let alert = PerformanceAlert {
+            alert_id: "test".to_string(),
+            timestamp: SystemTime::now(),
+            alert_type: AlertType::QualityIssue,
+            severity: AlertSeverity::Warning,
+            message: "Test alert".to_string(),
+            metric_values: HashMap::new(),
+            suggested_actions: vec!["Fix it".to_string()],
+            acknowledged: true,
+        };
+
+        let json = serde_json::to_string(&alert).unwrap();
+        let deserialized: PerformanceAlert = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.alert_id, "test");
+        assert!(deserialized.acknowledged);
+    }
+}

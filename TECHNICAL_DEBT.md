@@ -60,7 +60,7 @@ This document tracks remaining technical debt items following the comprehensive 
 
 **Impact**: Acceptable deprecation warnings in test builds
 
-**Solution Path**: 
+**Solution Path**:
 1. Keep existing tests for backward compatibility
 2. Add new tests using AsyncSqliteMemoryStore when available
 3. Gradually phase out deprecated tests

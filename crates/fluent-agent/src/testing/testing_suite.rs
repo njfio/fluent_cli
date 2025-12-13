@@ -686,7 +686,7 @@ impl TestingSuite {
     /// Execute a single unit test
     async fn execute_unit_test(&self, test_case: &TestCase) -> Result<TestResult> {
         let start_time = std::time::Instant::now();
-        
+
         // Execute test logic here
         let status = TestStatus::Passed; // Simplified for demo
         let execution_time = start_time.elapsed();

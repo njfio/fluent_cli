@@ -185,7 +185,7 @@ impl StateManager {
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
                 if let Some(stem) = path.file_stem() {
                     if let Some(name) = stem.to_str() {
                         if !name.contains("checkpoint") {
@@ -254,10 +254,8 @@ impl StateManager {
             let path = entry.path();
             if let Ok(metadata) = fs::metadata(&path).await {
                 if let Ok(modified) = metadata.modified() {
-                    if modified < cutoff_time {
-                        if path.is_file() {
-                            fs::remove_file(&path).await?;
-                        }
+                    if modified < cutoff_time && path.is_file() {
+                        fs::remove_file(&path).await?;
                     }
                 }
             }

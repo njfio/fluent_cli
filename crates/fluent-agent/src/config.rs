@@ -2,16 +2,72 @@ use anyhow::{anyhow, Result};
 use fluent_core::config::load_engine_config;
 use fluent_core::traits::Engine;
 use fluent_engines::create_engine;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::warn;
 // use std::time::Duration;
 
 use crate::autonomy::AutonomySupervisorConfig;
 use crate::performance::PerformanceConfig;
 use crate::state_manager::StateManagerConfig;
+
+/// Rate limiting configuration for API calls
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Whether rate limiting is enabled
+    pub enabled: bool,
+    /// Maximum requests per second for reasoning engine
+    pub reasoning_rps: f64,
+    /// Maximum requests per second for action engine
+    pub action_rps: f64,
+    /// Maximum requests per second for reflection engine
+    pub reflection_rps: f64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            reasoning_rps: 5.0,  // 5 requests per second
+            action_rps: 10.0,    // 10 requests per second
+            reflection_rps: 3.0, // 3 requests per second
+        }
+    }
+}
+
+impl RateLimitConfig {
+    /// Create from environment variables
+    pub fn from_environment() -> Self {
+        let enabled = std::env::var("FLUENT_RATE_LIMIT_ENABLED")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(true);
+
+        let reasoning_rps = std::env::var("FLUENT_REASONING_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(5.0);
+
+        let action_rps = std::env::var("FLUENT_ACTION_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10.0);
+
+        let reflection_rps = std::env::var("FLUENT_REFLECTION_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3.0);
+
+        Self {
+            enabled,
+            reasoning_rps,
+            action_rps,
+            reflection_rps,
+        }
+    }
+}
 
 /// Configuration for the agentic framework that integrates with fluent_cli's existing patterns
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +82,8 @@ pub struct AgentEngineConfig {
     pub action_engine: String,
     pub reflection_engine: String,
     pub memory_database: String,
+    #[serde(default = "default_memory_enabled")]
+    pub memory_enabled: bool,
     pub tools: ToolConfig,
     pub config_path: Option<String>,
     pub max_iterations: Option<u32>,
@@ -33,6 +91,7 @@ pub struct AgentEngineConfig {
     pub supervisor: Option<AutonomySupervisorConfig>,
     pub performance: Option<PerformanceConfig>,
     pub state_management: Option<StateManagerConfig>,
+    pub rate_limit: Option<RateLimitConfig>,
 }
 
 /// Tool configuration for the agent
@@ -42,31 +101,131 @@ pub struct ToolConfig {
     pub shell_commands: bool,
     pub rust_compiler: bool,
     pub git_operations: bool,
+    #[serde(default = "default_web_browsing")]
+    pub web_browsing: bool,
     pub allowed_paths: Option<Vec<String>>,
     pub allowed_commands: Option<Vec<String>>,
+}
+
+fn default_web_browsing() -> bool {
+    true
+}
+
+fn default_memory_enabled() -> bool {
+    true
 }
 
 /// Runtime configuration with loaded engines and credentials
 #[derive(Clone)]
 pub struct AgentRuntimeConfig {
-    pub reasoning_engine: Arc<Box<dyn Engine>>,
-    pub action_engine: Arc<Box<dyn Engine>>,
-    pub reflection_engine: Arc<Box<dyn Engine>>,
+    pub reasoning_engine: Arc<dyn Engine>,
+    pub action_engine: Arc<dyn Engine>,
+    pub reflection_engine: Arc<dyn Engine>,
     pub config: AgentEngineConfig,
     pub credentials: HashMap<String, String>,
     pub supervisor: Option<AutonomySupervisorConfig>,
     pub performance: PerformanceConfig,
     pub state_overrides: Option<StateManagerConfig>,
+    pub rate_limit: RateLimitConfig,
+    pub reasoning_rate_limiter: Option<Arc<fluent_engines::RateLimiter>>,
+    pub action_rate_limiter: Option<Arc<fluent_engines::RateLimiter>>,
+    pub reflection_rate_limiter: Option<Arc<fluent_engines::RateLimiter>>,
 }
 
 impl AgentRuntimeConfig {
     /// Get the base engine for enhanced reasoning
     pub fn get_base_engine(&self) -> Option<Arc<dyn Engine>> {
-        // Return a clone of the reasoning engine for use as base engine
-        // We need to convert from Arc<Box<dyn Engine>> to Arc<dyn Engine>
-        // This is a workaround - we can't directly cast, so we'll return None for now
-        // In a real implementation, we'd need to restructure to avoid this type mismatch
-        None
+        Some(self.reasoning_engine.clone())
+    }
+
+    /// Acquire a rate limit token for reasoning operations
+    ///
+    /// If rate limiting is disabled, returns immediately.
+    /// Otherwise, waits until a token is available.
+    pub async fn acquire_reasoning_rate_limit(&self) {
+        if let Some(ref limiter) = self.reasoning_rate_limiter {
+            limiter.acquire().await;
+        }
+    }
+
+    /// Acquire a rate limit token for action operations
+    pub async fn acquire_action_rate_limit(&self) {
+        if let Some(ref limiter) = self.action_rate_limiter {
+            limiter.acquire().await;
+        }
+    }
+
+    /// Acquire a rate limit token for reflection operations
+    pub async fn acquire_reflection_rate_limit(&self) {
+        if let Some(ref limiter) = self.reflection_rate_limiter {
+            limiter.acquire().await;
+        }
+    }
+
+    /// Try to acquire a rate limit token without blocking
+    ///
+    /// Returns true if token was acquired, false if rate limited.
+    pub async fn try_acquire_reasoning_rate_limit(&self) -> bool {
+        if let Some(ref limiter) = self.reasoning_rate_limiter {
+            limiter.try_acquire().await
+        } else {
+            true // No limiter = always allowed
+        }
+    }
+
+    /// Try to acquire an action rate limit token without blocking
+    pub async fn try_acquire_action_rate_limit(&self) -> bool {
+        if let Some(ref limiter) = self.action_rate_limiter {
+            limiter.try_acquire().await
+        } else {
+            true
+        }
+    }
+
+    /// Try to acquire a reflection rate limit token without blocking
+    pub async fn try_acquire_reflection_rate_limit(&self) -> bool {
+        if let Some(ref limiter) = self.reflection_rate_limiter {
+            limiter.try_acquire().await
+        } else {
+            true
+        }
+    }
+
+    /// Get the current rate limit configuration
+    pub fn rate_limit_config(&self) -> &RateLimitConfig {
+        &self.rate_limit
+    }
+
+    /// Check if rate limiting is enabled
+    pub fn is_rate_limiting_enabled(&self) -> bool {
+        self.rate_limit.enabled
+    }
+
+    /// Get available reasoning tokens (for monitoring)
+    pub async fn reasoning_tokens_available(&self) -> f64 {
+        if let Some(ref limiter) = self.reasoning_rate_limiter {
+            limiter.available_tokens().await
+        } else {
+            f64::INFINITY
+        }
+    }
+
+    /// Get available action tokens (for monitoring)
+    pub async fn action_tokens_available(&self) -> f64 {
+        if let Some(ref limiter) = self.action_rate_limiter {
+            limiter.available_tokens().await
+        } else {
+            f64::INFINITY
+        }
+    }
+
+    /// Get available reflection tokens (for monitoring)
+    pub async fn reflection_tokens_available(&self) -> f64 {
+        if let Some(ref limiter) = self.reflection_rate_limiter {
+            limiter.available_tokens().await
+        } else {
+            f64::INFINITY
+        }
     }
 }
 
@@ -119,44 +278,77 @@ impl AgentEngineConfig {
         };
 
         // Create reflection engine (can be the same as reasoning)
-        let reflection_engine = if self.reflection_engine == self.reasoning_engine {
-            // Create a new instance of the same engine
-            self.create_engine(
+        let reflection_engine = self
+            .create_engine(
                 &fluent_config_content,
                 &self.reflection_engine,
                 &credentials,
                 model_override,
             )
-            .await?
-        } else if self.reflection_engine == self.action_engine {
-            // Create a new instance of the same engine
-            self.create_engine(
-                &fluent_config_content,
-                &self.reflection_engine,
-                &credentials,
-                model_override,
-            )
-            .await?
-        } else {
-            self.create_engine(
-                &fluent_config_content,
-                &self.reflection_engine,
-                &credentials,
-                model_override,
-            )
-            .await?
-        };
+            .await?;
+
+        // Initialize rate limiters based on config
+        let rate_limit_config = self
+            .rate_limit
+            .clone()
+            .unwrap_or_else(RateLimitConfig::from_environment);
+
+        let (reasoning_rate_limiter, action_rate_limiter, reflection_rate_limiter) =
+            if rate_limit_config.enabled {
+                (
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.reasoning_rps,
+                    ))),
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.action_rps,
+                    ))),
+                    Some(Arc::new(fluent_engines::RateLimiter::new(
+                        rate_limit_config.reflection_rps,
+                    ))),
+                )
+            } else {
+                (None, None, None)
+            };
 
         Ok(AgentRuntimeConfig {
-            reasoning_engine: Arc::new(reasoning_engine),
-            action_engine: Arc::new(action_engine),
-            reflection_engine: Arc::new(reflection_engine),
+            reasoning_engine: Arc::from(reasoning_engine),
+            action_engine: Arc::from(action_engine),
+            reflection_engine: Arc::from(reflection_engine),
             config: self.clone(),
             credentials,
             supervisor: self.supervisor.clone(),
             performance: self.performance.clone().unwrap_or_default(),
             state_overrides: self.state_management.clone(),
+            rate_limit: rate_limit_config,
+            reasoning_rate_limiter,
+            action_rate_limiter,
+            reflection_rate_limiter,
         })
+    }
+
+    /// Resolve the configured SQLite memory database to a filesystem path.
+    ///
+    /// Supported forms:
+    /// - `sqlite://global` (default)
+    /// - `sqlite://:memory:`
+    /// - `sqlite:///absolute/path/to/db`
+    /// - `sqlite://./relative/path/to/db`
+    pub fn resolve_memory_db_path(&self) -> std::path::PathBuf {
+        let url = self.memory_database.trim();
+        let Some(rest) = url.strip_prefix("sqlite://") else {
+            return crate::paths::global_agent_memory_db_path();
+        };
+
+        if rest.is_empty() || rest == "global" {
+            return crate::paths::global_agent_memory_db_path();
+        }
+        if rest == ":memory:" {
+            return std::path::PathBuf::from(":memory:");
+        }
+
+        // `sqlite:///abs/path` yields rest like "/abs/path" (keep it absolute)
+        // `sqlite://./rel/path` yields rest like "./rel/path"
+        std::path::PathBuf::from(rest)
     }
 
     pub fn supervisor_config(&self) -> AutonomySupervisorConfig {
@@ -356,12 +548,14 @@ impl AgentEngineConfig {
             reasoning_engine: "sonnet3.5".to_string(),
             action_engine: "gpt-4o".to_string(),
             reflection_engine: "gemini-flash".to_string(),
-            memory_database: "sqlite://./agent_memory.db".to_string(),
+            memory_database: "sqlite://global".to_string(),
+            memory_enabled: true,
             tools: ToolConfig {
                 file_operations: true,
                 shell_commands: false, // Disabled by default for security
                 rust_compiler: true,
                 git_operations: false, // Disabled by default for security
+                web_browsing: true,
                 allowed_paths: Some(vec![
                     "./".to_string(),
                     "./src".to_string(),
@@ -381,6 +575,7 @@ impl AgentEngineConfig {
             supervisor: None,
             performance: None,
             state_management: None,
+            rate_limit: Some(RateLimitConfig::default()),
         }
     }
 
@@ -403,6 +598,7 @@ impl Default for ToolConfig {
             shell_commands: false,
             rust_compiler: true,
             git_operations: false,
+            web_browsing: true,
             allowed_paths: Some(vec![
                 "./".to_string(),
                 "./src".to_string(),
@@ -449,8 +645,7 @@ pub mod credentials {
 
         // Load CREDENTIAL_ prefixed variables (fluent_cli pattern)
         for (key, value) in env::vars() {
-            if key.starts_with("CREDENTIAL_") {
-                let credential_key = &key[11..]; // Remove CREDENTIAL_ prefix
+            if let Some(credential_key) = key.strip_prefix("CREDENTIAL_") {
                 credentials.insert(credential_key.to_string(), value);
             }
         }
@@ -580,5 +775,37 @@ mod tests {
 
         let engines = vec!["sonnet3.5".to_string()];
         assert!(credentials::validate_credentials(&credentials, &engines).is_err());
+    }
+
+    #[test]
+    fn test_rate_limit_config_default() {
+        let config = RateLimitConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.reasoning_rps, 5.0);
+        assert_eq!(config.action_rps, 10.0);
+        assert_eq!(config.reflection_rps, 3.0);
+    }
+
+    #[test]
+    fn test_rate_limit_config_from_env() {
+        // Test that environment variables are read correctly
+        std::env::set_var("FLUENT_RATE_LIMIT_ENABLED", "false");
+        std::env::set_var("FLUENT_REASONING_RPS", "2.5");
+
+        let config = RateLimitConfig::from_environment();
+        assert!(!config.enabled);
+        assert_eq!(config.reasoning_rps, 2.5);
+
+        // Clean up
+        std::env::remove_var("FLUENT_RATE_LIMIT_ENABLED");
+        std::env::remove_var("FLUENT_REASONING_RPS");
+    }
+
+    #[test]
+    fn test_default_config_includes_rate_limit() {
+        let config = AgentEngineConfig::default_config();
+        assert!(config.rate_limit.is_some());
+        let rate_limit = config.rate_limit.unwrap();
+        assert!(rate_limit.enabled);
     }
 }

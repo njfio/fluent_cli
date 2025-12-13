@@ -1,8 +1,36 @@
+//! Authentication and credential management for Fluent CLI.
+//!
+//! This module provides secure handling of API credentials and authentication tokens
+//! for communicating with LLM providers and external services.
+//!
+//! # Security Features
+//!
+//! - **SecureString**: Memory-safe credential storage that clears on drop
+//! - **AuthManager**: Centralized authentication with multiple auth types
+//! - Token validation to prevent injection attacks
+//! - Redacted debug/display output to prevent credential leakage
+//!
+//! # Supported Authentication Types
+//!
+//! - Bearer token (OAuth 2.0 style)
+//! - API key with custom header
+//! - HTTP Basic authentication
+//! - Custom header/value pairs
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use fluent_core::auth::{AuthManager, AuthType};
+//!
+//! let auth = AuthManager::bearer_token(&config_params)?;
+//! let headers = auth.to_headers()?;
+//! ```
+
 use anyhow::{anyhow, Result};
-use log::{debug, warn};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::Value;
 use std::collections::HashMap;
+use tracing::{debug, warn};
 
 /// Secure string that clears memory on drop
 #[derive(Clone)]
@@ -141,8 +169,9 @@ impl AuthManager {
         }
 
         Err(anyhow!(
-            "No valid authentication token found in configuration. Expected one of: {:?}",
-            token_keys
+            "API key/token not found in configuration. Please set one of the following in your config parameters: {}. \
+            Alternatively, you can set the corresponding environment variable (e.g., OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.).",
+            token_keys.join(", ")
         ))
     }
 
@@ -243,16 +272,15 @@ impl AuthManager {
         let mut headers = HeaderMap::new();
         self.add_auth_headers(&mut headers)?;
 
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .user_agent("fluent-cli/0.1")
-            .no_proxy()
-            .timeout(std::time::Duration::from_secs(60))
-            .pool_max_idle_per_host(8)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Use the centralized secure HTTP client builder with extended timeout for LLM APIs
+        let client = crate::http_client::create_client_builder_with_timeout(
+            std::time::Duration::from_secs(10), // 10s connect timeout
+            std::time::Duration::from_secs(60), // 60s request timeout for API calls
+        )
+        .default_headers(headers)
+        .user_agent("fluent-cli/0.1")
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
 
         Ok(client)
     }
@@ -281,41 +309,73 @@ impl EngineAuth {
     /// Creates authentication for OpenAI-compatible APIs
     pub fn openai(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "OpenAI API key not found. Set OPENAI_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Anthropic API
     pub fn anthropic(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::api_key(config_params, "x-api-key")
+            .map_err(|e| anyhow!(
+                "Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Cohere API
     pub fn cohere(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "Cohere API key not found. Set COHERE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Mistral API
     pub fn mistral(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "Mistral API key not found. Set MISTRAL_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Stability AI
     pub fn stability_ai(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "Stability AI API key not found. Set STABILITYAI_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Google Gemini
     pub fn google_gemini(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::api_key(config_params, "x-goog-api-key")
+            .map_err(|e| anyhow!(
+                "Google Gemini API key not found. Set GOOGLE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for Replicate
     pub fn replicate(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "Replicate API key not found. Set REPLICATE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 
     /// Creates authentication for webhook/generic APIs
     pub fn webhook(config_params: &HashMap<String, Value>) -> Result<AuthManager> {
         AuthManager::bearer_token(config_params)
+            .map_err(|e| anyhow!(
+                "Webhook API key/token not found. Add 'bearer_token' or 'api_key' to config parameters. Error: {}",
+                e
+            ))
     }
 }
 
@@ -344,7 +404,18 @@ mod tests {
     #[test]
     fn test_missing_token() {
         let config = HashMap::new();
-        assert!(AuthManager::bearer_token(&config).is_err());
+        let result = AuthManager::bearer_token(&config);
+        assert!(result.is_err());
+
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.to_lowercase().contains("api key")
+                    || err_msg.to_lowercase().contains("token"),
+                "Error message should mention API key or token: {}",
+                err_msg
+            );
+        }
     }
 
     #[test]
@@ -384,5 +455,103 @@ mod tests {
 
         // Verify the client was created successfully
         assert!(client.get("https://httpbin.org/get").build().is_ok());
+    }
+
+    #[test]
+    fn test_openai_missing_api_key_error() {
+        let params = HashMap::new();
+        let result = EngineAuth::openai(&params);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("OpenAI"),
+                "Error should mention OpenAI: {}",
+                err_msg
+            );
+            assert!(
+                err_msg.contains("OPENAI_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
+                "Error should mention OPENAI_API_KEY or environment variable: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_anthropic_missing_api_key_error() {
+        let params = HashMap::new();
+        let result = EngineAuth::anthropic(&params);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("Anthropic"),
+                "Error should mention Anthropic: {}",
+                err_msg
+            );
+            assert!(
+                err_msg.contains("ANTHROPIC_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
+                "Error should mention ANTHROPIC_API_KEY or environment variable: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_google_missing_api_key_error() {
+        let params = HashMap::new();
+        let result = EngineAuth::google_gemini(&params);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("Gemini") || err_msg.contains("Google"),
+                "Error should mention Google or Gemini: {}",
+                err_msg
+            );
+            assert!(
+                err_msg.contains("GOOGLE_API_KEY")
+                    || err_msg.to_lowercase().contains("environment variable"),
+                "Error should mention GOOGLE_API_KEY or environment variable: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_cohere_missing_api_key_error() {
+        let params = HashMap::new();
+        let result = EngineAuth::cohere(&params);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("Cohere"),
+                "Error should mention Cohere: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_mistral_missing_api_key_error() {
+        let params = HashMap::new();
+        let result = EngineAuth::mistral(&params);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("Mistral"),
+                "Error should mention Mistral: {}",
+                err_msg
+            );
+        }
     }
 }

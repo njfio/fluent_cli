@@ -14,6 +14,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, instrument, warn as tracing_warn};
+use uuid::Uuid;
+
+use crate::tools::validation;
+
+/// Health check timeout for production MCP client
+const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// MCP client manager (Development Stage)
 ///
@@ -28,6 +36,8 @@ pub struct ProductionMcpClientManager {
     connection_pool: Arc<ConnectionPool>,
     #[allow(dead_code)]
     error_recovery: Arc<ErrorRecoveryManager>,
+    /// Cancellation token for background tasks (health monitoring, connection maintenance)
+    cancellation_token: CancellationToken,
 }
 
 impl ProductionMcpClientManager {
@@ -47,6 +57,7 @@ impl ProductionMcpClientManager {
             health_monitor,
             connection_pool,
             error_recovery,
+            cancellation_token: CancellationToken::new(),
         })
     }
 
@@ -180,11 +191,14 @@ impl ProductionMcpClientManager {
 
     /// Shutdown all clients
     pub async fn shutdown(&self) -> Result<(), McpError> {
+        // Cancel background tasks first
+        self.cancellation_token.cancel();
+
         let mut clients = self.clients.write().await;
 
         for (_, client) in clients.drain() {
             if let Err(e) = client.disconnect().await {
-                log::warn!("Error disconnecting client: {}", e);
+                tracing::warn!("Error disconnecting client: {}", e);
             }
         }
 
@@ -219,18 +233,27 @@ impl ProductionMcpClientManager {
         let clients = self.clients.clone();
         let health_monitor = self.health_monitor.clone();
         let check_interval = self.config.health_check_interval;
+        let cancellation_token = self.cancellation_token.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(check_interval);
             loop {
-                interval.tick().await;
-                let clients_guard = clients.read().await;
+                tokio::select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => {
+                        tracing::debug!("Health monitoring task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let clients_guard = clients.read().await;
 
-                for (name, client) in clients_guard.iter() {
-                    let health_status = client.check_health().await;
-                    health_monitor
-                        .update_client_health(name, health_status)
-                        .await;
+                        for (name, client) in clients_guard.iter() {
+                            let health_status = client.check_health().await;
+                            health_monitor
+                                .update_client_health(name, health_status)
+                                .await;
+                        }
+                    }
                 }
             }
         });
@@ -242,16 +265,25 @@ impl ProductionMcpClientManager {
     async fn start_connection_maintenance(&self) -> Result<(), McpError> {
         let clients = self.clients.clone();
         let maintenance_interval = Duration::from_secs(60);
+        let cancellation_token = self.cancellation_token.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(maintenance_interval);
             loop {
-                interval.tick().await;
-                let clients_guard = clients.read().await;
+                tokio::select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => {
+                        tracing::debug!("Connection maintenance task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let clients_guard = clients.read().await;
 
-                for client in clients_guard.values() {
-                    if let Err(e) = client.maintain_connection().await {
-                        log::warn!("Connection maintenance failed: {}", e);
+                        for client in clients_guard.values() {
+                            if let Err(e) = client.maintain_connection().await {
+                                tracing::warn!("Connection maintenance failed: {}", e);
+                            }
+                        }
                     }
                 }
             }
@@ -302,52 +334,145 @@ impl ProductionMcpClient {
     }
 
     /// Connect to the MCP server
+    #[instrument(skip(self), fields(name = %self.name, command = %self.command))]
     pub async fn connect(&self) -> Result<(), McpError> {
         use rmcp::transport::TokioChildProcess;
         use tokio::process::Command;
+
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, name = %self.name, "Starting MCP server connection");
+
+        // Validate command before execution to prevent arbitrary command execution
+        let allowed_commands = vec![
+            "npx".to_string(),
+            "node".to_string(),
+            "python".to_string(),
+            "python3".to_string(),
+            "deno".to_string(),
+            "bun".to_string(),
+        ];
+
+        validation::validate_command(&self.command, &allowed_commands).map_err(|e| {
+            error!(request_id = %request_id, error = %e, "Command validation failed");
+            McpError::configuration(
+                "command",
+                format!("MCP server command validation failed: {}", e),
+            )
+        })?;
+
+        // Validate arguments for dangerous patterns
+        for arg in &self.args {
+            // Check for shell injection patterns in arguments
+            if arg.contains("$(")
+                || arg.contains("`")
+                || arg.contains(";")
+                || arg.contains("&&")
+                || arg.contains("||")
+                || arg.contains("|")
+                || arg.contains(">")
+                || arg.contains("<")
+            {
+                error!(request_id = %request_id, arg = %arg, "Dangerous shell pattern detected");
+                return Err(McpError::configuration(
+                    "args",
+                    format!(
+                        "MCP server argument contains dangerous shell pattern: '{}'",
+                        arg
+                    ),
+                ));
+            }
+
+            // Check for null bytes and dangerous control characters
+            if arg.contains('\0')
+                || arg
+                    .chars()
+                    .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+            {
+                error!(request_id = %request_id, arg = %arg, "Invalid control characters detected");
+                return Err(McpError::configuration(
+                    "args",
+                    format!(
+                        "MCP server argument contains invalid control characters: '{}'",
+                        arg
+                    ),
+                ));
+            }
+        }
 
         let mut cmd = Command::new(&self.command);
         for arg in &self.args {
             cmd.arg(arg);
         }
 
-        let transport = TokioChildProcess::new(cmd)
-            .map_err(|e| McpError::transport("stdio", e.to_string(), true))?;
+        let transport = TokioChildProcess::new(cmd).map_err(|e| {
+            error!(request_id = %request_id, error = %e, "Failed to create transport");
+            McpError::transport("stdio", e.to_string(), true)
+        })?;
 
-        let service = ()
-            .serve(transport)
-            .await
-            .map_err(|e| McpError::connection(&self.name, e.to_string(), 0))?;
+        let service = ().serve(transport).await.map_err(|e| {
+            error!(request_id = %request_id, error = %e, "Failed to serve transport");
+            McpError::connection(&self.name, e.to_string(), 0)
+        })?;
 
         *self.service.lock().await = Some(service);
         *self.connection_status.write().await = ConnectionStatus::Connected;
 
+        info!(request_id = %request_id, name = %self.name, "MCP server connected");
+
         // Cache tools
         self.refresh_tools_cache().await?;
 
-        Ok(())
+        // Perform health check
+        let health_status = self.perform_health_check().await;
+        match health_status {
+            HealthStatus::Healthy => {
+                info!(request_id = %request_id, name = %self.name, "MCP server health check passed");
+                Ok(())
+            }
+            _ => {
+                error!(request_id = %request_id, name = %self.name, status = ?health_status, "MCP server health check failed");
+                *self.connection_status.write().await =
+                    ConnectionStatus::Error("Health check failed".to_string());
+                Err(McpError::connection(
+                    &self.name,
+                    "Health check failed after connection".to_string(),
+                    0,
+                ))
+            }
+        }
     }
 
     /// Disconnect from the MCP server
+    #[instrument(skip(self), fields(name = %self.name))]
     pub async fn disconnect(&self) -> Result<(), McpError> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, name = %self.name, "Disconnecting from MCP server");
+
         if let Some(_service) = self.service.lock().await.take() {
             // Note: RoleClient doesn't have a cancel method in rmcp 0.2.1
             // The service will be dropped and cleaned up automatically
         }
         *self.connection_status.write().await = ConnectionStatus::Disconnected;
+
+        info!(request_id = %request_id, name = %self.name, "MCP server disconnected successfully");
         Ok(())
     }
 
     /// Execute a tool
+    #[instrument(skip(self, parameters), fields(name = %self.name, tool = %tool_name))]
     pub async fn execute_tool(
         &self,
         tool_name: &str,
         parameters: Value,
     ) -> Result<CallToolResult, McpError> {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, name = %self.name, tool = %tool_name, "Executing MCP tool");
+
         let service_guard = self.service.lock().await;
-        let service = service_guard
-            .as_ref()
-            .ok_or_else(|| McpError::connection(&self.name, "Not connected".to_string(), 0))?;
+        let service = service_guard.as_ref().ok_or_else(|| {
+            error!(request_id = %request_id, name = %self.name, "Not connected to MCP server");
+            McpError::connection(&self.name, "Not connected".to_string(), 0)
+        })?;
 
         let request = CallToolRequestParam {
             name: tool_name.to_string().into(),
@@ -357,8 +482,12 @@ impl ProductionMcpClient {
         let result = service
             .call_tool(request)
             .await
-            .map_err(|e| McpError::tool_execution(tool_name, e.to_string(), None))?;
+            .map_err(|e| {
+                error!(request_id = %request_id, name = %self.name, tool = %tool_name, error = %e, "MCP tool execution failed");
+                McpError::tool_execution(tool_name, e.to_string(), None)
+            })?;
 
+        info!(request_id = %request_id, name = %self.name, tool = %tool_name, "MCP tool execution succeeded");
         Ok(result)
     }
 
@@ -405,6 +534,60 @@ impl ProductionMcpClient {
     pub async fn update_config(&self, _new_config: ClientConfig) -> Result<(), McpError> {
         // Update configuration and apply changes
         Ok(())
+    }
+
+    /// Perform health check on the MCP server
+    #[instrument(skip(self), fields(name = %self.name))]
+    pub async fn perform_health_check(&self) -> HealthStatus {
+        let request_id = Uuid::new_v4();
+        info!(request_id = %request_id, name = %self.name, "Performing health check");
+
+        // Check connection status
+        let status = self.connection_status.read().await;
+        if !matches!(*status, ConnectionStatus::Connected) {
+            tracing_warn!(request_id = %request_id, name = %self.name, "Health check failed: not connected");
+            return HealthStatus::Unhealthy;
+        }
+        drop(status);
+
+        // Try to list tools as a health check
+        let service_guard = match tokio::time::timeout(HEALTH_CHECK_TIMEOUT, self.service.lock())
+            .await
+        {
+            Ok(guard) => guard,
+            Err(_) => {
+                error!(request_id = %request_id, name = %self.name, "Health check timed out acquiring lock");
+                return HealthStatus::Degraded;
+            }
+        };
+
+        let service = match service_guard.as_ref() {
+            Some(s) => s,
+            None => {
+                error!(request_id = %request_id, name = %self.name, "Health check failed: no service");
+                return HealthStatus::Unhealthy;
+            }
+        };
+
+        // Perform simple tool list operation as health check
+        let health_result =
+            tokio::time::timeout(HEALTH_CHECK_TIMEOUT, service.list_tools(Default::default()))
+                .await;
+
+        match health_result {
+            Ok(Ok(_)) => {
+                info!(request_id = %request_id, name = %self.name, "Health check passed");
+                HealthStatus::Healthy
+            }
+            Ok(Err(e)) => {
+                error!(request_id = %request_id, name = %self.name, error = %e, "Health check failed with error");
+                HealthStatus::Unhealthy
+            }
+            Err(_) => {
+                error!(request_id = %request_id, name = %self.name, timeout = ?HEALTH_CHECK_TIMEOUT, "Health check timed out");
+                HealthStatus::Degraded
+            }
+        }
     }
 
     /// Refresh tools cache
@@ -474,6 +657,12 @@ pub struct ErrorRecoveryManager {
 impl ErrorRecoveryManager {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+impl Default for ErrorRecoveryManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

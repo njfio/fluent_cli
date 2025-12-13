@@ -5,7 +5,7 @@ use crate::secure_plugin_system::{
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use sha2::Digest;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// CLI tool for managing Fluent engine plugins
@@ -134,7 +134,7 @@ impl PluginCli {
         Ok(())
     }
 
-    async fn load_plugin(runtime: &PluginRuntime, path: &PathBuf) -> Result<()> {
+    async fn load_plugin(runtime: &PluginRuntime, path: &Path) -> Result<()> {
         println!("🔄 Loading plugin from {}...", path.display());
 
         match runtime.load_plugin(path).await {
@@ -236,7 +236,7 @@ impl PluginCli {
         Ok(())
     }
 
-    async fn validate_plugin(path: &PathBuf) -> Result<()> {
+    async fn validate_plugin(path: &Path) -> Result<()> {
         println!("🔍 Validating plugin at {}...", path.display());
 
         // Check manifest exists
@@ -282,7 +282,7 @@ impl PluginCli {
         Ok(())
     }
 
-    async fn create_plugin_template(name: &str, engine_type: &str, output: &PathBuf) -> Result<()> {
+    async fn create_plugin_template(name: &str, engine_type: &str, output: &Path) -> Result<()> {
         let plugin_dir = output.join(name);
         tokio::fs::create_dir_all(&plugin_dir).await?;
 
@@ -374,7 +374,7 @@ fluent-plugin load .
         Ok(())
     }
 
-    async fn security_test(path: &PathBuf) -> Result<()> {
+    async fn security_test(path: &Path) -> Result<()> {
         println!(
             "🔒 Running security tests for plugin at {}...",
             path.display()

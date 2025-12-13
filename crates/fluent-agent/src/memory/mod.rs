@@ -34,21 +34,11 @@ use tokio::sync::RwLock;
 /// Backward compatibility types
 pub type MemorySystem = IntegratedMemorySystem;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryConfig {
     pub working_config: WorkingMemoryConfig,
     pub compressor_config: CompressorConfig,
     pub persistence_config: PersistenceConfig,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self {
-            working_config: WorkingMemoryConfig::default(),
-            compressor_config: CompressorConfig::default(),
-            persistence_config: PersistenceConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -151,11 +141,19 @@ impl IntegratedMemorySystem {
 
     /// Get memory statistics
     pub async fn get_stats(&self) -> Result<MemoryStats> {
+        // Get actual counts from working memory store
+        let working_mem = self.working_memory.read().await;
+        let working_stats = working_mem.get_stats().await;
+
+        // Get session count from persistence layer
+        let persistence = self.persistence.read().await;
+        let session_count = persistence.get_session_count().await.unwrap_or(1);
+
         Ok(MemoryStats {
-            items_count: 0, // TODO: implement actual counting
-            memory_usage_bytes: 0,
-            compression_ratio: 0.5,
-            session_count: 1,
+            items_count: working_stats.total_items,
+            memory_usage_bytes: working_stats.total_size_bytes,
+            compression_ratio: working_stats.compression_ratio,
+            session_count,
         })
     }
 }

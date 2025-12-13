@@ -158,23 +158,15 @@ pub enum ControlMessageType {
         keep_context: bool,
     },
     /// Modify agent strategy or parameters
-    ModifyStrategy {
-        strategy_update: StrategyUpdate,
-    },
+    ModifyStrategy { strategy_update: StrategyUpdate },
     /// Request detailed explanation
-    RequestExplanation {
-        context: String,
-    },
+    RequestExplanation { context: String },
     /// Emergency stop
-    EmergencyStop {
-        reason: String,
-    },
+    EmergencyStop { reason: String },
     /// Request agent state snapshot
     RequestStateSnapshot,
     /// Checkpoint current state
-    CreateCheckpoint {
-        name: String,
-    },
+    CreateCheckpoint { name: String },
 }
 
 /// Strategy update parameters
@@ -207,9 +199,7 @@ pub struct StateUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StateUpdateType {
     /// Agent status changed
-    StatusChange {
-        status: AgentStatus,
-    },
+    StatusChange { status: AgentStatus },
     /// Iteration progress
     IterationUpdate {
         current: u32,
@@ -223,23 +213,13 @@ pub enum StateUpdateType {
         estimated_duration: Option<Duration>,
     },
     /// Approval requested
-    ApprovalRequested {
-        approval: ApprovalRequest,
-    },
+    ApprovalRequested { approval: ApprovalRequest },
     /// Approval processed
-    ApprovalProcessed {
-        approval_id: Uuid,
-        approved: bool,
-    },
+    ApprovalProcessed { approval_id: Uuid, approved: bool },
     /// Human guidance requested
-    GuidanceRequested {
-        request: GuidanceRequest,
-    },
+    GuidanceRequested { request: GuidanceRequest },
     /// Log message
-    LogMessage {
-        level: LogLevel,
-        message: String,
-    },
+    LogMessage { level: LogLevel, message: String },
     /// Reasoning step completed
     ReasoningStep {
         step_description: String,
@@ -260,9 +240,7 @@ pub enum StateUpdateType {
         remaining_criteria: Vec<String>,
     },
     /// Performance metrics
-    PerformanceMetrics {
-        metrics: HashMap<String, f64>,
-    },
+    PerformanceMetrics { metrics: HashMap<String, f64> },
     /// Memory state
     MemoryState {
         working_memory_items: usize,
@@ -270,9 +248,7 @@ pub enum StateUpdateType {
         memory_usage_mb: f64,
     },
     /// State snapshot
-    StateSnapshot {
-        snapshot: AgentStateSnapshot,
-    },
+    StateSnapshot { snapshot: AgentStateSnapshot },
 }
 
 /// Agent status

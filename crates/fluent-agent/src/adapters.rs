@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::action::{self as act, ActionResult};
@@ -11,7 +12,7 @@ use crate::orchestrator::{Observation, ObservationType};
 use crate::production_mcp::{
     ExecutionPreferences, ProductionMcpClientManager, ProductionMcpManager,
 };
-use crate::tools::ToolRegistry;
+use crate::tools::{validation, ToolRegistry};
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use std::collections::HashMap as StdHashMap;
@@ -572,12 +573,17 @@ impl act::ActionPlanner for LongFormWriterPlanner {
 
 pub struct McpRegistryExecutor {
     client_mgr: std::sync::Arc<ProductionMcpClientManager>,
+    policy: crate::tools::ToolExecutionConfig,
 }
 
 impl McpRegistryExecutor {
-    pub fn new(manager: std::sync::Arc<ProductionMcpManager>) -> Self {
+    pub fn new(
+        manager: std::sync::Arc<ProductionMcpManager>,
+        policy: crate::tools::ToolExecutionConfig,
+    ) -> Self {
         Self {
             client_mgr: manager.client_manager(),
+            policy,
         }
     }
 }
@@ -648,10 +654,31 @@ impl crate::tools::ToolExecutor for McpRegistryExecutor {
 
     fn validate_tool_request(
         &self,
-        _tool_name: &str,
-        _parameters: &std::collections::HashMap<String, serde_json::Value>,
+        tool_name: &str,
+        parameters: &std::collections::HashMap<String, serde_json::Value>,
     ) -> anyhow::Result<()> {
-        // Basic pass-through validation; MCP server handles schema
+        // Enforce the same basic policy checks as local tools.
+        // MCP servers may have their own validation, but we do not delegate safety.
+        if self.policy.read_only {
+            let lower = tool_name.to_lowercase();
+            if lower.contains("write") || lower.contains("create") || lower.contains("delete") {
+                return Err(anyhow::anyhow!(
+                    "MCP tool '{}' is blocked in read-only mode",
+                    tool_name
+                ));
+            }
+        }
+
+        for key in ["path", "file_path", "out_path", "dest", "directory", "dir"] {
+            if let Some(v) = parameters.get(key).and_then(|v| v.as_str()) {
+                let _ = validation::validate_path(v, &self.policy.allowed_paths)?;
+            }
+        }
+
+        if let Some(cmd) = parameters.get("command").and_then(|v| v.as_str()) {
+            validation::validate_command(cmd, &self.policy.allowed_commands)?;
+        }
+
         Ok(())
     }
 }
@@ -688,11 +715,11 @@ impl act::ToolExecutor for RegistryToolAdapter {
 
 /// Simple LLM-backed code generator
 pub struct LlmCodeGenerator {
-    engine: Arc<Box<dyn Engine>>,
+    engine: Arc<dyn Engine>,
 }
 
 impl LlmCodeGenerator {
-    pub fn new(engine: Arc<Box<dyn Engine>>) -> Self {
+    pub fn new(engine: Arc<dyn Engine>) -> Self {
         Self { engine }
     }
 }
@@ -705,13 +732,26 @@ impl act::CodeGenerator for LlmCodeGenerator {
         _context: &ExecutionContext,
     ) -> Result<String> {
         let prompt = format!(
-            "You are a senior engineer. Generate code meeting this specification.\n\nSpecification:\n{}\n\nReturn only the complete code in a single fenced block.",
+            r#"You are an expert software engineer. Complete the following task exactly as specified.
+
+## Task
+{}
+
+## Instructions
+1. Follow the request EXACTLY - do not substitute or change what was asked for
+2. Use the technology/language specified by the user
+3. Provide a complete, working implementation
+4. Return ONLY the code in a fenced code block with the appropriate language tag
+
+Do not include explanations outside the code block."#,
             specification
         );
+
         let req = Request {
             flowname: "codegen".to_string(),
             payload: prompt,
         };
+
         let resp = Pin::from(self.engine.execute(&req)).await?;
         Ok(resp.content)
     }
@@ -725,28 +765,71 @@ impl act::CodeGenerator for LlmCodeGenerator {
     }
 }
 
-/// Basic async filesystem manager
-pub struct FsFileManager;
+/// Basic async filesystem manager with path validation
+pub struct FsFileManager {
+    allowed_paths: Vec<String>,
+}
+
+impl FsFileManager {
+    /// Create a new FsFileManager with default allowed paths
+    pub fn new() -> Self {
+        Self {
+            allowed_paths: vec![
+                ".".to_string(),
+                "./src".to_string(),
+                "./crates".to_string(),
+                "./examples".to_string(),
+                "./docs".to_string(),
+                "./tests".to_string(),
+                "./outputs".to_string(),
+            ],
+        }
+    }
+
+    /// Create a new FsFileManager with custom allowed paths
+    pub fn with_allowed_paths(allowed_paths: Vec<String>) -> Self {
+        Self { allowed_paths }
+    }
+
+    /// Validate a path before performing operations
+    fn validate_path(&self, path: &str) -> Result<PathBuf> {
+        validation::validate_path(path, &self.allowed_paths)
+    }
+}
+
+impl Default for FsFileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 impl act::FileManager for FsFileManager {
     async fn read_file(&self, path: &str) -> Result<String> {
-        Ok(tokio::fs::read_to_string(path).await?)
+        let validated_path = self.validate_path(path)?;
+        Ok(tokio::fs::read_to_string(&validated_path).await?)
     }
     async fn write_file(&self, path: &str, content: &str) -> Result<()> {
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        let validated_path = self.validate_path(path)?;
+        if let Some(parent) = validated_path.parent() {
             if !parent.exists() {
                 tokio::fs::create_dir_all(parent).await?;
             }
         }
-        tokio::fs::write(path, content).await.map_err(Into::into)
+        tokio::fs::write(&validated_path, content)
+            .await
+            .map_err(Into::into)
     }
     async fn create_directory(&self, path: &str) -> Result<()> {
-        tokio::fs::create_dir_all(path).await.map_err(Into::into)
+        let validated_path = self.validate_path(path)?;
+        tokio::fs::create_dir_all(&validated_path)
+            .await
+            .map_err(Into::into)
     }
     async fn delete_file(&self, path: &str) -> Result<()> {
-        if std::path::Path::new(path).exists() {
-            tokio::fs::remove_file(path).await?;
+        let validated_path = self.validate_path(path)?;
+        if validated_path.exists() {
+            tokio::fs::remove_file(&validated_path).await?;
         }
         Ok(())
     }
@@ -844,10 +927,9 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
         let iteration = context.iteration_count();
 
         if iteration == 0 || context.get_latest_observation().is_none() {
-            // First step: generate code from the goal specification
+            // First step: generate code/content from the goal specification
             let mut params = HashMap::new();
-            let spec = format!("Create a complete solution for: {}\nReturn a single self-contained artifact (prefer a single HTML file with embedded JS/CSS if applicable).", goal_desc);
-            params.insert("specification".to_string(), serde_json::json!(spec));
+            params.insert("specification".to_string(), serde_json::json!(goal_desc));
 
             Ok(act::ActionPlan {
                 action_id: uuid::Uuid::new_v4().to_string(),
@@ -863,25 +945,33 @@ impl act::ActionPlanner for SimpleHeuristicPlanner {
                 success_criteria: vec!["Non-trivial code produced".to_string()],
             })
         } else {
-            // Next: persist the generated code to a file
+            // Next: persist the generated output to a file
             let output = context
                 .get_latest_observation()
                 .map(|o| o.content)
                 .unwrap_or_default();
-            let mut path = if goal_desc.to_lowercase().contains("html")
-                || goal_desc.to_lowercase().contains("javascript")
-                || goal_desc.to_lowercase().contains("web")
+
+            // Simple file extension detection from goal or content
+            let goal_lower = goal_desc.to_lowercase();
+            let path = if goal_lower.contains(".lua")
+                || goal_lower.contains("love2d")
+                || goal_lower.contains("lua")
             {
-                "examples/agent_output.html".to_string()
+                "outputs/agent_output.lua".to_string()
+            } else if goal_lower.contains(".py") || goal_lower.contains("python") {
+                "outputs/agent_output.py".to_string()
+            } else if goal_lower.contains(".html")
+                || goal_lower.contains("html")
+                || goal_lower.contains("web")
+            {
+                "outputs/agent_output.html".to_string()
+            } else if goal_lower.contains(".rs") || goal_lower.contains("rust") {
+                "outputs/agent_output.rs".to_string()
+            } else if goal_lower.contains(".js") || goal_lower.contains("javascript") {
+                "outputs/agent_output.js".to_string()
             } else {
-                "examples/agent_output.txt".to_string()
+                "outputs/agent_output.txt".to_string()
             };
-            if goal_desc.to_lowercase().contains("tetris") {
-                path = "examples/web_tetris.html".to_string();
-            }
-            if goal_desc.to_lowercase().contains("snake") {
-                path = "examples/web_snake.html".to_string();
-            }
 
             let mut params = HashMap::new();
             params.insert("operation".to_string(), serde_json::json!("write"));
@@ -921,6 +1011,12 @@ pub struct EpisodicMemoryStub {
     items: tokio::sync::RwLock<Vec<String>>,
 }
 
+impl Default for EpisodicMemoryStub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EpisodicMemoryStub {
     pub fn new() -> Self {
         Self {
@@ -942,6 +1038,12 @@ impl EpisodicMemoryStub {
 /// In-memory semantic memory stub (placeholder for legacy compatibility)
 pub struct SemanticMemoryStub {
     items: tokio::sync::RwLock<Vec<String>>,
+}
+
+impl Default for SemanticMemoryStub {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SemanticMemoryStub {
@@ -989,6 +1091,7 @@ impl act::ActionExecutor for DryRunActionExecutor {
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         })
     }
 

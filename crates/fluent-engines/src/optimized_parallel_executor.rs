@@ -16,12 +16,12 @@
 
 use anyhow::{anyhow, Result};
 use futures::stream::{FuturesUnordered, StreamExt};
-use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio::time::{Duration, Instant};
+use tracing::{debug, error, info, warn};
 
 /// Configuration for optimized parallel execution
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -231,6 +231,7 @@ impl EngineCommand {
         let engine_name = matches
             .get_one::<String>("engine")
             .ok_or_else(|| CliError::Validation("Engine name is required".to_string()))?;
+        let json_output = matches.get_flag("json");
 
         // Find the engine in config
         let engine_config = config
@@ -238,21 +239,34 @@ impl EngineCommand {
             .iter()
             .find(|e| e.name == *engine_name)
             .ok_or_else(|| {
-                CliError::Config(format!(
-                    "Engine '{}' not found in configuration",
-                    engine_name
-                ))
+                let error_msg = format!(
+                    "Engine '{}' not found in configuration.\n\n\
+                    Available engines:\n  {}\n\n\
+                    Use 'fluent engine list' to see all configured engines.",
+                    engine_name,
+                    config
+                        .engines
+                        .iter()
+                        .map(|e| e.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n  ")
+                );
+                CliError::Config(error_msg)
             })?;
 
-        println!("🔍 Testing engine: {engine_name}");
+        if !json_output {
+            println!("🔍 Testing engine: {engine_name}");
+        }
 
         // Create engine instance
         match create_engine(engine_config).await {
             Ok(engine) => {
-                println!("✅ Engine '{engine_name}' is available and configured correctly");
+                if !json_output {
+                    println!("✅ Engine '{engine_name}' is available and configured correctly");
+                    println!("🔗 Testing connectivity to {engine_name} API...");
+                }
 
                 // Perform actual connectivity test
-                println!("🔗 Testing connectivity to {engine_name} API...");
                 let test_request = Request {
                     flowname: "connectivity_test".to_string(),
                     payload: "Test connectivity - please respond with 'OK'".to_string(),
@@ -260,18 +274,40 @@ impl EngineCommand {
 
                 match Pin::from(engine.execute(&test_request)).await {
                     Ok(response) => {
-                        println!("✅ Connectivity test successful!");
-                        println!(
-                            "📝 Test response: {}",
-                            response.content.chars().take(100).collect::<String>()
-                        );
-                        if response.content.len() > 100 {
-                            println!("   ... (truncated)");
+                        if json_output {
+                            let result = serde_json::json!({
+                                "success": true,
+                                "engine": engine_name,
+                                "status": "connected",
+                                "response_preview": response.content.chars().take(100).collect::<String>(),
+                                "response_length": response.content.len()
+                            });
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        } else {
+                            println!("✅ Connectivity test successful!");
+                            println!(
+                                "📝 Test response: {}",
+                                response.content.chars().take(100).collect::<String>()
+                            );
+                            if response.content.len() > 100 {
+                                println!("   ... (truncated)");
+                            }
                         }
                     }
                     Err(e) => {
-                        println!("⚠️  Engine created but connectivity test failed: {e}");
-                        println!("🔧 This might indicate API key issues or network problems");
+                        if json_output {
+                            let result = serde_json::json!({
+                                "success": false,
+                                "engine": engine_name,
+                                "status": "connectivity_failed",
+                                "error": e.to_string(),
+                                "suggestion": "Check API key and network connectivity"
+                            });
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        } else {
+                            println!("⚠️  Engine created but connectivity test failed: {e}");
+                            println!("🔧 This might indicate API key issues or network problems");
+                        }
                         return Err(
                             CliError::Network(format!("Connectivity test failed: {}", e)).into(),
                         );
@@ -279,7 +315,17 @@ impl EngineCommand {
                 }
             }
             Err(e) => {
-                println!("❌ Engine '{engine_name}' test failed: {e}");
+                if json_output {
+                    let result = serde_json::json!({
+                        "success": false,
+                        "engine": engine_name,
+                        "status": "initialization_failed",
+                        "error": e.to_string()
+                    });
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    println!("❌ Engine '{engine_name}' test failed: {e}");
+                }
                 return Err(CliError::Engine(e.to_string()).into());
             }
         }

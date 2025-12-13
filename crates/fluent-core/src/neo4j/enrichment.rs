@@ -15,8 +15,8 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use log::{debug, error, warn};
 use neo4rs::{query, BoltString, BoltType, Graph};
+use tracing::{debug, error, warn};
 
 use crate::neo4j::query_executor::QueryExecutor;
 use crate::neo4j_client::VoyageAIConfig;

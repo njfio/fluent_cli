@@ -544,7 +544,7 @@ impl McpToolRegistry {
                 if let Some(required_array) = required.as_array() {
                     for required_field in required_array {
                         if let Some(field_name) = required_field.as_str() {
-                            if !input.get(field_name).is_some() {
+                            if input.get(field_name).is_none() {
                                 return Err(anyhow!(
                                     "Required field '{}' missing in input for tool '{}'",
                                     field_name,

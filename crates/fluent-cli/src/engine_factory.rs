@@ -44,13 +44,13 @@ pub async fn generate_cypher_query(query: &str, config: &EngineConfig) -> Result
 
     let cypher_prompt = format!(
         "Convert this natural language query to Cypher for Neo4j: {query}
-        
+
         Rules:
         1. Return only the Cypher query, no explanations
         2. Use proper Cypher syntax
         3. Be specific and efficient
         4. Handle edge cases appropriately
-        
+
         Cypher query:"
     );
 
@@ -85,7 +85,7 @@ pub fn validate_engine_config(config: &EngineConfig) -> Result<()> {
     }
 
     // Check if API key is available in parameters
-    if config.parameters.get("api_key").is_none() && config.engine != "local" {
+    if !config.parameters.contains_key("api_key") && config.engine != "local" {
         return Err(anyhow!(
             "API key is required for engine type: {}",
             config.engine

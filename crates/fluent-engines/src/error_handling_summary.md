@@ -46,7 +46,7 @@ pub async fn execute(&self, request: &Request) -> Result<Response> {
                 ErrorSeverity::Medium,
                 ErrorCategory::ExternalError,
             ).with_recovery_strategy(RecoveryStrategy::Retry { ... });
-            
+
             self.error_handler.handle_error(error).await?
         }
         Err(e) => {
@@ -281,11 +281,11 @@ impl EnhancedError {
             self.context.user_message.clone()
         } else {
             match &self.base_error {
-                FluentError::Network(_) => 
+                FluentError::Network(_) =>
                     "Network connection issue. Please check your internet connection and try again.",
-                FluentError::Auth(_) => 
+                FluentError::Auth(_) =>
                     "Authentication failed. Please check your credentials and try again.",
-                FluentError::Engine(_) => 
+                FluentError::Engine(_) =>
                     "Service temporarily unavailable. Please try again in a few moments.",
                 // ... more user-friendly messages
             }

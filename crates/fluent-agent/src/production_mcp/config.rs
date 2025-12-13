@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 
 /// Comprehensive MCP configuration for production use
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProductionMcpConfig {
     pub client: ClientConfig,
     pub server: ServerConfig,
@@ -17,19 +17,6 @@ pub struct ProductionMcpConfig {
     pub monitoring: MonitoringConfig,
     pub security: SecurityConfig,
     pub logging: LoggingConfig,
-}
-
-impl Default for ProductionMcpConfig {
-    fn default() -> Self {
-        Self {
-            client: ClientConfig::default(),
-            server: ServerConfig::default(),
-            transport: TransportConfig::default(),
-            monitoring: MonitoringConfig::default(),
-            security: SecurityConfig::default(),
-            logging: LoggingConfig::default(),
-        }
-    }
 }
 
 /// Client configuration

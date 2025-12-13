@@ -58,10 +58,7 @@ pub async fn run_modular() -> Result<()> {
     let requires_config = match matches.subcommand() {
         Some(("tools", _)) => false,
         Some(("completions", _)) => false,
-        Some(("engine", sub_m)) => match sub_m.subcommand() {
-            Some(("list", _)) => false,
-            _ => true,
-        },
+        Some(("engine", sub_m)) => !matches!(sub_m.subcommand(), Some(("list", _))),
         _ => true,
     };
 
@@ -85,10 +82,30 @@ pub async fn run_modular() -> Result<()> {
                         eprintln!("⚠️  Config load warning (agent mode will continue): {}", e);
                         fluent_core::config::Config::new(vec![])
                     } else {
-                        return Err(CliError::Config(e.to_string()).into());
+                        let error_msg = format!(
+                            "Failed to load configuration from '{}':\n  {}\n\n\
+                            Troubleshooting:\n  \
+                            • Check that the file exists and has correct permissions\n  \
+                            • Verify the YAML/TOML syntax is valid\n  \
+                            • Use 'fluent schema' to see the expected configuration format\n  \
+                            • Specify a different config file with: fluent --config <path> <command>",
+                            config_path, e
+                        );
+                        return Err(CliError::Config(error_msg).into());
                     }
                 }
             }
+        } else if config_path != "fluent_config.toml" {
+            // User explicitly specified a config file that doesn't exist
+            let error_msg = format!(
+                "Configuration file '{}' not found.\n\n\
+                Troubleshooting:\n  \
+                • Check the file path is correct\n  \
+                • Use a default config location: fluent_config.toml\n  \
+                • See example configs in the repository",
+                config_path
+            );
+            return Err(CliError::Config(error_msg).into());
         } else {
             // Create a minimal default config if no config file exists
             fluent_core::config::Config::new(vec![])

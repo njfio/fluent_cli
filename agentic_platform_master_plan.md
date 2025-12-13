@@ -115,30 +115,30 @@ pub struct AgentOrchestrator {
 impl AgentOrchestrator {
     pub async fn execute_goal(&self, goal: Goal) -> Result<GoalResult> {
         let mut context = ExecutionContext::new(goal);
-        
+
         loop {
             // Reasoning Phase: Analyze current state and plan next action
             let reasoning = self.reasoning_engine.analyze(&context).await?;
-            
+
             // Planning Phase: Determine specific action to take
             let action = self.action_planner.plan_action(reasoning).await?;
-            
+
             // Execution Phase: Execute the planned action
             let result = self.tool_executor.execute(action, &mut context).await?;
-            
+
             // Observation Phase: Process results and update context
             context.add_observation(result);
             self.memory_system.update(&context).await?;
-            
+
             // Check if goal is achieved or needs replanning
             if self.is_goal_achieved(&context).await? {
                 break;
             }
-            
+
             // Self-reflection and strategy adjustment
             self.reflect_and_adjust(&mut context).await?;
         }
-        
+
         Ok(context.into_result())
     }
 }
@@ -159,22 +159,22 @@ impl MCPToolServer {
         tools.insert(tool.name().to_string(), tool);
         Ok(())
     }
-    
+
     pub async fn execute_tool(&self, request: ToolRequest) -> Result<ToolResponse> {
         // Validate permissions and rate limits
         self.permissions.check(&request)?;
         self.rate_limiter.check(&request)?;
-        
+
         let tools = self.tools.read().await;
         let tool = tools.get(&request.tool_name)
             .ok_or_else(|| anyhow!("Tool not found: {}", request.tool_name))?;
-        
+
         // Execute with timeout and resource monitoring
         let result = tokio::time::timeout(
             Duration::from_secs(30),
             tool.execute(request.parameters)
         ).await??;
-        
+
         Ok(ToolResponse::success(result))
     }
 }
@@ -197,32 +197,32 @@ impl CodeIntelligenceEngine {
     pub async fn analyze_repository(&self, repo_path: &Path) -> Result<RepositoryAnalysis> {
         // Parallel file discovery and parsing
         let files = self.discover_source_files(repo_path).await?;
-        
+
         let analysis_results = stream::iter(files)
             .map(|file| self.analyze_file(file))
             .buffer_unordered(10)
             .try_collect::<Vec<_>>()
             .await?;
-        
+
         // Build knowledge graph from analysis results
         let knowledge_graph = self.build_knowledge_graph(analysis_results).await?;
-        
+
         // Generate semantic embeddings for search
         let embeddings = self.generate_semantic_embeddings(&knowledge_graph).await?;
-        
+
         Ok(RepositoryAnalysis {
             knowledge_graph,
             embeddings,
             metrics: self.calculate_metrics(&knowledge_graph),
         })
     }
-    
+
     pub async fn semantic_code_search(&self, query: &str) -> Result<Vec<CodeMatch>> {
         // Multi-stage search: embedding similarity + graph traversal + ranking
         let embedding_matches = self.vector_store.similarity_search(query, 100).await?;
         let graph_enhanced = self.enhance_with_graph_context(embedding_matches).await?;
         let ranked_results = self.rank_by_relevance(graph_enhanced, query).await?;
-        
+
         Ok(ranked_results)
     }
 }
@@ -245,16 +245,16 @@ impl CodeWriterAgent {
     pub async fn write_feature(&self, spec: FeatureSpecification) -> Result<FeatureImplementation> {
         // Analyze existing codebase patterns
         let patterns = self.pattern_matcher.analyze_patterns(&spec.context).await?;
-        
+
         // Generate code following established patterns
         let code = self.code_generator.generate_with_patterns(&spec, &patterns).await?;
-        
+
         // Generate corresponding tests
         let tests = self.test_generator.generate_tests(&code, &spec).await?;
-        
+
         // Validate against style guide
         let style_validation = self.style_analyzer.validate(&code).await?;
-        
+
         Ok(FeatureImplementation {
             code,
             tests,
@@ -281,7 +281,7 @@ impl CodeReviewAgent {
             self.maintainability_analyzer.analyze(code),
             self.bug_detector.detect_issues(code)
         )?;
-        
+
         // Generate comprehensive review with suggestions
         let review = CodeReview {
             security_issues: security,
@@ -291,7 +291,7 @@ impl CodeReviewAgent {
             suggestions: self.generate_suggestions(code).await?,
             overall_score: self.calculate_overall_score(&security, &performance, &maintainability, &bugs),
         };
-        
+
         Ok(review)
     }
 }
@@ -312,27 +312,27 @@ pub struct CollaborationEngine {
 impl CollaborationEngine {
     pub async fn start_collaborative_session(&self, request: SessionRequest) -> Result<Session> {
         let session = self.session_manager.create_session(request).await?;
-        
+
         // Set up real-time event streaming
         let event_stream = self.event_broadcaster.create_stream(&session.id).await?;
-        
+
         // Initialize conflict resolution
         self.conflict_resolver.initialize_for_session(&session).await?;
-        
+
         Ok(session)
     }
-    
+
     pub async fn handle_collaborative_edit(&self, edit: CollaborativeEdit) -> Result<EditResult> {
         // Check permissions
         self.permission_manager.check_edit_permission(&edit).await?;
-        
+
         // Detect and resolve conflicts
         let resolved_edit = self.conflict_resolver.resolve_conflicts(edit).await?;
-        
+
         // Apply edit and broadcast to all participants
         let result = self.apply_edit(resolved_edit).await?;
         self.event_broadcaster.broadcast_edit(&result).await?;
-        
+
         Ok(result)
     }
 }

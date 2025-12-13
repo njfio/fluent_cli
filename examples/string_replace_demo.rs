@@ -22,11 +22,11 @@ fn main() {
     let mut map = HashMap::new();
     map.insert("hello", "world");
     map.insert("foo", "bar");
-    
+
     println!("Hello, world!");
     println!("This is a test");
     println!("Hello again!");
-    
+
     // TODO: Add more functionality
     let result = calculate_sum(5, 10);
     println!("Sum: {}", result);

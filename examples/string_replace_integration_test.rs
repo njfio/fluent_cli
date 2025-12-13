@@ -42,6 +42,7 @@ async fn test_tool_registry_integration() -> Result<()> {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec!["./".to_string()]),
         allowed_commands: Some(vec![]),
     };
@@ -102,10 +103,10 @@ fn main() {
     let mut data = HashMap::new();
     data.insert("key1", "value1");
     data.insert("key2", "value2");
-    
+
     println!("Hello, world!");
     println!("Testing string replacement");
-    
+
     // TODO: Add more functionality
     let result = calculate_sum(10, 20);
     println!("Result: {}", result);
@@ -125,6 +126,7 @@ fn calculate_sum(a: i32, b: i32) -> i32 {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };
@@ -208,6 +210,7 @@ fn function_three() {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };
@@ -306,6 +309,7 @@ async fn test_error_handling() -> Result<()> {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };
@@ -353,6 +357,7 @@ async fn test_security_validation() -> Result<()> {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };

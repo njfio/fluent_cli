@@ -21,6 +21,10 @@ pub struct EnhancedEngineConfig {
     /// Validation rules
     pub validation: ValidationRules,
 
+    /// Rate limiting configuration
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+
     /// Environment-specific overrides
     pub environments: HashMap<String, EnvironmentOverrides>,
 }
@@ -66,6 +70,24 @@ pub struct ParameterConstraints {
     pub max_length: Option<usize>,
     pub allowed_values: Option<Vec<Value>>,
     pub pattern: Option<String>, // Regex pattern
+}
+
+/// Rate limiting configuration for API throttling prevention
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Enable rate limiting
+    pub enabled: bool,
+    /// Maximum requests per second (can be fractional, e.g., 0.5 = 1 request every 2 seconds)
+    pub requests_per_second: f64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requests_per_second: 10.0,
+        }
+    }
 }
 
 /// Environment-specific configuration overrides
@@ -173,6 +195,7 @@ impl ConfigManager {
                 owner: env::var("USER").ok(),
             },
             validation: Self::create_validation_rules(engine_type),
+            rate_limit: RateLimitConfig::default(),
             environments: HashMap::new(),
         }
     }

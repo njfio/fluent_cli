@@ -18,6 +18,12 @@ pub struct HealthMonitor {
     check_interval: Duration,
 }
 
+impl Default for HealthMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HealthMonitor {
     /// Create a new health monitor
     pub fn new() -> Self {
@@ -183,6 +189,12 @@ pub struct OverallHealth {
     pub version: String,
 }
 
+impl Default for OverallHealth {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OverallHealth {
     pub fn new() -> Self {
         let now = Instant::now();
@@ -320,6 +332,12 @@ pub struct ToolRegistryHealthCheck {
     name: String,
 }
 
+impl Default for ToolRegistryHealthCheck {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolRegistryHealthCheck {
     pub fn new() -> Self {
         Self {
@@ -353,6 +371,12 @@ impl HealthCheck for ToolRegistryHealthCheck {
 /// Memory system health check
 pub struct MemorySystemHealthCheck {
     name: String,
+}
+
+impl Default for MemorySystemHealthCheck {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemorySystemHealthCheck {
@@ -425,6 +449,12 @@ impl HealthCheck for TransportHealthCheck {
 /// Alert manager for health-related alerts
 pub struct AlertManager {
     // Implementation details would go here
+}
+
+impl Default for AlertManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AlertManager {

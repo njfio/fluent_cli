@@ -1,3 +1,26 @@
+//! Neo4j graph database client for Fluent CLI.
+//!
+//! This module provides a high-level client for interacting with Neo4j databases,
+//! supporting document storage, vector embeddings, and TF-IDF text search.
+//!
+//! # Features
+//!
+//! - Connection management with automatic retry for transient errors
+//! - Document storage with vector embeddings (via VoyageAI integration)
+//! - TF-IDF based text search for semantic queries
+//! - Custom error types for granular error handling
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use fluent_core::neo4j_client::Neo4jClient;
+//! use fluent_core::config::Neo4jConfig;
+//!
+//! let config = Neo4jConfig::default();
+//! let client = Neo4jClient::new(&config).await?;
+//! let docs = client.search("query", 10).await?;
+//! ```
+
 use anyhow::{anyhow, Error, Result};
 use neo4rs::{
     query, BoltFloat, BoltInteger, BoltList, BoltString, BoltType, ConfigBuilder, Database, Graph,
@@ -6,19 +29,47 @@ use neo4rs::{
 use chrono::Duration as ChronoDuration;
 
 use chrono::{DateTime, Utc};
-use log::{debug, error, warn};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::RwLock;
+use std::time::Duration;
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::config::Neo4jConfig;
 use crate::types::DocumentStatistics;
 use crate::voyageai_client::{get_voyage_embedding, EMBEDDING_DIMENSION};
+
+/// Custom error types for Neo4j operations
+#[derive(Debug, Error)]
+pub enum Neo4jError {
+    #[error("Connection failed: {0}")]
+    Connection(String),
+
+    #[error("Query failed: {0}")]
+    Query(String),
+
+    #[error("Authentication failed")]
+    Authentication,
+
+    #[error("Timeout after {0:?}")]
+    Timeout(Duration),
+
+    #[error("Transient error: {0}")]
+    Transient(String),
+
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+}
+
+// Retry configuration constants
+const MAX_RETRIES: u32 = 3;
+const RETRY_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VoyageAIConfig {
@@ -33,6 +84,18 @@ pub struct Neo4jClient {
     voyage_ai_config: Option<VoyageAIConfig>,
     query_llm: Option<String>,
 }
+/// Helper function to determine if an error is transient and worth retrying
+fn is_transient_error(error: &anyhow::Error) -> bool {
+    let msg = error.to_string().to_lowercase();
+    msg.contains("connection")
+        || msg.contains("timeout")
+        || msg.contains("temporarily unavailable")
+        || msg.contains("deadlock")
+        || msg.contains("transient")
+        || msg.contains("network")
+        || msg.contains("reset by peer")
+}
+
 impl Neo4jClient {
     pub fn get_document_count(&self) -> usize {
         self.document_count.read().map(|count| *count).unwrap_or(0)
@@ -45,6 +108,44 @@ impl Neo4jClient {
     }
     pub fn get_query_llm(&self) -> Option<&String> {
         self.query_llm.as_ref()
+    }
+
+    /// Execute an operation with retry logic for transient errors
+    pub async fn execute_with_retry<T, F, Fut>(&self, operation: F) -> Result<T>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        let mut last_error = None;
+        for attempt in 0..MAX_RETRIES {
+            match operation().await {
+                Ok(result) => {
+                    if attempt > 0 {
+                        debug!("Operation succeeded after {} retries", attempt);
+                    }
+                    return Ok(result);
+                }
+                Err(e) if is_transient_error(&e) => {
+                    last_error = Some(e);
+                    if attempt < MAX_RETRIES - 1 {
+                        let delay = RETRY_DELAY * (attempt + 1);
+                        warn!(
+                            "Transient error on attempt {}/{}. Retrying after {:?}...",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+                Err(e) => {
+                    // Non-transient error, fail immediately
+                    debug!("Non-transient error, not retrying: {}", e);
+                    return Err(e);
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| anyhow!("Operation failed after {} retries", MAX_RETRIES)))
     }
 }
 
@@ -1431,3 +1532,189 @@ pub struct Neo4jTokenUsage {
 }
 
 // Implement other necessary structs and methods...
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_transient_error() {
+        // Test connection errors
+        let conn_err = anyhow::anyhow!("connection refused");
+        assert!(is_transient_error(&conn_err));
+
+        let conn_err2 = anyhow::anyhow!("Connection timeout occurred");
+        assert!(is_transient_error(&conn_err2));
+
+        // Test timeout errors
+        let timeout_err = anyhow::anyhow!("operation timeout");
+        assert!(is_transient_error(&timeout_err));
+
+        // Test temporarily unavailable errors
+        let temp_err = anyhow::anyhow!("service temporarily unavailable");
+        assert!(is_transient_error(&temp_err));
+
+        // Test deadlock errors
+        let deadlock_err = anyhow::anyhow!("deadlock detected");
+        assert!(is_transient_error(&deadlock_err));
+
+        // Test network errors
+        let network_err = anyhow::anyhow!("network unreachable");
+        assert!(is_transient_error(&network_err));
+
+        let reset_err = anyhow::anyhow!("connection reset by peer");
+        assert!(is_transient_error(&reset_err));
+
+        // Test non-transient errors
+        let query_err = anyhow::anyhow!("syntax error in query");
+        assert!(!is_transient_error(&query_err));
+
+        let auth_err = anyhow::anyhow!("invalid credentials");
+        assert!(!is_transient_error(&auth_err));
+
+        let validation_err = anyhow::anyhow!("validation failed");
+        assert!(!is_transient_error(&validation_err));
+    }
+
+    #[test]
+    fn test_neo4j_error_display() {
+        let conn_err = Neo4jError::Connection("refused".to_string());
+        assert_eq!(conn_err.to_string(), "Connection failed: refused");
+
+        let query_err = Neo4jError::Query("syntax error".to_string());
+        assert_eq!(query_err.to_string(), "Query failed: syntax error");
+
+        let auth_err = Neo4jError::Authentication;
+        assert_eq!(auth_err.to_string(), "Authentication failed");
+
+        let timeout_err = Neo4jError::Timeout(Duration::from_secs(30));
+        assert!(timeout_err.to_string().contains("Timeout after"));
+        assert!(timeout_err.to_string().contains("30s"));
+
+        let transient_err = Neo4jError::Transient("network issue".to_string());
+        assert_eq!(transient_err.to_string(), "Transient error: network issue");
+
+        let config_err = Neo4jError::Configuration("invalid URI".to_string());
+        assert_eq!(config_err.to_string(), "Configuration error: invalid URI");
+    }
+
+    #[test]
+    fn test_retry_constants() {
+        assert_eq!(MAX_RETRIES, 3);
+        assert_eq!(RETRY_DELAY, Duration::from_millis(500));
+    }
+
+    // Test the retry logic using a standalone function that mimics execute_with_retry
+    async fn test_retry_logic<T, F, Fut>(operation: F) -> Result<T>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        let mut last_error = None;
+        for attempt in 0..MAX_RETRIES {
+            match operation().await {
+                Ok(result) => return Ok(result),
+                Err(e) if is_transient_error(&e) => {
+                    last_error = Some(e);
+                    if attempt < MAX_RETRIES - 1 {
+                        tokio::time::sleep(RETRY_DELAY * (attempt + 1)).await;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last_error.unwrap())
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_retry_success_on_first_attempt() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let call_count = Rc::new(RefCell::new(0));
+        let call_count_clone = call_count.clone();
+
+        let result = test_retry_logic(move || {
+            let count = call_count_clone.clone();
+            async move {
+                *count.borrow_mut() += 1;
+                Ok::<i32, anyhow::Error>(42)
+            }
+        })
+        .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(*call_count.borrow(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_retry_success_after_transient_errors() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let call_count = Rc::new(RefCell::new(0));
+        let call_count_clone = call_count.clone();
+
+        let result = test_retry_logic(move || {
+            let count = call_count_clone.clone();
+            async move {
+                *count.borrow_mut() += 1;
+                let current_count = *count.borrow();
+                if current_count < 3 {
+                    Err(anyhow::anyhow!("connection timeout"))
+                } else {
+                    Ok::<i32, anyhow::Error>(42)
+                }
+            }
+        })
+        .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(*call_count.borrow(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_retry_fails_on_non_transient_error() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let call_count = Rc::new(RefCell::new(0));
+        let call_count_clone = call_count.clone();
+
+        let result = test_retry_logic(move || {
+            let count = call_count_clone.clone();
+            async move {
+                *count.borrow_mut() += 1;
+                Err::<i32, anyhow::Error>(anyhow::anyhow!("syntax error in query"))
+            }
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(*call_count.borrow(), 1); // Should not retry for non-transient errors
+        assert!(result.unwrap_err().to_string().contains("syntax error"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_retry_exhausts_retries() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let call_count = Rc::new(RefCell::new(0));
+        let call_count_clone = call_count.clone();
+
+        let result = test_retry_logic(move || {
+            let count = call_count_clone.clone();
+            async move {
+                *count.borrow_mut() += 1;
+                Err::<i32, anyhow::Error>(anyhow::anyhow!("connection refused"))
+            }
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(*call_count.borrow(), MAX_RETRIES); // Should attempt exactly MAX_RETRIES times
+    }
+}

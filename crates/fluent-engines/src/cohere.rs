@@ -8,7 +8,6 @@ use fluent_core::traits::Engine;
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
@@ -17,6 +16,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tracing::debug;
 
 pub struct CohereEngine {
     config: EngineConfig,
@@ -33,15 +33,8 @@ impl CohereEngine {
             None
         };
 
-        // Create optimized HTTP client with connection pooling
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create optimized HTTP client with secure defaults
+        let client = fluent_core::create_secure_client()?;
 
         Ok(Self {
             config,
@@ -95,7 +88,9 @@ impl Engine for CohereEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Cohere API key not found in configuration. Set COHERE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
 
             let response = self
                 .client
@@ -267,7 +262,9 @@ impl Engine for CohereEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Cohere API key not found in configuration. Set COHERE_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
 
             let response = self
                 .client

@@ -287,6 +287,7 @@ impl ActionExecutor for MockActionExecutor {
             error: None,
             metadata: std::collections::HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         })
     }
 
@@ -407,9 +408,8 @@ impl AutonomousBenchmarkSuite {
                 "Optimize algorithm performance for dataset size {}",
                 i * 1000
             );
-            match tot_engine.reason(&problem, &context).await {
-                Ok(_) => success_count += 1,
-                Err(_) => {}
+            if tot_engine.reason(&problem, &context).await.is_ok() {
+                success_count += 1;
             }
         }
 
@@ -455,9 +455,12 @@ impl AutonomousBenchmarkSuite {
                 GoalType::Analysis,
             );
 
-            match htn_planner.plan_decomposition(&goal, &context).await {
-                Ok(_) => success_count += 1,
-                Err(_) => {}
+            if htn_planner
+                .plan_decomposition(&goal, &context)
+                .await
+                .is_ok()
+            {
+                success_count += 1;
             }
         }
 
@@ -509,9 +512,8 @@ impl AutonomousBenchmarkSuite {
                 );
             }
 
-            match memory_system.update_context(&context).await {
-                Ok(_) => success_count += 1,
-                Err(_) => {}
+            if memory_system.update_context(&context).await.is_ok() {
+                success_count += 1;
             }
         }
 

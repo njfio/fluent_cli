@@ -56,7 +56,9 @@ pub mod collaboration_bridge;
 pub mod config;
 pub mod context;
 pub mod enhanced_mcp_client;
+pub mod error;
 pub mod ethical_guardrails;
+pub mod execution;
 pub mod goal;
 pub mod human_collaboration;
 pub mod mcp_adapter;
@@ -67,10 +69,13 @@ pub mod memory;
 pub mod monitoring;
 pub mod observation;
 pub mod orchestrator;
+pub mod paths;
 pub mod performance;
 pub mod planning;
 pub mod production_mcp;
 pub mod profiling;
+pub mod project_identity;
+pub mod prompts;
 pub mod reasoning;
 pub mod reflection;
 pub mod reflection_engine;
@@ -85,7 +90,8 @@ pub mod workflow;
 
 // Re-export advanced agentic types
 pub use action::{
-    ActionExecutor, ActionPlanner, ComprehensiveActionExecutor, IntelligentActionPlanner,
+    parse_structured_action, ActionExecutor, ActionPlanner, ComprehensiveActionExecutor,
+    IntelligentActionPlanner, StructuredAction,
 };
 pub use advanced_tools::{
     AdvancedTool, AdvancedToolRegistry, ToolCategory, ToolParameters, ToolPriority, ToolResult,
@@ -94,37 +100,46 @@ pub use agent_control::{
     AgentControlChannel, ApprovalRequest, ApprovalResponse, ControlMessage, ControlMessageType,
     StateUpdate, StateUpdateType,
 };
-pub use collaboration_bridge::{
-    ApprovalConfig, CollaborativeOrchestrator, ControlAction,
-};
 pub use autonomy::{
     AutonomySupervisor, AutonomySupervisorConfig, GuardrailDecision, RiskAssessment,
     SupervisorIncident, SupervisorStage,
 };
 pub use benchmarks::{AutonomousBenchmarkSuite, BenchmarkConfig, BenchmarkResult, BenchmarkType};
+pub use collaboration_bridge::{ApprovalConfig, CollaborativeOrchestrator, ControlAction};
 pub use context::{ContextStats, ExecutionContext, ExecutionEvent};
+pub use error::{
+    codes as error_codes, AgentError, AgentResult, ConfigError, MemoryError, OrchestrationError,
+    ReasoningError, ToolError,
+};
 pub use ethical_guardrails::{
     EthicalEvaluation, EthicalGuardrailsSystem, EthicalRecommendation, FilterResult, HarmCategory,
     RiskLevel,
 };
 pub use goal::{Goal, GoalPriority, GoalResult, GoalTemplates, GoalType};
 pub use human_collaboration::{
-    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent, CollaborationMessage,
-    CollaborationSession, CommunicationChannels, FeedbackEntry, FeedbackSystem, FeedbackType,
-    HumanCollaborationCoordinator, HumanCollaborationInterface, Intervention, InterventionManager,
-    InterventionOutcome, InterventionPriority, InterventionRequester, InterventionResponse,
-    InterventionStatus, InterventionType, MessageSender, MessageType, SessionStatus, UserProfile,
+    ApprovalRequest as HumanApprovalRequest, ApprovalStatus, ApprovalType, CollaborationEvent,
+    CollaborationMessage, CollaborationSession, CommunicationChannels, FeedbackEntry,
+    FeedbackSystem, FeedbackType, HumanCollaborationCoordinator, HumanCollaborationInterface,
+    Intervention, InterventionManager, InterventionOutcome, InterventionPriority,
+    InterventionRequester, InterventionResponse, InterventionStatus, InterventionType,
+    MessageSender, MessageType, SessionStatus, UserProfile,
 };
 pub use memory::{
     ContextCompressor, CrossSessionPersistence, IntegratedMemorySystem, MemoryConfig,
     MemoryContent, MemoryItem, MemoryStats, MemorySystem, WorkingMemory,
 };
 pub use monitoring::{
-    AdaptiveStrategySystem, ErrorInstance, ErrorRecoverySystem, ErrorSeverity, ErrorType,
-    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult,
+    AdaptiveStrategySystem, AggregatedStats, CircuitBreaker, CircuitBreakerConfig,
+    CircuitBreakerError, CircuitBreakerStats, CircuitState, DistributedTracer, ErrorInstance,
+    ErrorRecoverySystem, ErrorSeverity, ErrorType, MetricsConfig, MetricsExporter,
+    PerformanceMetrics, PerformanceMonitor, QualityMetrics, RecoveryConfig, RecoveryResult, SpanId,
+    TraceContext, TraceId, TracerConfig,
 };
 pub use observation::{ComprehensiveObservationProcessor, ObservationProcessor};
-pub use orchestrator::{AgentOrchestrator, AgentState as AdvancedAgentState, OrchestrationMetrics};
+pub use orchestrator::{
+    AgentOrchestrator, AgentState as AdvancedAgentState, CheckpointInfo, OrchestrationMetrics,
+    OrchestratorExecutionAdapter, RecoveryInfo,
+};
 pub use planning::{
     CompletePlanningResult, CompositePlanner, DependencyAnalyzer, DynamicReplanner, HTNConfig,
     HTNPlanner, HTNResult,
@@ -190,8 +205,10 @@ impl Agent {
 
     /// Run a shell command with security validation, timeout and output limits.
     pub async fn run_command(&self, cmd: &str, args: &[&str]) -> Result<String> {
-        // Validate command against security policies
-        Self::validate_command_security(cmd, args)?;
+        // Validate command against security policies using unified validator
+        let validator = crate::security::command_validator::CommandValidator::from_environment();
+        let args_string: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        validator.validate(cmd, &args_string)?;
 
         // Determine limits from environment or defaults
         let timeout_secs: u64 = std::env::var("FLUENT_CMD_TIMEOUT_SECS")
@@ -281,182 +298,6 @@ impl Agent {
         }
 
         Ok(combined)
-    }
-
-    /// Validate command and arguments against security policies
-    fn validate_command_security(cmd: &str, args: &[&str]) -> Result<()> {
-        // Get allowed commands based on context
-        let allowed_commands = Self::get_allowed_commands_by_context();
-
-        // Check if command is in whitelist
-        if !allowed_commands.iter().any(|allowed| allowed == cmd) {
-            return Err(anyhow!("Command '{}' not in allowed list", cmd));
-        }
-
-        // Validate command name
-        if cmd.len() > 100 {
-            return Err(anyhow!("Command name too long"));
-        }
-
-        // Check for dangerous patterns in command using more robust validation
-        if !Self::is_safe_command_name(cmd) {
-            return Err(anyhow!("Command contains unsafe characters or patterns"));
-        }
-
-        // Validate arguments
-        for arg in args {
-            if arg.len() > 1000 {
-                return Err(anyhow!("Argument too long"));
-            }
-
-            // Check for dangerous patterns in arguments using more robust validation
-            if !Self::is_safe_argument(arg) {
-                return Err(anyhow!("Argument contains unsafe characters or patterns"));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Get allowed commands based on execution context
-    fn get_allowed_commands_by_context() -> Vec<String> {
-        // Check environment variable for custom allowed commands
-        if let Ok(custom_commands) = std::env::var("FLUENT_ALLOWED_COMMANDS") {
-            log::info!("Custom allowed commands: {}", custom_commands);
-
-            // Parse comma-separated commands with proper validation
-            let parsed_commands: Vec<String> = custom_commands
-                .split(',')
-                .map(|cmd| cmd.trim().to_string())
-                .filter(|cmd| !cmd.is_empty() && Self::is_valid_command_name(cmd))
-                .collect();
-
-            if !parsed_commands.is_empty() {
-                log::info!("Using {} custom allowed commands", parsed_commands.len());
-                return parsed_commands;
-            } else {
-                log::warn!("No valid commands found in FLUENT_ALLOWED_COMMANDS, using defaults");
-            }
-        }
-
-        // Check for context-specific allowlists
-        if let Ok(context) = std::env::var("FLUENT_AGENT_CONTEXT") {
-            match context.as_str() {
-                "development" => {
-                    // More permissive commands for development
-                    return vec![
-                        "cargo".to_string(),
-                        "rustc".to_string(),
-                        "git".to_string(),
-                        "ls".to_string(),
-                        "cat".to_string(),
-                        "echo".to_string(),
-                        "pwd".to_string(),
-                        "which".to_string(),
-                        "find".to_string(),
-                        "mkdir".to_string(),
-                        "touch".to_string(),
-                        "rm".to_string(), // Only in development context
-                    ];
-                }
-                "testing" => {
-                    // Commands specifically for testing
-                    return vec![
-                        "cargo".to_string(),
-                        "rustc".to_string(),
-                        "echo".to_string(),
-                        "cat".to_string(),
-                        "ls".to_string(),
-                        "pwd".to_string(),
-                        "which".to_string(),
-                        "find".to_string(),
-                        "mkdir".to_string(),
-                        "touch".to_string(),
-                    ];
-                }
-                _ => {
-                    // Default to production context
-                }
-            }
-        }
-
-        // Default allowed commands for agent operations (production-safe)
-        vec![
-            "cargo".to_string(),
-            "rustc".to_string(),
-            "git".to_string(),
-            "ls".to_string(),
-            "cat".to_string(),
-            "echo".to_string(),
-            "pwd".to_string(),
-            "which".to_string(),
-            "find".to_string(),
-        ]
-    }
-
-    /// Validate that a command name is safe and reasonable
-    fn is_valid_command_name(cmd: &str) -> bool {
-        // Basic validation: alphanumeric, dash, underscore only
-        // No paths, no shell metacharacters
-        if cmd.is_empty() || cmd.len() > 50 {
-            return false;
-        }
-
-        // Must start with alphanumeric
-        if !cmd.chars().next().unwrap_or(' ').is_ascii_alphanumeric() {
-            return false;
-        }
-
-        // Only allow safe characters
-        cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            && !cmd.contains('/') // No paths
-            && !cmd.contains('\\') // No Windows paths
-            && !cmd.contains(' ') // No spaces
-    }
-
-    /// More robust validation for command names
-    fn is_safe_command_name(cmd: &str) -> bool {
-        // List of dangerous patterns to check
-        let dangerous_patterns = [
-            "../", "./", "/.", "//", "~/", "$", "`", ";", "&", "|", ">", "<", "*", "?", "[", "]",
-            "{", "}", "(", ")", "||", "&&", ">>", "<<", "\\", "\n", "\r", "\t",
-        ];
-
-        // Check for dangerous patterns
-        for pattern in &dangerous_patterns {
-            if cmd.contains(pattern) {
-                return false;
-            }
-        }
-
-        // Additional checks
-        if cmd.starts_with('-') || cmd.starts_with('.') {
-            return false;
-        }
-
-        true
-    }
-
-    /// More robust validation for command arguments
-    fn is_safe_argument(arg: &str) -> bool {
-        // List of dangerous patterns to check in arguments
-        let dangerous_patterns = [
-            "$(", "`", ";", "&", "|", ">", "<", ">>", "<<", "||", "&&", "\n", "\r", "\t",
-        ];
-
-        // Check for dangerous patterns
-        for pattern in &dangerous_patterns {
-            if arg.contains(pattern) {
-                return false;
-            }
-        }
-
-        // Check for command substitution patterns
-        if arg.contains("$(") || arg.contains("`") {
-            return false;
-        }
-
-        true
     }
 
     /// Commit changes in the current git repository.

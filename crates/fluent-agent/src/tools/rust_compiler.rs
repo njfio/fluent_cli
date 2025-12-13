@@ -26,19 +26,21 @@ impl RustCompilerExecutor {
 
     /// Create a Rust compiler executor with default configuration
     pub fn with_defaults(project_root: PathBuf) -> Self {
-        let mut config = ToolExecutionConfig::default();
-        config.allowed_commands = vec![
-            "cargo build".to_string(),
-            "cargo test".to_string(),
-            "cargo check".to_string(),
-            "cargo clippy".to_string(),
-            "cargo fmt".to_string(),
-            "cargo clean".to_string(),
-            "cargo doc".to_string(),
-            "rustc --version".to_string(),
-            "cargo --version".to_string(),
-        ];
-        config.timeout_seconds = 300; // 5 minutes for compilation
+        let config = ToolExecutionConfig {
+            allowed_commands: vec![
+                "cargo build".to_string(),
+                "cargo test".to_string(),
+                "cargo check".to_string(),
+                "cargo clippy".to_string(),
+                "cargo fmt".to_string(),
+                "cargo clean".to_string(),
+                "cargo doc".to_string(),
+                "rustc --version".to_string(),
+                "cargo --version".to_string(),
+            ],
+            timeout_seconds: 300, // 5 minutes for compilation
+            ..Default::default()
+        };
 
         Self::new(config, project_root)
     }

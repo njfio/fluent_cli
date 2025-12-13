@@ -4,9 +4,9 @@
 //! and result processing for Neo4j database operations.
 
 use anyhow::{anyhow, Result};
-use log::info;
 use neo4rs::{query, Graph, Row};
 use serde_json::{json, Value};
+use tracing::info;
 
 /// Query executor for Neo4j operations
 pub struct QueryExecutor<'a> {

@@ -10,6 +10,7 @@ use std::{
     io::stdout,
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 const WIDTH: u16 = 40;
 const HEIGHT: u16 = 20;
@@ -143,7 +144,8 @@ impl Game {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
     let mut game = Game::new();
@@ -159,8 +161,8 @@ fn main() -> Result<()> {
         game.draw()?;
 
         if poll(Duration::from_millis(0))? {
-            match read()? {
-                Event::Key(event) => match event.code {
+            if let Event::Key(event) = read()? {
+                match event.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('w') if !game.game_over && game.frog_y > 1 => game.frog_y -= 1,
                     KeyCode::Char('s') if !game.game_over && game.frog_y < HEIGHT - 1 => {
@@ -172,14 +174,13 @@ fn main() -> Result<()> {
                     }
                     KeyCode::Char('r') if game.game_over => game = Game::new(),
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
 
         let elapsed = frame_start.elapsed();
         if elapsed < frame_duration {
-            std::thread::sleep(frame_duration - elapsed);
+            sleep(frame_duration - elapsed).await;
         }
     }
 

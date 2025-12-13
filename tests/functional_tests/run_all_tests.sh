@@ -22,7 +22,7 @@ if ! command -v fluent &> /dev/null; then
     cargo build --release
     # Add to PATH temporarily
     export PATH="$(pwd)/target/release:$PATH"
-    
+
     if ! command -v fluent &> /dev/null; then
         echo -e "${RED}❌ Failed to build fluent CLI${NC}"
         exit 1
@@ -35,10 +35,10 @@ echo -e "${GREEN}✅ Fluent CLI binary found${NC}"
 run_test_suite() {
     local name="$1"
     local command="$2"
-    
+
     echo -e "\n${BLUE}▶️  Running $name${NC}"
     echo "----------------------------------------"
-    
+
     if eval "$command"; then
         echo -e "${GREEN}✅ $name completed successfully${NC}"
         return 0

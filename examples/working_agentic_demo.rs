@@ -21,11 +21,9 @@
 //! - Comprehensive logging and debugging output
 use anyhow::Result;
 use fluent_agent::{
-    agent_with_mcp::LongTermMemory,
     config::{credentials, AgentEngineConfig},
     context::ExecutionContext,
     goal::{Goal, GoalType},
-    memory::AsyncSqliteMemoryStore,
     tools::{FileSystemExecutor, ToolExecutionConfig, ToolRegistry},
 };
 use std::sync::Arc;
@@ -35,6 +33,12 @@ async fn main() -> Result<()> {
     println!("🤖 Working Agentic System Demo");
     println!("===============================");
     println!("This demo shows REAL working examples of the agentic system components");
+    println!();
+
+    // Note: This demo doesn't make actual LLM API calls, but if you want to
+    // extend it to use real engines, you'll need API keys set:
+    // export OPENAI_API_KEY=your-key-here
+    // export ANTHROPIC_API_KEY=your-key-here
 
     // Demo 1: Real Memory System
     println!("\n📚 Demo 1: Real Memory System");
@@ -215,7 +219,9 @@ async fn demo_goal_system() -> Result<()> {
 
 async fn demo_context_system() -> Result<()> {
     // Create a simple goal for the context
-    let goal = Goal::builder("Demo context management".to_string(), GoalType::Analysis).build()?;
+    let goal = Goal::builder("Demo context management".to_string(), GoalType::Analysis)
+        .success_criterion("Set context variables".to_string())
+        .build()?;
 
     // Create real execution context
     let mut context = ExecutionContext::new(goal);
@@ -298,20 +304,23 @@ async fn demo_config_system() -> Result<()> {
         action_engine: "openai".to_string(),
         reflection_engine: "openai".to_string(),
         memory_database: "sqlite://./demo_agent_memory.db".to_string(),
+        memory_enabled: true,
         tools: fluent_agent::config::ToolConfig {
             file_operations: true,
             shell_commands: true,
             rust_compiler: true,
             git_operations: false,
+            web_browsing: true,
             allowed_paths: Some(vec!["./".to_string(), "./examples/".to_string()]),
             allowed_commands: Some(vec!["cargo".to_string(), "rustc".to_string()]),
         },
         config_path: Some("./config_test.json".to_string()),
         max_iterations: Some(50),
         timeout_seconds: Some(300),
-        performance: "default".to_string(),
-        state_management: "default".to_string(),
-        supervisor: "default".to_string(),
+        performance: None,
+        state_management: None,
+        supervisor: None,
+        rate_limit: None,
     };
 
     // Validate configuration

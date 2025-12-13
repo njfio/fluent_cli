@@ -210,6 +210,7 @@ async fn demonstrate_security_manager_pattern() -> Result<(), FluentError> {
             Ok(())
         }
 
+        #[allow(dead_code)]
         async fn get_session_count(&self) -> usize {
             let sessions = self.active_sessions.read().await;
             sessions.len()

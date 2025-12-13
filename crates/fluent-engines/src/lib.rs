@@ -39,8 +39,8 @@
 //! # }
 //! ```
 
-use log::debug;
 use std::str::FromStr;
+use tracing::debug;
 
 use anthropic::AnthropicEngine;
 use cohere::CohereEngine;
@@ -58,8 +58,25 @@ use serde::{Deserialize, Serialize};
 use stabilityai::StabilityAIEngine;
 use strum::{Display, EnumString};
 use webhook::WebhookEngine;
-// Plugin imports removed - plugins disabled for security
-use anyhow;
+
+// ============================================================================
+// PLUGIN SYSTEM STATUS: DISABLED
+// ============================================================================
+// The plugin system code exists in this crate (see plugin.rs and
+// secure_plugin_system.rs) but is NOT ENABLED in production builds.
+//
+// Reasons:
+// 1. Requires WASM runtime (wasmtime/wasmer) - adds 10-15MB to binary
+// 2. WASM execution layer not implemented (needs wasm-runtime feature)
+// 3. Requires PKI infrastructure for signature verification
+// 4. Security audit needed before production use
+// 5. Support and maintenance burden for plugin API
+//
+// The secure plugin architecture is fully designed and partially implemented,
+// but the actual WASM runtime execution is feature-gated and not included.
+//
+// See plugin.rs for complete documentation on enabling plugins for dev/test.
+// ============================================================================
 
 extern crate core;
 
@@ -78,6 +95,7 @@ pub mod openai;
 pub mod perplexity;
 pub mod pipeline;
 pub mod pipeline_executor;
+pub mod pipeline_loop_adapter;
 pub mod stabilityai;
 pub mod webhook;
 
@@ -103,6 +121,7 @@ pub mod pipeline_step_executors;
 pub mod plugin;
 pub mod plugin_cli;
 pub mod pooled_openai_example;
+pub mod rate_limiter;
 pub mod replicate;
 pub mod secure_plugin_system;
 pub mod shared;
@@ -110,6 +129,9 @@ pub mod simplified_engine;
 pub mod state_store_benchmark;
 pub mod streaming_engine;
 pub mod universal_base_engine;
+
+// Re-export commonly used types
+pub use rate_limiter::RateLimiter;
 
 #[derive(Debug, PartialEq, EnumString, Serialize, Deserialize, Display)]
 pub enum EngineType {
@@ -200,13 +222,20 @@ pub async fn create_engine(engine_config: &EngineConfig) -> anyhow::Result<Box<d
             EngineType::Dalle => Box::new(dalle::DalleEngine::new(engine_config.clone()).await?),
         },
         Err(_) => {
-            // Plugin support disabled for security reasons
+            // Plugin support disabled - see PLUGIN SYSTEM STATUS comment above for details
+            // Unknown engine types cannot be loaded as plugins because:
+            // - WASM runtime not included (wasm-runtime feature disabled)
+            // - No plugin loading infrastructure enabled
+            // - Security and trust infrastructure not configured
+            //
+            // Use built-in engines (OpenAI, Anthropic, Google, etc.) or Webhook engine
+            // to proxy to custom services.
             debug!(
                 "Unknown engine type '{}' - plugins are disabled",
                 engine_config.engine
             );
             return Err(anyhow::anyhow!(format!(
-                "Unknown engine type: {}",
+                "Unknown engine type: {}. Plugins are disabled. Available engines: openai, anthropic, google_gemini, cohere, mistral, groq_lpu, perplexity, flowise_chain, langflow_chain, webhook, stabilityai, imagine_pro, leonardo_ai, dalle",
                 engine_config.engine
             )));
         }

@@ -1,20 +1,32 @@
-use super::ToolExecutor;
+use super::{validation, ToolExecutionConfig, ToolExecutor};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use fluent_core::traits::Engine;
 use fluent_core::types::Request;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
 /// High-level workflow tools that orchestrate multi-step operations
 pub struct WorkflowExecutor {
-    engine: Arc<Box<dyn Engine>>,
+    engine: Arc<dyn Engine>,
+    config: ToolExecutionConfig,
 }
 
 impl WorkflowExecutor {
-    pub fn new(engine: Arc<Box<dyn Engine>>) -> Self {
-        Self { engine }
+    pub fn new(engine: Arc<dyn Engine>, config: ToolExecutionConfig) -> Self {
+        Self { engine, config }
+    }
+
+    /// Create a workflow executor with default configuration
+    pub fn with_defaults(engine: Arc<dyn Engine>) -> Self {
+        Self::new(engine, ToolExecutionConfig::default())
+    }
+
+    /// Validate that a path is safe to access
+    fn validate_path(&self, path: &str) -> Result<PathBuf> {
+        validation::validate_path(path, &self.config.allowed_paths)
     }
 
     async fn llm(&self, prompt: String) -> Result<String> {
@@ -27,23 +39,79 @@ impl WorkflowExecutor {
     }
 
     async fn write_file(&self, path: &str, content: &str) -> Result<String> {
-        let p = std::path::Path::new(path);
-        if let Some(parent) = p.parent() {
+        // Validate path first to prevent path traversal attacks
+        let validated_path = self.validate_path(path)?;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return Err(anyhow!("Write operations are disabled in read-only mode"));
+        }
+
+        // Check content size
+        if content.len() > self.config.max_output_size {
+            return Err(anyhow!(
+                "Content size ({} bytes) exceeds maximum allowed size ({} bytes)",
+                content.len(),
+                self.config.max_output_size
+            ));
+        }
+
+        // Create parent directories if needed
+        if let Some(parent) = validated_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(p, content).await?;
+
+        // Write the file
+        tokio::fs::write(&validated_path, content).await?;
         Ok(format!("Successfully wrote to {}", path))
     }
 
     async fn concat_files(&self, paths: Vec<String>, dest: &str, sep: &str) -> Result<String> {
         let mut combined = String::new();
+        let mut total_size = 0usize;
+
+        // Read and validate all input files
         for (i, p) in paths.iter().enumerate() {
-            let s = tokio::fs::read_to_string(p).await.unwrap_or_default();
+            // Validate each input path to prevent path traversal
+            let validated_path = self.validate_path(p)?;
+
+            // Check file size before reading
+            let metadata = tokio::fs::metadata(&validated_path)
+                .await
+                .map_err(|e| anyhow!("Failed to get metadata for '{}': {}", p, e))?;
+
+            if metadata.len() > self.config.max_output_size as u64 {
+                return Err(anyhow!(
+                    "File '{}' size ({} bytes) exceeds maximum allowed size ({} bytes)",
+                    p,
+                    metadata.len(),
+                    self.config.max_output_size
+                ));
+            }
+
+            // Read the file content
+            let content = tokio::fs::read_to_string(&validated_path)
+                .await
+                .map_err(|e| anyhow!("Failed to read file '{}': {}", p, e))?;
+
+            // Add separator between files
             if i > 0 {
                 combined.push_str(sep);
             }
-            combined.push_str(&s);
+            combined.push_str(&content);
+
+            // Track total size
+            total_size += content.len();
+            if total_size > self.config.max_output_size {
+                return Err(anyhow!(
+                    "Combined content size ({} bytes) exceeds maximum allowed size ({} bytes)",
+                    total_size,
+                    self.config.max_output_size
+                ));
+            }
         }
+
+        // Validate destination path and write
         self.write_file(dest, &combined).await
     }
 
@@ -212,9 +280,56 @@ impl ToolExecutor for WorkflowExecutor {
 
     fn validate_tool_request(
         &self,
-        _tool_name: &str,
-        _parameters: &HashMap<String, serde_json::Value>,
+        tool_name: &str,
+        parameters: &HashMap<String, serde_json::Value>,
     ) -> Result<()> {
+        // Check if tool is available
+        if !self.get_available_tools().contains(&tool_name.to_string()) {
+            return Err(anyhow!("Tool '{}' is not available", tool_name));
+        }
+
+        // Validate output path parameter if present
+        if let Some(out_path_value) = parameters.get("out_path") {
+            if let Some(out_path_str) = out_path_value.as_str() {
+                self.validate_path(out_path_str)?;
+            } else {
+                return Err(anyhow!("out_path parameter must be a string"));
+            }
+        }
+
+        // Validate outline_path parameter if present
+        if let Some(outline_path_value) = parameters.get("outline_path") {
+            if let Some(outline_path_str) = outline_path_value.as_str() {
+                self.validate_path(outline_path_str)?;
+            } else {
+                return Err(anyhow!("outline_path parameter must be a string"));
+            }
+        }
+
+        // Validate base directory parameter if present
+        if let Some(base_value) = parameters.get("base") {
+            if let Some(base_str) = base_value.as_str() {
+                self.validate_path(base_str)?;
+            } else {
+                return Err(anyhow!("base parameter must be a string"));
+            }
+        }
+
+        // Validate goal parameter size if present
+        if let Some(goal_value) = parameters.get("goal") {
+            if let Some(goal_str) = goal_value.as_str() {
+                if goal_str.len() > self.config.max_output_size {
+                    return Err(anyhow!(
+                        "goal parameter size ({} bytes) exceeds maximum allowed size ({} bytes)",
+                        goal_str.len(),
+                        self.config.max_output_size
+                    ));
+                }
+            } else {
+                return Err(anyhow!("goal parameter must be a string"));
+            }
+        }
+
         Ok(())
     }
 }

@@ -151,6 +151,12 @@ pub struct ToolBenchmark {
     pub context: String,
 }
 
+impl Default for AdvancedToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdvancedToolRegistry {
     /// Create a new advanced tool registry
     pub fn new() -> Self {
@@ -243,7 +249,7 @@ impl AdvancedToolRegistry {
 
         self.tools_by_category
             .entry(category)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(tool.clone());
         self.tools_by_name.insert(name.clone(), tool);
 

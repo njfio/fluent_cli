@@ -5,7 +5,7 @@ pub mod cache;
 pub mod connection_pool;
 
 /// Performance configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PerformanceConfig {
     pub connection_pool: ConnectionPoolConfig,
     pub cache: CacheConfig,
@@ -97,17 +97,6 @@ impl Default for MetricsConfig {
             collection_interval: Duration::from_secs(60),
             export_endpoint: None,
             histogram_buckets: vec![0.001, 0.01, 0.1, 1.0, 10.0],
-        }
-    }
-}
-
-impl Default for PerformanceConfig {
-    fn default() -> Self {
-        Self {
-            connection_pool: ConnectionPoolConfig::default(),
-            cache: CacheConfig::default(),
-            batch: BatchConfig::default(),
-            metrics: MetricsConfig::default(),
         }
     }
 }

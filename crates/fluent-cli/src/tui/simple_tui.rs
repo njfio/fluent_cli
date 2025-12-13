@@ -16,6 +16,8 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, Paragraph},
     Terminal,
 };
+use std::fs;
+use std::path::PathBuf;
 use std::{
     io::{self, IsTerminal},
     sync::Arc,
@@ -38,6 +40,10 @@ pub struct SimpleTuiState {
     pub current_action: String,
     pub logs: Vec<String>,
     pub paused: bool,
+    pub show_help: bool,
+    pub filter: Option<String>,
+    pub input_mode: bool,
+    pub input_buffer: String,
 }
 
 impl Default for SimpleTuiState {
@@ -51,6 +57,10 @@ impl Default for SimpleTuiState {
             current_action: "Waiting...".to_string(),
             logs: Vec::new(),
             paused: false,
+            show_help: false,
+            filter: None,
+            input_mode: false,
+            input_buffer: String::new(),
         }
     }
 }
@@ -60,6 +70,10 @@ pub struct SimpleTui {
     state: Arc<RwLock<SimpleTuiState>>,
     control_channel: Option<Arc<AgentControlChannel>>,
     last_render: Instant,
+    max_logs: usize,
+    log_persist_path: Option<PathBuf>,
+    last_frame_ms: u32,
+    run_id: String,
 }
 
 impl SimpleTui {
@@ -74,11 +88,41 @@ impl SimpleTui {
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
 
+        let max_logs = std::env::var("FLUENT_TUI_MAX_LOGS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|v| *v >= 10)
+            .unwrap_or(200);
+
+        let run_id = std::env::var("FLUENT_RUN_ID")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                format!("{}-{}", ts, std::process::id())
+            });
+        let base_dir = std::env::var("FLUENT_STATE_STORE")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "./agent_logs".to_string());
+        let mut path = PathBuf::from(base_dir);
+        path.push("agent_logs");
+        let _ = fs::create_dir_all(&path);
+        path.push(format!("{}.log", run_id));
+        let log_persist_path = Some(path);
+
         Ok(Self {
             terminal,
             state: Arc::new(RwLock::new(SimpleTuiState::default())),
             control_channel,
             last_render: Instant::now(),
+            max_logs,
+            log_persist_path,
+            last_frame_ms: 0,
+            run_id,
         })
     }
 
@@ -153,16 +197,14 @@ impl SimpleTui {
             }
 
             StateUpdateType::ActionUpdate {
-                action_description,
-                ..
+                action_description, ..
             } => {
                 state.current_action = action_description.clone();
                 state.logs.push(format!("→ {}", action_description));
 
-                // Keep only last 50 logs
                 let len = state.logs.len();
-                if len > 50 {
-                    state.logs.drain(0..len - 50);
+                if len > self.max_logs {
+                    state.logs.drain(0..len - self.max_logs);
                 }
             }
 
@@ -176,8 +218,8 @@ impl SimpleTui {
                 state.logs.push(format!("{} {}", prefix, message));
 
                 let len = state.logs.len();
-                if len > 50 {
-                    state.logs.drain(0..len - 50);
+                if len > self.max_logs {
+                    state.logs.drain(0..len - self.max_logs);
                 }
             }
 
@@ -186,13 +228,15 @@ impl SimpleTui {
                 confidence,
                 ..
             } => {
-                state
-                    .logs
-                    .push(format!("💭 {} (confidence: {:.0}%)", step_description, confidence * 100.0));
+                state.logs.push(format!(
+                    "💭 {} (confidence: {:.0}%)",
+                    step_description,
+                    confidence * 100.0
+                ));
 
                 let len = state.logs.len();
-                if len > 50 {
-                    state.logs.drain(0..len - 50);
+                if len > self.max_logs {
+                    state.logs.drain(0..len - self.max_logs);
                 }
             }
 
@@ -222,6 +266,54 @@ impl SimpleTui {
                         }
                     }
 
+                    (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
+                        let mut state = self.state.write().await;
+                        state.show_help = !state.show_help;
+                    }
+
+                    (KeyCode::Char('/'), _) => {
+                        let mut state = self.state.write().await;
+                        state.input_mode = true;
+                        state.input_buffer.clear();
+                    }
+
+                    (KeyCode::Char('n'), _) => {
+                        let mut state = self.state.write().await;
+                        state.filter = None;
+                    }
+
+                    (KeyCode::Backspace, _) => {
+                        let mut state = self.state.write().await;
+                        if state.input_mode {
+                            state.input_buffer.pop();
+                        }
+                    }
+
+                    (KeyCode::Enter, _) => {
+                        let mut state = self.state.write().await;
+                        if state.input_mode {
+                            if !state.input_buffer.is_empty() {
+                                state.filter = Some(state.input_buffer.clone());
+                            }
+                            state.input_mode = false;
+                        }
+                    }
+
+                    (KeyCode::Esc, _) => {
+                        let mut state = self.state.write().await;
+                        if state.input_mode {
+                            state.input_mode = false;
+                            state.input_buffer.clear();
+                        }
+                    }
+
+                    (KeyCode::Char(ch), _) => {
+                        let mut state = self.state.write().await;
+                        if state.input_mode {
+                            state.input_buffer.push(ch);
+                        }
+                    }
+
                     _ => {}
                 }
             }
@@ -233,23 +325,31 @@ impl SimpleTui {
     fn render(&mut self) -> Result<()> {
         let state = self.state.blocking_read().clone();
 
+        let render_start = Instant::now();
         self.terminal.draw(|f| {
             let size = f.size();
 
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3),  // Header
-                    Constraint::Length(3),  // Progress
-                    Constraint::Min(10),    // Logs
-                    Constraint::Length(3),  // Controls
+                    Constraint::Length(3), // Header
+                    Constraint::Length(3), // Progress
+                    Constraint::Min(10),   // Logs
+                    Constraint::Length(3), // Controls
                 ])
                 .split(size);
 
             // Header
-            let header_text = format!("🤖 Fluent Agent - Status: {}", state.status);
+            let header_text = format!(
+                "🤖 Fluent Agent (Run {}) - Status: {}",
+                self.run_id, state.status
+            );
             let header = Paragraph::new(header_text)
-                .style(Style::default().fg(state.status_color).add_modifier(Modifier::BOLD))
+                .style(
+                    Style::default()
+                        .fg(state.status_color)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .block(Block::default().borders(Borders::ALL))
                 .alignment(Alignment::Center);
             f.render_widget(header, chunks[0]);
@@ -270,26 +370,64 @@ impl SimpleTui {
                 .percent(state.progress_percentage.min(100) as u16);
             f.render_widget(progress, chunks[1]);
 
-            // Logs
-            let log_items: Vec<ListItem> = state
-                .logs
-                .iter()
-                .rev() // Show newest first
-                .take(chunks[2].height as usize - 2) // Fit to available space
-                .rev() // Reverse back for proper order
-                .map(|log| ListItem::new(log.clone()))
-                .collect();
+            // Logs or Help overlay
+            if state.show_help {
+                let help_lines = vec![
+                    Line::from(Span::styled(
+                        "Controls:",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from("  P = Pause / Resume"),
+                    Line::from("  Q = Quit (or Ctrl-C)"),
+                    Line::from("  H / ? = Toggle Help"),
+                    Line::from("  / = Enter Filter • N = Clear Filter"),
+                    Line::from(""),
+                ];
+                let help = Paragraph::new(help_lines)
+                    .style(Style::default().fg(Color::Cyan))
+                    .block(Block::default().borders(Borders::ALL).title("Help"))
+                    .alignment(Alignment::Left);
+                f.render_widget(help, chunks[2]);
+            } else {
+                let filtered: Vec<&String> = if let Some(ref q) = state.filter {
+                    state.logs.iter().filter(|l| l.contains(q)).collect()
+                } else {
+                    state.logs.iter().collect()
+                };
 
-            let logs_widget = List::new(log_items)
-                .block(Block::default().borders(Borders::ALL).title(format!("Activity Log ({} messages)", state.logs.len())));
-            f.render_widget(logs_widget, chunks[2]);
+                let log_items: Vec<ListItem> = filtered
+                    .iter()
+                    .rev()
+                    .take(chunks[2].height as usize - 2)
+                    .rev()
+                    .map(|log| ListItem::new((*log).clone()))
+                    .collect();
+
+                let logs_widget =
+                    List::new(log_items).block(Block::default().borders(Borders::ALL).title(
+                        match &state.filter {
+                            Some(q) => format!(
+                                "Activity Log ({} messages) • Filter: {}",
+                                filtered.len(),
+                                q
+                            ),
+                            None => format!("Activity Log ({} messages)", state.logs.len()),
+                        },
+                    ));
+                f.render_widget(logs_widget, chunks[2]);
+            }
 
             // Controls
-            let control_text = if state.paused {
-                "P=Resume | Q=Quit"
+            let mut control_text = if state.paused {
+                "P=Resume | H=Help | Q=Quit".to_string()
             } else {
-                "P=Pause | Q=Quit"
+                "P=Pause | H=Help | Q=Quit".to_string()
             };
+            if state.input_mode {
+                control_text = format!("Filter: {}_ (Enter=Apply Esc=Cancel)", state.input_buffer);
+            } else {
+                control_text = format!("{} • Frame {}ms", control_text, self.last_frame_ms);
+            }
 
             let controls = Paragraph::new(control_text)
                 .style(Style::default().fg(Color::Cyan))
@@ -298,10 +436,25 @@ impl SimpleTui {
             f.render_widget(controls, chunks[3]);
         })?;
 
+        let elapsed = render_start.elapsed();
+        self.last_frame_ms = elapsed.as_millis() as u32;
+
         Ok(())
     }
 
     fn cleanup(&mut self) -> Result<()> {
+        if let Some(path) = &self.log_persist_path {
+            if let Ok(state_guard) = self.state.try_read() {
+                let state = state_guard.clone();
+                let parent_dir = path
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| PathBuf::from("."));
+                let _ = fs::create_dir_all(parent_dir);
+                let content = state.logs.join("\n");
+                let _ = fs::write(path, content);
+            }
+        }
         disable_raw_mode()?;
         execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
         self.terminal.show_cursor()?;

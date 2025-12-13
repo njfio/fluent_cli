@@ -24,16 +24,16 @@ test_command() {
     local description="$1"
     local command="$2"
     local expected_exit_code="${3:-0}"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     echo -n "Testing: $description... "
-    
+
     if eval "$command" >/dev/null 2>&1; then
         actual_exit_code=$?
     else
         actual_exit_code=$?
     fi
-    
+
     if [ $actual_exit_code -eq $expected_exit_code ]; then
         echo -e "${GREEN}PASS${NC}"
         PASSED_TESTS=$((PASSED_TESTS + 1))

@@ -278,8 +278,10 @@ impl McpCommand {
             .map_err(|e| anyhow!("Failed to initialize MCP manager: {}", e))?;
 
         // Set execution preferences
-        let mut preferences = fluent_agent::production_mcp::client::ExecutionPreferences::default();
-        preferences.timeout = Some(Duration::from_secs(timeout_secs));
+        let mut preferences = fluent_agent::production_mcp::client::ExecutionPreferences {
+            timeout: Some(Duration::from_secs(timeout_secs)),
+            ..Default::default()
+        };
         if let Some(server) = server_preference {
             preferences.preferred_servers = vec![server.clone()];
         }

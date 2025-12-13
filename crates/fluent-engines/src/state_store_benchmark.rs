@@ -52,15 +52,19 @@ impl StateStoreBenchmark {
         results.push(optimized_results);
 
         // Benchmark OptimizedStateStore with write-through disabled
-        let mut write_back_config = StateStoreConfig::default();
-        write_back_config.write_through = false;
+        let write_back_config = StateStoreConfig {
+            write_through: false,
+            ..Default::default()
+        };
         let write_back_results =
             Self::benchmark_optimized_store(&config, write_back_config).await?;
         results.push(write_back_results);
 
         // Benchmark OptimizedStateStore with compression disabled
-        let mut no_compression_config = StateStoreConfig::default();
-        no_compression_config.enable_compression = false;
+        let no_compression_config = StateStoreConfig {
+            enable_compression: false,
+            ..Default::default()
+        };
         let no_compression_results =
             Self::benchmark_optimized_store(&config, no_compression_config).await?;
         results.push(no_compression_results);

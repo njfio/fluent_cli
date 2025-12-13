@@ -10,12 +10,12 @@
 
 use super::{utils::PerformanceCounter, CacheConfig};
 use anyhow::Result;
-use log::{debug, warn};
 use moka::future::Cache as MokaCache;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, warn};
 
 /// Multi-level cache system with L1 (memory), L2 (Redis), and L3 (database) levels
 ///

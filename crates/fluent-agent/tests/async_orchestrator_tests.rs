@@ -1,3 +1,6 @@
+// This test file is disabled because it tests deprecated agent/memory APIs
+#![cfg(feature = "deprecated_agent_tests")]
+
 use anyhow::Result;
 use fluent_agent::{
     action::ActionPlanner,

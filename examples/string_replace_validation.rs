@@ -25,13 +25,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.insert("debug", "false");
     config.insert("log_level", "info");
     config.insert("max_connections", "100");
-    
+
     println!("Starting application...");
     println!("Configuration loaded: {:?}", config);
-    
+
     let result = process_data("input.txt")?;
     println!("Processing complete: {}", result);
-    
+
     Ok(())
 }
 
@@ -51,6 +51,7 @@ fn process_data(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
         shell_commands: false,
         rust_compiler: false,
         git_operations: false,
+        web_browsing: true,
         allowed_paths: Some(vec![temp_dir.path().to_string_lossy().to_string()]),
         allowed_commands: Some(vec![]),
     };

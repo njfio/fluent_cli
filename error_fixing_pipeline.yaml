@@ -5,13 +5,13 @@ steps:
     tool: "cargo_check"
     description: "Check for compilation errors"
     directory: "./minesweeper_solitaire_game"
-    
-  - name: "parse-errors" 
+
+  - name: "parse-errors"
     tool: "string_replace"
     description: "Parse compilation errors and generate fixes"
     file: "./minesweeper_solitaire_game/src/main.rs"
     # This would be enhanced to actually parse errors and apply fixes
-    
+
   - name: "apply-fixes"
     tool: "string_replace"
     description: "Apply specific fixes for the known errors"

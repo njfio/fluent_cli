@@ -38,33 +38,33 @@ pub struct AgentLoop {
 impl AgentLoop {
     pub async fn execute_task(&self, task: Task) -> Result<TaskResult> {
         let mut context = ExecutionContext::new(task);
-        
+
         loop {
             // Reasoning Phase
             let reasoning = self.reasoning_engine.reason(&context).await?;
-            
+
             // Action Phase
             let action = self.action_executor.plan_action(reasoning).await?;
-            
+
             // Execution Phase
             let observation = self.execute_action(action, &mut context).await?;
-            
+
             // Observation Phase
             let processed = self.observation_processor.process(observation).await?;
             context.add_observation(processed);
-            
+
             // Memory Update
             self.memory_system.update(&context).await?;
-            
+
             // Check completion
             if self.is_task_complete(&context).await? {
                 break;
             }
-            
+
             // Self-reflection and planning adjustment
             self.reflect_and_adjust(&mut context).await?;
         }
-        
+
         Ok(context.into_result())
     }
 }
@@ -83,16 +83,16 @@ impl MCPServer {
     pub async fn handle_tool_call(&self, call: ToolCall) -> Result<ToolResult> {
         let tool = self.tools.get(&call.name)
             .ok_or_else(|| anyhow!("Tool not found: {}", call.name))?;
-        
+
         // Validate permissions and parameters
         self.validate_tool_call(&call)?;
-        
+
         // Execute tool with timeout and resource limits
         let result = timeout(
             Duration::from_secs(30),
             tool.execute(call.parameters)
         ).await??;
-        
+
         Ok(result)
     }
 }
@@ -135,25 +135,25 @@ impl CodeIntelligence {
         // Use tree-sitter to parse all files
         let files = self.discover_source_files(repo_path).await?;
         let mut repo_map = RepositoryMap::new();
-        
+
         for file in files {
             let ast = self.ast_analyzer.parse_file(&file).await?;
             let symbols = self.extract_symbols(&ast).await?;
             let embeddings = self.embedding_store.embed_symbols(&symbols).await?;
-            
+
             repo_map.add_file(file, ast, symbols, embeddings);
         }
-        
+
         Ok(repo_map)
     }
-    
+
     pub async fn semantic_search(&self, query: &str, context: &CodeContext) -> Result<Vec<SearchResult>> {
         let query_embedding = self.embedding_store.embed_query(query).await?;
         let candidates = self.embedding_store.similarity_search(query_embedding, 50).await?;
-        
+
         // Re-rank based on context and relevance
         let ranked = self.rank_results(candidates, context).await?;
-        
+
         Ok(ranked)
     }
 }
@@ -172,17 +172,17 @@ impl ModelRouter {
     pub async fn route_request(&self, request: ModelRequest) -> Result<ModelResponse> {
         // Analyze request characteristics
         let characteristics = self.analyze_request(&request).await?;
-        
+
         // Select optimal model based on:
         // - Task type (coding, reasoning, creative)
         // - Context length requirements
         // - Cost constraints
         // - Performance requirements
         let model_id = self.routing_strategy.select_model(&characteristics).await?;
-        
+
         let model = self.models.get(&model_id)
             .ok_or_else(|| anyhow!("Model not available: {}", model_id))?;
-        
+
         // Execute with model-specific optimizations
         let response = match model_id.as_str() {
             "claude" => self.execute_with_claude_optimizations(model, request).await?,
@@ -190,7 +190,7 @@ impl ModelRouter {
             "gemini" => self.execute_with_gemini_optimizations(model, request).await?,
             _ => model.execute(request).await?,
         };
-        
+
         Ok(response)
     }
 }
@@ -213,22 +213,22 @@ impl PluginManager {
         } else {
             self.marketplace.download_plugin(plugin_id).await?
         };
-        
+
         // Verify signature and permissions
         self.verify_plugin_security(&plugin_bytes).await?;
-        
+
         // Load into WASM sandbox with resource limits
         let instance = self.sandbox.load_plugin(plugin_bytes, ResourceLimits {
             memory_mb: 64,
             cpu_time_ms: 5000,
             network_access: false,
         }).await?;
-        
+
         self.plugins.insert(plugin_id.to_string(), LoadedPlugin {
             instance,
             metadata: self.extract_plugin_metadata(&plugin_bytes)?,
         });
-        
+
         Ok(())
     }
 }

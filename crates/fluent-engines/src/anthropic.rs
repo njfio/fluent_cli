@@ -8,7 +8,6 @@ use fluent_core::traits::{AnthropicConfigProcessor, Engine, EngineConfigProcesso
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use mime_guess::from_path;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -18,6 +17,7 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::time::{timeout, Duration};
+use tracing::debug;
 
 pub struct AnthropicEngine {
     config: EngineConfig,
@@ -35,34 +35,12 @@ impl AnthropicEngine {
             None
         };
 
-        // Create reusable HTTP client with optimized settings
-        let mut client_builder = Client::builder()
-            .timeout(std::time::Duration::from_secs(600)) // Keep in sync with the per-request timeout
-            .connect_timeout(std::time::Duration::from_secs(30)) // Increased from 10 to 30 seconds
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .tcp_keepalive(std::time::Duration::from_secs(60));
-
-        // Check for proxy settings from environment variables
-        if let Ok(proxy_url) =
-            std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
-        {
-            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-                client_builder = client_builder.proxy(proxy);
-                debug!("Using HTTPS proxy");
-            }
-        } else if let Ok(proxy_url) =
-            std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
-        {
-            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-                client_builder = client_builder.proxy(proxy);
-                debug!("Using HTTP proxy");
-            }
-        }
-
-        let client = client_builder
-            .build()
-            .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))?;
+        // Create reusable HTTP client with extended timeouts for Anthropic's long responses
+        // Anthropic API can take a long time for large responses, so we use extended timeouts
+        let client = fluent_core::create_client_with_timeout(
+            std::time::Duration::from_secs(30),  // 30s connect timeout
+            std::time::Duration::from_secs(600), // 10min request timeout for long responses
+        )?;
 
         // Initialize cache if enabled
         let cache = if std::env::var("FLUENT_CACHE").ok().as_deref() == Some("1") {
@@ -178,12 +156,27 @@ impl Engine for AnthropicEngine {
                 }
             }
 
-            debug!("Config: {:?}", self.config);
+            // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
+            // Use RUST_LOG=trace for detailed debugging if needed, but be aware secrets may be logged
 
             let mut payload = self.config_processor.process_config(&self.config)?;
 
             // Add the user's request to the messages
             payload["messages"][0]["content"] = json!(request.payload);
+
+            // Debug log the actual payload being sent (with content)
+            debug!(
+                "Anthropic API request: model={} content_len={} max_tokens={}",
+                payload
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown"),
+                request.payload.len(),
+                payload
+                    .get("max_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
+            );
 
             let url = format!(
                 "{}://{}:{}{}",
@@ -198,7 +191,16 @@ impl Engine for AnthropicEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Anthropic API key not found in configuration. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
+
+            // Validate the auth token isn't empty
+            if auth_token.is_empty() {
+                return Err(anyhow!(
+                    "Anthropic API key is empty. Please set ANTHROPIC_API_KEY environment variable with a valid API key."
+                ));
+            }
 
             let res = timeout(
                 Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for API calls
@@ -369,7 +371,9 @@ impl Engine for AnthropicEngine {
                 .parameters
                 .get("bearer_token")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Bearer token not found in configuration"))?;
+                .ok_or_else(|| anyhow!(
+                    "Anthropic API key not found in configuration. Set ANTHROPIC_API_KEY environment variable or add 'bearer_token' or 'api_key' to config parameters."
+                ))?;
 
             let response = timeout(
                 Duration::from_secs(600), // Increased from 300 to 600 seconds (10 minutes) for vision API calls

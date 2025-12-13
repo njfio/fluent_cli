@@ -8,6 +8,7 @@ pub mod security_framework;
 pub use security_framework::*;
 
 pub mod capability;
+pub mod command_validator;
 
 /// Security policy definition
 #[derive(Debug, Clone, Serialize, Deserialize)]

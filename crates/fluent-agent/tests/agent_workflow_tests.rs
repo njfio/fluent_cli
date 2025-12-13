@@ -1,3 +1,6 @@
+// This test file is disabled because it tests deprecated agent APIs
+#![cfg(feature = "deprecated_agent_tests")]
+
 use anyhow::Result;
 use chrono::Utc;
 use fluent_agent::{

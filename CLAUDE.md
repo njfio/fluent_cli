@@ -107,7 +107,7 @@ The project uses a Cargo workspace with multiple crates providing modular functi
 
 - **fluent-core**: Shared utilities, configuration management, traits, and types. Provides base abstractions like `Engine` trait, `Request`/`Response` types, error handling, Neo4j client, and centralized configuration.
 
-- **fluent-engines**: Multi-provider LLM implementations (OpenAI, Anthropic, Google, Cohere, Mistral, etc.). Includes pipeline executor, streaming support, connection pooling, caching, and plugin system.
+- **fluent-engines**: Multi-provider LLM implementations (OpenAI, Anthropic, Google, Cohere, Mistral, etc.). Includes pipeline executor, streaming support, connection pooling, and caching. **Note**: Plugin system code exists but is disabled (see Plugin System section below).
 
 - **fluent-storage**: Persistent storage layer with vector database support, embeddings, and memory storage backends.
 
@@ -173,6 +173,59 @@ Comprehensive tool framework in `fluent-agent/src/tools/`:
 - Functional tests in `tests/functional_tests/`
 - Example demonstrations in `examples/`
 - Test data fixtures in `tests/data/`
+
+### Plugin System Status
+
+**IMPORTANT: The plugin system is DISABLED and not available in production builds.**
+
+#### Why Plugins Are Disabled
+
+The codebase contains a complete secure plugin architecture in `crates/fluent-engines/src/plugin.rs` and `secure_plugin_system.rs`, but it is intentionally disabled for the following reasons:
+
+1. **WASM Runtime Not Included**
+   - Requires wasmtime or wasmer (~10-15MB binary size increase)
+   - `wasm-runtime` feature flag is disabled by default
+   - WASM execution layer is not implemented (returns error)
+
+2. **Security Infrastructure Requirements**
+   - Requires PKI setup for Ed25519 signature verification
+   - No trusted plugin registry or distribution mechanism
+   - Needs comprehensive security audit before production use
+   - Supply chain attack risks from untrusted plugins
+
+3. **Maintenance and Support Burden**
+   - Plugin API stability guarantees required
+   - Ongoing security updates and patches needed
+   - Support burden for third-party plugin developers
+
+#### What's Implemented (But Disabled)
+
+The secure plugin system includes:
+- ✅ Complete plugin manifest system with capabilities and permissions
+- ✅ Cryptographic signature verification (Ed25519)
+- ✅ Resource limits and quotas (memory, CPU, network)
+- ✅ Capability-based security model
+- ✅ Comprehensive audit logging
+- ✅ Plugin CLI management tool (`plugin_cli.rs`)
+- ⚠️ WASM runtime execution (architecture ready, but not implemented)
+
+#### Alternatives to Plugins
+
+Instead of plugins, use:
+1. **Built-in engines**: OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, Perplexity, StabilityAI, Leonardo AI, DALL-E
+2. **Webhook engine**: Proxy requests to custom external services
+3. **Fork and add**: Submit a PR to add your engine as a built-in type
+4. **Langflow/Flowise**: Use these chain engines for custom workflows
+
+#### Enabling for Development (Not Recommended)
+
+If you need to enable plugins for development/testing:
+1. Add WASM runtime to `crates/fluent-engines/Cargo.toml`
+2. Implement WASM execution in `SecurePluginEngine::execute()`
+3. Set up Ed25519 key infrastructure
+4. Build with `cargo build --features wasm-runtime`
+
+See detailed documentation in `crates/fluent-engines/src/plugin.rs` module docs.
 
 ## Important Notes
 

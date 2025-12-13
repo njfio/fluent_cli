@@ -5,7 +5,6 @@ use super::{
 };
 use crate::tools::ToolRegistry;
 use anyhow::Result;
-use log::warn;
 use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
 use std::collections::{HashMap, VecDeque};
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
+use tracing::warn;
 use uuid::Uuid;
 
 /// Workflow execution engine with DAG-based execution
@@ -468,15 +468,10 @@ impl WorkflowEngine {
         }
 
         // Remove leading $ if present
-        let path = if path.starts_with('$') {
-            &path[1..]
-        } else {
-            path
-        };
+        let path = path.strip_prefix('$').unwrap_or(path);
 
         // Handle simple dot notation like .field or .field.subfield
-        if path.starts_with('.') {
-            let path = &path[1..]; // Remove leading dot
+        if let Some(path) = path.strip_prefix('.') {
             return Self::extract_by_dot_notation(output, path);
         }
 
@@ -678,6 +673,368 @@ impl WorkflowEngine {
         results
     }
 }
+
+// ============================================================================
+// ExecutionLoop Implementation for WorkflowEngine
+// ============================================================================
+
+use crate::execution::{
+    ExecutionLoop, ExecutionState, ExecutionStatus, StepResult as ExecStepResult,
+};
+use std::time::Duration;
+
+/// Adapter to run WorkflowEngine through the unified ExecutionLoop interface
+///
+/// This adapter wraps a WorkflowEngine and exposes its DAG-based execution as
+/// discrete steps that can be controlled by the UniversalExecutor.
+pub struct WorkflowExecutionAdapter {
+    /// The workflow engine
+    engine: WorkflowEngine,
+    /// Workflow definition to execute
+    definition: WorkflowDefinition,
+    /// Input parameters
+    inputs: HashMap<String, serde_json::Value>,
+    /// Execution context
+    context: WorkflowContext,
+    /// Execution DAG
+    dag: Option<Graph<String, ()>>,
+    /// Queue of ready steps (no pending dependencies)
+    ready_queue: VecDeque<NodeIndex>,
+    /// In-degree for each node (dependencies remaining)
+    in_degree: HashMap<NodeIndex, usize>,
+    /// Map of step IDs to their definitions
+    step_map: HashMap<String, super::WorkflowStep>,
+    /// Unified execution state
+    execution_state: ExecutionState,
+    /// Whether initialization has been called
+    initialized: bool,
+    /// Last error encountered
+    last_error: Option<String>,
+    /// Start time
+    start_time: std::time::Instant,
+    /// Total steps to execute
+    total_steps: usize,
+    /// Steps completed
+    steps_completed: usize,
+}
+
+impl WorkflowExecutionAdapter {
+    /// Create a new adapter for running a workflow
+    pub fn new(
+        engine: WorkflowEngine,
+        definition: WorkflowDefinition,
+        inputs: HashMap<String, serde_json::Value>,
+    ) -> Self {
+        let total_steps = definition.steps.len();
+        let execution_id = Uuid::new_v4().to_string();
+        let context = WorkflowContext::new(definition.name.clone(), execution_id, inputs.clone());
+
+        Self {
+            engine,
+            definition,
+            inputs,
+            context,
+            dag: None,
+            ready_queue: VecDeque::new(),
+            in_degree: HashMap::new(),
+            step_map: HashMap::new(),
+            execution_state: ExecutionState::new(Some(total_steps as u32)),
+            initialized: false,
+            last_error: None,
+            start_time: std::time::Instant::now(),
+            total_steps,
+            steps_completed: 0,
+        }
+    }
+
+    /// Get the workflow result after execution
+    pub fn get_result(&self) -> WorkflowResult {
+        let end_time = SystemTime::now();
+        WorkflowResult {
+            workflow_id: self.definition.name.clone(),
+            execution_id: self.context.execution_id.clone(),
+            status: match self.execution_state.status {
+                ExecutionStatus::Completed => WorkflowStatus::Completed,
+                ExecutionStatus::Failed => WorkflowStatus::Failed,
+                ExecutionStatus::Terminated => WorkflowStatus::Cancelled,
+                _ => WorkflowStatus::Running,
+            },
+            outputs: self.engine.extract_outputs(&self.context, &self.definition),
+            step_results: self.engine.build_step_results(&self.context),
+            start_time: self.context.start_time,
+            end_time,
+            duration: end_time
+                .duration_since(self.context.start_time)
+                .unwrap_or_default(),
+            error: self.last_error.clone(),
+            metadata: self.context.metadata.clone(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ExecutionLoop for WorkflowExecutionAdapter {
+    type State = ExecutionState;
+
+    async fn initialize(&mut self) -> Result<()> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        // Validate workflow definition
+        utils::validate_workflow_definition(&self.definition)?;
+
+        // Build step map
+        self.step_map = self
+            .definition
+            .steps
+            .iter()
+            .cloned()
+            .map(|step| (step.id.clone(), step))
+            .collect();
+
+        // Build execution DAG
+        let dag = self.engine.build_execution_dag(&self.definition)?;
+
+        // Initialize ready queue with steps that have no dependencies
+        for node_index in dag.node_indices() {
+            let degree = dag
+                .neighbors_directed(node_index, Direction::Incoming)
+                .count();
+            self.in_degree.insert(node_index, degree);
+
+            if degree == 0 {
+                self.ready_queue.push_back(node_index);
+            }
+        }
+
+        self.dag = Some(dag);
+        self.execution_state.status = ExecutionStatus::Running;
+        self.initialized = true;
+
+        tracing::info!(
+            "execution_loop.workflow.init workflow='{}' steps={}",
+            self.definition.name,
+            self.total_steps
+        );
+
+        Ok(())
+    }
+
+    async fn execute_step(&mut self) -> Result<ExecStepResult> {
+        let step_start = std::time::Instant::now();
+        self.execution_state.next_iteration();
+
+        // Get next ready step
+        let node_index = match self.ready_queue.pop_front() {
+            Some(idx) => idx,
+            None => {
+                return Ok(ExecStepResult::failure(
+                    "no-ready-step",
+                    "No steps ready to execute",
+                    step_start.elapsed(),
+                ));
+            }
+        };
+
+        let dag = self
+            .dag
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("DAG not initialized"))?;
+        let step_id = dag[node_index].clone();
+
+        self.execution_state.current_step = step_id.clone();
+
+        tracing::debug!(
+            "execution_loop.workflow.step iter={} step={}",
+            self.execution_state.iteration,
+            step_id
+        );
+
+        let step = self
+            .step_map
+            .get(&step_id)
+            .ok_or_else(|| anyhow::anyhow!("Step not found: {}", step_id))?
+            .clone();
+
+        // Execute the step
+        let result =
+            WorkflowEngine::execute_step_impl(&self.engine.tool_registry, &step, &mut self.context)
+                .await;
+
+        // Update ready queue with newly unblocked steps
+        if let Some(dag) = &self.dag {
+            for neighbor in dag.neighbors_directed(node_index, Direction::Outgoing) {
+                if let Some(degree) = self.in_degree.get_mut(&neighbor) {
+                    *degree = degree.saturating_sub(1);
+                    if *degree == 0 {
+                        self.ready_queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+
+        self.steps_completed += 1;
+
+        // Add observation
+        let status_str = match self.context.step_status.get(&step_id) {
+            Some(StepStatus::Completed) => "completed",
+            Some(StepStatus::Skipped) => "skipped",
+            Some(StepStatus::Failed { .. }) => "failed",
+            _ => "unknown",
+        };
+        self.execution_state
+            .add_observation(format!("[workflow] Step {} {}", step_id, status_str), 10);
+
+        match result {
+            Ok(()) => Ok(ExecStepResult::success(
+                step_id,
+                format!("Step completed (status: {})", status_str),
+                step_start.elapsed(),
+            )),
+            Err(e) => {
+                self.last_error = Some(e.to_string());
+                Ok(ExecStepResult::failure(
+                    step_id,
+                    e.to_string(),
+                    step_start.elapsed(),
+                ))
+            }
+        }
+    }
+
+    fn current_step_id(&self) -> String {
+        self.execution_state.current_step.clone()
+    }
+
+    fn should_continue(&self) -> bool {
+        // Continue if there are steps ready to execute
+        !self.ready_queue.is_empty()
+            && !matches!(
+                self.execution_state.status,
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Terminated
+            )
+    }
+
+    fn is_retryable_error(&self) -> bool {
+        self.last_error.is_some()
+    }
+
+    fn is_complete(&self) -> Result<bool> {
+        // Complete when all steps are done and no errors
+        let all_done = self.steps_completed >= self.total_steps || self.ready_queue.is_empty();
+        let no_failures = !self
+            .context
+            .step_status
+            .values()
+            .any(|s| matches!(s, StepStatus::Failed { .. }));
+
+        Ok(all_done && no_failures)
+    }
+
+    fn should_terminate(&self) -> Result<bool> {
+        // Check for timeout (default 1 hour for workflows)
+        let timeout_duration = Duration::from_secs(60 * 60);
+        if self.start_time.elapsed() > timeout_duration {
+            return Ok(true);
+        }
+
+        // Check for max iterations
+        if self.execution_state.is_max_iterations_exceeded() {
+            return Ok(true);
+        }
+
+        // Terminate if a step failed and error handling is not set to continue
+        if let Some(ref error) = self.last_error {
+            // Check if we should fail fast
+            if self.definition.error_handling.is_none() {
+                tracing::warn!("execution_loop.workflow.fail_fast error={}", error);
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn get_state(&self) -> &Self::State {
+        &self.execution_state
+    }
+
+    fn get_state_mut(&mut self) -> &mut Self::State {
+        &mut self.execution_state
+    }
+
+    async fn save_checkpoint(&self) -> Result<String> {
+        // Workflows don't support checkpointing in this implementation
+        Ok(format!(
+            "workflow-{}-{}",
+            self.context.execution_id, self.execution_state.iteration
+        ))
+    }
+
+    async fn restore_checkpoint(&mut self, _id: &str) -> Result<()> {
+        // Not implemented for workflows
+        Ok(())
+    }
+
+    fn iteration(&self) -> u32 {
+        self.execution_state.iteration
+    }
+
+    fn max_iterations(&self) -> Option<u32> {
+        self.execution_state.max_iterations
+    }
+
+    fn elapsed_time(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+
+    async fn handle_error(&mut self, error: anyhow::Error) -> Result<()> {
+        self.last_error = Some(error.to_string());
+        self.execution_state.error_count += 1;
+
+        tracing::warn!(
+            "execution_loop.workflow.error iter={} step={} error={}",
+            self.execution_state.iteration,
+            self.execution_state.current_step,
+            error
+        );
+
+        Ok(())
+    }
+
+    fn reset_error_state(&mut self) {
+        self.last_error = None;
+    }
+
+    fn get_metrics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "workflow": self.definition.name,
+            "execution_id": self.context.execution_id,
+            "total_steps": self.total_steps,
+            "steps_completed": self.steps_completed,
+            "steps_remaining": self.ready_queue.len(),
+            "iteration": self.execution_state.iteration,
+            "error_count": self.execution_state.error_count,
+            "elapsed_ms": self.start_time.elapsed().as_millis(),
+            "status": format!("{:?}", self.execution_state.status),
+        })
+    }
+
+    fn get_recent_observations(&self, n: usize) -> Vec<String> {
+        self.execution_state
+            .recent_observations
+            .iter()
+            .rev()
+            .take(n)
+            .cloned()
+            .collect()
+    }
+}
+
+// ============================================================================
+// End ExecutionLoop Implementation
+// ============================================================================
 
 #[cfg(test)]
 mod tests {

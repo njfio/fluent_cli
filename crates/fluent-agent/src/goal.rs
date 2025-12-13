@@ -205,9 +205,9 @@ impl Goal {
     /// Get goal summary for display
     pub fn get_summary(&self) -> String {
         format!(
-            "Goal: {} ({}), Priority: {:?}, Criteria: {}",
+            "Goal: {} ({:?}), Priority: {:?}, Criteria: {}",
             self.description,
-            format!("{:?}", self.goal_type),
+            self.goal_type,
             self.priority,
             self.success_criteria.len()
         )

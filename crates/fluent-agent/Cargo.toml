@@ -15,6 +15,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 log = { workspace = true }
+tracing = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 futures = { workspace = true }
@@ -24,6 +25,8 @@ rmcp = { workspace = true }
 rusqlite = { workspace = true }
 tokio-rusqlite = { workspace = true }
 which = { workspace = true }
+schemars = { workspace = true }
+similar = { workspace = true }
 # Enhanced MCP Protocol Support
 tokio-tungstenite = { workspace = true }
 url = { workspace = true }
@@ -41,15 +44,25 @@ prometheus = { workspace = true }
 # Additional utilities
 base64 = { workspace = true }
 thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+directories = { workspace = true }
+urlencoding = "2.1"
 bincode = "1.3"
 toml = { workspace = true }
 # Web dashboard dependencies
 warp = "0.3"
 futures-util = { version = "0.3", features = ["sink", "std"] }
+# Async cancellation support
+tokio-util = "0.7"
+
+[features]
+# Deprecated integration suites kept for reference.
+deprecated_agent_tests = []
+deprecated_memory_tests = []
+deprecated_mcp_tests = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio-util = "0.7"
 tokio-stream = "0.1"
 futures = { workspace = true }
-

@@ -44,7 +44,7 @@ steps:
         name: generate_response
         command: |
           fluent ${current_llm} '' <<'EOF'
-          You are ${current_speaker}. Given the context and previous messages, continue the conversation. Keep your 
+          You are ${current_speaker}. Given the context and previous messages, continue the conversation. Keep your
           response concise (max 250 words).
 
           Context: ${context}
@@ -63,7 +63,7 @@ steps:
 
       - !PrintOutput
         name: display_turn
-        value: "----\nTurn ${turn_counter}:\n\t${current_speaker} (using ${current_llm}) 
+        value: "----\nTurn ${turn_counter}:\n\t${current_speaker} (using ${current_llm})
         says:\n\t\t${current_response}\n----\n"
 
     condition: "[ ${turn_counter} = 50 ]"

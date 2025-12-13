@@ -1,18 +1,138 @@
+//! Configuration management for Fluent CLI.
+//!
+//! This module handles loading, parsing, and validating configuration from multiple
+//! formats (YAML, JSON, TOML) with support for environment variable expansion.
+//!
+//! # Supported Formats
+//!
+//! - **YAML**: Recommended for readability
+//! - **JSON**: Good for programmatic generation
+//! - **TOML**: Used for `fluent_config.toml` files with `[[engines]]` array syntax
+//!
+//! # Configuration Sources
+//!
+//! Configuration is loaded in order of precedence:
+//! 1. Command-line `--config` flag
+//! 2. Environment variable `FLUENT_CONFIG_PATH`
+//! 3. Default locations (`fluent_config.toml`, `config.yaml`, etc.)
+//!
+//! # Environment Variables
+//!
+//! Bearer tokens and API keys support `${VAR}` syntax for runtime expansion:
+//! ```toml
+//! bearer_token = "${ANTHROPIC_API_KEY}"
+//! ```
+
 use crate::neo4j_client::VoyageAIConfig;
 use crate::spinner_configuration::SpinnerConfig;
 
 use anyhow::{anyhow, Context, Result};
-use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;
+use tracing::debug;
 
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
 use std::{env, fs};
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+/// Parse config content, auto-detecting format based on content or file extension hint
+/// Supports YAML, JSON, and TOML formats
+fn parse_config_content(content: &str, path_hint: Option<&str>) -> Result<Value> {
+    // Check file extension hint first
+    if let Some(path) = path_hint {
+        if path.ends_with(".toml") {
+            let toml_value: toml::Value =
+                toml::from_str(content).context("Failed to parse TOML config")?;
+            return toml_to_json(toml_value);
+        }
+    }
+
+    // Try JSON first (valid JSON is also valid YAML, so check JSON first)
+    if content.trim_start().starts_with('{') || content.trim_start().starts_with('[') {
+        if let Ok(json) = serde_json::from_str::<Value>(content) {
+            return Ok(json);
+        }
+    }
+
+    // Try TOML if it looks like TOML (has [[engines]] or [engines] sections)
+    if content.contains("[[engines]]")
+        || content.contains("[engines]")
+        || content.contains("[engines.")
+    {
+        let toml_value: toml::Value =
+            toml::from_str(content).context("Failed to parse TOML config")?;
+        return toml_to_json(toml_value);
+    }
+
+    // Fall back to YAML
+    serde_yaml::from_str(content).context("Failed to parse YAML config")
+}
+
+/// Convert TOML Value to JSON Value for uniform processing
+pub fn toml_to_json(toml_val: toml::Value) -> Result<Value> {
+    match toml_val {
+        toml::Value::String(s) => Ok(Value::String(s)),
+        toml::Value::Integer(i) => Ok(Value::Number(i.into())),
+        toml::Value::Float(f) => Ok(serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null)),
+        toml::Value::Boolean(b) => Ok(Value::Bool(b)),
+        toml::Value::Datetime(dt) => Ok(Value::String(dt.to_string())),
+        toml::Value::Array(arr) => {
+            let json_arr: Result<Vec<Value>> = arr.into_iter().map(toml_to_json).collect();
+            Ok(Value::Array(json_arr?))
+        }
+        toml::Value::Table(table) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in table {
+                map.insert(k, toml_to_json(v)?);
+            }
+            Ok(Value::Object(map))
+        }
+    }
+}
+
+/// Load credentials from environment variables
+/// This is used to resolve ${VAR} patterns in config files
+fn load_env_credentials() -> HashMap<String, String> {
+    let mut credentials = HashMap::new();
+    let credential_keys = [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "GROQ_API_KEY",
+        "PERPLEXITY_API_KEY",
+        "COHERE_API_KEY",
+        "MISTRAL_API_KEY",
+    ];
+
+    for key in &credential_keys {
+        if let Ok(value) = env::var(key) {
+            credentials.insert(key.to_string(), value);
+        }
+    }
+
+    // Also load CREDENTIAL_ prefixed variables
+    for (key, value) in env::vars() {
+        if let Some(credential_key) = key.strip_prefix("CREDENTIAL_") {
+            credentials.insert(credential_key.to_string(), value);
+        }
+    }
+
+    credentials
+}
+
+/// Core configuration for an LLM engine instance.
+///
+/// `EngineConfig` defines the settings required to initialize and operate an engine,
+/// including its name, type, connection details, runtime parameters, and optional
+/// integrations such as Neo4j and spinner configuration. This struct is typically
+/// loaded from configuration files (YAML, JSON, or TOML) and used throughout the
+/// application to manage engine behavior.
+#[derive(Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
     pub name: String,
     pub engine: String,
@@ -21,6 +141,56 @@ pub struct EngineConfig {
     pub session_id: Option<String>, // New field for sessionID
     pub neo4j: Option<Neo4jConfig>,
     pub spinner: Option<SpinnerConfig>,
+}
+
+// Custom Debug implementation that redacts sensitive fields to prevent accidental logging of secrets
+impl std::fmt::Debug for EngineConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // List of sensitive parameter keys that should be redacted
+        // These are checked as case-insensitive substrings
+        const SENSITIVE_KEYS: &[&str] = &[
+            "bearer_token",
+            "api_key",
+            "apikey",
+            "password",
+            "secret",
+            "auth_token",
+            "access_token",
+            "refresh_token",
+            "credential",
+            "private_key",
+            "client_secret",
+        ];
+
+        // Redact sensitive parameters
+        let redacted_parameters: HashMap<String, String> = self
+            .parameters
+            .iter()
+            .map(|(k, v)| {
+                // Check if key contains any sensitive substring (case-insensitive)
+                let is_sensitive = SENSITIVE_KEYS
+                    .iter()
+                    .any(|&sensitive| k.to_lowercase().contains(&sensitive.to_lowercase()));
+
+                if is_sensitive {
+                    (k.clone(), "[REDACTED]".to_string())
+                } else {
+                    // For non-sensitive values, show the value
+                    (k.clone(), format!("{:?}", v))
+                }
+            })
+            .collect();
+
+        f.debug_struct("EngineConfig")
+            .field("name", &self.name)
+            .field("engine", &self.engine)
+            .field("connection", &self.connection)
+            .field("parameters", &redacted_parameters)
+            .field("session_id", &self.session_id)
+            .field("neo4j", &"[REDACTED]") // Neo4j config contains passwords
+            .field("spinner", &self.spinner)
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -100,8 +270,19 @@ pub fn load_engine_config(
     overrides: &HashMap<String, Value>,
     credentials: &HashMap<String, String>,
 ) -> Result<EngineConfig> {
-    //Converts the YAML string into a json value to be manipulated
-    let mut config: Value = serde_yaml::from_str(config_content)?;
+    load_engine_config_with_path(config_content, engine_name, overrides, credentials, None)
+}
+
+/// Load engine config with optional path hint for format detection
+pub fn load_engine_config_with_path(
+    config_content: &str,
+    engine_name: &str,
+    overrides: &HashMap<String, Value>,
+    credentials: &HashMap<String, String>,
+    path_hint: Option<&str>,
+) -> Result<EngineConfig> {
+    // Parse config content, auto-detecting format (YAML, JSON, or TOML)
+    let mut config: Value = parse_config_content(config_content, path_hint)?;
 
     debug!("Loading config for engine: {}", engine_name);
 
@@ -213,13 +394,17 @@ pub fn load_config(
     // Read file once
     let file_contents = fs::read_to_string(config_path)?;
 
+    // Load credentials from environment for variable resolution
+    let credentials = load_env_credentials();
+
     // If no specific engine is requested, load all engines
     if engine_name.is_empty() {
         let mut engines = Vec::new();
-        let mut root: serde_json::Value = serde_yaml::from_str(&file_contents)?;
+        // Use format-aware parser (supports YAML, JSON, and TOML)
+        let mut root: serde_json::Value = parse_config_content(&file_contents, Some(config_path))?;
         if let Some(arr) = root["engines"].as_array_mut() {
             for engine_value in arr.iter_mut() {
-                apply_variable_resolver(engine_value, &HashMap::new())?;
+                apply_variable_resolver(engine_value, &credentials)?;
                 apply_variable_overrider(engine_value, &overrides)?;
                 let parsed: EngineConfig = serde_json::from_value(engine_value.clone())
                     .context("Could not parse engine config")?;
@@ -230,8 +415,13 @@ pub fn load_config(
     }
 
     // Otherwise, load only the requested engine
-    let engine_config =
-        load_engine_config(&file_contents, engine_name, &overrides, &HashMap::new())?;
+    let engine_config = load_engine_config_with_path(
+        &file_contents,
+        engine_name,
+        &overrides,
+        &credentials,
+        Some(config_path),
+    )?;
     Ok(Config::new(vec![engine_config]))
 }
 
@@ -458,5 +648,109 @@ pub fn replace_with_env_var(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_engine_config_debug_redacts_sensitive_fields() {
+        let mut params = HashMap::new();
+        params.insert("bearer_token".to_string(), json!("sk-secret-token-12345"));
+        params.insert("api_key".to_string(), json!("super-secret-api-key"));
+        params.insert("openAIApiKey".to_string(), json!("openai-key-xyz"));
+        params.insert("password".to_string(), json!("my-password-123"));
+        params.insert("modelName".to_string(), json!("gpt-4"));
+        params.insert("temperature".to_string(), json!(0.7));
+        params.insert("max_tokens".to_string(), json!(1000));
+
+        let config = EngineConfig {
+            name: "test-engine".to_string(),
+            engine: "openai".to_string(),
+            connection: ConnectionConfig {
+                protocol: "https".to_string(),
+                hostname: "api.openai.com".to_string(),
+                port: 443,
+                request_path: "/v1/chat/completions".to_string(),
+            },
+            parameters: params,
+            session_id: Some("session-123".to_string()),
+            neo4j: None,
+            spinner: None,
+        };
+
+        let debug_output = format!("{:?}", config);
+
+        // Print debug output for inspection
+        println!("Debug output:\n{}", debug_output);
+
+        // Verify secrets are redacted
+        assert!(
+            !debug_output.contains("sk-secret-token-12345"),
+            "Bearer token leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("super-secret-api-key"),
+            "API key leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("openai-key-xyz"),
+            "OpenAI API key leaked in debug output!"
+        );
+        assert!(
+            !debug_output.contains("my-password-123"),
+            "Password leaked in debug output!"
+        );
+
+        // Verify redaction marker is present
+        assert!(
+            debug_output.contains("[REDACTED]"),
+            "Redaction marker not present!"
+        );
+
+        // Verify non-sensitive data is still visible
+        assert!(
+            debug_output.contains("test-engine"),
+            "Engine name should be visible"
+        );
+        assert!(
+            debug_output.contains("gpt-4"),
+            "Non-sensitive model name should be visible"
+        );
+        // Note: Numeric values are formatted as JSON in the debug output (e.g., "Number(0.7)")
+        // so we check for the parameter names instead
+        assert!(
+            debug_output.contains("temperature"),
+            "Temperature parameter should be visible"
+        );
+        assert!(
+            debug_output.contains("max_tokens"),
+            "max_tokens parameter should be visible"
+        );
+        assert!(
+            debug_output.contains("session-123"),
+            "Session ID should be visible"
+        );
+    }
+
+    #[test]
+    fn test_parse_key_value_pair() {
+        assert_eq!(
+            parse_key_value_pair("key=value"),
+            Some(("key".to_string(), "value".to_string()))
+        );
+        assert_eq!(
+            parse_key_value_pair("key="),
+            Some(("key".to_string(), "".to_string()))
+        );
+        assert_eq!(
+            parse_key_value_pair("key=value=with=equals"),
+            Some(("key".to_string(), "value=with=equals".to_string()))
+        );
+        assert_eq!(parse_key_value_pair("invalid"), None);
+        assert_eq!(parse_key_value_pair(""), None);
     }
 }

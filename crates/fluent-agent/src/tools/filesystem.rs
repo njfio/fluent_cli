@@ -24,9 +24,68 @@ impl FileSystemExecutor {
     }
 
     /// Validate that a path is safe to access
+    ///
+    /// SECURITY: This function protects against path traversal and symlink attacks:
+    /// 1. Rejects symlinks entirely when they point outside allowed directories
+    /// 2. Canonicalizes all path components to resolve ".." and "."
+    /// 3. Verifies the final path is within allowed directories
+    /// 4. Returns the canonical path for use in file operations
     fn validate_path(&self, path: &str) -> Result<PathBuf> {
-        // First, use the existing validation
+        // First, use the existing validation for basic path sanitization
         let validated_path = validation::validate_path(path, &self.config.allowed_paths)?;
+
+        // SECURITY: Check if this is a symlink and validate its target
+        // This prevents symlink attacks where a symlink points outside allowed dirs
+        if validated_path.is_symlink() {
+            let symlink_target = std::fs::read_link(&validated_path).map_err(|e| {
+                anyhow!(
+                    "Failed to read symlink '{}': {}",
+                    validated_path.display(),
+                    e
+                )
+            })?;
+
+            // Resolve the symlink target relative to the symlink's directory
+            let target_path = if symlink_target.is_absolute() {
+                symlink_target
+            } else {
+                validated_path
+                    .parent()
+                    .map(|p| p.join(&symlink_target))
+                    .unwrap_or(symlink_target)
+            };
+
+            // Symlink targets must also be within allowed directories
+            // Canonicalize the target to resolve any nested symlinks
+            let canonical_target = if target_path.exists() {
+                target_path.canonicalize().map_err(|e| {
+                    anyhow!(
+                        "Failed to canonicalize symlink target '{}': {}",
+                        target_path.display(),
+                        e
+                    )
+                })?
+            } else {
+                return Err(anyhow!(
+                    "Symlink '{}' points to non-existent target '{}'",
+                    validated_path.display(),
+                    target_path.display()
+                ));
+            };
+
+            // Verify symlink target is within allowed directories
+            if !self.is_path_within_allowed(&canonical_target)? {
+                return Err(anyhow!(
+                    "Symlink '{}' points to '{}' which is outside allowed directories. \
+                     Symlinks that escape allowed directories are not permitted.",
+                    validated_path.display(),
+                    canonical_target.display()
+                ));
+            }
+
+            // Use the canonical target path for the operation
+            return Ok(canonical_target);
+        }
 
         // Additional security checks - handle non-existent files
         let canonical_path = if validated_path.exists() {
@@ -37,30 +96,86 @@ impl FileSystemExecutor {
             // For non-existent files, canonicalize the parent directory
             if let Some(parent) = validated_path.parent() {
                 if parent.exists() {
-                    let canonical_parent = parent.canonicalize().map_err(|e| {
-                        anyhow!(
-                            "Failed to canonicalize parent path '{}': {}",
-                            parent.display(),
-                            e
-                        )
-                    })?;
+                    // SECURITY: Also check if parent is a symlink
+                    let canonical_parent = if parent.is_symlink() {
+                        let parent_target = std::fs::read_link(parent).map_err(|e| {
+                            anyhow!(
+                                "Failed to read parent symlink '{}': {}",
+                                parent.display(),
+                                e
+                            )
+                        })?;
+
+                        let resolved_parent = if parent_target.is_absolute() {
+                            parent_target
+                        } else {
+                            parent
+                                .parent()
+                                .map(|p| p.join(&parent_target))
+                                .unwrap_or(parent_target)
+                        };
+
+                        resolved_parent.canonicalize().map_err(|e| {
+                            anyhow!(
+                                "Failed to canonicalize parent symlink target '{}': {}",
+                                resolved_parent.display(),
+                                e
+                            )
+                        })?
+                    } else {
+                        parent.canonicalize().map_err(|e| {
+                            anyhow!(
+                                "Failed to canonicalize parent path '{}': {}",
+                                parent.display(),
+                                e
+                            )
+                        })?
+                    };
+
                     let file_name = validated_path.file_name().ok_or_else(|| {
                         anyhow!(
                             "Path '{}' has no file name component",
                             validated_path.display()
                         )
                     })?;
+
+                    // SECURITY: Ensure filename doesn't contain special characters
+                    let file_name_str = file_name.to_string_lossy();
+                    if file_name_str.contains('/') || file_name_str.contains('\\') {
+                        return Err(anyhow!(
+                            "Filename contains invalid path separator characters"
+                        ));
+                    }
+
                     canonical_parent.join(file_name)
                 } else {
-                    validated_path.clone()
+                    return Err(anyhow!(
+                        "Parent directory '{}' does not exist",
+                        parent.display()
+                    ));
                 }
             } else {
-                validated_path.clone()
+                return Err(anyhow!(
+                    "Path '{}' has no parent directory",
+                    validated_path.display()
+                ));
             }
         };
 
         // Ensure the canonical path is still within allowed directories
-        let mut is_allowed = false;
+        if !self.is_path_within_allowed(&canonical_path)? {
+            return Err(anyhow!(
+                "Path '{}' (canonical: '{}') is not within any allowed directory",
+                path,
+                canonical_path.display()
+            ));
+        }
+
+        Ok(canonical_path)
+    }
+
+    /// Check if a path is within any of the allowed directories
+    fn is_path_within_allowed(&self, path: &Path) -> Result<bool> {
         for allowed_path in &self.config.allowed_paths {
             let allowed_canonical = PathBuf::from(allowed_path).canonicalize().map_err(|e| {
                 anyhow!(
@@ -70,21 +185,11 @@ impl FileSystemExecutor {
                 )
             })?;
 
-            if canonical_path.starts_with(&allowed_canonical) {
-                is_allowed = true;
-                break;
+            if path.starts_with(&allowed_canonical) {
+                return Ok(true);
             }
         }
-
-        if !is_allowed {
-            return Err(anyhow!(
-                "Path '{}' (canonical: '{}') is not within any allowed directory",
-                path,
-                canonical_path.display()
-            ));
-        }
-
-        Ok(canonical_path)
+        Ok(false)
     }
 
     /// Read file content with size limits
@@ -116,7 +221,16 @@ impl FileSystemExecutor {
         ))
     }
 
-    /// Write file content safely
+    /// Write file content safely using atomic write pattern
+    ///
+    /// This function is cancellation-safe: if cancelled during write,
+    /// the original file remains unchanged (or doesn't exist if new).
+    ///
+    /// Uses the atomic write pattern:
+    /// 1. Write to a temporary file in the same directory
+    /// 2. Sync the data to disk
+    /// 3. Atomically rename temp file to target
+    /// 4. On cancellation or error, temp file is cleaned up
     async fn write_file_safe(&self, path: &Path, content: &str) -> Result<()> {
         if self.config.read_only {
             return Err(anyhow!("Write operations are disabled in read-only mode"));
@@ -137,17 +251,46 @@ impl FileSystemExecutor {
                 .map_err(|e| anyhow!("Failed to create parent directories: {}", e))?;
         }
 
+        // Generate temp file path in same directory for atomic rename
+        let temp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+
+        // Write to temp file with cleanup on error/cancellation
+        let write_result = Self::write_temp_file(&temp_path, content).await;
+
+        match write_result {
+            Ok(()) => {
+                // Atomic rename from temp to target
+                match fs::rename(&temp_path, path).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        // Clean up temp file on rename failure
+                        let _ = fs::remove_file(&temp_path).await;
+                        Err(anyhow!("Failed to rename temp file to target: {}", e))
+                    }
+                }
+            }
+            Err(e) => {
+                // Clean up temp file on write failure
+                let _ = fs::remove_file(&temp_path).await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Write content to a temporary file with fsync
+    async fn write_temp_file(path: &Path, content: &str) -> Result<()> {
         let mut file = fs::File::create(path)
             .await
-            .map_err(|e| anyhow!("Failed to create file: {}", e))?;
+            .map_err(|e| anyhow!("Failed to create temp file: {}", e))?;
 
         file.write_all(content.as_bytes())
             .await
-            .map_err(|e| anyhow!("Failed to write file: {}", e))?;
+            .map_err(|e| anyhow!("Failed to write temp file: {}", e))?;
 
-        file.flush()
+        // Ensure data is synced to disk before rename
+        file.sync_all()
             .await
-            .map_err(|e| anyhow!("Failed to flush file: {}", e))?;
+            .map_err(|e| anyhow!("Failed to sync temp file: {}", e))?;
 
         Ok(())
     }
@@ -625,5 +768,167 @@ mod tests {
         assert!(!executor
             .get_available_tools()
             .contains(&"create_directory".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_behavioral_reminders_integration() {
+        use crate::tools::validation;
+
+        // Test that behavioral reminders are properly appended
+        let output = "File contents here".to_string();
+        let enhanced = validation::append_behavioral_reminder("read_file", output.clone(), true);
+
+        assert!(enhanced.contains("File contents here"));
+        assert!(enhanced.contains("Remember"));
+        assert!(enhanced.contains("Analyze the content"));
+
+        // Test failure reminder
+        let error = "File not found".to_string();
+        let enhanced_error = validation::append_behavioral_reminder("read_file", error, false);
+        assert!(enhanced_error.contains("File not found"));
+        assert!(enhanced_error.contains("Remember"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_within_allowed_directory() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempdir().unwrap();
+        let real_file = temp_dir.path().join("real_file.txt");
+        let link_path = temp_dir.path().join("link_to_file");
+
+        // Create real file
+        fs::write(&real_file, "test content").await.unwrap();
+
+        // Create symlink pointing to the real file (within allowed dir)
+        symlink(&real_file, &link_path).unwrap();
+
+        let mut config = ToolExecutionConfig::default();
+        config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
+
+        let executor = FileSystemExecutor::new(config);
+
+        // This should succeed - symlink stays within allowed directory
+        let mut params = HashMap::new();
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(link_path.to_string_lossy().to_string()),
+        );
+
+        let result = executor.execute_tool("read_file", &params).await;
+        assert!(result.is_ok(), "Symlink within allowed dir should work");
+        assert_eq!(result.unwrap(), "test content");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_symlink_escaping_allowed_directory() {
+        use std::os::unix::fs::symlink;
+
+        let allowed_dir = tempdir().unwrap();
+        let forbidden_dir = tempdir().unwrap();
+        let forbidden_file = forbidden_dir.path().join("secret.txt");
+        let malicious_link = allowed_dir.path().join("innocent_looking_link");
+
+        // Create file in forbidden directory
+        fs::write(&forbidden_file, "secret data").await.unwrap();
+
+        // Create symlink in allowed directory pointing to forbidden file
+        symlink(&forbidden_file, &malicious_link).unwrap();
+
+        let mut config = ToolExecutionConfig::default();
+        config.allowed_paths = vec![allowed_dir.path().to_string_lossy().to_string()];
+
+        let executor = FileSystemExecutor::new(config);
+
+        // This should FAIL - symlink escapes allowed directory
+        let mut params = HashMap::new();
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(malicious_link.to_string_lossy().to_string()),
+        );
+
+        let result = executor.execute_tool("read_file", &params).await;
+        assert!(
+            result.is_err(),
+            "Symlink escaping allowed dir should be rejected"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("outside allowed directories")
+                || err_msg.contains("not within any allowed directory"),
+            "Error should mention escaping allowed directory, got: {}",
+            err_msg
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_parent_symlink_escaping() {
+        use std::os::unix::fs::symlink;
+
+        let allowed_dir = tempdir().unwrap();
+        let forbidden_dir = tempdir().unwrap();
+        let symlinked_parent = allowed_dir.path().join("subdir");
+
+        // Create symlink to forbidden directory
+        symlink(forbidden_dir.path(), &symlinked_parent).unwrap();
+
+        // Create file in forbidden dir
+        let forbidden_file = forbidden_dir.path().join("secret.txt");
+        fs::write(&forbidden_file, "secret").await.unwrap();
+
+        let mut config = ToolExecutionConfig::default();
+        config.allowed_paths = vec![allowed_dir.path().to_string_lossy().to_string()];
+
+        let executor = FileSystemExecutor::new(config);
+
+        // Try to access file through symlinked parent
+        let sneaky_path = symlinked_parent.join("secret.txt");
+        let mut params = HashMap::new();
+        params.insert(
+            "path".to_string(),
+            serde_json::Value::String(sneaky_path.to_string_lossy().to_string()),
+        );
+
+        let result = executor.execute_tool("read_file", &params).await;
+        assert!(
+            result.is_err(),
+            "Access through symlinked parent escaping allowed dir should fail"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_blocked() {
+        let temp_dir = tempdir().unwrap();
+
+        let mut config = ToolExecutionConfig::default();
+        config.allowed_paths = vec![temp_dir.path().to_string_lossy().to_string()];
+
+        let executor = FileSystemExecutor::new(config);
+
+        // Test various path traversal attempts
+        let traversal_attempts = vec![
+            "../../../etc/passwd",
+            "subdir/../../etc/passwd",
+            "./../../etc/passwd",
+        ];
+
+        for attempt in traversal_attempts {
+            let full_path = temp_dir.path().join(attempt);
+            let mut params = HashMap::new();
+            params.insert(
+                "path".to_string(),
+                serde_json::Value::String(full_path.to_string_lossy().to_string()),
+            );
+
+            let result = executor.execute_tool("read_file", &params).await;
+            assert!(
+                result.is_err(),
+                "Path traversal attempt '{}' should be blocked",
+                attempt
+            );
+        }
     }
 }

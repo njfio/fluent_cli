@@ -329,9 +329,9 @@ impl ObservationProcessor for ComprehensiveObservationProcessor {
             timestamp: SystemTime::now(),
             observation_type: ObservationType::ActionResult,
             content: format!(
-                "Action {} ({}): {}. Analysis: Quality score {:.2}, {} success indicators, {} failure indicators. Impact: {:.2} overall score.",
+                "Action {} ({:?}): {}. Analysis: Quality score {:.2}, {} success indicators, {} failure indicators. Impact: {:.2} overall score.",
                 action_result.action_id,
-                format!("{:?}", action_result.action_type),
+                action_result.action_type,
                 if action_result.success { "SUCCESS" } else { "FAILED" },
                 analysis.quality_score,
                 analysis.success_indicators.len(),
@@ -440,7 +440,7 @@ impl ResultAnalyzer for BasicResultAnalyzer {
             success_indicators,
             failure_indicators,
             performance_metrics,
-            quality_score: quality_score.max(0.0).min(1.0),
+            quality_score: quality_score.clamp(0.0, 1.0),
             unexpected_outcomes: Vec::new(),
             recommendations: vec!["Continue with current approach".to_string()],
         })
@@ -554,7 +554,7 @@ impl LearningExtractor for BasicLearningExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orchestrator::ActionResult as OrchActionResult;
+    use crate::action::ActionResult;
     use crate::orchestrator::ActionType;
     use std::time::Duration;
 
@@ -571,18 +571,17 @@ mod tests {
             action_id: "test-action".to_string(),
             action_type: ActionType::ToolExecution,
             parameters: HashMap::new(),
-            result: OrchActionResult {
-                success: true,
-                output: Some("Test output".to_string()),
-                error: None,
-                metadata: HashMap::new(),
-            },
+            result: serde_json::json!({
+                "success": true,
+                "output": "Test output"
+            }),
             execution_time: Duration::from_millis(100),
             success: true,
             output: Some("Test output".to_string()),
             error: None,
             metadata: HashMap::new(),
             side_effects: Vec::new(),
+            verification: None,
         };
 
         let context = ExecutionContext::default();

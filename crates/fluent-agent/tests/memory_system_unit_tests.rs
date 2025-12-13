@@ -1,3 +1,6 @@
+// This test file is disabled because it tests deprecated memory APIs
+#![cfg(feature = "deprecated_memory_tests")]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Arg, ArgMatches, Command};
 use fluent_cli::commands::{mcp::McpCommand, CommandHandler};
-use fluent_core::config::{Config, EngineConfig};
+use fluent_core::config::Config;
 
 /// Test helper to create ArgMatches for MCP commands
 fn create_mcp_matches(subcommand: &str, args: Vec<(&str, &str)>) -> ArgMatches {
@@ -222,7 +222,7 @@ async fn test_mcp_server_command() -> Result<()> {
     // we'd need to mock the server startup or use a test mode.
 
     // For now, we expect this to fail gracefully due to missing MCP infrastructure
-    let result = command.execute(&matches, &config).await;
+    let _result = command.execute(&matches, &config).await;
     // The result could be Ok or Err depending on the MCP manager initialization
     // The important thing is that it doesn't panic
 

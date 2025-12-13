@@ -6,6 +6,12 @@
 /// Production tool registry
 pub struct ProductionToolRegistry;
 
+impl Default for ProductionToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProductionToolRegistry {
     /// Create a new production tool registry
     pub fn new() -> Self {
@@ -15,6 +21,12 @@ impl ProductionToolRegistry {
 
 /// Production resource manager
 pub struct ProductionResourceManager;
+
+impl Default for ProductionResourceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ProductionResourceManager {
     /// Create a new production resource manager

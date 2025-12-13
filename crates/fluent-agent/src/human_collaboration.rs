@@ -502,6 +502,12 @@ pub enum CollaborationEvent {
     },
 }
 
+impl Default for HumanCollaborationCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HumanCollaborationCoordinator {
     /// Create a new human collaboration coordinator
     pub fn new() -> Self {
@@ -961,13 +967,16 @@ impl HumanCollaborationInterface for HumanCollaborationCoordinator {
                 return Err(anyhow!("Intervention not found"));
             }
 
-            // Record the response
+            // Record the response - intervention_clone is guaranteed to be Some here
+            // because we would have returned an error above if not found
+            let resolved_intervention = intervention_clone
+                .as_ref()
+                .expect("intervention_clone should be Some after successful lookup");
+
             let record = InterventionRecord {
-                intervention: intervention_clone.as_ref().unwrap().clone(),
+                intervention: resolved_intervention.clone(),
                 outcome: InterventionOutcome::Resolved,
-                duration: intervention_clone
-                    .as_ref()
-                    .unwrap()
+                duration: resolved_intervention
                     .created_at
                     .elapsed()
                     .unwrap_or(Duration::from_secs(0)),
@@ -1035,5 +1044,769 @@ impl HumanCollaborationInterface for HumanCollaborationCoordinator {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== Session Status Tests ==========
+
+    #[test]
+    fn test_session_status_variants() {
+        let statuses = vec![
+            SessionStatus::Initializing,
+            SessionStatus::Active,
+            SessionStatus::WaitingForHuman,
+            SessionStatus::InterventionsPending,
+            SessionStatus::ApprovalsPending,
+            SessionStatus::Completed,
+            SessionStatus::Terminated,
+        ];
+        assert_eq!(statuses.len(), 7);
+    }
+
+    #[test]
+    fn test_session_status_equality() {
+        assert_eq!(SessionStatus::Active, SessionStatus::Active);
+        assert_ne!(SessionStatus::Active, SessionStatus::Completed);
+    }
+
+    // ========== Message Types Tests ==========
+
+    #[test]
+    fn test_message_sender_variants() {
+        let human = MessageSender::Human("user1".to_string());
+        let agent = MessageSender::Agent(Uuid::new_v4());
+        let system = MessageSender::System;
+
+        assert!(matches!(human, MessageSender::Human(_)));
+        assert!(matches!(agent, MessageSender::Agent(_)));
+        assert!(matches!(system, MessageSender::System));
+    }
+
+    #[test]
+    fn test_message_type_variants() {
+        let types = vec![
+            MessageType::Text,
+            MessageType::Command,
+            MessageType::Feedback,
+            MessageType::Approval,
+            MessageType::Intervention,
+            MessageType::StatusUpdate,
+            MessageType::Error,
+        ];
+        assert_eq!(types.len(), 7);
+    }
+
+    #[test]
+    fn test_collaboration_message_creation() {
+        let msg = CollaborationMessage {
+            id: Uuid::new_v4(),
+            sender: MessageSender::Human("alice".to_string()),
+            content: "Hello!".to_string(),
+            message_type: MessageType::Text,
+            timestamp: SystemTime::now(),
+            metadata: HashMap::new(),
+        };
+
+        assert_eq!(msg.content, "Hello!");
+        assert!(matches!(msg.message_type, MessageType::Text));
+    }
+
+    // ========== User Profile Tests ==========
+
+    #[test]
+    fn test_user_profile_default() {
+        let profile = UserProfile::default();
+
+        assert_eq!(profile.username, "");
+        assert!((profile.trust_level - 0.5).abs() < f64::EPSILON);
+        assert!(profile.expertise_areas.is_empty());
+        assert!(profile.interaction_history.is_empty());
+    }
+
+    #[test]
+    fn test_collaboration_preferences_default() {
+        let prefs = CollaborationPreferences::default();
+
+        assert!(matches!(
+            prefs.notification_level,
+            NotificationLevel::Important
+        ));
+        assert!(matches!(
+            prefs.communication_style,
+            CommunicationStyle::Concise
+        ));
+        assert_eq!(prefs.intervention_points.len(), 2);
+        assert!(prefs.auto_approval_rules.is_empty());
+    }
+
+    #[test]
+    fn test_notification_level_variants() {
+        let levels = vec![
+            NotificationLevel::All,
+            NotificationLevel::Important,
+            NotificationLevel::Critical,
+            NotificationLevel::None,
+        ];
+        assert_eq!(levels.len(), 4);
+    }
+
+    #[test]
+    fn test_communication_style_variants() {
+        let styles = vec![
+            CommunicationStyle::Technical,
+            CommunicationStyle::Concise,
+            CommunicationStyle::Friendly,
+            CommunicationStyle::Formal,
+        ];
+        assert_eq!(styles.len(), 4);
+    }
+
+    // ========== Intervention Tests ==========
+
+    #[test]
+    fn test_intervention_type_variants() {
+        let types = vec![
+            InterventionType::PauseExecution,
+            InterventionType::RequestGuidance,
+            InterventionType::OverrideDecision,
+            InterventionType::ProvideContext,
+            InterventionType::EscalateIssue,
+            InterventionType::ModifyGoal,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_intervention_priority_variants() {
+        let priorities = vec![
+            InterventionPriority::Low,
+            InterventionPriority::Medium,
+            InterventionPriority::High,
+            InterventionPriority::Critical,
+        ];
+        assert_eq!(priorities.len(), 4);
+    }
+
+    #[test]
+    fn test_intervention_status_variants() {
+        let statuses = vec![
+            InterventionStatus::Pending,
+            InterventionStatus::InProgress,
+            InterventionStatus::Resolved,
+            InterventionStatus::Cancelled,
+        ];
+        assert_eq!(statuses.len(), 4);
+    }
+
+    #[test]
+    fn test_intervention_creation() {
+        let intervention = Intervention {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            intervention_type: InterventionType::RequestGuidance,
+            description: "Need help with decision".to_string(),
+            requested_by: InterventionRequester::Agent(Uuid::new_v4()),
+            priority: InterventionPriority::High,
+            status: InterventionStatus::Pending,
+            created_at: SystemTime::now(),
+            resolved_at: None,
+        };
+
+        assert!(matches!(
+            intervention.intervention_type,
+            InterventionType::RequestGuidance
+        ));
+        assert!(matches!(intervention.priority, InterventionPriority::High));
+        assert!(intervention.resolved_at.is_none());
+    }
+
+    #[test]
+    fn test_intervention_response_variants() {
+        let responses = vec![
+            InterventionResponse::Acknowledge,
+            InterventionResponse::ProvideGuidance("Do this".to_string()),
+            InterventionResponse::Override("Different approach".to_string()),
+            InterventionResponse::Escalate("Need manager".to_string()),
+            InterventionResponse::Cancel,
+        ];
+        assert_eq!(responses.len(), 5);
+    }
+
+    // ========== Approval Tests ==========
+
+    #[test]
+    fn test_approval_type_variants() {
+        let types = vec![
+            ApprovalType::ActionExecution,
+            ApprovalType::CodeDeployment,
+            ApprovalType::ConfigurationChange,
+            ApprovalType::SecurityPolicyUpdate,
+            ApprovalType::ResourceAllocation,
+            ApprovalType::GoalModification,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_approval_status_variants() {
+        let statuses = vec![
+            ApprovalStatus::Pending,
+            ApprovalStatus::Approved,
+            ApprovalStatus::Denied,
+            ApprovalStatus::Escalated,
+            ApprovalStatus::Expired,
+        ];
+        assert_eq!(statuses.len(), 5);
+    }
+
+    #[test]
+    fn test_risk_assessment_creation() {
+        let assessment = RiskAssessment {
+            risk_level: RiskLevel::Medium,
+            impact_description: "Moderate impact on system".to_string(),
+            mitigation_strategies: vec!["Backup data".to_string(), "Test in staging".to_string()],
+            confidence_score: 0.75,
+        };
+
+        assert!(matches!(assessment.risk_level, RiskLevel::Medium));
+        assert_eq!(assessment.mitigation_strategies.len(), 2);
+    }
+
+    #[test]
+    fn test_approval_request_creation() {
+        let request = ApprovalRequest {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            request_type: ApprovalType::CodeDeployment,
+            description: "Deploy to production".to_string(),
+            requested_by: ApprovalRequester::Agent(Uuid::new_v4()),
+            risk_assessment: RiskAssessment {
+                risk_level: RiskLevel::High,
+                impact_description: "Production deployment".to_string(),
+                mitigation_strategies: vec!["Rollback plan".to_string()],
+                confidence_score: 0.85,
+            },
+            alternatives: vec!["Deploy to staging first".to_string()],
+            deadline: None,
+            status: ApprovalStatus::Pending,
+            created_at: SystemTime::now(),
+        };
+
+        assert!(matches!(request.request_type, ApprovalType::CodeDeployment));
+        assert!(matches!(request.status, ApprovalStatus::Pending));
+    }
+
+    // ========== Feedback Tests ==========
+
+    #[test]
+    fn test_feedback_type_variants() {
+        let types = vec![
+            FeedbackType::General,
+            FeedbackType::ActionApproval,
+            FeedbackType::ActionRejection,
+            FeedbackType::Performance,
+            FeedbackType::Usability,
+            FeedbackType::Accuracy,
+            FeedbackType::Helpfulness,
+        ];
+        assert_eq!(types.len(), 7);
+    }
+
+    #[test]
+    fn test_trend_direction_variants() {
+        let directions = vec![
+            TrendDirection::Improving,
+            TrendDirection::Stable,
+            TrendDirection::Declining,
+        ];
+        assert_eq!(directions.len(), 3);
+    }
+
+    #[test]
+    fn test_feedback_entry_creation() {
+        let feedback = FeedbackEntry {
+            id: Uuid::new_v4(),
+            user: "bob".to_string(),
+            session_id: Uuid::new_v4(),
+            feedback_type: FeedbackType::Performance,
+            content: "System is responsive".to_string(),
+            rating: Some(4.5),
+            timestamp: SystemTime::now(),
+            context: HashMap::new(),
+        };
+
+        assert_eq!(feedback.user, "bob");
+        assert_eq!(feedback.rating, Some(4.5));
+    }
+
+    #[test]
+    fn test_feedback_analysis_creation() {
+        let analysis = FeedbackAnalysis {
+            topic: "performance".to_string(),
+            average_rating: 4.2,
+            common_themes: vec!["fast".to_string(), "responsive".to_string()],
+            improvement_suggestions: vec!["Add caching".to_string()],
+            trend_direction: TrendDirection::Improving,
+        };
+
+        assert!((analysis.average_rating - 4.2).abs() < f64::EPSILON);
+        assert!(matches!(
+            analysis.trend_direction,
+            TrendDirection::Improving
+        ));
+    }
+
+    // ========== Interaction Tests ==========
+
+    #[test]
+    fn test_interaction_type_variants() {
+        let types = vec![
+            InteractionType::FeedbackProvided,
+            InteractionType::InterventionRequested,
+            InteractionType::ApprovalGiven,
+            InteractionType::ApprovalDenied,
+            InteractionType::GuidanceOffered,
+            InteractionType::QuestionAsked,
+        ];
+        assert_eq!(types.len(), 6);
+    }
+
+    #[test]
+    fn test_interaction_outcome_variants() {
+        let outcomes = vec![
+            InteractionOutcome::Positive,
+            InteractionOutcome::Neutral,
+            InteractionOutcome::Negative,
+            InteractionOutcome::Resolved,
+            InteractionOutcome::Escalated,
+        ];
+        assert_eq!(outcomes.len(), 5);
+    }
+
+    #[test]
+    fn test_intervention_outcome_variants() {
+        let outcomes = vec![
+            InterventionOutcome::Successful,
+            InterventionOutcome::PartiallySuccessful,
+            InterventionOutcome::Failed,
+            InterventionOutcome::Resolved,
+            InterventionOutcome::Escalated,
+        ];
+        assert_eq!(outcomes.len(), 5);
+    }
+
+    // ========== Collaboration Event Tests ==========
+
+    #[test]
+    fn test_collaboration_event_session_started() {
+        let event = CollaborationEvent::SessionStarted {
+            session_id: Uuid::new_v4(),
+        };
+        assert!(matches!(event, CollaborationEvent::SessionStarted { .. }));
+    }
+
+    #[test]
+    fn test_collaboration_event_message_received() {
+        let msg = CollaborationMessage {
+            id: Uuid::new_v4(),
+            sender: MessageSender::System,
+            content: "Test".to_string(),
+            message_type: MessageType::StatusUpdate,
+            timestamp: SystemTime::now(),
+            metadata: HashMap::new(),
+        };
+        let event = CollaborationEvent::MessageReceived {
+            session_id: Uuid::new_v4(),
+            message: msg,
+        };
+        assert!(matches!(event, CollaborationEvent::MessageReceived { .. }));
+    }
+
+    // ========== System Tests ==========
+
+    #[test]
+    fn test_communication_channels_new() {
+        let channels = CommunicationChannels::new();
+        assert!(channels.user_queues.is_empty());
+        assert!(channels.agent_queues.is_empty());
+        assert!(channels.session_channels.is_empty());
+    }
+
+    #[test]
+    fn test_feedback_system_new() {
+        let system = FeedbackSystem::new();
+        assert!(system.feedback_history.is_empty());
+        assert!(system.analysis_results.is_empty());
+        assert!(system.patterns.is_empty());
+    }
+
+    #[test]
+    fn test_intervention_manager_new() {
+        let manager = InterventionManager::new();
+        assert!(manager.active_interventions.is_empty());
+        assert!(manager.templates.is_empty());
+        assert!(manager.history.is_empty());
+    }
+
+    #[test]
+    fn test_approval_system_new() {
+        let system = ApprovalSystem::new();
+        assert!(system.pending_requests.is_empty());
+        assert!(system.workflows.is_empty());
+        assert!(system.history.is_empty());
+    }
+
+    #[test]
+    fn test_feedback_system_add_feedback() {
+        let mut system = FeedbackSystem::new();
+        let feedback = FeedbackEntry {
+            id: Uuid::new_v4(),
+            user: "test".to_string(),
+            session_id: Uuid::new_v4(),
+            feedback_type: FeedbackType::General,
+            content: "Good work".to_string(),
+            rating: Some(5.0),
+            timestamp: SystemTime::now(),
+            context: HashMap::new(),
+        };
+
+        system.add_feedback(feedback);
+        assert_eq!(system.feedback_history.len(), 1);
+    }
+
+    #[test]
+    fn test_intervention_manager_add_intervention() {
+        let mut manager = InterventionManager::new();
+        let intervention = Intervention {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            intervention_type: InterventionType::PauseExecution,
+            description: "Need to pause".to_string(),
+            requested_by: InterventionRequester::System,
+            priority: InterventionPriority::Medium,
+            status: InterventionStatus::Pending,
+            created_at: SystemTime::now(),
+            resolved_at: None,
+        };
+
+        let id = intervention.id;
+        manager.add_intervention(intervention);
+        assert!(manager.active_interventions.contains_key(&id));
+    }
+
+    #[test]
+    fn test_approval_system_add_request() {
+        let mut system = ApprovalSystem::new();
+        let request = ApprovalRequest {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            request_type: ApprovalType::ActionExecution,
+            description: "Execute action".to_string(),
+            requested_by: ApprovalRequester::System,
+            risk_assessment: RiskAssessment {
+                risk_level: RiskLevel::Low,
+                impact_description: "Low impact".to_string(),
+                mitigation_strategies: Vec::new(),
+                confidence_score: 0.9,
+            },
+            alternatives: Vec::new(),
+            deadline: None,
+            status: ApprovalStatus::Pending,
+            created_at: SystemTime::now(),
+        };
+
+        let id = request.id;
+        system.add_request(request);
+        assert!(system.pending_requests.contains_key(&id));
+    }
+
+    // ========== Async Coordinator Tests ==========
+
+    #[tokio::test]
+    async fn test_coordinator_new() {
+        let coordinator = HumanCollaborationCoordinator::new();
+        // Verify coordinator creates without panic
+        let _ = coordinator.get_event_stream();
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_start_session() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["alice".to_string()], vec![Uuid::new_v4()], None)
+            .await
+            .unwrap();
+
+        // Verify session was created
+        let sessions = coordinator.sessions.read().await;
+        assert!(sessions.contains_key(&session_id));
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_send_message() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["alice".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        let result = coordinator
+            .send_message(
+                session_id,
+                MessageSender::Human("alice".to_string()),
+                "Hello world".to_string(),
+                MessageType::Text,
+            )
+            .await;
+
+        assert!(result.is_ok());
+
+        // Verify message was added to session
+        let sessions = coordinator.sessions.read().await;
+        let session = sessions.get(&session_id).unwrap();
+        assert_eq!(session.message_history.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_request_intervention() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["bob".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        let intervention_id = coordinator
+            .request_intervention(
+                session_id,
+                InterventionType::RequestGuidance,
+                "Need help".to_string(),
+                InterventionRequester::System,
+                InterventionPriority::High,
+            )
+            .await
+            .unwrap();
+
+        // Verify intervention was added
+        let manager = coordinator.intervention_manager.read().await;
+        assert!(manager.active_interventions.contains_key(&intervention_id));
+
+        // Verify session status was updated
+        let sessions = coordinator.sessions.read().await;
+        let session = sessions.get(&session_id).unwrap();
+        assert_eq!(session.status, SessionStatus::InterventionsPending);
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_request_approval() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["carol".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        let approval_id = coordinator
+            .request_approval(
+                session_id,
+                ApprovalType::CodeDeployment,
+                "Deploy to prod".to_string(),
+                ApprovalRequester::System,
+                RiskAssessment {
+                    risk_level: RiskLevel::High,
+                    impact_description: "Prod deployment".to_string(),
+                    mitigation_strategies: vec!["Rollback".to_string()],
+                    confidence_score: 0.8,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Verify approval was added
+        let approval_system = coordinator.approval_system.read().await;
+        assert!(approval_system.pending_requests.contains_key(&approval_id));
+
+        // Verify session status was updated
+        let sessions = coordinator.sessions.read().await;
+        let session = sessions.get(&session_id).unwrap();
+        assert_eq!(session.status, SessionStatus::ApprovalsPending);
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_submit_feedback() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["dave".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        let result = coordinator
+            .submit_feedback(
+                session_id,
+                "dave".to_string(),
+                FeedbackType::Helpfulness,
+                "Very helpful!".to_string(),
+                Some(5.0),
+                HashMap::new(),
+            )
+            .await;
+
+        assert!(result.is_ok());
+
+        // Verify feedback was added
+        let feedback_system = coordinator.feedback_system.read().await;
+        assert_eq!(feedback_system.feedback_history.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_connect_user() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let result = coordinator
+            .connect_user("eve".to_string(), CollaborationPreferences::default())
+            .await;
+
+        assert!(result.is_ok());
+
+        // Verify user was added
+        let users = coordinator.users.read().await;
+        assert!(users.contains_key("eve"));
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_get_pending_interventions() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["frank".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        // Add an intervention
+        coordinator
+            .request_intervention(
+                session_id,
+                InterventionType::PauseExecution,
+                "Test intervention".to_string(),
+                InterventionRequester::System,
+                InterventionPriority::Medium,
+            )
+            .await
+            .unwrap();
+
+        // Get pending interventions
+        let interventions = coordinator
+            .get_pending_interventions("frank")
+            .await
+            .unwrap();
+        assert_eq!(interventions.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_coordinator_get_pending_approvals() {
+        let coordinator = HumanCollaborationCoordinator::new();
+
+        let session_id = coordinator
+            .start_session(vec!["grace".to_string()], vec![], None)
+            .await
+            .unwrap();
+
+        // Add an approval
+        coordinator
+            .request_approval(
+                session_id,
+                ApprovalType::ActionExecution,
+                "Test approval".to_string(),
+                ApprovalRequester::System,
+                RiskAssessment {
+                    risk_level: RiskLevel::Low,
+                    impact_description: "Test".to_string(),
+                    mitigation_strategies: Vec::new(),
+                    confidence_score: 0.9,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Get pending approvals
+        let approvals = coordinator.get_pending_approvals("grace").await.unwrap();
+        assert_eq!(approvals.len(), 1);
+    }
+
+    // ========== Serialization Tests ==========
+
+    #[test]
+    fn test_session_status_serialization() {
+        let status = SessionStatus::Active;
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: SessionStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, SessionStatus::Active);
+    }
+
+    #[test]
+    fn test_collaboration_message_serialization() {
+        let msg = CollaborationMessage {
+            id: Uuid::new_v4(),
+            sender: MessageSender::System,
+            content: "Test".to_string(),
+            message_type: MessageType::Text,
+            timestamp: SystemTime::now(),
+            metadata: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: CollaborationMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.content, "Test");
+    }
+
+    #[test]
+    fn test_intervention_serialization() {
+        let intervention = Intervention {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            intervention_type: InterventionType::PauseExecution,
+            description: "Test".to_string(),
+            requested_by: InterventionRequester::System,
+            priority: InterventionPriority::High,
+            status: InterventionStatus::Pending,
+            created_at: SystemTime::now(),
+            resolved_at: None,
+        };
+
+        let json = serde_json::to_string(&intervention).unwrap();
+        let deserialized: Intervention = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.description, "Test");
+    }
+
+    #[test]
+    fn test_approval_request_serialization() {
+        let request = ApprovalRequest {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            request_type: ApprovalType::ActionExecution,
+            description: "Test".to_string(),
+            requested_by: ApprovalRequester::System,
+            risk_assessment: RiskAssessment {
+                risk_level: RiskLevel::Low,
+                impact_description: "Low".to_string(),
+                mitigation_strategies: Vec::new(),
+                confidence_score: 0.9,
+            },
+            alternatives: Vec::new(),
+            deadline: None,
+            status: ApprovalStatus::Pending,
+            created_at: SystemTime::now(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        let deserialized: ApprovalRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.description, "Test");
     }
 }

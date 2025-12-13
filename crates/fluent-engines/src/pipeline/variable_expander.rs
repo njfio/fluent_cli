@@ -5,8 +5,8 @@
 
 use crate::pipeline_executor::PipelineStep;
 use anyhow::Error;
-use log::debug;
 use std::collections::HashMap;
+use tracing::debug;
 
 /// Handles variable expansion in pipeline steps
 pub struct VariableExpander;
@@ -191,7 +191,7 @@ impl VariableExpander {
                 chars.next(); // consume '{'
                 let mut var_name = String::new();
 
-                while let Some(ch) = chars.next() {
+                for ch in chars.by_ref() {
                     if ch == '}' {
                         break;
                     }

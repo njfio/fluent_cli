@@ -2,6 +2,7 @@ use fluent_engines::config_cli::ConfigCli;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = env_logger::try_init();
+    // Initialize logging using centralized logging module
+    fluent_core::logging::init_logging();
     ConfigCli::run().await
 }

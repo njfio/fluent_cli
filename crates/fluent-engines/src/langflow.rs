@@ -5,12 +5,12 @@ use fluent_core::traits::{Engine, EngineConfigProcessor};
 use fluent_core::types::{
     Cost, ExtractedContent, Request, Response, UpsertRequest, UpsertResponse, Usage,
 };
-use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::debug;
 
 pub struct LangflowEngine {
     config: EngineConfig,
@@ -39,7 +39,7 @@ pub struct LangflowConfigProcessor;
 impl EngineConfigProcessor for LangflowConfigProcessor {
     fn process_config(&self, config: &EngineConfig) -> Result<serde_json::Value> {
         debug!("LangflowConfigProcessor::process_config");
-        debug!("Config: {:#?}", config);
+        // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
 
         let mut payload = json!({
             "input_value": "",  // This will be filled later with the actual request
@@ -103,7 +103,7 @@ impl Engine for LangflowEngine {
     ) -> Box<dyn Future<Output = Result<Response>> + Send + 'a> {
         Box::new(async move {
             let client = Client::new();
-            debug!("Config: {:?}", self.config);
+            // Config logging removed for security - EngineConfig contains sensitive data (API keys, tokens)
 
             let mut payload = self.config_processor.process_config(&self.config)?;
             payload["input_value"] = json!(request.payload);

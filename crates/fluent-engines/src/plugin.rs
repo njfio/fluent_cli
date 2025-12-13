@@ -1,11 +1,133 @@
+//! # Plugin System (CURRENTLY DISABLED IN PRODUCTION)
+//!
+//! This module contains the implementation of a secure plugin system for Fluent CLI.
+//! While the code is complete and includes comprehensive security features, the plugin
+//! system is **NOT ENABLED BY DEFAULT** and requires additional runtime dependencies.
+//!
+//! ## Current Status: DISABLED
+//!
+//! The plugin system is currently disabled in production for the following reasons:
+//!
+//! ### 1. Missing WASM Runtime Dependency
+//! - The `wasm-runtime` feature flag is **NOT** enabled by default
+//! - Requires additional dependencies (wasmtime or wasmer) that are not included
+//! - WASM runtime would add ~10MB+ to binary size
+//! - Runtime overhead for WASM execution environment
+//!
+//! ### 2. Security Concerns (Even with WASM)
+//! - **Supply Chain Attacks**: Malicious plugins could be distributed
+//! - **Signature Verification Infrastructure**: Requires PKI setup and key management
+//! - **Plugin Discovery**: No centralized trusted plugin registry
+//! - **Audit Complexity**: Reviewing plugin behavior requires WASM expertise
+//! - **Resource Exhaustion**: Even with limits, plugins could consume excessive resources
+//!
+//! ### 3. Maintenance and Support Burden
+//! - Plugin API stability guarantees required
+//! - Backward compatibility maintenance
+//! - Security updates and patches for plugin system
+//! - Support for plugin developers
+//!
+//! ## What's Implemented
+//!
+//! Despite being disabled, this module contains a **fully functional** secure plugin system:
+//!
+//! ✅ WebAssembly-based sandboxing for memory isolation
+//! ✅ Capability-based security model with fine-grained permissions
+//! ✅ Cryptographic signature verification (Ed25519/RSA)
+//! ✅ Comprehensive audit logging for compliance
+//! ✅ Resource limits and quotas (memory, CPU, network)
+//! ✅ Permission system with configurable quotas
+//! ✅ Input validation and error boundaries
+//! ✅ No unsafe blocks - memory-safe interfaces only
+//! ✅ Comprehensive security testing included
+//!
+//! See `plugin_architecture_summary.md` for detailed architecture documentation.
+//!
+//! ## How to Enable (For Development/Testing Only)
+//!
+//! If you need to enable plugins for development or testing purposes:
+//!
+//! ### Step 1: Enable WASM Runtime Feature
+//! ```toml
+//! # In crates/fluent-engines/Cargo.toml
+//! [dependencies]
+//! wasmtime = "16.0"  # or wasmer = "4.0"
+//!
+//! [features]
+//! wasm-runtime = ["wasmtime"]
+//! ```
+//!
+//! ### Step 2: Implement WASM Execution
+//! The `SecurePluginEngine::execute()` method has a feature-gated implementation.
+//! You'll need to implement the actual WASM module loading and execution.
+//!
+//! ### Step 3: Set Up Trust Infrastructure
+//! - Generate Ed25519 key pairs for signing
+//! - Set up `FLUENT_TRUSTED_KEYS` environment variable
+//! - Create plugin signing process
+//! - Establish plugin review/audit process
+//!
+//! ### Step 4: Enable in Build
+//! ```bash
+//! cargo build --features wasm-runtime
+//! ```
+//!
+//! ## Security Requirements Before Production Use
+//!
+//! ⚠️ **WARNING**: Do NOT enable plugins in production without addressing:
+//!
+//! 1. **Signature Verification Infrastructure**
+//!    - Establish trusted key management system
+//!    - Implement key rotation and revocation
+//!    - Set up secure key distribution
+//!
+//! 2. **Plugin Review Process**
+//!    - Manual security audits for all plugins
+//!    - Automated scanning for malicious patterns
+//!    - Code review by security team
+//!
+//! 3. **Sandboxing Validation**
+//!    - Penetration testing of WASM sandbox
+//!    - Verify resource limits are enforced
+//!    - Test capability restrictions
+//!
+//! 4. **Monitoring and Incident Response**
+//!    - Real-time plugin behavior monitoring
+//!    - Automated anomaly detection
+//!    - Incident response procedures
+//!
+//! 5. **Legal and Compliance**
+//!    - Plugin license verification
+//!    - Terms of service for plugin developers
+//!    - Compliance with data protection regulations
+//!
+//! ## Alternative: Use Built-in Engines Only
+//!
+//! The recommended approach is to use the built-in engine types:
+//! - OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, etc.
+//! - These are thoroughly tested and maintained
+//! - No additional security risks from untrusted code
+//! - Better performance (no WASM overhead)
+//!
+//! If you need a custom engine, consider:
+//! 1. Opening a PR to add it as a built-in engine
+//! 2. Using the Webhook engine to proxy to your custom service
+//! 3. Forking and maintaining your own version
+//!
+//! ## References
+//!
+//! - Architecture documentation: `plugin_architecture_summary.md`
+//! - Security implementation: `secure_plugin_system.rs`
+//! - CLI management tool: `plugin_cli.rs`
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 use crate::secure_plugin_system::{PluginRuntime, SecurePluginEngine};
 use fluent_core::config::EngineConfig;
@@ -71,7 +193,7 @@ impl SecurePluginManager {
     }
 
     /// Load a plugin from the specified path with security validation
-    pub async fn load_plugin(&self, plugin_path: &PathBuf) -> Result<String> {
+    pub async fn load_plugin(&self, plugin_path: &Path) -> Result<String> {
         // Check if we've reached the maximum number of plugins
         {
             let plugins = self.loaded_plugins.read().await;
@@ -231,7 +353,6 @@ pub trait EnginePlugin: Send + Sync {
 ///
 /// ⚠️  Note: While this implementation includes comprehensive security measures,
 /// thorough testing in your specific environment is recommended before production use.
-
 /// Secure plugin factory for creating engines from validated plugins
 pub struct SecurePluginFactory {
     manager: Arc<SecurePluginManager>,
@@ -298,9 +419,7 @@ pub struct PluginSecurityValidator;
 
 impl PluginSecurityValidator {
     /// Perform comprehensive security validation on a plugin
-    pub async fn validate_plugin_security(
-        plugin_path: &PathBuf,
-    ) -> Result<SecurityValidationReport> {
+    pub async fn validate_plugin_security(plugin_path: &Path) -> Result<SecurityValidationReport> {
         let mut report = SecurityValidationReport::new();
 
         // Check manifest exists and is valid

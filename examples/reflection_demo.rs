@@ -7,14 +7,13 @@ use fluent_agent::{
 };
 use std::collections::HashMap;
 use std::time::SystemTime;
-use tokio;
 
 /// Mock reasoning engine for demonstration
 struct MockReasoningEngine;
 
 #[async_trait]
 impl ReasoningEngine for MockReasoningEngine {
-    async fn reason(&self, prompt: &str, context: &ExecutionContext) -> Result<String> {
+    async fn reason(&self, prompt: &str, _context: &ExecutionContext) -> Result<String> {
         Ok(format!(
             "Mock reasoning analysis of current situation for prompt: {}",
             prompt

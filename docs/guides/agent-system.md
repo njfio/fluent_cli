@@ -155,7 +155,7 @@ steps:
       action: "list_files"
       path: "${inputs.project_path}"
       recursive: true
-    
+
   - id: "analyze_code"
     name: "Analyze Code Quality"
     tool: "rust_compiler"
@@ -163,7 +163,7 @@ steps:
       action: "check"
       path: "${inputs.project_path}"
     depends_on: ["scan_files"]
-    
+
   - id: "generate_report"
     name: "Generate Analysis Report"
     tool: "string_replace_editor"
