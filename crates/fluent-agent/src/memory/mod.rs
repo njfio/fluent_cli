@@ -151,11 +151,35 @@ impl IntegratedMemorySystem {
 
     /// Get memory statistics
     pub async fn get_stats(&self) -> Result<MemoryStats> {
+        let working_mem = self.working_memory.read().await;
+        let persistence = self.persistence.read().await;
+        let compressor = self.compressor.read().await;
+
+        // Count items from working memory
+        let working_items = working_mem.get_item_count().await;
+        
+        // Count items from persistence layer
+        let persisted_items = persistence.get_item_count().await;
+        
+        // Count compressed contexts
+        let compressed_items = compressor.get_compressed_count().await;
+        
+        let total_items = working_items + persisted_items + compressed_items;
+        
+        // Estimate memory usage
+        let estimated_memory = total_items * 1024; // Rough estimate: 1KB per item
+        
+        // Calculate compression ratio from compressor
+        let compression_ratio = compressor.get_compression_ratio().await.unwrap_or(0.5);
+        
+        // Get session count from persistence
+        let session_count = persistence.get_session_count().await;
+
         Ok(MemoryStats {
-            items_count: 0, // TODO: implement actual counting
-            memory_usage_bytes: 0,
-            compression_ratio: 0.5,
-            session_count: 1,
+            items_count: total_items,
+            memory_usage_bytes: estimated_memory,
+            compression_ratio,
+            session_count,
         })
     }
 }

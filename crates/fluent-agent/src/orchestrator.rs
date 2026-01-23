@@ -817,6 +817,270 @@ impl AgentOrchestrator {
         }
         Ok(())
     }
+
+    /// Enhanced error handling with recovery mechanisms
+    async fn handle_execution_error(
+        &self,
+        error: anyhow::Error,
+        context: &mut ExecutionContext,
+        iteration: u32,
+    ) -> Result<ErrorRecoveryAction> {
+        log::error!(
+            "Execution error at iteration {}: {}",
+            iteration,
+            error
+        );
+
+        // Update metrics
+        {
+            let mut perf = self.performance_metrics.write().await;
+            perf.execution_metrics.tasks_failed += 1;
+            perf.reliability_metrics.error_recovery_rate = 
+                perf.reliability_metrics.error_recovery_rate * 0.9;
+        }
+
+        // Classify error severity
+        let error_severity = self.classify_error_severity(&error);
+        
+        match error_severity {
+            ErrorSeverity::Critical => {
+                log::error!("Critical error detected, attempting emergency recovery");
+                self.attempt_emergency_recovery(context).await
+            }
+            ErrorSeverity::High => {
+                log::warn!("High severity error, attempting checkpoint restoration");
+                self.attempt_checkpoint_recovery(context).await
+            }
+            ErrorSeverity::Medium => {
+                log::warn!("Medium severity error, attempting retry with backoff");
+                Ok(ErrorRecoveryAction::RetryWithBackoff(3))
+            }
+            ErrorSeverity::Low => {
+                log::info!("Low severity error, continuing with alternative approach");
+                Ok(ErrorRecoveryAction::ContinueWithAlternative)
+            }
+        }
+    }
+
+    /// Classify error severity based on error message and context
+    fn classify_error_severity(&self, error: &anyhow::Error) -> ErrorSeverity {
+        let error_msg = error.to_string().to_lowercase();
+        
+        // Critical errors that require immediate intervention
+        if error_msg.contains("panic")
+            || error_msg.contains("fatal")
+            || error_msg.contains("segfault")
+            || error_msg.contains("out of memory")
+        {
+            return ErrorSeverity::Critical;
+        }
+
+        // High severity errors that may corrupt state
+        if error_msg.contains("state corruption")
+            || error_msg.contains("database")
+            || error_msg.contains("checkpoint")
+            || error_msg.contains("persistence")
+        {
+            return ErrorSeverity::High;
+        }
+
+        // Medium severity errors that can be retried
+        if error_msg.contains("timeout")
+            || error_msg.contains("connection")
+            || error_msg.contains("unavailable")
+            || error_msg.contains("rate limit")
+        {
+            return ErrorSeverity::Medium;
+        }
+
+        // Default to low severity
+        ErrorSeverity::Low
+    }
+
+    /// Attempt emergency recovery from critical errors
+    async fn attempt_emergency_recovery(
+        &self,
+        context: &mut ExecutionContext,
+    ) -> Result<ErrorRecoveryAction> {
+        log::warn!("Initiating emergency recovery procedure");
+
+        // Try to restore from last known good checkpoint
+        match self
+            .persistent_state_manager
+            .restore_from_checkpoint(None)
+            .await
+        {
+            Ok(restored_context) => {
+                *context = restored_context;
+                log::info!("Successfully restored from emergency checkpoint");
+                Ok(ErrorRecoveryAction::RestoreFromCheckpoint)
+            }
+            Err(e) => {
+                log::error!("Emergency recovery failed: {}", e);
+                Ok(ErrorRecoveryAction::Abort)
+            }
+        }
+    }
+
+    /// Attempt recovery from checkpoint
+    async fn attempt_checkpoint_recovery(
+        &self,
+        context: &mut ExecutionContext,
+    ) -> Result<ErrorRecoveryAction> {
+        log::info!("Attempting checkpoint recovery");
+
+        match self
+            .persistent_state_manager
+            .restore_from_checkpoint(None)
+            .await
+        {
+            Ok(restored_context) => {
+                *context = restored_context;
+                log::info!("Successfully restored from checkpoint");
+                Ok(ErrorRecoveryAction::RestoreFromCheckpoint)
+            }
+            Err(e) => {
+                log::warn!("Checkpoint recovery failed: {}, trying retry", e);
+                Ok(ErrorRecoveryAction::RetryWithBackoff(3))
+            }
+        }
+    }
+
+    /// Execute action with retry and backoff
+    async fn execute_with_retry<F, T>(
+        &self,
+        operation: F,
+        max_retries: u32,
+        context_desc: &str,
+    ) -> Result<T>
+    where
+        F: Fn() -> Box<dyn std::future::Future<Output = Result<T>> + Send + '_>,
+    {
+        let mut attempts = 0;
+        let mut last_error = None;
+
+        while attempts < max_retries {
+            attempts += 1;
+            
+            match operation().await {
+                Ok(result) => {
+                    if attempts > 1 {
+                        log::info!(
+                            "Operation '{}' succeeded after {} attempts",
+                            context_desc,
+                            attempts
+                        );
+                    }
+                    return Ok(result);
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempts < max_retries {
+                        let backoff_ms = (2_u64.pow(attempts) * 100).min(5000);
+                        log::warn!(
+                            "Operation '{}' failed (attempt {}/{}), retrying in {}ms",
+                            context_desc,
+                            attempts,
+                            max_retries,
+                            backoff_ms
+                        );
+                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("Operation failed after {} retries", max_retries)))
+    }
+
+    /// Log state transition with full context
+    async fn log_state_transition(
+        &self,
+        from_state: &str,
+        to_state: &str,
+        reason: &str,
+        context: &ExecutionContext,
+    ) {
+        log::info!(
+            "state.transition from='{}' to='{}' reason='{}' iteration={} context_items={}",
+            from_state,
+            to_state,
+            reason,
+            context.iteration_count,
+            context.context_data.len()
+        );
+
+        // Record structured event for monitoring
+        if let Ok(event) = serde_json::json!({
+            "event_type": "state_transition",
+            "from_state": from_state,
+            "to_state": to_state,
+            "reason": reason,
+            "iteration": context.iteration_count,
+            "timestamp": SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            "context_size": context.context_data.len(),
+        })
+        .to_string()
+        {
+            log::trace!("state.event {}", event);
+        }
+    }
+
+    /// Log agent decision with reasoning
+    async fn log_decision(
+        &self,
+        decision_type: &str,
+        decision: &str,
+        confidence: f64,
+        reasoning: &str,
+    ) {
+        log::info!(
+            "agent.decision type='{}' decision='{}' confidence={:.2} reasoning='{}'",
+            decision_type,
+            decision,
+            confidence,
+            reasoning
+        );
+    }
+
+    /// Log performance metrics periodically
+    async fn log_performance_snapshot(&self, iteration: u32) {
+        if iteration % 10 == 0 {
+            // Log every 10 iterations
+            let perf = self.performance_metrics.read().await;
+            
+            log::info!(
+                "performance.snapshot iteration={} success_rate={:.2} tasks_completed={} tasks_failed={} avg_response_time={:.2}ms",
+                iteration,
+                perf.execution_metrics.success_rate,
+                perf.execution_metrics.tasks_completed,
+                perf.execution_metrics.tasks_failed,
+                perf.execution_metrics.average_response_time.as_millis()
+            );
+        }
+    }
+}
+
+/// Error severity levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErrorSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+/// Actions to take for error recovery
+#[derive(Debug, Clone)]
+enum ErrorRecoveryAction {
+    Continue,
+    ContinueWithAlternative,
+    RetryWithBackoff(u32),
+    RestoreFromCheckpoint,
+    Abort,
 }
 
 impl StateManager {

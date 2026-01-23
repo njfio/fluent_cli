@@ -421,10 +421,13 @@ impl CollaborativeOrchestrator {
             .map(|alt| alt.description.clone())
             .collect();
 
+        // Generate code changes diff if applicable
+        let code_changes = self.generate_code_diff(action_plan).await?;
+
         Ok(ApprovalContext {
             affected_files: self.extract_affected_files(action_plan),
             command: self.extract_command(action_plan),
-            code_changes: None, // TODO: Implement diff generation
+            code_changes,
             reasoning: action_plan.description.clone(),
             alternatives,
             agent_recommendation: format!(
@@ -432,6 +435,101 @@ impl CollaborativeOrchestrator {
                 action_plan.confidence_score * 100.0
             ),
         })
+    }
+
+    /// Generate code diff from action plan
+    async fn generate_code_diff(&self, action_plan: &ActionPlan) -> Result<Option<CodeDiff>> {
+        // Only generate diff for file operations and code generation
+        if action_plan.action_type != ActionType::FileOperation
+            && action_plan.action_type != ActionType::CodeGeneration
+        {
+            return Ok(None);
+        }
+
+        // Extract file path from parameters
+        let file_path = if let Some(path) = action_plan.parameters.get("path") {
+            path.as_str().map(|s| s.to_string())
+        } else if let Some(file) = action_plan.parameters.get("file") {
+            file.as_str().map(|s| s.to_string())
+        } else {
+            None
+        };
+
+        let Some(file_path) = file_path else {
+            return Ok(None);
+        };
+
+        // Extract old and new content
+        let old_content = if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
+            content
+        } else {
+            String::new() // File doesn't exist yet
+        };
+
+        let new_content = if let Some(content) = action_plan.parameters.get("content") {
+            content.as_str().unwrap_or("").to_string()
+        } else if let Some(content) = action_plan.parameters.get("new_content") {
+            content.as_str().unwrap_or("").to_string()
+        } else {
+            return Ok(None);
+        };
+
+        // Generate diff lines
+        let diff_lines = self.compute_diff_lines(&old_content, &new_content);
+
+        Ok(Some(CodeDiff {
+            file_path,
+            old_content,
+            new_content,
+            diff_lines,
+        }))
+    }
+
+    /// Compute diff lines between old and new content
+    fn compute_diff_lines(&self, old_content: &str, new_content: &str) -> Vec<DiffLine> {
+        let mut diff_lines = Vec::new();
+        let old_lines: Vec<&str> = old_content.lines().collect();
+        let new_lines: Vec<&str> = new_content.lines().collect();
+
+        // Simple line-by-line diff algorithm (can be enhanced with LCS or Myers diff)
+        let max_len = old_lines.len().max(new_lines.len());
+
+        for i in 0..max_len {
+            let old_line = old_lines.get(i).copied();
+            let new_line = new_lines.get(i).copied();
+
+            match (old_line, new_line) {
+                (Some(old), Some(new)) => {
+                    let change_type = if old == new {
+                        DiffChangeType::Unchanged
+                    } else {
+                        DiffChangeType::Modified
+                    };
+                    diff_lines.push(DiffLine {
+                        line_number: i + 1,
+                        change_type,
+                        content: new.to_string(),
+                    });
+                }
+                (None, Some(new)) => {
+                    diff_lines.push(DiffLine {
+                        line_number: i + 1,
+                        change_type: DiffChangeType::Added,
+                        content: new.to_string(),
+                    });
+                }
+                (Some(old), None) => {
+                    diff_lines.push(DiffLine {
+                        line_number: i + 1,
+                        change_type: DiffChangeType::Removed,
+                        content: old.to_string(),
+                    });
+                }
+                (None, None) => break,
+            }
+        }
+
+        diff_lines
     }
 
     /// Extract affected files from action plan

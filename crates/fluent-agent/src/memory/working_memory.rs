@@ -812,6 +812,12 @@ impl WorkingMemory {
         store.archived_items.remove(item_id);
         Ok(())
     }
+
+    /// Get total count of items in working memory
+    pub async fn get_item_count(&self) -> usize {
+        let store = self.memory_store.read().await;
+        store.active_items.len() + store.archived_items.len()
+    }
 }
 
 /// Action to take during consolidation

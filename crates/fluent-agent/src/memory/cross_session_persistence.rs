@@ -678,4 +678,18 @@ impl CrossSessionPersistence {
             .map(|s| s.session_id.clone())
             .ok_or_else(|| anyhow::anyhow!("No active session"))
     }
+
+    /// Get count of stored items
+    pub async fn get_item_count(&self) -> usize {
+        let manager = self.session_manager.read().await;
+        let pattern_count = manager.learned_patterns.len();
+        let checkpoint_count = manager.checkpoints.len();
+        pattern_count + checkpoint_count
+    }
+
+    /// Get count of sessions
+    pub async fn get_session_count(&self) -> usize {
+        let manager = self.session_manager.read().await;
+        manager.session_history.len()
+    }
 }

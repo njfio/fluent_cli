@@ -676,10 +676,90 @@ Respond with just the numerical score (e.g., 0.75)"#,
         )
     }
 
-    async fn prune_low_quality_branches(&self, _parent_id: &str) -> Result<()> {
-        // TODO: Implement branch pruning based on quality thresholds
-        // This would remove branches that consistently produce low-quality thoughts
+    async fn prune_low_quality_branches(&self, parent_id: &str) -> Result<()> {
+        if !self.config.enable_pruning {
+            return Ok(());
+        }
+
+        let mut tree = self.thought_tree.write().await;
+        
+        // Get parent node
+        let parent_node = tree.nodes.get(parent_id).cloned();
+        let Some(parent) = parent_node else {
+            return Ok(());
+        };
+
+        // Collect children to evaluate
+        let mut children_to_prune = Vec::new();
+        
+        for child_id in &parent.children {
+            if let Some(child_node) = tree.nodes.get(child_id) {
+                // Prune if:
+                // 1. Evaluation score is below threshold
+                // 2. Accumulated confidence is very low
+                // 3. Node hasn't been productive (no children and low scores)
+                
+                let should_prune = 
+                    child_node.evaluation_score < self.config.pruning_threshold
+                    || child_node.accumulated_confidence < self.config.confidence_threshold / 2.0
+                    || (child_node.children.is_empty() 
+                        && child_node.evaluation_score < self.config.confidence_threshold
+                        && child_node.depth > 2);
+                
+                if should_prune {
+                    children_to_prune.push(child_id.clone());
+                }
+            }
+        }
+
+        // Prune identified branches
+        let mut pruned_count = 0;
+        for child_id in children_to_prune {
+            if self.prune_branch_recursive(&mut tree, &child_id) {
+                pruned_count += 1;
+            }
+        }
+
+        // Update metrics
+        if pruned_count > 0 {
+            tree.tree_metrics.paths_pruned += pruned_count;
+            log::debug!(
+                "Pruned {} low-quality branches from parent {}",
+                pruned_count,
+                parent_id
+            );
+        }
+
         Ok(())
+    }
+
+    /// Recursively prune a branch and all its descendants
+    fn prune_branch_recursive(&self, tree: &mut ThoughtTree, node_id: &str) -> bool {
+        let node = tree.nodes.get(node_id).cloned();
+        let Some(node) = node else {
+            return false;
+        };
+
+        // Recursively prune all children first
+        let children = node.children.clone();
+        for child_id in children {
+            self.prune_branch_recursive(tree, &child_id);
+        }
+
+        // Remove from parent's children list
+        if let Some(parent_id) = &node.parent_id {
+            if let Some(parent) = tree.nodes.get_mut(parent_id) {
+                parent.children.retain(|id| id != node_id);
+            }
+        }
+
+        // Remove from active paths
+        tree.active_paths.retain(|id| id != node_id);
+
+        // Remove the node itself
+        tree.nodes.remove(node_id);
+
+        true
     }
 
     async fn generate_exploration_summary(&self, tree: &ThoughtTree) -> Result<String> {
