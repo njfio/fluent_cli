@@ -679,6 +679,243 @@ impl ReflectionEngine {
             + (reflection_result.learning_insights.len() as f64 * 0.1);
     }
 
+    /// Enhanced confidence estimation with multi-factor analysis
+    fn estimate_confidence_with_context(
+        &self,
+        analysis: &ReflectionAnalysis,
+        context: &ExecutionContext,
+    ) -> ConfidenceEstimate {
+        // Factor 1: Historical performance
+        let historical_confidence = self.calculate_historical_confidence(context);
+        
+        // Factor 2: Current task complexity
+        let complexity_factor = self.assess_task_complexity(context);
+        
+        // Factor 3: Resource availability
+        let resource_factor = self.assess_resource_availability(analysis);
+        
+        // Factor 4: Pattern recognition success rate
+        let pattern_factor = self.assess_pattern_recognition_success();
+        
+        // Factor 5: Uncertainty in current state
+        let uncertainty_factor = self.assess_state_uncertainty(context);
+
+        // Weighted combination
+        let base_confidence = (
+            historical_confidence * 0.25 +
+            (1.0 - complexity_factor) * 0.20 +
+            resource_factor * 0.20 +
+            pattern_factor * 0.20 +
+            (1.0 - uncertainty_factor) * 0.15
+        );
+
+        // Apply confidence calibration based on past accuracy
+        let calibrated_confidence = self.calibrate_confidence(base_confidence);
+
+        ConfidenceEstimate {
+            overall_confidence: calibrated_confidence,
+            historical_factor: historical_confidence,
+            complexity_factor,
+            resource_factor,
+            pattern_recognition_factor: pattern_factor,
+            uncertainty_factor,
+            calibration_applied: true,
+        }
+    }
+
+    /// Calculate confidence based on historical performance
+    fn calculate_historical_confidence(&self, context: &ExecutionContext) -> f64 {
+        let recent_events = context.get_recent_actions();
+        if recent_events.is_empty() {
+            return 0.5; // Neutral starting point
+        }
+
+        let success_count = recent_events
+            .iter()
+            .filter(|e| matches!(e.event_type, ExecutionEventType::TaskCompleted))
+            .count() as f64;
+        
+        let total_count = recent_events.len() as f64;
+        let success_rate = success_count / total_count;
+
+        // Apply decay factor for older events
+        success_rate * 0.9 + 0.05 // Slight optimism bias
+    }
+
+    /// Assess task complexity
+    fn assess_task_complexity(&self, context: &ExecutionContext) -> f64 {
+        // Higher score = more complex
+        let context_size = context.context_data.len() as f64;
+        let iteration_count = context.iteration_count as f64;
+        
+        // Normalize and combine factors
+        let size_complexity = (context_size / 100.0).min(1.0);
+        let iteration_complexity = (iteration_count / 50.0).min(1.0);
+        
+        (size_complexity + iteration_complexity) / 2.0
+    }
+
+    /// Assess resource availability
+    fn assess_resource_availability(&self, analysis: &ReflectionAnalysis) -> f64 {
+        // Check if resources are well-utilized and available
+        let utilization = analysis.resource_utilization.overall_utilization;
+        let bottleneck_penalty = analysis.bottlenecks_identified.len() as f64 * 0.1;
+        
+        (utilization * 0.8 - bottleneck_penalty).max(0.0).min(1.0)
+    }
+
+    /// Assess pattern recognition success rate
+    fn assess_pattern_recognition_success(&self) -> f64 {
+        let pattern_count = self.strategy_patterns.len() as f64;
+        if pattern_count == 0.0 {
+            return 0.5;
+        }
+
+        // Calculate success rate of applied patterns
+        let successful_patterns = self
+            .strategy_patterns
+            .iter()
+            .filter(|p| p.success_rate > 0.7)
+            .count() as f64;
+        
+        (successful_patterns / pattern_count).max(0.3) // Minimum 30% confidence
+    }
+
+    /// Assess uncertainty in current state
+    fn assess_state_uncertainty(&self, context: &ExecutionContext) -> f64 {
+        let recent_failures = self.count_recent_failures(context) as f64;
+        let goal_clarity = if context.current_goal.is_some() { 0.0 } else { 0.3 };
+        
+        (recent_failures * 0.1 + goal_clarity).min(1.0)
+    }
+
+    /// Calibrate confidence based on past accuracy
+    fn calibrate_confidence(&self, raw_confidence: f64) -> f64 {
+        // Simple calibration: adjust based on performance metrics
+        let performance_adjustment = (self.performance_metrics.accuracy_score - 0.5) * 0.2;
+        (raw_confidence + performance_adjustment).max(0.0).min(1.0)
+    }
+
+    /// Detect patterns in success and failure scenarios
+    fn detect_performance_patterns(&self, context: &ExecutionContext) -> Vec<DetectedPattern> {
+        let mut patterns = Vec::new();
+        let events = context.get_recent_actions();
+
+        // Pattern 1: Repeated failures in specific contexts
+        if self.detect_repeated_failure_pattern(&events) {
+            patterns.push(DetectedPattern {
+                pattern_type: PatternType::RepeatedFailure,
+                confidence: 0.8,
+                description: "Repeated failures detected in similar contexts".to_string(),
+                recommendation: "Consider alternative approach or seek additional context".to_string(),
+            });
+        }
+
+        // Pattern 2: Declining performance trend
+        if self.detect_declining_performance(&events) {
+            patterns.push(DetectedPattern {
+                pattern_type: PatternType::PerformanceDecline,
+                confidence: 0.75,
+                description: "Performance declining over recent iterations".to_string(),
+                recommendation: "Trigger deep reflection and strategy adjustment".to_string(),
+            });
+        }
+
+        // Pattern 3: Successful recovery from errors
+        if self.detect_recovery_pattern(&events) {
+            patterns.push(DetectedPattern {
+                pattern_type: PatternType::SuccessfulRecovery,
+                confidence: 0.85,
+                description: "Consistent error recovery patterns detected".to_string(),
+                recommendation: "Reinforce successful recovery strategies".to_string(),
+            });
+        }
+
+        patterns
+    }
+
+    /// Detect repeated failure pattern
+    fn detect_repeated_failure_pattern(&self, events: &[crate::context::ExecutionEvent]) -> bool {
+        let failure_count = events
+            .iter()
+            .filter(|e| matches!(e.event_type, ExecutionEventType::TaskFailed | ExecutionEventType::ErrorOccurred))
+            .count();
+        
+        failure_count > events.len() / 3 // More than 33% failures
+    }
+
+    /// Detect declining performance
+    fn detect_declining_performance(&self, events: &[crate::context::ExecutionEvent]) -> bool {
+        if events.len() < 6 {
+            return false;
+        }
+
+        let mid_point = events.len() / 2;
+        let recent_half = &events[mid_point..];
+        let older_half = &events[..mid_point];
+
+        let recent_success_rate = recent_half
+            .iter()
+            .filter(|e| matches!(e.event_type, ExecutionEventType::TaskCompleted))
+            .count() as f64
+            / recent_half.len() as f64;
+
+        let older_success_rate = older_half
+            .iter()
+            .filter(|e| matches!(e.event_type, ExecutionEventType::TaskCompleted))
+            .count() as f64
+            / older_half.len() as f64;
+
+        recent_success_rate < older_success_rate - 0.2 // 20% decline
+    }
+
+    /// Detect recovery pattern
+    fn detect_recovery_pattern(&self, events: &[crate::context::ExecutionEvent]) -> bool {
+        // Look for pattern: Error -> TaskCompleted
+        events
+            .windows(2)
+            .filter(|pair| {
+                matches!(
+                    pair[0].event_type,
+                    ExecutionEventType::TaskFailed | ExecutionEventType::ErrorOccurred
+                ) && matches!(pair[1].event_type, ExecutionEventType::TaskCompleted)
+            })
+            .count()
+            >= 2
+    }
+}
+
+/// Enhanced confidence estimate with detailed factors
+#[derive(Debug, Clone)]
+pub struct ConfidenceEstimate {
+    pub overall_confidence: f64,
+    pub historical_factor: f64,
+    pub complexity_factor: f64,
+    pub resource_factor: f64,
+    pub pattern_recognition_factor: f64,
+    pub uncertainty_factor: f64,
+    pub calibration_applied: bool,
+}
+
+/// Detected performance pattern
+#[derive(Debug, Clone)]
+pub struct DetectedPattern {
+    pub pattern_type: PatternType,
+    pub confidence: f64,
+    pub description: String,
+    pub recommendation: String,
+}
+
+/// Types of patterns that can be detected
+#[derive(Debug, Clone)]
+pub enum PatternType {
+    RepeatedFailure,
+    PerformanceDecline,
+    SuccessfulRecovery,
+    OptimalStrategy,
+    ResourceBottleneck,
+}
+
     /// Perform routine reflection (standard scheduled reflection)
     async fn perform_routine_reflection(
         &self,

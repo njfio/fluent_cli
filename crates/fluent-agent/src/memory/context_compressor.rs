@@ -646,6 +646,23 @@ impl ContextCompressor {
 
         Ok(())
     }
+
+    /// Get count of compressed contexts
+    pub async fn get_compressed_count(&self) -> usize {
+        let history = self.compression_history.read().await;
+        history.operations.len()
+    }
+
+    /// Get current compression ratio
+    pub async fn get_compression_ratio(&self) -> Result<f64> {
+        let history = self.compression_history.read().await;
+        if history.compression_stats.total_bytes_compressed == 0 {
+            return Ok(0.5);
+        }
+        let saved = history.compression_stats.total_bytes_saved as f64;
+        let original = history.compression_stats.total_bytes_compressed as f64;
+        Ok(1.0 - (saved / original).min(1.0).max(0.0))
+    }
 }
 
 // Supporting types
