@@ -179,8 +179,12 @@ impl CostCalculator {
             engine, model, usage
         );
 
-        // Find pricing model
-        let pricing = self.find_pricing_model(engine, model)?;
+        // Find pricing model: current list prices from llm-prices, then the built-in table
+        let current = current_pricing(engine, model);
+        let pricing = match &current {
+            Some(p) => p,
+            None => self.find_pricing_model(engine, model)?,
+        };
 
         // Calculate costs (rates are per 1M tokens, so divide by 1,000,000)
         let prompt_cost = (usage.prompt_tokens as f64 / 1_000_000.0) * pricing.prompt_rate;
@@ -291,6 +295,24 @@ impl CostCalculator {
     }
 }
 
+/// Current per-1M-token list price for `model` as sold by `engine`, from llm-prices.
+fn current_pricing(engine: &str, model: &str) -> Option<PricingModel> {
+    let provider = if engine == "google_gemini" {
+        "google"
+    } else {
+        engine
+    };
+    let p = llm_prices::lookup_provider(provider, model)?;
+    Some(PricingModel {
+        engine: engine.to_string(),
+        model: p.model.to_string(),
+        prompt_rate: p.input?,
+        completion_rate: p.output?,
+        image_rate: None,
+        last_updated: p.checked.to_string(),
+    })
+}
+
 impl Default for CostCalculator {
     fn default() -> Self {
         Self::new()
@@ -322,10 +344,39 @@ mod tests {
             .calculate_cost("openai", "gpt-3.5-turbo", &usage)
             .unwrap();
 
-        // GPT-3.5-turbo pricing: $0.0015/1M prompt, $0.002/1M completion
-        assert_eq!(cost.prompt_cost, 0.0015);
-        assert_eq!(cost.completion_cost, 0.001);
-        assert_eq!(cost.total_cost, 0.0025);
+        // GPT-3.5-turbo list pricing: $0.50/1M prompt, $1.50/1M completion
+        assert_eq!(cost.prompt_cost, 0.5);
+        assert_eq!(cost.completion_cost, 0.75);
+        assert_eq!(cost.total_cost, 1.25);
+    }
+
+    #[test]
+    fn test_current_model_pricing() {
+        let mut calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 1000000,
+            completion_tokens: 100000,
+            total_tokens: 1100000,
+        };
+
+        // gpt-4o: $2.50/1M prompt, $10/1M completion
+        let cost = calculator
+            .calculate_cost("openai", "gpt-4o", &usage)
+            .unwrap();
+        assert!((cost.total_cost - 3.5).abs() < 1e-9);
+
+        // gpt-4o-mini is priced as itself, not as gpt-4o
+        let cost = calculator
+            .calculate_cost("openai", "gpt-4o-mini", &usage)
+            .unwrap();
+        assert!(cost.total_cost < 1.0);
+
+        // Current Claude models are priced
+        let cost = calculator
+            .calculate_cost("anthropic", "claude-sonnet-4-5", &usage)
+            .unwrap();
+        assert!((cost.total_cost - 4.5).abs() < 1e-9);
     }
 
     #[test]
